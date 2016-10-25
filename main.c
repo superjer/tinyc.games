@@ -17,30 +17,31 @@ exit
 
 unsigned int shapes[] = {
         0x0   , 0x0   , 0x0   , 0x0   , //          Example for J piece:
-        0x0226, 0x0047, 0x0644, 0x0071, // J        8421                
-        0x0446, 0x0017, 0x0622, 0x0074, // L       *----*               
-        0x0066, 0x0066, 0x0066, 0x0066, // square  |    | -> 0          
-        0x0264, 0x0063, 0x0264, 0x0063, // Z       |  X | -> 2          
+        0x0226, 0x0047, 0x0644, 0x0071, // J        8421
+        0x0446, 0x0017, 0x0622, 0x0074, // L       *----*
+        0x0066, 0x0066, 0x0066, 0x0066, // square  |    | -> 0
+        0x0264, 0x0063, 0x0264, 0x0063, // Z       |  X | -> 2
         0x0462, 0x0036, 0x0462, 0x0036, // S       |  X | -> 2 -> 0x0226
-        0x0027, 0x0464, 0x0072, 0x0262, // T       | XX | -> 6          
-        0x2222, 0x000F, 0x2222, 0x000F, // line    *----*               
+        0x0027, 0x0464, 0x0072, 0x0262, // T       | XX | -> 6
+        0x4444, 0x00F0, 0x4444, 0x00F0, // line    *----*
 };
 
 unsigned char colors[] = {
          25,  40,  35,
-        242, 245, 237,
-        255, 194,   0,
-        255,  91,   0,
-        184,   0,  40,
-        132,   0,  46,
-         74, 192, 242,
-        221,  30,  47, // J
-        235, 176,  53, // L
-          6, 162, 203, // square
-         33, 133,  89, // Z
-        162,  89,  33, // S
-         33,   6, 177, // T
-        208, 198, 177, // line
+        242, 245, 237, // J
+        255, 194,   0, // L
+         15, 127, 127, // square
+        255,  91,   0, // Z
+        184,   0,  40, // S
+         74, 192, 242, // T
+        132,   0,  46, // line
+        221,  30,  47,
+        235, 176,  53,
+          6, 162, 203,
+         33, 133,  89,
+        162,  89,  33,
+         33,   6, 177,
+        208, 198, 177,
         255, 255, 255,
 };
 
@@ -136,24 +137,23 @@ void key_down()
 void update_stuff()
 {
         if(!falling_shape && !shine_time && !dead_time)
-        {
                 new_piece();
-        }
 
         if(shine_time > 0)
         {
                 shine_time--;
                 if(shine_time == 0)
-                {
                         kill_lines();
-                }
         }
 
         if(dead_time > 0)
         {
-                int x = (dead_time-1) % BWIDTH;
-                int y = (dead_time-1) / BWIDTH;
-                board[y][x] = 1;
+                int x = (dead_time-100) % BWIDTH;
+                int y = (dead_time-100) / BWIDTH;
+
+                if(y >= 0)
+                        board[y][x] = rand() % 7 + 1;
+
                 dead_time--;
 
                 if(dead_time == 0)
@@ -161,9 +161,7 @@ void update_stuff()
         }
 
         if(idle_time >= 30)
-        {
                 move(0, 1);
-        }
 }
 
 void new_piece()
@@ -183,15 +181,10 @@ void move(int dx, int dy)
         else if(dy)
         {
                 bake();
-                check_lines();
-                check_dead();
-                falling_shape = 0;
         }
 
         if(dy)
-        {
                 idle_time = 0;
-        }
 }
 
 int collide(int x, int y, int rot)
@@ -230,8 +223,14 @@ void bake()
                 if(world_i < 0 || world_i >= BWIDTH || world_j < 0 || world_j >= BHEIGHT)
                         continue;
 
+                if(board[world_j][world_i])
+                        dead_time = BWIDTH * BHEIGHT + 99;
+
                 board[world_j][world_i] = falling_shape;
         }
+
+        check_lines();
+        falling_shape = 0;
 }
 
 void check_lines()
@@ -247,12 +246,6 @@ void check_lines()
                                 shine_line(j);
                 }
         }
-}
-
-void check_dead()
-{
-        if(falling_y < 0)
-                dead_time = BWIDTH * BHEIGHT;
 }
 
 void shine_line(int y)
@@ -276,17 +269,18 @@ void kill_lines()
                 for(int j = y; j > 0; j--)
                 {
                         for(int i = 0; i < BWIDTH; i++)
-                        {
                                 board[j][i] = board[j-1][i];
-                        }
                 }
         }
 }
 
 void slam()
 {
-        falling_y++;
+        while(!collide(falling_x, falling_y + 1, falling_rot))
+                falling_y++;
+
         idle_time = 0;
+        bake();
 }
 
 void spin(int dir)
@@ -294,7 +288,15 @@ void spin(int dir)
         int new_rot = (falling_rot + 1) % 4;
 
         if(!collide(falling_x, falling_y, new_rot))
+        {
                 falling_rot = new_rot;
+        }
+        else if(!collide(falling_x - 1, falling_y, new_rot))
+        {
+                falling_x -= 1;
+                falling_rot = new_rot;
+        }
+
 }
 
 void draw_stuff()
@@ -321,6 +323,7 @@ void draw_stuff()
                 draw_square(world_i, world_j, falling_shape);
         }
 
+        //draw board
         for(int i = 0; i < BWIDTH; i++) for(int j = 0; j < BHEIGHT; j++)
         {
                 if(!board[j][i])
