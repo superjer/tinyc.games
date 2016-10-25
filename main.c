@@ -1,3 +1,10 @@
+#!/usr/bin/env bash
+
+#if 0
+tcc -I/usr/include/SDL2 -lSDL2 -run $0
+exit
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
