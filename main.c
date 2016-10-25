@@ -28,16 +28,21 @@ unsigned char colors[] = {
         162,  89,  33, // S
          33,   6, 177, // T
         208, 198, 177, // line
+        255, 255, 255,
 };
 
-unsigned char board[BWIDTH][BHEIGHT];
+unsigned char board[BHEIGHT][BWIDTH];
+
+int killy_lines[BHEIGHT];
 
 int falling_x;
 int falling_y;
 int falling_shape;
-int falling_spin;
+int falling_rot;
 
 int idle_time;
+int shine_time;
+int dead_time;
 
 SDL_Event event;
 SDL_Renderer *renderer;
@@ -48,13 +53,18 @@ void setup();
 void key_down();
 void update_stuff();
 void draw_stuff();
+void draw_square(int x, int y, int shape);
 void set_shape_color(int shape, int shade);
 
 // gamey protos
 void new_piece();
 void move(int dx, int dy);
-int collide(int x, int y);
+int collide(int x, int y, int rot);
 void bake();
+void check_lines();
+void check_dead();
+void shine_line(int y);
+void kill_lines();
 void slam();
 void spin(int dir);
 
@@ -86,7 +96,7 @@ void setup()
         SDL_Init(SDL_INIT_VIDEO);
 
         SDL_Window *win = SDL_CreateWindow("Tet",
-                        100, 100, 640, 480, SDL_WINDOW_SHOWN);
+                        100, 100, 420, 820, SDL_WINDOW_SHOWN);
 
         renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
 
@@ -112,9 +122,29 @@ void key_down()
 
 void update_stuff()
 {
-        if(!falling_shape)
+        if(!falling_shape && !shine_time && !dead_time)
         {
                 new_piece();
+        }
+
+        if(shine_time > 0)
+        {
+                shine_time--;
+                if(shine_time == 0)
+                {
+                        kill_lines();
+                }
+        }
+
+        if(dead_time > 0)
+        {
+                int x = (dead_time-1) % BWIDTH;
+                int y = (dead_time-1) / BWIDTH;
+                board[y][x] = 1;
+                dead_time--;
+
+                if(dead_time == 0)
+                        memset(board, 0, sizeof board);
         }
 
         if(idle_time >= 30)
@@ -132,7 +162,7 @@ void new_piece()
 
 void move(int dx, int dy)
 {
-        if(!collide(falling_x + dx, falling_y + dy))
+        if(!collide(falling_x + dx, falling_y + dy, falling_rot))
         {
                 falling_x += dx;
                 falling_y += dy;
@@ -140,6 +170,8 @@ void move(int dx, int dy)
         else if(dy)
         {
                 bake();
+                check_lines();
+                check_dead();
                 falling_shape = 0;
         }
 
@@ -149,14 +181,14 @@ void move(int dx, int dy)
         }
 }
 
-int collide(int x, int y)
+int collide(int x, int y, int rot)
 {
         for(int i = 0; i < 4; i++) for(int j = 0; j < 4; j++)
         {
                 int world_i = i + x;
                 int world_j = j + y;
 
-                if(!(shapes[falling_shape*4 + falling_spin] & BIT(i, j)))
+                if(!(shapes[falling_shape*4 + rot] & BIT(i, j)))
                         continue;
 
                 if(world_j < 0)
@@ -165,7 +197,7 @@ int collide(int x, int y)
                 if(world_i < 0 || world_i >= BWIDTH || world_j >= BHEIGHT)
                         return 1;
 
-                if(board[world_i][world_j])
+                if(board[world_j][world_i])
                         return 1;
         }
 
@@ -179,13 +211,62 @@ void bake()
                 int world_i = i + falling_x;
                 int world_j = j + falling_y;
 
-                if(!(shapes[falling_shape*4 + falling_spin] & BIT(i, j)))
+                if(!(shapes[falling_shape*4 + falling_rot] & BIT(i, j)))
                         continue;
 
                 if(world_i < 0 || world_i >= BWIDTH || world_j < 0 || world_j >= BHEIGHT)
                         continue;
 
-                board[world_i][world_j] = falling_shape;
+                board[world_j][world_i] = falling_shape;
+        }
+}
+
+void check_lines()
+{
+        for(int j = BHEIGHT - 1; j >= 0; j--)
+        {
+                for(int i = 0; i < BWIDTH; i++)
+                {
+                        if(!board[j][i])
+                                break;
+
+                        if(i == BWIDTH - 1)
+                                shine_line(j);
+                }
+        }
+}
+
+void check_dead()
+{
+        if(falling_y < 0)
+                dead_time = BWIDTH * BHEIGHT;
+}
+
+void shine_line(int y)
+{
+        shine_time = 100;
+        killy_lines[y] = 1;
+        for(int i = 0; i < BWIDTH; i++)
+                board[y][i] = 8;
+}
+
+void kill_lines()
+{
+        for(int y = 0; y < BHEIGHT; y++)
+        {
+                if(!killy_lines[y])
+                        continue;
+
+                killy_lines[y] = 0;
+                memset(board[0], 0, sizeof *board);
+
+                for(int j = y; j > 0; j--)
+                {
+                        for(int i = 0; i < BWIDTH; i++)
+                        {
+                                board[j][i] = board[j-1][i];
+                        }
+                }
         }
 }
 
@@ -197,18 +278,20 @@ void slam()
 
 void spin(int dir)
 {
-        falling_spin++;
-        falling_spin %= 4;
+        int new_rot = (falling_rot + 1) % 4;
+
+        if(!collide(falling_x, falling_y, new_rot))
+                falling_rot = new_rot;
 }
 
 void draw_stuff()
 {
         //draw green everywhere (not so racist)
-        SDL_SetRenderDrawColor(renderer, 17, 143, 7, 255);
+        SDL_SetRenderDrawColor(renderer, 25, 40, 35, 255);
         SDL_RenderClear(renderer);
 
-        SDL_SetRenderDrawColor(renderer, 25, 40, 35, 255);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){10, 10, 200, 400});
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(renderer, &(SDL_Rect){10, 10, 400, 800});
 
         //draw falling piece
         for(int i = 0; i < 4; i++) for(int j = 0; j < 4; j++)
@@ -216,53 +299,44 @@ void draw_stuff()
                 int world_i = i + falling_x;
                 int world_j = j + falling_y;
 
-                if(!(shapes[falling_shape*4 + falling_spin] & BIT(i, j)))
+                if(!(shapes[falling_shape*4 + falling_rot] & BIT(i, j)))
                         continue;
 
                 if(world_j < 0)
                         continue;
 
-                set_shape_color(falling_shape, -25);
-                SDL_RenderDrawRect(renderer, &(SDL_Rect){
-                        10 + 20 * world_i,
-                        10 + 20 * world_j,
-                        20,
-                        20
-                });
-
-                set_shape_color(falling_shape, 0);
-                SDL_RenderFillRect(renderer, &(SDL_Rect){
-                        11 + 20 * world_i,
-                        11 + 20 * world_j,
-                        18,
-                        18
-                });
+                draw_square(world_i, world_j, falling_shape);
         }
 
         for(int i = 0; i < BWIDTH; i++) for(int j = 0; j < BHEIGHT; j++)
         {
-                if(!board[i][j])
+                if(!board[j][i])
                         continue;
 
-                set_shape_color(board[i][j], -25);
-                SDL_RenderDrawRect(renderer, &(SDL_Rect){
-                        10 + 20 * i,
-                        10 + 20 * j,
-                        20,
-                        20
-                });
-
-                set_shape_color(board[i][j], 0);
-                SDL_RenderFillRect(renderer, &(SDL_Rect){
-                        11 + 20 * i,
-                        11 + 20 * j,
-                        18,
-                        18
-                });
+                draw_square(i, j, board[j][i]);
         }
 
         //done drawing stuff
         SDL_RenderPresent(renderer);
+}
+
+void draw_square(int x, int y, int shape)
+{
+        set_shape_color(shape, -25);
+        SDL_RenderDrawRect(renderer, &(SDL_Rect){
+                10 + 40 * x,
+                10 + 40 * y,
+                40,
+                40
+        });
+
+        set_shape_color(shape, 0);
+        SDL_RenderFillRect(renderer, &(SDL_Rect){
+                11 + 40 * x,
+                11 + 40 * y,
+                38,
+                38
+        });
 }
 
 void set_shape_color(int shape, int shade)
