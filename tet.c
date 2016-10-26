@@ -6,18 +6,29 @@
 #define SHAPES 7
 #define BWIDTH 10  // board width, height
 #define BHEIGHT 20
-#define BIT(i, j) (1 << (4*(3-(j)) + (3-(i))))
+#define BS 30
 
-unsigned int shapes[] = {
-        0x0   , 0x0   , 0x0   , 0x0   , //          Example for J piece:
-        0x0226, 0x0047, 0x0644, 0x0071, // J        8421
-        0x0446, 0x0017, 0x0622, 0x0074, // L       *----*
-        0x0066, 0x0066, 0x0066, 0x0066, // square  |    | -> 0
-        0x0264, 0x0063, 0x0264, 0x0063, // Z       |  X | -> 2
-        0x0462, 0x0036, 0x0462, 0x0036, // S       |  X | -> 2 -> 0x0226
-        0x0027, 0x0464, 0x0072, 0x0262, // T       | XX | -> 6
-        0x4444, 0x00F0, 0x4444, 0x00F0, // line    *----*
-};
+char shapes[] =
+        ".... .... .... .... .... .... .... .O.. "
+        ".... ..O. .O.. .OO. OO.. .OO. .... .O.. "
+        ".... ..O. .O.. .OO. .OO. OO.. OOO. .O.. "
+        ".... .OO. .OO. .... .... .... .O.. .O.. "
+
+        ".... .... .... .... .... .... .... .... "
+        ".... .O.. ..O. .OO. ..O. .O.. .O.. .... "
+        ".... .OOO OOO. .OO. .OO. .OO. .OO. OOOO "
+        ".... .... .... .... .O.. ..O. .O.. .... "
+
+        ".... .... .... .... .... .... .... .O.. "
+        ".... .OO. .OO. .OO. OO.. .OO. .O.. .O.. "
+        ".... .O.. ..O. .OO. .OO. OO.. OOO. .O.. "
+        ".... .O.. ..O. .... .... .... .... .O.. "
+
+        ".... .... .... .... .... .... .... .... "
+        ".... .OOO OOO. .OO. ..O. .O.. .O.. .... "
+        ".... ...O O... .OO. .OO. .OO. OO.. OOOO "
+        ".... .... .... .... .O.. ..O. .O.. .... "
+        ;
 
 unsigned char colors[] = {
          25,  40,  35,
@@ -66,6 +77,7 @@ void set_shape_color(int shape, int shade);
 // gamey protos
 void new_piece();
 void move(int dx, int dy);
+int solid_part(int shape, int rot, int i, int j);
 int collide(int x, int y, int rot);
 void bake();
 void check_lines();
@@ -103,7 +115,8 @@ void setup()
         SDL_Init(SDL_INIT_VIDEO);
 
         SDL_Window *win = SDL_CreateWindow("Tet",
-                        100, 100, 420, 820, SDL_WINDOW_SHOWN);
+                        100, 100, BWIDTH * BS + 20, BHEIGHT * BS + 20,
+                        SDL_WINDOW_SHOWN);
 
         renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
 
@@ -180,14 +193,21 @@ void move(int dx, int dy)
                 idle_time = 0;
 }
 
+int solid_part(int shape, int rot, int i, int j)
+{
+        int base = falling_shape*5 + rot*5*8*4;
+        return shapes[base + j*5*8 + i] == 'O';
+}
+
 int collide(int x, int y, int rot)
 {
+
         for(int i = 0; i < 4; i++) for(int j = 0; j < 4; j++)
         {
                 int world_i = i + x;
                 int world_j = j + y;
 
-                if(!(shapes[falling_shape*4 + rot] & BIT(i, j)))
+                if(!solid_part(falling_shape, rot, i, j))
                         continue;
 
                 if(world_j < 0)
@@ -210,7 +230,7 @@ void bake()
                 int world_i = i + falling_x;
                 int world_j = j + falling_y;
 
-                if(!(shapes[falling_shape*4 + falling_rot] & BIT(i, j)))
+                if(!solid_part(falling_shape, falling_rot, i, j))
                         continue;
 
                 if(world_i < 0 || world_i >= BWIDTH || world_j < 0 || world_j >= BHEIGHT)
@@ -299,7 +319,7 @@ void draw_stuff()
         SDL_RenderClear(renderer);
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){10, 10, 400, 800});
+        SDL_RenderFillRect(renderer, &(SDL_Rect){10, 10, BS * BWIDTH, BS * BHEIGHT});
 
         //draw falling piece
         for(int i = 0; i < 4; i++) for(int j = 0; j < 4; j++)
@@ -307,7 +327,7 @@ void draw_stuff()
                 int world_i = i + falling_x;
                 int world_j = j + falling_y;
 
-                if(!(shapes[falling_shape*4 + falling_rot] & BIT(i, j)))
+                if(!solid_part(falling_shape, falling_rot, i, j))
                         continue;
 
                 if(world_j < 0)
@@ -333,18 +353,18 @@ void draw_square(int x, int y, int shape)
 {
         set_shape_color(shape, -25);
         SDL_RenderDrawRect(renderer, &(SDL_Rect){
-                10 + 40 * x,
-                10 + 40 * y,
-                40,
-                40
+                10 + BS * x,
+                10 + BS * y,
+                BS,
+                BS
         });
 
         set_shape_color(shape, 0);
         SDL_RenderFillRect(renderer, &(SDL_Rect){
-                11 + 40 * x,
-                11 + 40 * y,
-                38,
-                38
+                11 + BS * x,
+                11 + BS * y,
+                BS - 2,
+                BS - 2
         });
 }
 
