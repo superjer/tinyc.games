@@ -30,24 +30,31 @@ char shapes[] =
         ".... .... .... .... .O.. ..O. .O.. .... "
         ;
 
-unsigned char colors[] = {
-         25,  40,  35,
-        242, 245, 237, // J
-        255, 194,   0, // L
-         15, 127, 127, // square
-        255,  91,   0, // Z
-        184,   0,  40, // S
-         74, 192, 242, // T
-        132,   0,  46, // line
-        221,  30,  47,
-        235, 176,  53,
-          6, 162, 203,
-         33, 133,  89,
-        162,  89,  33,
-         33,   6, 177,
-        208, 198, 177,
-        255, 255, 255,
+unsigned char colors[][9*3] = {
+        {
+                25,   40,  35, // "black"
+                242, 245, 237, // J
+                255, 194,   0, // L
+                15,  127, 127, // square
+                255,  91,   0, // Z
+                184,   0,  40, // S
+                74,  192, 242, // T
+                132,   0,  46, // line
+                255, 255, 255, // shine
+        }, {
+                  0,   0,   0, // "black"
+                221,  30,  47, // J
+                235, 176,  53, // L
+                  6, 162, 203, // square
+                 33, 133,  89, // Z
+                162,  89,  33, // S
+                 33,   6, 177, // T
+                208, 198, 177, // line
+                255, 255, 200, // shine
+        }
 };
+
+int palette = 0;
 
 unsigned char board[BHEIGHT][BWIDTH];
 
@@ -64,9 +71,8 @@ int dead_time;
 
 SDL_Event event;
 SDL_Renderer *renderer;
-int running = 1;
 
-// enginey protos
+//enginey protos
 void setup();
 void key_down();
 void update_stuff();
@@ -74,10 +80,10 @@ void draw_stuff();
 void draw_square(int x, int y, int shape);
 void set_shape_color(int shape, int shade);
 
-// gamey protos
+//gamey protos
 void new_piece();
 void move(int dx, int dy);
-int solid_part(int shape, int rot, int i, int j);
+int is_solid_part(int rot, int i, int j);
 int collide(int x, int y, int rot);
 void bake();
 void check_lines();
@@ -87,15 +93,16 @@ void kill_lines();
 void slam();
 void spin(int dir);
 
+//the entry point and main game loop
 int main()
 {
         setup();
 
-        while(running)
+        for(;;)
         {
                 while(SDL_PollEvent(&event)) switch(event.type)
                 {
-                        case SDL_QUIT: running = 0; break;
+                        case SDL_QUIT: exit(0);
                         case SDL_KEYDOWN: key_down(); break;
                 }
 
@@ -104,10 +111,9 @@ int main()
                 SDL_Delay(10);
                 idle_time++;
         }
-
-        return 0;
 }
 
+//initial setup to get the window and rendering going
 void setup()
 {
         srand(time(NULL));
@@ -127,9 +133,10 @@ void setup()
         }
 }
 
+//handle a key press from the player
 void key_down()
 {
-        switch(event.key.keysym.sym)
+        if(falling_shape) switch(event.key.keysym.sym)
         {
                 case SDLK_a: case SDLK_LEFT:  move(-1, 0); break;
                 case SDLK_d: case SDLK_RIGHT: move( 1, 0); break;
@@ -137,9 +144,11 @@ void key_down()
                 case SDLK_s: case SDLK_DOWN:  move( 0, 1); break;
                 case SDLK_q: case SDLK_z:     spin(-1);    break;
                 case SDLK_e: case SDLK_x:     spin( 1);    break;
+                case SDLK_SPACE:              palette = palette ? 0 : 1; break;
         }
 }
 
+//update everything that needs to update on its own, without input
 void update_stuff()
 {
         if(!falling_shape && !shine_time && !dead_time)
@@ -170,6 +179,7 @@ void update_stuff()
                 move(0, 1);
 }
 
+//randomly pick a new falling piece
 void new_piece()
 {
         falling_shape = rand() % SHAPES + 1;
@@ -177,6 +187,7 @@ void new_piece()
         falling_y = -3;
 }
 
+//move the falling piece left, right, or down
 void move(int dx, int dy)
 {
         if(!collide(falling_x + dx, falling_y + dy, falling_rot))
@@ -193,28 +204,29 @@ void move(int dx, int dy)
                 idle_time = 0;
 }
 
-int solid_part(int shape, int rot, int i, int j)
+//check if a sub-part of the falling shape is solid at a particular rotation
+int is_solid_part(int rot, int i, int j)
 {
         int base = falling_shape*5 + rot*5*8*4;
         return shapes[base + j*5*8 + i] == 'O';
 }
 
+//check if the falling piece would collide at a certain position and rotation
 int collide(int x, int y, int rot)
 {
-
         for(int i = 0; i < 4; i++) for(int j = 0; j < 4; j++)
         {
                 int world_i = i + x;
                 int world_j = j + y;
 
-                if(!solid_part(falling_shape, rot, i, j))
-                        continue;
-
-                if(world_j < 0)
+                if(!is_solid_part(rot, i, j))
                         continue;
 
                 if(world_i < 0 || world_i >= BWIDTH || world_j >= BHEIGHT)
                         return 1;
+
+                if(world_j < 0)
+                        continue;
 
                 if(board[world_j][world_i])
                         return 1;
@@ -223,6 +235,7 @@ int collide(int x, int y, int rot)
         return 0;
 }
 
+//bake the falling piece into the background/board
 void bake()
 {
         for(int i = 0; i < 4; i++) for(int j = 0; j < 4; j++)
@@ -230,7 +243,7 @@ void bake()
                 int world_i = i + falling_x;
                 int world_j = j + falling_y;
 
-                if(!solid_part(falling_shape, falling_rot, i, j))
+                if(!is_solid_part(falling_rot, i, j))
                         continue;
 
                 if(world_i < 0 || world_i >= BWIDTH || world_j < 0 || world_j >= BHEIGHT)
@@ -246,6 +259,7 @@ void bake()
         falling_shape = 0;
 }
 
+//check if there are any completed horizontal lines
 void check_lines()
 {
         for(int j = BHEIGHT - 1; j >= 0; j--)
@@ -261,6 +275,7 @@ void check_lines()
         }
 }
 
+//make a completed line "shine" and mark it to be removed
 void shine_line(int y)
 {
         shine_time = 100;
@@ -269,6 +284,7 @@ void shine_line(int y)
                 board[y][i] = 8;
 }
 
+//remove lines that were marked to be removed by shine_line()
 void kill_lines()
 {
         for(int y = 0; y < BHEIGHT; y++)
@@ -287,15 +303,18 @@ void kill_lines()
         }
 }
 
+//move the falling piece as far down as it will go
 void slam()
 {
         while(!collide(falling_x, falling_y + 1, falling_rot))
+        {
                 falling_y++;
+                idle_time = 0;
+        }
 
-        idle_time = 0;
-        bake();
 }
 
+//spin the falling piece left or right, if possible
 void spin(int dir)
 {
         int new_rot = (falling_rot + 1) % 4;
@@ -312,9 +331,9 @@ void spin(int dir)
 
 }
 
+//draw everything in the game on the screen
 void draw_stuff()
 {
-        //draw green everywhere (not so racist)
         SDL_SetRenderDrawColor(renderer, 25, 40, 35, 255);
         SDL_RenderClear(renderer);
 
@@ -327,7 +346,7 @@ void draw_stuff()
                 int world_i = i + falling_x;
                 int world_j = j + falling_y;
 
-                if(!solid_part(falling_shape, falling_rot, i, j))
+                if(!is_solid_part(falling_rot, i, j))
                         continue;
 
                 if(world_j < 0)
@@ -345,10 +364,10 @@ void draw_stuff()
                 draw_square(i, j, board[j][i]);
         }
 
-        //done drawing stuff
         SDL_RenderPresent(renderer);
 }
 
+//draw a single square/piece of a shape
 void draw_square(int x, int y, int shape)
 {
         set_shape_color(shape, -25);
@@ -368,11 +387,12 @@ void draw_square(int x, int y, int shape)
         });
 }
 
+//set the current draw color to the color assoc. with a shape
 void set_shape_color(int shape, int shade)
 {
-        int r = colors[shape*3 + 0] + shade;
-        int g = colors[shape*3 + 1] + shade;
-        int b = colors[shape*3 + 2] + shade;
+        int r = colors[palette][shape*3 + 0] + shade;
+        int g = colors[palette][shape*3 + 1] + shade;
+        int b = colors[palette][shape*3 + 2] + shade;
 
         if(r > 255) r = 255;
         if(r <   0) r =   0;
