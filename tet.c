@@ -64,6 +64,7 @@ int falling_x;
 int falling_y;
 int falling_shape;
 int falling_rot;
+int next_shape;
 
 int idle_time;
 int shine_time;
@@ -78,12 +79,13 @@ void key_down();
 void update_stuff();
 void draw_stuff();
 void draw_square(int x, int y, int shape);
+void draw_board_square(int bx, int by, int shape);
 void set_shape_color(int shape, int shade);
 
 //gamey protos
 void new_piece();
 void move(int dx, int dy);
-int is_solid_part(int rot, int i, int j);
+int is_solid_part(int shape, int rot, int i, int j);
 int collide(int x, int y, int rot);
 void bake();
 void check_lines();
@@ -97,6 +99,7 @@ void spin(int dir);
 int main()
 {
         setup();
+        new_piece();
 
         for(;;)
         {
@@ -121,10 +124,13 @@ void setup()
         SDL_Init(SDL_INIT_VIDEO);
 
         SDL_Window *win = SDL_CreateWindow("Tet",
-                        100, 100, BWIDTH * BS + 20, BHEIGHT * BS + 20,
+                        SDL_WINDOWPOS_UNDEFINED,
+                        SDL_WINDOWPOS_UNDEFINED,
+                        10 + BWIDTH * BS + 10 + 5 * BS + 10,
+                        10 + BHEIGHT * BS + 10,
                         SDL_WINDOW_SHOWN);
 
-        renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
+        renderer = SDL_CreateRenderer(win, -1, 0);
 
         if(!renderer)
         {
@@ -152,7 +158,12 @@ void key_down()
 void update_stuff()
 {
         if(!falling_shape && !shine_time && !dead_time)
+        {
                 new_piece();
+                falling_x = 3;
+                falling_y = -3;
+                falling_rot = 0;
+        }
 
         if(shine_time > 0)
         {
@@ -172,7 +183,12 @@ void update_stuff()
                 dead_time--;
 
                 if(dead_time == 0)
+                {
                         memset(board, 0, sizeof board);
+                        new_piece();
+                }
+
+                falling_shape = 0;
         }
 
         if(idle_time >= 30)
@@ -182,9 +198,8 @@ void update_stuff()
 //randomly pick a new falling piece
 void new_piece()
 {
-        falling_shape = rand() % SHAPES + 1;
-        falling_x = 3;
-        falling_y = -3;
+        falling_shape = next_shape;
+        next_shape = rand() % SHAPES + 1;
 }
 
 //move the falling piece left, right, or down
@@ -200,14 +215,13 @@ void move(int dx, int dy)
                 bake();
         }
 
-        if(dy)
-                idle_time = 0;
+        if(dy) idle_time = 0;
 }
 
 //check if a sub-part of the falling shape is solid at a particular rotation
-int is_solid_part(int rot, int i, int j)
+int is_solid_part(int shape, int rot, int i, int j)
 {
-        int base = falling_shape*5 + rot*5*8*4;
+        int base = shape*5 + rot*5*8*4;
         return shapes[base + j*5*8 + i] == 'O';
 }
 
@@ -219,7 +233,7 @@ int collide(int x, int y, int rot)
                 int world_i = i + x;
                 int world_j = j + y;
 
-                if(!is_solid_part(rot, i, j))
+                if(!is_solid_part(falling_shape, rot, i, j))
                         continue;
 
                 if(world_i < 0 || world_i >= BWIDTH || world_j >= BHEIGHT)
@@ -243,7 +257,7 @@ void bake()
                 int world_i = i + falling_x;
                 int world_j = j + falling_y;
 
-                if(!is_solid_part(falling_rot, i, j))
+                if(!is_solid_part(falling_shape, falling_rot, i, j))
                         continue;
 
                 if(world_i < 0 || world_i >= BWIDTH || world_j < 0 || world_j >= BHEIGHT)
@@ -278,7 +292,7 @@ void check_lines()
 //make a completed line "shine" and mark it to be removed
 void shine_line(int y)
 {
-        shine_time = 100;
+        shine_time = 50;
         killy_lines[y] = 1;
         for(int i = 0; i < BWIDTH; i++)
                 board[y][i] = 8;
@@ -338,7 +352,12 @@ void draw_stuff()
         SDL_RenderClear(renderer);
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+
+        //draw board background
         SDL_RenderFillRect(renderer, &(SDL_Rect){10, 10, BS * BWIDTH, BS * BHEIGHT});
+
+        //draw next box background
+        SDL_RenderFillRect(renderer, &(SDL_Rect){10 + BS * BWIDTH + 10, 10, BS * 5, BS * 5});
 
         //draw falling piece
         for(int i = 0; i < 4; i++) for(int j = 0; j < 4; j++)
@@ -346,22 +365,50 @@ void draw_stuff()
                 int world_i = i + falling_x;
                 int world_j = j + falling_y;
 
-                if(!is_solid_part(falling_rot, i, j))
+                if(!is_solid_part(falling_shape, falling_rot, i, j))
                         continue;
 
                 if(world_j < 0)
                         continue;
 
-                draw_square(world_i, world_j, falling_shape);
+                draw_board_square(world_i, world_j, falling_shape);
         }
 
-        //draw board
+        //draw next piece 1) compute center of piece
+        int xmin = 3, xmax = 0, ymin = 3, ymax = 0;
+        for(int i = 0; i < 4; i++) for(int j = 0; j < 4; j++)
+        {
+                if(is_solid_part(next_shape, 0, i, j))
+                {
+                        if(i < xmin) xmin = i;
+                        if(i > xmax) xmax = i;
+                        if(j < ymin) ymin = j;
+                        if(j > ymax) ymax = j;
+                }
+        }
+        int xdiff = (3 - xmax) - xmin;
+        int ydiff = (3 - ymax) - ymin;
+
+        //draw next piece 2) actually draw
+        for(int i = 0; i < 4; i++) for(int j = 0; j < 4; j++)
+        {
+                if(!is_solid_part(next_shape, 0, i, j))
+                        continue;
+
+                draw_square(
+                        10 + BS * BWIDTH + 10 + BS/2 + BS * i + (BS/2) * xdiff,
+                        10 + BS/2 + BS * j + (BS/2) * ydiff,
+                        next_shape
+                );
+        }
+
+        //draw board pieces
         for(int i = 0; i < BWIDTH; i++) for(int j = 0; j < BHEIGHT; j++)
         {
                 if(!board[j][i])
                         continue;
 
-                draw_square(i, j, board[j][i]);
+                draw_board_square(i, j, board[j][i]);
         }
 
         SDL_RenderPresent(renderer);
@@ -371,20 +418,15 @@ void draw_stuff()
 void draw_square(int x, int y, int shape)
 {
         set_shape_color(shape, -25);
-        SDL_RenderDrawRect(renderer, &(SDL_Rect){
-                10 + BS * x,
-                10 + BS * y,
-                BS,
-                BS
-        });
+        SDL_RenderDrawRect(renderer, &(SDL_Rect){x, y, BS, BS});
 
         set_shape_color(shape, 0);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){
-                11 + BS * x,
-                11 + BS * y,
-                BS - 2,
-                BS - 2
-        });
+        SDL_RenderFillRect(renderer, &(SDL_Rect){1 + x, 1 + y, BS - 2, BS - 2});
+}
+
+void draw_board_square(int bx, int by, int shape)
+{
+        draw_square(10 + BS * bx, 10 + BS * by, shape);
 }
 
 //set the current draw color to the color assoc. with a shape
