@@ -368,6 +368,17 @@ void draw_stuff()
                 if(!is_solid_part(falling_shape, falling_rot, i, j))
                         continue;
 
+                int shadow_j = world_j + 1;
+                if(shadow_j < 0) shadow_j = 0;
+
+                SDL_SetRenderDrawColor(renderer, 8, 13, 12, 255);
+                SDL_RenderFillRect(renderer, &(SDL_Rect){
+                        10 + BS * world_i,
+                        10 + BS * shadow_j,
+                        BS,
+                        BS * (BHEIGHT - shadow_j)
+                });
+
                 if(world_j < 0)
                         continue;
 
