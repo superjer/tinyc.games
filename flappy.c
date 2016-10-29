@@ -90,24 +90,24 @@ void setup()
 
         SDL_Surface *surf;
 
-        surf = SDL_LoadBMP("pillar.bmp");
+        surf = SDL_LoadBMP("res/pillar.bmp");
         SDL_SetColorKey(surf, 1, 0xffff00);
         pillar = SDL_CreateTextureFromSurface(renderer, surf);
 
-        surf = SDL_LoadBMP("background.bmp");
+        surf = SDL_LoadBMP("res/background.bmp");
         background = SDL_CreateTextureFromSurface(renderer, surf);
 
         for(int i = 0; i < 4; i++)
         {
                 char file[80];
-                sprintf(file, "bird-%d.bmp", i);
+                sprintf(file, "res/bird-%d.bmp", i);
                 surf = SDL_LoadBMP(file);
                 SDL_SetColorKey(surf, 1, 0xffff00);
                 bird[i] = SDL_CreateTextureFromSurface(renderer, surf);
         }
 
         TTF_Init();
-        font = TTF_OpenFont("LiberationMono-Regular.ttf", 50);
+        font = TTF_OpenFont("res/LiberationMono-Regular.ttf", 50);
         printf("%p %s\n", font, SDL_GetError());
 }
 
