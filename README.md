@@ -15,7 +15,7 @@ You will need to install gcc or clang, then just run a run-mac.sh!
 
 See this page to get gcc or clang installed by way of installing tcc (which we won't actually use!):
 
-   http://macappstore.org/tcc/
+http://macappstore.org/tcc/
 
 If someone can figure out how to run tcc with SDL2 on Mac, please advise!
 
@@ -24,4 +24,4 @@ Install tcc and the SDL2 dev libraries and then run a run-linux.sh!
 
 Example to install tcc and SDL2:
 
-   sudo apt install tcc libsdl2-dev libsdl2-ttf-dev
+    sudo apt install tcc libsdl2-dev libsdl2-ttf-dev
