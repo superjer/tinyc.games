@@ -14,6 +14,7 @@
 #define RANDOM_PIPE_HEIGHT (rand() % (H - GROUND - GAP - 120) + 60)
 #define PLYR_X 80
 #define PLYR_SZ 60
+#define DRIPS 65
 
 enum gamestates {READY, ALIVE, GAMEOVER} gamestate = READY;
 
@@ -25,6 +26,10 @@ int score;
 int best;
 int idle_time = 30;
 float frame = 0;
+float drip_x[DRIPS];
+float drip_y[DRIPS];
+float drip_velx[DRIPS];
+float drip_vely[DRIPS];
 
 SDL_Event event;
 SDL_Renderer *renderer;
@@ -38,6 +43,7 @@ void setup();
 void new_game();
 void update_stuff();
 void update_pipe(int i);
+void update_drip(int i);
 void draw_stuff();
 void text(char *fstr, int value, int height);
 
@@ -92,7 +98,7 @@ void setup()
         for(int i = 0; i < 4; i++)
         {
                 char file[80];
-                sprintf(file, "res/bird-%d.bmp", i);
+                sprintf(file, "res/organ-%d.bmp", i);
                 surf = SDL_LoadBMP(file);
                 SDL_SetColorKey(surf, 1, 0xffff00);
                 bird[i] = SDL_CreateTextureFromSurface(renderer, surf);
@@ -113,6 +119,12 @@ void new_game()
         pipe_x[1] = PHYS_W - PIPE_W;
         pipe_y[0] = RANDOM_PIPE_HEIGHT;
         pipe_y[1] = RANDOM_PIPE_HEIGHT;
+        for(int i = 0; i < DRIPS; i++)
+        {
+                drip_vely[i] = -1000;
+                drip_y[i] = -1000;
+                drip_x[i] = i*50 - 100;
+        }
 }
 
 //when we hit something
@@ -141,6 +153,37 @@ void update_stuff()
 
         for(int i = 0; i < 2; i++)
                 update_pipe(i);
+
+        for(int i = 0; i < DRIPS; i++)
+                update_drip(i);
+}
+
+void update_drip(int i)
+{
+        // respawn drip
+        if(drip_x[i] < -100)
+        {
+                if(rand() % 1000 < (player_vel < -2.0f ? 300 : 3))
+                {
+                        drip_x[i] = PLYR_X + rand() % PLYR_SZ;
+                        drip_y[i] = player_y + rand() % PLYR_SZ + 10;
+                        drip_velx[i] = (rand() % 10 - 5) / 5.0f;
+                        drip_vely[i] = player_vel + (rand() % 10 - 5);
+                }
+        }
+
+        if(drip_y[i] >= H - GROUND)
+        {
+                drip_y[i] = H - GROUND;
+                drip_x[i] -= 5;
+        }
+        else
+        {
+                drip_velx[i] -= 0.03f; //wind resistance
+                drip_vely[i] += 0.61f; //gravity
+                drip_x[i] += drip_velx[i];
+                drip_y[i] += drip_vely[i];
+        }
 }
 
 //update one pipe for one frame
@@ -181,6 +224,13 @@ void draw_stuff()
         //draw player
         SDL_RenderCopy(renderer, bird[(int)frame % 4], NULL,
                         &(SDL_Rect){PLYR_X, player_y, PLYR_SZ, PLYR_SZ});
+
+        //draw drips
+        for(int i = 0; i < DRIPS; i++)
+        {
+                SDL_SetRenderDrawColor(renderer, 190, 0, 0, 255);
+                SDL_RenderFillRect(renderer, &(SDL_Rect){drip_x[i], drip_y[i], 5, 5});
+        }
 
         if(gamestate != READY) text("%d", score, 10);
         if(gamestate == READY) text("Press any key", 0, 150);
