@@ -2,32 +2,34 @@
 #include <stdlib.h>
 #include <time.h>
 #include <SDL.h>
+#include <SDL_ttf.h>
 
 #define SHAPES 7
 #define BWIDTH 10  // board width, height
 #define BHEIGHT 20
 #define BS 30
+#define EXTRA_DEAD 50
 
 char shapes[] =
         ".... .... .... .... .... .... .... .O.. "
-        ".... ..O. .O.. .OO. OO.. .OO. .... .O.. "
-        ".... ..O. .O.. .OO. .OO. OO.. OOO. .O.. "
-        ".... .OO. .OO. .... .... .... .O.. .O.. "
-
+        ".... .OO. .OO. .OO. ..O. .O.. .... .O.. "
+        ".... .O.. ..O. .OO. .OO. .OO. OOO. .O.. "
+        ".... .O.. ..O. .... .O.. ..O. .O.. .O.. "
+                                      
         ".... .... .... .... .... .... .... .... "
-        ".... .O.. ..O. .OO. ..O. .O.. .O.. .... "
-        ".... .OOO OOO. .OO. .OO. .OO. .OO. OOOO "
-        ".... .... .... .... .O.. ..O. .O.. .... "
+        ".... .O.. ..O. .OO. OO.. .OO. .O.. .... "
+        ".... .OOO OOO. .OO. .OO. OO.. .OO. OOOO "
+        ".... .... .... .... .... .... .O.. .... "
 
         ".... .... .... .... .... .... .... .O.. "
-        ".... .OO. .OO. .OO. OO.. .OO. .O.. .O.. "
-        ".... .O.. ..O. .OO. .OO. OO.. OOO. .O.. "
-        ".... .O.. ..O. .... .... .... .... .O.. "
-
+        ".... ..O. .O.. .OO. ..O. .O.. .O.. .O.. "
+        ".... ..O. .O.. .OO. .OO. .OO. OOO. .O.. "
+        ".... .OO. .OO. .... .O.. ..O. .... .O.. "
+                                      
         ".... .... .... .... .... .... .... .... "
-        ".... .OOO OOO. .OO. ..O. .O.. .O.. .... "
-        ".... ...O O... .OO. .OO. .OO. OO.. OOOO "
-        ".... .... .... .... .O.. ..O. .O.. .... "
+        ".... .OOO OOO. .OO. OO.. .OO. .O.. .... "
+        ".... ...O O... .OO. .OO. OO.. OO.. OOOO "
+        ".... .... .... .... .... .... .O.. .... "
         ;
 
 unsigned char colors[][9*3] = {
@@ -65,6 +67,9 @@ int falling_y;
 int falling_shape;
 int falling_rot;
 int next_shape;
+int lines;
+int score;
+int best;
 
 int idle_time;
 int shine_time;
@@ -72,6 +77,7 @@ int dead_time;
 
 SDL_Event event;
 SDL_Renderer *renderer;
+TTF_Font *font;
 
 //enginey protos
 void setup();
@@ -81,8 +87,10 @@ void draw_stuff();
 void draw_square(int x, int y, int shape);
 void draw_board_square(int bx, int by, int shape);
 void set_shape_color(int shape, int shade);
+void text(char *fstr, int value, int x, int y);
 
 //gamey protos
+void new_game();
 void new_piece();
 void move(int dx, int dy);
 int is_solid_part(int shape, int rot, int i, int j);
@@ -99,7 +107,7 @@ void spin(int dir);
 int main()
 {
         setup();
-        new_piece();
+        new_game();
 
         for(;;)
         {
@@ -137,6 +145,9 @@ void setup()
                 fprintf(stderr, "Could not create SDL renderer for some reason\n");
                 exit(-1);
         }
+
+        TTF_Init();
+        font = TTF_OpenFont("res/LiberationSans-Regular.ttf", 28);
 }
 
 //handle a key press from the player
@@ -174,25 +185,38 @@ void update_stuff()
 
         if(dead_time > 0)
         {
-                int x = (dead_time-100) % BWIDTH;
-                int y = (dead_time-100) / BWIDTH;
+                int x = (dead_time-EXTRA_DEAD) % BWIDTH;
+                int y = (dead_time-EXTRA_DEAD) / BWIDTH;
 
-                if(y >= 0)
+                if(y >= 0 && y < BHEIGHT && x >= 0 && x < BWIDTH)
                         board[y][x] = rand() % 7 + 1;
 
                 dead_time--;
 
                 if(dead_time == 0)
-                {
-                        memset(board, 0, sizeof board);
-                        new_piece();
-                }
-
-                falling_shape = 0;
+                        new_game();
         }
 
         if(idle_time >= 30)
                 move(0, 1);
+}
+
+//reset score and pick one extra random piece
+void new_game()
+{
+        memset(board, 0, sizeof board);
+        new_piece();
+        if(best < score) best = score;
+        score = 0;
+        lines = 0;
+        falling_shape = 0;
+}
+
+//out of space?
+void game_over()
+{
+        dead_time = BWIDTH * BHEIGHT + EXTRA_DEAD;
+        next_shape = 0;
 }
 
 //randomly pick a new falling piece
@@ -264,7 +288,7 @@ void bake()
                         continue;
 
                 if(board[world_j][world_i])
-                        dead_time = BWIDTH * BHEIGHT + 99;
+                        game_over();
 
                 board[world_j][world_i] = falling_shape;
         }
@@ -301,10 +325,13 @@ void shine_line(int y)
 //remove lines that were marked to be removed by shine_line()
 void kill_lines()
 {
+        int new_lines = 0;
         for(int y = 0; y < BHEIGHT; y++)
         {
                 if(!killy_lines[y])
                         continue;
+
+                new_lines++;
 
                 killy_lines[y] = 0;
                 memset(board[0], 0, sizeof *board);
@@ -314,6 +341,16 @@ void kill_lines()
                         for(int i = 0; i < BWIDTH; i++)
                                 board[j][i] = board[j-1][i];
                 }
+        }
+
+        lines += new_lines;
+
+        switch(new_lines)
+        {
+                case 1: score += 100;  break;
+                case 2: score += 250;  break;
+                case 3: score += 500;  break;
+                case 4: score += 1000; break;
         }
 }
 
@@ -422,6 +459,14 @@ void draw_stuff()
                 draw_board_square(i, j, board[j][i]);
         }
 
+        //draw text
+        text("Lines:", lines, 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 +   0);
+        text("%d"    , lines, 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 +  30);
+        text("Score:", score, 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 +  70);
+        text("%d"    , score, 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 + 100);
+        text("Best:" , best , 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 + 140);
+        text("%d"    , best , 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 + 170);
+
         SDL_RenderPresent(renderer);
 }
 
@@ -455,4 +500,20 @@ void set_shape_color(int shape, int shade)
         if(b <   0) b =   0;
 
         SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+}
+
+void text(char *fstr, int value, int x, int y)
+{
+        if(!font) return;
+        int w, h;
+        char msg[80];
+        snprintf(msg, 80, fstr, value);
+        TTF_SizeText(font, msg, &w, &h);
+        SDL_Surface *msgsurf = TTF_RenderText_Blended(font, msg, (SDL_Color){0, 0, 0});
+        SDL_Texture *msgtex = SDL_CreateTextureFromSurface(renderer, msgsurf);
+        SDL_Rect fromrec = {0, 0, msgsurf->w, msgsurf->h};
+        SDL_Rect torec = {x, y, msgsurf->w, msgsurf->h};
+        SDL_RenderCopy(renderer, msgtex, &fromrec, &torec);
+        SDL_DestroyTexture(msgtex);
+        SDL_FreeSurface(msgsurf);
 }
