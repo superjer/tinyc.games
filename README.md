@@ -1,7 +1,7 @@
-# tiny-c-games
-Tiny cross-platform games in C
+# tinyc.games
+Tiny C games you can compile and run RIGHT NOW.
 
-Tools and libraries are available for making cross-platform C games very easily, but simple examples can be hard to find.
+Tools and libraries are available for making cross-platform C games very easily, but simple examples were hard to find.
 
 This project is an example of how you can get started making a game in C that will work on Windows, Mac and Linux with mimimal installation and configuration.
 
