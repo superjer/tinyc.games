@@ -7,6 +7,11 @@ This project is an example of how you can get started making a game in C that wi
 
 For Windows and Linux, we use the Tiny C Compliler (tcc) and for Mac we use gcc or clang.
 
+## Screens
+
+![Tet](https://raw.githubusercontent.com/superjer/tinyc.games/gh-pages/images/tet-tiny.png)
+![Flappy](https://raw.githubusercontent.com/superjer/tinyc.games/gh-pages/images/flappy-tiny.png)
+
 ## Windows
 Everything you need to run the C code is already included in this repo, including TCC and SDL. Just run a run-windows.bat!
 
