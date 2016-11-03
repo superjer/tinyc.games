@@ -29,4 +29,4 @@ This project is an example of how you can get started making a game in C that wi
 
 ## Next?
 
-After you're done playing the exhilirating demo game, open the .c file in your favorite text editor. You're now looking at the actual code you just ran. So feel free to tinker and run it with your changes. Or use it as a starting point for your own game!
+After you're done playing an exhilirating demo game, open the .c file in your favorite text editor. You're now looking at the actual code you just ran. So feel free to tinker and run it with your changes. Or use it as a starting point for your own game!
