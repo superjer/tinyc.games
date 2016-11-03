@@ -1,3 +1,5 @@
+// Tet -- http://tinyc.games -- (c) 2016 Jer Wilson
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
