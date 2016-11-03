@@ -24,3 +24,7 @@ For Windows and Linux, we use the Tiny C Compliler (tcc) and for Mac we use clan
 1. Install tcc and the SDL2 dev libraries. Eg. for Debian/Ubuntu:
     sudo apt install tcc libsdl2-dev libsdl2-ttf-dev
 2. Open a game folder and run run-linux.sh!
+
+## Next?
+
+Open the .c file in your favorite text editor. You're now looking at the actual code you just ran. So feel free to tinker and run it again to your own code. Or use it as a start for your own game!
