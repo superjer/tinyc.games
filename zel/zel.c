@@ -10,7 +10,8 @@
 #define TILESH 11
 #define BS 40
 #define BS2 (BS/2)
-#define PLYR_SZ 40
+#define PLYR_W 40
+#define PLYR_H 20
 
 enum gamestates {READY, ALIVE, GAMEOVER} gamestate = READY;
 
@@ -45,6 +46,8 @@ void setup();
 void new_game();
 void key_move(int down);
 void update_stuff();
+void move_player(int velx, int vely);
+int collide(SDL_Rect r0, SDL_Rect r1);
 void draw_stuff();
 void text(char *fstr, int value, int height);
 
@@ -114,10 +117,10 @@ void key_move(int down)
 void new_game()
 {
         gamestate = ALIVE;
-        player[0].pos.x = (W - PLYR_SZ) / 2;
+        player[0].pos.x = (W - PLYR_W) / 2;
         player[0].pos.y = H - 100;
-        player[0].pos.w = PLYR_SZ;
-        player[0].pos.h = PLYR_SZ;
+        player[0].pos.w = PLYR_W;
+        player[0].pos.h = PLYR_H;
 
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
         {
@@ -143,40 +146,63 @@ void game_over()
 //update everything that needs to update on its own, without input
 void update_stuff()
 {
-        int newx = player[0].pos.x;
-        int newy = player[0].pos.y;
+        move_player(player[0].vel.x, 0);
+        move_player(0, player[0].vel.y);
+}
 
-        if(player[0].vel.y)
-                newx = (player[0].pos.x + BS2 - 1) / BS2 * BS2;
+void move_player(int velx, int vely)
+{
+        SDL_Rect newpos = player[0].pos;
 
-        if(player[0].vel.x)
-                newy = (player[0].pos.y + BS2 - 1) / BS2 * BS2;
-
-        newx += player[0].vel.x;
-        newy += player[0].vel.y;
+        newpos.x += velx;
+        newpos.y += vely;
 
         int already_stuck = 0;
         int would_be_stuck = 0;
 
-        int tx = player[0].pos.x/BS;
-        int ty = player[0].pos.y/BS;
+        for(int i = 0; i < 2; i++) for(int j = 0; j < 2; j++)
+        {
+                int bx = player[0].pos.x/BS + i;
+                int by = player[0].pos.y/BS + j;
+                SDL_Rect block = {BS*bx, BS*by, BS, BS};
 
-        if(tx >= 0 && tx < TILESW && ty >= 0 && ty < TILESH)
-                already_stuck = room[ty][tx].solid;
+                int newbx = newpos.x/BS + i;
+                int newby = newpos.y/BS + j;
+                SDL_Rect newblock = {BS*newbx, BS*newby, BS, BS};
 
-        tx = newx/BS;
-        tx = newy/BS;
+                if(bx >= 0 && bx < TILESW && by >= 0 && by < TILESH &&
+                                room[by][bx].solid &&
+                                collide(player[0].pos, block))
+                        already_stuck = 1;
 
-        if(tx >= 0 && tx < TILESW && ty >= 0 && ty < TILESH)
-                would_be_stuck = room[ty][tx].solid;
+                if(newbx >= 0 && newbx < TILESW && newby >= 0 && newby < TILESH &&
+                                room[newby][newbx].solid &&
+                                collide(newpos, newblock))
+                        would_be_stuck = 1;
+        }
 
-        printf("already %d wouldbe %d\n", already_stuck, would_be_stuck);
+        /* if(player[0].vel.x || player[0].vel.y) */
+        /*         printf("wouldbe %d    already %d\n", would_be_stuck, already_stuck); */
 
         if(!would_be_stuck || already_stuck)
-        {
-                player[0].pos.x = newx;
-                player[0].pos.y = newy;
-        }
+                player[0].pos = newpos;
+}
+
+int collide(SDL_Rect plyr, SDL_Rect block)
+{
+        /* if(player[0].vel.x || player[0].vel.y) */
+        /*         printf("%d %d %d %d     %d %d %d %d\n", */
+        /*                 plyr.x, */
+        /*                 plyr.y, */
+        /*                 plyr.w, */
+        /*                 plyr.h, */
+        /*                 block.x, */
+        /*                 block.y, */
+        /*                 block.w, */
+        /*                 block.h); */
+        int xcollide = block.x + block.w >= plyr.x && block.x < plyr.x + plyr.w;
+        int ycollide = block.y + block.h >= plyr.y && block.y < plyr.y + plyr.h;
+        return xcollide && ycollide;
 }
 
 //draw everything in the game on the screen
@@ -205,7 +231,7 @@ void draw_stuff()
                 SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x, BS*y, BS, BS});
         }
 
-        text("Zel", 0, 10);
+        //text("Zel", 0, 10);
 
         SDL_RenderPresent(renderer);
 }
