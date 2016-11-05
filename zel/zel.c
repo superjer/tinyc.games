@@ -4,8 +4,8 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 
-#define W 640
-#define H 480
+#define W 600
+#define H 440
 #define TILESW 15
 #define TILESH 11
 #define BS 40
@@ -35,11 +35,15 @@ struct tile {
 int nr_players = 1;
 int idle_time = 30;
 int frame = 0;
+int drawclip = 0;
+
+enum edge {WALL=0, HOLE, DOOR, LOCKED, SHUTTER, ENTRY, MAXEDGE};
 
 SDL_Event event;
 SDL_Renderer *renderer;
 SDL_Surface *surf;
-SDL_Texture *tex[20];
+SDL_Texture *sprites;
+SDL_Texture *edgetex[20];
 TTF_Font *font;
 
 void setup();
@@ -84,14 +88,18 @@ void setup()
         renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_PRESENTVSYNC);
         if(!renderer) exit(fprintf(stderr, "Could not create SDL renderer\n"));
 
-        for(int i = 0; i < 0; i++)
+        for(int i = 0; i < MAXEDGE; i++)
         {
                 char file[80];
-                sprintf(file, "res/sheet-%d.bmp", i);
+                sprintf(file, "res/room-%d.bmp", i);
                 surf = SDL_LoadBMP(file);
                 SDL_SetColorKey(surf, 1, 0xffff00);
-                tex[i] = SDL_CreateTextureFromSurface(renderer, surf);
+                edgetex[i] = SDL_CreateTextureFromSurface(renderer, surf);
         }
+
+        surf = SDL_LoadBMP("res/sprites.bmp");
+        SDL_SetColorKey(surf, 1, 0xffff00);
+        sprites = SDL_CreateTextureFromSurface(renderer, surf);
 
         TTF_Init();
         font = TTF_OpenFont("res/LiberationSans-Regular.ttf", 42);
@@ -110,6 +118,7 @@ void key_move(int down)
                 case SDLK_DOWN:  player[0].vel.y += amt; break;
                 case SDLK_LEFT:  player[0].vel.x -= amt; break;
                 case SDLK_RIGHT: player[0].vel.x += amt; break;
+                case SDLK_SPACE: drawclip = !drawclip;   break;
         }
 }
 
@@ -124,9 +133,9 @@ void new_game()
 
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
         {
-                int edge_x = (x == 0 || x == TILESW-1);
+                int edge_x = (x <= 1 || x >= TILESW-2);
                 int door_x = (edge_x && y == TILESH/2);
-                int edge_y = (y == 0 || y == TILESH-1);
+                int edge_y = (y <= 1 || y >= TILESH-2);
                 int door_y = (edge_y && x == TILESW/2);
 
                 if((edge_x || edge_y) && !door_x && !door_y)
@@ -208,27 +217,67 @@ int collide(SDL_Rect plyr, SDL_Rect block)
 //draw everything in the game on the screen
 void draw_stuff()
 {
+        SDL_Rect src;
         SDL_Rect dest = {0, 0, W, H};
-
-        SDL_SetRenderDrawColor(renderer, 60, 90, 120, 255);
-        SDL_RenderClear(renderer);
-        SDL_RenderFillRect(renderer, &dest);
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+        //draw room background
+        SDL_RenderCopy(renderer, edgetex[0], NULL, &dest);
+
+        //draw right edge
+        src  = (SDL_Rect){13*20, 4*20, 2*20, 3*20};
+        dest = (SDL_Rect){13*BS, 4*BS, 2*BS, 3*BS};
+        SDL_RenderCopy(renderer, edgetex[1], &src, &dest);
+
+        //draw top edge
+        src  = (SDL_Rect){6*20, 0*20, 3*20, 2*20};
+        dest = (SDL_Rect){6*BS, 0*BS, 3*BS, 2*BS};
+        SDL_RenderCopy(renderer, edgetex[2], &src, &dest);
+
+        //draw left edge
+        src  = (SDL_Rect){0*20, 4*20, 2*20, 3*20};
+        dest = (SDL_Rect){0*BS, 4*BS, 2*BS, 3*BS};
+        SDL_RenderCopy(renderer, edgetex[3], &src, &dest);
+
+        //draw bottom edge
+        src  = (SDL_Rect){6*20, 7*20, 3*20, 4*20};
+        dest = (SDL_Rect){6*BS, 7*BS, 3*BS, 4*BS};
+        SDL_RenderCopy(renderer, edgetex[5], &src, &dest);
 
         for(int i = 0; i < nr_players; i++)
         {
-                SDL_SetRenderDrawColor(renderer, 200, 100, 0, 255);
-                SDL_RenderFillRect(renderer, &player[0].pos);
+                src = (SDL_Rect){0, 6*20, 20, 20};
+                dest = player[i].pos;
+                dest.y -= 20;
+                dest.h += 20;
+                SDL_RenderCopy(renderer, sprites, &src, &dest);
         }
 
+        //draw right edge ABOVE
+        src  = (SDL_Rect){14*20, 4*20, 1*20, 3*20};
+        dest = (SDL_Rect){14*BS, 4*BS, 1*BS, 3*BS};
+        SDL_RenderCopy(renderer, edgetex[1], &src, &dest);
+
+        //draw top edge ABOVE
+        src  = (SDL_Rect){6*20, 0*20, 3*20, 1*20};
+        dest = (SDL_Rect){6*BS, 0*BS, 3*BS, 1*BS};
+        SDL_RenderCopy(renderer, edgetex[2], &src, &dest);
+
+        //draw left edge ABOVE
+        src  = (SDL_Rect){0*20, 4*20, 1*20, 3*20};
+        dest = (SDL_Rect){0*BS, 4*BS, 1*BS, 3*BS};
+        SDL_RenderCopy(renderer, edgetex[3], &src, &dest);
+
+        //draw bottom edge ABOVE
+        src  = (SDL_Rect){6*20, 10*20, 3*20, 1*20};
+        dest = (SDL_Rect){6*BS, 10*BS, 3*BS, 1*BS};
+        SDL_RenderCopy(renderer, edgetex[5], &src, &dest);
+
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
         {
-                SDL_SetRenderDrawColor(renderer,
-                        room[y][x].color.r,
-                        room[y][x].color.g,
-                        room[y][x].color.b,
-                        room[y][x].color.a);
-                SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x, BS*y, BS, BS});
+                if(drawclip && room[y][x].solid)
+                        SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x, BS*y, BS, BS});
         }
 
         //text("Zel", 0, 10);
