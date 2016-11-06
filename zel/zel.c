@@ -181,6 +181,8 @@ int nr_players = 1;
 int idle_time = 30;
 int frame = 0;
 int drawclip = 0;
+int squishyx = 0;
+int squishyy = 0;
 
 SDL_Event event;
 SDL_Renderer *renderer;
@@ -194,7 +196,8 @@ void new_game();
 void load_room();
 void key_move(int down);
 void update_stuff();
-int move_player(int velx, int vely);
+int move_player(int velx, int vely, int fake_it);
+void squishy_move();
 int collide(SDL_Rect r0, SDL_Rect r1);
 void scroll(int dx, int dy);
 void draw_stuff();
@@ -257,12 +260,20 @@ void key_move(int down)
 
         int amt = down ? 4 : -4;
 
+        if(down)
+        {
+                if(event.key.keysym.sym == SDLK_UP || event.key.keysym.sym == SDLK_DOWN)
+                        player[0].ylast = 1;
+                else
+                        player[0].ylast = 0;
+        }
+
         switch(event.key.keysym.sym)
         {
-                case SDLK_UP:    player[0].vel.y -= amt; player[0].ylast = 1; break;
-                case SDLK_DOWN:  player[0].vel.y += amt; player[0].ylast = 1; break;
-                case SDLK_LEFT:  player[0].vel.x -= amt; player[0].ylast = 0; break;
-                case SDLK_RIGHT: player[0].vel.x += amt; player[0].ylast = 0; break;
+                case SDLK_UP:    player[0].vel.y -= amt; break;
+                case SDLK_DOWN:  player[0].vel.y += amt; break;
+                case SDLK_LEFT:  player[0].vel.x -= amt; break;
+                case SDLK_RIGHT: player[0].vel.x += amt; break;
                 case SDLK_SPACE: drawclip = !drawclip;   break;
         }
 }
@@ -319,31 +330,42 @@ void game_over()
 //update everything that needs to update on its own, without input
 void update_stuff()
 {
-        //only move 1 direction, but try the most recently pressed first
-        if((!player[0].ylast || !player[0].vel.x) && player[0].vel.y)
+        int fake_it = 0;
+        struct player *p = player + 0;
+
+        if(!p->vel.x ^ !p->vel.y) // moving only one direction
         {
-                if(!move_player(0, player[0].vel.y)) 
-                        move_player(player[0].vel.x, 0);
+                if(!move_player(p->vel.x, p->vel.y, 0))
+                {
+                        printf("%d try squishy move\n", frame);
+                        squishy_move();
+                }
+        }
+        else if((p->ylast || !p->vel.x) && p->vel.y)
+        {
+                //only move 1 direction, but try the most recently pressed first
+                fake_it = move_player(0, p->vel.y, 0);
+                move_player(p->vel.x, 0, fake_it);
         }
         else
         {
-                if(!move_player(player[0].vel.x, 0))
-                        move_player(0, player[0].vel.y);
+                fake_it = move_player(p->vel.x, 0, 0);
+                move_player(0, p->vel.y, fake_it);
         }
 
         //check for leaving screen
-        if(player[0].pos.x <= 4)
+        if(p->pos.x <= 4)
                 scroll(-1, 0);
-        else if(player[0].pos.x >= W - PLYR_W - 4)
+        else if(p->pos.x >= W - PLYR_W - 4)
                 scroll(1, 0);
-        if(player[0].pos.y <= 4)
+        if(p->pos.y <= 4)
                 scroll(0, -1);
-        else if(player[0].pos.y >= H - PLYR_H - 4)
+        else if(p->pos.y >= H - PLYR_H - 4)
                 scroll(0, 1);
 }
 
 //return 0 iff we couldn't actually move
-int move_player(int velx, int vely)
+int move_player(int velx, int vely, int fake_it)
 {
         SDL_Rect newpos = player[0].pos;
 
@@ -379,11 +401,47 @@ int move_player(int velx, int vely)
 
         if(!would_be_stuck || already_stuck)
         {
-                player[0].pos = newpos;
+                if(!fake_it) player[0].pos = newpos;
                 return 1;
         }
 
+        //don't move, but remember intent to move
+        player[0].ylast = vely ? 1 : 0;
         return 0;
+}
+
+void squishy_move()
+{
+        struct player *p = player + 0;
+
+        if(p->vel.y < 0)
+        {
+                int bx = p->pos.x / BS;
+                int by = p->pos.y / BS - 1;
+                int mod = p->pos.x % BS;
+
+                squishyx = bx;
+                squishyy = by;
+
+                if(bx >= 0 && bx < TILESW && by >= 0 && by < TILESH &&
+                                tiles[by][bx] > LASTSOLID &&
+                                mod <= BS-10)
+                {
+                        printf("%d DO squishy move LEFT\n", frame);
+                        move_player(-4, 0, 0);
+                        return;
+                }
+
+                bx++;
+
+                if(bx >= 0 && bx < TILESW && by >= 0 && by < TILESH &&
+                                tiles[by][bx] > LASTSOLID &&
+                                mod >= 10)
+                {
+                        printf("%d DO squishy move LEFT\n", frame);
+                        move_player(4, 0, 0);
+                }
+        }
 }
 
 void scroll(int dx, int dy)
@@ -506,6 +564,8 @@ void draw_stuff()
                         if(tiles[y][x] <= LASTSOLID)
                                 SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS-1});
                 }
+                SDL_SetRenderDrawColor(renderer, 255, 127, 0, 255);
+                SDL_RenderFillRect(renderer, &(SDL_Rect){BS*squishyx+1, BS*squishyy+1, BS+BS-1, BS-1});
         }
 
         //text("Zel", 0, 10);
