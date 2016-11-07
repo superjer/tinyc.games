@@ -4,8 +4,9 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 
-#define W 600                      // window width, height
-#define H 440                      // ^
+#define SCALE 3                    // 3x magnification
+#define W 900                      // window width, height
+#define H 660                      // ^
 #define TILESW 15                  // total room width, height
 #define TILESH 11                  // ^
 #define INNERTILESW 11             // inner room width, height
@@ -13,15 +14,15 @@
 #define DUNH 3                     // entire dungeon width, height
 #define DUNW 3                     // ^
 #define STARTX 1                   // starting screen
-#define STARTY 2                   // ^
-#define BS 40                      // block size
+#define STARTY 0                   // ^
+#define BS 60                      // block size
 #define BS2 (BS/2)                 //block size in half
 #define PLYR_W BS                  // physical width and height of the player
 #define PLYR_H BS2                 // ^
-#define PLYR_SPD 4                 // units per frame
+#define PLYR_SPD 6                 // units per frame
 #define STARTPX (7*BS)             // starting position within start screen
 #define STARTPY (9*BS)             // ^
-#define LATERAL_STEPS 10           // how far to check for a way around an obstacle
+#define LATERAL_STEPS 8            // how far to check for a way around an obstacle
 
 #define PIT   0        // pit tile and edges:
 #define R     1        // PIT|R for pit with right edge
@@ -40,7 +41,16 @@ enum flags {
         ALIVE = 1,
 };
 
+enum enemytypes {
+        PIG = 7,
+        SCREW = 8,
+        BOARD = 9,
+        GLOB = 10,
+        TOOLBOX = 11,
+};
+
 enum doors {WALL=0, HOLE, DOOR, LOCKED, SHUTTER, ENTRY, MAXDOOR};
+enum toolboxstates {TB_READY, TB_JUMP, TB_LAND, TB_OPEN, TB_SHUT, TB_HURT};
 
 struct room {
         int doors[4];
@@ -62,7 +72,7 @@ struct room {
         },
 },{
         {DOOR, WALL, HOLE, DOOR}, // doors for room 0,1
-        {0,0,0,0,0}, // enemies
+        {TOOLBOX,0,0,0,0}, // enemies
         0, // treasure
         {
                 OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
@@ -101,7 +111,7 @@ struct room {
         },
 },{
         {DOOR, DOOR, DOOR, DOOR}, // doors for room 1,1
-        {0,0,0,0,0}, // enemies
+        {BOARD,BOARD,BOARD,BOARD,0}, // enemies
         0, // treasure
         {
                 OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
@@ -127,7 +137,7 @@ struct room {
         },
 },{
         {DOOR, LOCKED, WALL, WALL}, // doors for room 2,0
-        {0,0,0,0,0}, // enemies
+        {SCREW,SCREW,0,0,0}, // enemies
         0, // treasure
         {
                 OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
@@ -153,7 +163,7 @@ struct room {
         },
 },{
         {WALL, HOLE, DOOR, WALL}, // doors for room 2,2
-        {0,0,0,0,0}, // enemies
+        {PIG,PIG,PIG,0,0}, // enemies
         0, // treasure
         {
                 SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND,
@@ -180,6 +190,7 @@ struct player {
         int hearts;
         int bombs;
         int money;
+        int frame;
         int flags;
 } player[4];
 
@@ -189,6 +200,8 @@ struct enemy {
                 int x;
                 int y;
         } vel;
+        int state;
+        int type;
         int frame;
         int flags;
 } enemy[10];
@@ -197,7 +210,6 @@ int nr_players = 1;
 int idle_time = 30;
 int frame = 0;
 int drawclip = 0;
-int bx0, by0, bx1, by1; // for squishy_move
 
 SDL_Event event;
 SDL_Renderer *renderer;
@@ -218,6 +230,9 @@ int block_collide(int bx, int by, SDL_Rect plyr);
 int world_collide(SDL_Rect plyr);
 void scroll(int dx, int dy);
 void draw_stuff();
+void draw_doors_lo();
+void draw_doors_hi();
+void draw_clipping_boxes();
 void text(char *fstr, int value, int height);
 
 //the entry point and main game loop
@@ -298,7 +313,7 @@ void key_move(int down)
 //start a new game
 void new_game()
 {
-        memset(player, 0, sizeof *player);
+        memset(player, 0, sizeof player);
         player[0].flags |= ALIVE;
         player[0].pos.x = STARTPX;
         player[0].pos.y = STARTPY;
@@ -340,13 +355,21 @@ void load_room()
                 tiles[9][7] = CLIP;
 
         //spawn enemies
-        memset(enemy, 0, sizeof *enemy);
-        enemy[0].flags |= ALIVE;
-        enemy[0].pos = (SDL_Rect){100, 100, BS, BS2};
-        enemy[1].flags |= ALIVE;
-        enemy[1].pos = (SDL_Rect){200, 100, BS, BS2};
-        enemy[2].flags |= ALIVE;
-        enemy[2].pos = (SDL_Rect){300, 100, BS, BS2};
+        memset(enemy, 0, sizeof enemy);
+        for(int i = 0; i < 5; i++)
+        {
+                if(!rooms[r].enemies[i]) continue;
+
+                enemy[i].type = rooms[r].enemies[i];
+                enemy[i].flags |= ALIVE;
+                enemy[i].pos = (SDL_Rect){BS*(2*i + 3), BS*3 - BS2, BS, BS2};
+
+                if(enemy[i].type == TOOLBOX)
+                {
+                        enemy[i].pos.w = 2*BS;
+                        enemy[i].pos.h = BS;
+                }
+        }
 }
 
 void update_player()
@@ -374,6 +397,7 @@ void update_player()
                 scroll(-1, 0);
         else if(p->pos.x >= W - PLYR_W - 4)
                 scroll(1, 0);
+
         if(p->pos.y <= 4)
                 scroll(0, -1);
         else if(p->pos.y >= H - PLYR_H - 4)
@@ -387,10 +411,128 @@ void update_enemies()
                 if(!(enemy[i].flags & ALIVE))
                         continue;
 
-                if(enemy[i].vel.x == 0 && rand()%10 == 0)
+                switch(enemy[i].type)
                 {
-                        enemy[i].vel.x = (rand()%2 * 4) - 2;
-                        enemy[i].vel.y = (rand()%2 * 4) - 2;
+                        case PIG:
+                                if(enemy[i].vel.x == 0 && rand()%10 == 0)
+                                {
+                                        enemy[i].vel.x = (rand()%2 * 4) - 2;
+                                        enemy[i].vel.y = (rand()%2 * 4) - 2;
+                                }
+                                break;
+                        case SCREW:
+                                if(frame%3 == 0)
+                                {
+                                        if(rand()%2 == 0)
+                                        {
+                                                enemy[i].vel.x = (rand()%2 * 4) - 2;
+                                                enemy[i].vel.y = 0;
+                                        }
+                                        else
+                                        {
+                                                enemy[i].vel.y = (rand()%2 * 4) - 2;
+                                                enemy[i].vel.x = 0;
+                                        }
+                                }
+                                break;
+                        case BOARD:
+                                if((enemy[i].vel.x == 0 && enemy[i].vel.y == 0) ||
+                                                (rand()%10 == 0 &&
+                                                 enemy[i].pos.x % BS2 == 0 &&
+                                                 enemy[i].pos.y % BS2 == 0))
+                                {
+                                        if(rand()%2 == 0)
+                                        {
+                                                enemy[i].vel.x = (rand()%2 * 4) - 2;
+                                                enemy[i].vel.y = 0;
+                                        }
+                                        else
+                                        {
+                                                enemy[i].vel.y = (rand()%2 * 4) - 2;
+                                                enemy[i].vel.x = 0;
+                                        }
+                                }
+                                break;
+                        case TOOLBOX:
+                                switch(enemy[i].state)
+                                {
+                                        case TB_READY:
+                                                if(rand()%40 == 0)
+                                                {
+                                                        enemy[i].state = TB_JUMP;
+                                                        enemy[i].vel.y = -20;
+                                                }
+                                                else if(rand()%40 == 0)
+                                                {
+                                                        enemy[i].state = TB_OPEN;
+                                                        enemy[i].frame = 1;
+                                                        int speed = rand()%10 ? 3 : 9;
+                                                        if(enemy[i].pos.x < 3*BS)
+                                                                enemy[i].vel.x = speed;
+                                                        else if(enemy[i].pos.x > W - 7*BS)
+                                                                enemy[i].vel.x = -speed;
+                                                        else
+                                                                enemy[i].vel.x = rand()%2 ? speed : -speed;
+                                                }
+                                                else if(rand()%40 == 0)
+                                                {
+                                                        enemy[i].vel.y = -5;
+                                                        enemy[i].state = TB_HURT;
+                                                        enemy[i].frame = 5;
+                                                }
+                                                break;
+                                        case TB_JUMP:
+                                                enemy[i].vel.y += 2;
+                                                if(enemy[i].vel.y >= 20)
+                                                {
+                                                        enemy[i].state = TB_LAND;
+                                                        enemy[i].vel.y = 0;
+                                                }
+                                                break;
+                                        case TB_LAND:
+                                                if(frame%4 == 0)
+                                                        enemy[i].frame = rand()%2 + 2;
+
+                                                if(rand()%40 == 0)
+                                                {
+                                                        enemy[i].state = TB_READY;
+                                                        enemy[i].frame = 0;
+                                                }
+                                                break;
+                                        case TB_OPEN:
+                                                if(enemy[i].vel.x == 0)
+                                                {
+                                                        enemy[i].frame = 6;
+                                                        enemy[i].state = TB_SHUT;
+                                                }
+                                                else if(frame%20 == 0)
+                                                {
+                                                        if(enemy[i].vel.x > 0)
+                                                                enemy[i].vel.x--;
+                                                        else
+                                                                enemy[i].vel.x++;
+                                                }
+                                                break;
+                                        case TB_SHUT:
+                                                if(frame%10 == 0 && rand()%3 == 0)
+                                                {
+                                                        enemy[i].state = TB_READY;
+                                                        enemy[i].frame = 0;
+                                                }
+                                                break;
+                                        case TB_HURT:
+                                                if(enemy[i].vel.y >= 0)
+                                                {
+                                                        enemy[i].state = TB_READY;
+                                                        enemy[i].frame = 0;
+                                                }
+                                                else if(frame%4 == 0)
+                                                {
+                                                        enemy[i].vel.y++;
+                                                }
+                                                break;
+                                }
+                                break;
                 }
 
                 SDL_Rect newpos = enemy[i].pos;
@@ -408,7 +550,6 @@ void update_enemies()
         }
 }
 
-
 //update everything that needs to update on its own, without input
 void update_stuff()
 {
@@ -419,7 +560,7 @@ void update_stuff()
 //collide a rect with nearby world tiles
 int world_collide(SDL_Rect plyr)
 {
-        for(int i = 0; i < 2; i++) for(int j = 0; j < 2; j++)
+        for(int i = 0; i < 3; i++) for(int j = 0; j < 2; j++)
         {
                 int bx = plyr.x/BS + i;
                 int by = plyr.y/BS + j;
@@ -567,10 +708,91 @@ void draw_stuff()
         //draw room background
         SDL_RenderCopy(renderer, edgetex[0], NULL, &dest);
 
+        draw_doors_lo();
+
+        //draw room tiles
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
+        {
+                int t = tiles[y][x];
+                if(t != OPEN && t != CLIP)
+                        SDL_RenderCopy(renderer, sprites,
+                                &(SDL_Rect){20*(t%15), 20*(t/15), 20, 20},
+                                &(SDL_Rect){BS*x, BS*y, BS, BS});
+        }
+
+        //draw enemies
+        for(int i = 0; i < 10; i++)
+        {
+                if(frame%10 == 0) switch(enemy[i].type)
+                {
+                        case PIG:
+                        case BOARD:
+                                enemy[i].frame = (enemy[i].frame + 1) % 4;
+                                if(enemy[i].frame == 0 && rand()%10 == 0)
+                                        enemy[i].frame = 4;
+                                break;
+                        case SCREW:
+                                enemy[i].frame = (enemy[i].frame + 1) % 6;
+                                break;
+                }
+
+                if(enemy[i].type == TOOLBOX)
+                {
+                        src = (SDL_Rect){20+40*enemy[i].frame, 20, 40, 40};
+                        dest = enemy[i].pos;
+                        dest.y -= BS;
+                        dest.h += BS;
+                }
+                else
+                {
+                        src = (SDL_Rect){0+20*enemy[i].frame, enemy[i].type*20, 20, 20};
+                        dest = enemy[i].pos;
+                        dest.y -= BS2;
+                        dest.h += BS2;
+                }
+                SDL_RenderCopy(renderer, sprites, &src, &dest);
+        }
+
+        //draw players
+        for(int i = 0; i < 4; i++)
+        {
+                if(!(player[i].flags & ALIVE))
+                        continue;
+
+                if(frame%5 == 0)
+                {
+                        player[i].frame = (player[i].frame + 1) % 4;
+                        if(player[i].frame == 0 && rand()%10 == 0)
+                                player[i].frame = 4;
+                }
+
+                int animframe = player[i].frame;
+                if(player[i].vel.x == 0 && player[i].vel.y == 0 &&
+                                player[i].frame != 4)
+                        animframe = 0;
+
+                src = (SDL_Rect){0+20*animframe, 6*20, 20, 20};
+                dest = player[i].pos;
+                dest.y -= BS2;
+                dest.h += BS2;
+                SDL_RenderCopy(renderer, sprites, &src, &dest);
+        }
+
+        draw_doors_hi();
+
+        if(drawclip) draw_clipping_boxes();
+
+        SDL_RenderPresent(renderer);
+}
+
+void draw_doors_lo()
+{
+        SDL_Rect src, dest;
         int r = roomy*DUNW + roomx; // current room coordinate
+        int *doors = rooms[r].doors;
 
         //draw right edge
-        int *doors = rooms[r].doors;
         src  = (SDL_Rect){13*20, 4*20, 2*20, 3*20};
         dest = (SDL_Rect){13*BS, 4*BS, 2*BS, 3*BS};
         SDL_RenderCopy(renderer, edgetex[doors[0]], &src, &dest);
@@ -589,46 +811,13 @@ void draw_stuff()
         src  = (SDL_Rect){6*20, 7*20, 3*20, 4*20};
         dest = (SDL_Rect){6*BS, 7*BS, 3*BS, 4*BS};
         SDL_RenderCopy(renderer, edgetex[doors[3]], &src, &dest);
+}
 
-        //draw room tiles
-        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
-        {
-                int t = tiles[y][x];
-                if(t != OPEN && t != CLIP)
-                        SDL_RenderCopy(renderer, sprites,
-                                &(SDL_Rect){20*(t%15), 20*(t/15), 20, 20},
-                                &(SDL_Rect){BS*x, BS*y, BS, BS});
-        }
-
-        //draw enemies
-        for(int i = 0; i < 10; i++)
-        {
-                if(frame%10 == 0)
-                {
-                        enemy[i].frame = (enemy[i].frame + 1) % 4;
-                        if(enemy[i].frame == 0 && rand()%3 == 0)
-                                enemy[i].frame = 4;
-                }
-
-                src = (SDL_Rect){0+20*enemy[i].frame, 7*20, 20, 20};
-                dest = enemy[i].pos;
-                dest.y -= 20;
-                dest.h += 20;
-                SDL_RenderCopy(renderer, sprites, &src, &dest);
-        }
-
-        //draw players
-        for(int i = 0; i < 4; i++)
-        {
-                if(!(player[i].flags & ALIVE))
-                        continue;
-                src = (SDL_Rect){0, 6*20, 20, 20};
-                dest = player[i].pos;
-                dest.y -= 20;
-                dest.h += 20;
-                SDL_RenderCopy(renderer, sprites, &src, &dest);
-        }
+void draw_doors_hi()
+{
+        SDL_Rect src, dest;
+        int r = roomy*DUNW + roomx; // current room coordinate
+        int *doors = rooms[r].doors;
 
         //draw right edge ABOVE
         src  = (SDL_Rect){14*20, 4*20, 1*20, 3*20};
@@ -649,28 +838,19 @@ void draw_stuff()
         src  = (SDL_Rect){6*20, 10*20, 3*20, 1*20};
         dest = (SDL_Rect){6*BS, 10*BS, 3*BS, 1*BS};
         SDL_RenderCopy(renderer, edgetex[doors[3]], &src, &dest);
+}
 
-        //draw clipping boxes
-        if(drawclip)
+void draw_clipping_boxes()
+{
+        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
         {
-                SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-                for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
-                {
-                        int t = tiles[y][x];
-                        if(t <= LASTSOLID)
-                                SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS-1});
-                        else if(t == HALFCLIP)
-                                SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS2-1});
-                }
-                SDL_SetRenderDrawColor(renderer, 255, 127, 0, 255);
-                SDL_RenderFillRect(renderer, &(SDL_Rect){BS*bx0+1, BS*by0+1, BS-1, BS-1});
-                SDL_SetRenderDrawColor(renderer, 127, 255, 0, 255);
-                SDL_RenderFillRect(renderer, &(SDL_Rect){BS*bx1+1, BS*by1+1, BS-1, BS-1});
+                int t = tiles[y][x];
+                if(t <= LASTSOLID)
+                        SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS-1});
+                else if(t == HALFCLIP)
+                        SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS2-1});
         }
-
-        //text("Zel", 0, 10);
-
-        SDL_RenderPresent(renderer);
 }
 
 void text(char *fstr, int value, int height)
