@@ -16,8 +16,8 @@
 #define STARTY 2
 #define BS 40
 #define BS2 (BS/2)
-#define PLYR_W 40
-#define PLYR_H 20
+#define PLYR_W BS
+#define PLYR_H BS2
 #define STARTPX ((W - PLYR_W) / 2)
 #define STARTPY (H - 100)
 
@@ -28,8 +28,9 @@
 #define D     8
 #define FACE 30
 #define BLOK 45
-#define CLIP 59
+#define CLIP 58
 #define LASTSOLID CLIP
+#define HALFCLIP 59
 #define SAND 60
 #define OPEN 75
 
@@ -181,8 +182,7 @@ int nr_players = 1;
 int idle_time = 30;
 int frame = 0;
 int drawclip = 0;
-int squishyx = 0;
-int squishyy = 0;
+int bx0, by0, bx1, by1; // for squishy_move
 
 SDL_Event event;
 SDL_Renderer *renderer;
@@ -199,6 +199,7 @@ void update_stuff();
 int move_player(int velx, int vely, int fake_it);
 void squishy_move();
 int collide(SDL_Rect r0, SDL_Rect r1);
+int block_collide(int bx, int by, SDL_Rect plyr);
 void scroll(int dx, int dy);
 void draw_stuff();
 void text(char *fstr, int value, int height);
@@ -303,7 +304,7 @@ void load_room()
                 int door_y = (edge_y && x == TILESW/2);
 
                 if(edge_x || edge_y)
-                        tiles[y][x] = (door_x || door_y ? OPEN : CLIP);
+                        tiles[y][x] = (door_x ? HALFCLIP : door_y ? OPEN : CLIP);
                 else
                         tiles[y][x] = rooms[r].tiles[(y-2)*INNERTILESW + (x-2)];
         }
@@ -321,7 +322,7 @@ void load_room()
                 tiles[9][7] = CLIP;
 }
 
-//when we hit something
+//outta life?
 void game_over()
 {
         gamestate = GAMEOVER;
@@ -379,25 +380,26 @@ int move_player(int velx, int vely, int fake_it)
         {
                 int bx = player[0].pos.x/BS + i;
                 int by = player[0].pos.y/BS + j;
-                SDL_Rect block = {BS*bx, BS*by, BS, BS};
 
                 int newbx = newpos.x/BS + i;
                 int newby = newpos.y/BS + j;
-                SDL_Rect newblock = {BS*newbx, BS*newby, BS, BS};
 
-                if(bx >= 0 && bx < TILESW && by >= 0 && by < TILESH &&
-                                tiles[by][bx] <= LASTSOLID &&
-                                collide(player[0].pos, block))
+                if(block_collide(bx, by, player[0].pos))
                         already_stuck = 1;
-
-                if(newbx >= 0 && newbx < TILESW && newby >= 0 && newby < TILESH &&
-                                tiles[newby][newbx] <= LASTSOLID &&
-                                collide(newpos, newblock))
+                if(block_collide(newbx, newby, newpos))
+                {
+                        printf("newbx%d newby%d x%d y%d w%d h%d\n",
+                                        newbx, newby,
+                                        newpos.x,
+                                        newpos.y,
+                                        newpos.w,
+                                        newpos.h);
                         would_be_stuck = 1;
+                }
         }
 
-        /* if(player[0].vel.x || player[0].vel.y) */
-        /*         printf("wouldbe %d    already %d\n", would_be_stuck, already_stuck); */
+        if(player[0].vel.x || player[0].vel.y)
+                printf("wouldbe %d    already %d\n", would_be_stuck, already_stuck);
 
         if(!would_be_stuck || already_stuck)
         {
@@ -410,36 +412,62 @@ int move_player(int velx, int vely, int fake_it)
         return 0;
 }
 
+int sign(int n)
+{
+        return n > 0 ?  1 :
+               n < 0 ? -1 : 0;
+}
+
+int legit_tile(int x, int y)
+{
+        return x >= 0 && x < TILESW && y >= 0 && y < TILESH;
+}
+
 void squishy_move()
 {
         struct player *p = player + 0;
+        int posx = p->pos.x;
+        int posy = p->pos.y; // adjust for half-height rect
 
-        if(p->vel.y < 0)
+        bx0 = posx / BS + sign(p->vel.x);
+        by0 = posy / BS + sign(p->vel.y);
+        bx1 = bx0;
+        by1 = by0;
+        int mod;
+        int amtx = 0;
+        int amty = 0;
+
+        if(p->vel.y)
         {
-                int bx = p->pos.x / BS;
-                int by = p->pos.y / BS - 1;
-                int mod = p->pos.x % BS;
+                mod = posx % BS;
+                bx1++;
+                amtx = 4;
+        }
+        else
+        {
+                mod = BS2; // posy % BS;
+                by1++;
+                amty = 4;
+        }
 
-                squishyx = bx;
-                squishyy = by;
-
-                if(bx >= 0 && bx < TILESW && by >= 0 && by < TILESH &&
-                                tiles[by][bx] > LASTSOLID &&
-                                mod <= BS-10)
+        if(legit_tile(bx1, by1))
+        {
+                if(tiles[by1][bx1] > LASTSOLID && mod >= 10)
                 {
-                        printf("%d DO squishy move LEFT\n", frame);
-                        move_player(-4, 0, 0);
+                        move_player(amtx, amty, 0);
                         return;
                 }
+        }
 
-                bx++;
-
-                if(bx >= 0 && bx < TILESW && by >= 0 && by < TILESH &&
-                                tiles[by][bx] > LASTSOLID &&
-                                mod >= 10)
+        if(legit_tile(bx0, by0))
+        {
+                if(tiles[by0][bx0] > LASTSOLID && mod <= BS-10)
                 {
-                        printf("%d DO squishy move LEFT\n", frame);
-                        move_player(4, 0, 0);
+                        //lame hack alert!
+                        if(tiles[by0][bx0] == HALFCLIP && player[0].pos.y < 220)
+                                move_player(amtx, amty, 0);
+                        else
+                                move_player(-amtx, -amty, 0);
                 }
         }
 }
@@ -464,22 +492,28 @@ void scroll(int dx, int dy)
         load_room();
 }
 
+//collide a rect with a rect
 int collide(SDL_Rect plyr, SDL_Rect block)
 {
-        /* if(player[0].vel.x || player[0].vel.y) */
-        /*         printf("%d %d %d %d     %d %d %d %d\n", */
-        /*                 plyr.x, */
-        /*                 plyr.y, */
-        /*                 plyr.w, */
-        /*                 plyr.h, */
-        /*                 block.x, */
-        /*                 block.y, */
-        /*                 block.w, */
-        /*                 block.h); */
         int xcollide = block.x + block.w >= plyr.x && block.x < plyr.x + plyr.w;
         int ycollide = block.y + block.h >= plyr.y && block.y < plyr.y + plyr.h;
         return xcollide && ycollide;
 }
+
+//collide a rect with a block
+int block_collide(int bx, int by, SDL_Rect plyr)
+{
+                if(bx < 0 || bx >= TILESW && by < 0 && by >= TILESH)
+                        return 0;
+
+                int t = tiles[by][bx];
+                if(t <= LASTSOLID)
+                        return collide(plyr, (SDL_Rect){BS*bx, BS*by, BS, BS});
+                if(t == HALFCLIP)
+                        return collide(plyr, (SDL_Rect){BS*bx, BS*by, BS, BS2-1});
+                return 0;
+}
+
 
 //draw everything in the game on the screen
 void draw_stuff()
@@ -561,11 +595,16 @@ void draw_stuff()
                 SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
                 for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
                 {
-                        if(tiles[y][x] <= LASTSOLID)
+                        int t = tiles[y][x];
+                        if(t <= LASTSOLID)
                                 SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS-1});
+                        else if(t == HALFCLIP)
+                                SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS2-1});
                 }
                 SDL_SetRenderDrawColor(renderer, 255, 127, 0, 255);
-                SDL_RenderFillRect(renderer, &(SDL_Rect){BS*squishyx+1, BS*squishyy+1, BS+BS-1, BS-1});
+                SDL_RenderFillRect(renderer, &(SDL_Rect){BS*bx0+1, BS*by0+1, BS-1, BS-1});
+                SDL_SetRenderDrawColor(renderer, 127, 255, 0, 255);
+                SDL_RenderFillRect(renderer, &(SDL_Rect){BS*bx1+1, BS*by1+1, BS-1, BS-1});
         }
 
         //text("Zel", 0, 10);
