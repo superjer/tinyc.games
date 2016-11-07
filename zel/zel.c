@@ -4,37 +4,42 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 
-#define W 600
-#define H 440
-#define TILESW 15 // total room width, height
-#define TILESH 11
-#define INNERTILESW 11 // inner room width, height
-#define INNERTILESH 7
-#define DUNH 3  // dungeon width, height
-#define DUNW 3
-#define STARTX 1
-#define STARTY 2
-#define BS 40
-#define BS2 (BS/2)
-#define PLYR_W BS
-#define PLYR_H BS2
-#define STARTPX ((W - PLYR_W) / 2)
-#define STARTPY (H - 100)
+#define W 600                      // window width, height
+#define H 440                      // ^
+#define TILESW 15                  // total room width, height
+#define TILESH 11                  // ^
+#define INNERTILESW 11             // inner room width, height
+#define INNERTILESH 7              // ^
+#define DUNH 3                     // entire dungeon width, height
+#define DUNW 3                     // ^
+#define STARTX 1                   // starting screen
+#define STARTY 2                   // ^
+#define BS 40                      // block size
+#define BS2 (BS/2)                 //block size in half
+#define PLYR_W BS                  // physical width and height of the player
+#define PLYR_H BS2                 // ^
+#define PLYR_SPD 4                 // units per frame
+#define STARTPX (7*BS)             // starting position within start screen
+#define STARTPY (9*BS)             // ^
+#define LATERAL_STEPS 10           // how far to check for a way around an obstacle
 
-#define PIT   0
-#define R     1
-#define U     2
-#define L     4
-#define D     8
-#define FACE 30
-#define BLOK 45
-#define CLIP 58
-#define LASTSOLID CLIP
-#define HALFCLIP 59
-#define SAND 60
-#define OPEN 75
+#define PIT   0        // pit tile and edges:
+#define R     1        // PIT|R for pit with right edge
+#define U     2        // PIT|R|U for put with right & upper edge
+#define L     4        // also works: just R|U
+#define D     8        // ^
+#define FACE 30        // the statue face thing
+#define BLOK 45        // the bevelled block
+#define CLIP 58        // invisible but solid tile
+#define LASTSOLID CLIP // everything below here is solid
+#define HALFCLIP 59    // this is half solid (upper half)
+#define SAND 60        // sand - can walk on like open
+#define OPEN 75        // invisible open, walkable space
 
-enum gamestates {READY, ALIVE, GAMEOVER} gamestate = READY;
+enum flags {
+        ALIVE = 1,
+};
+
 enum doors {WALL=0, HOLE, DOOR, LOCKED, SHUTTER, ENTRY, MAXDOOR};
 
 struct room {
@@ -102,8 +107,8 @@ struct room {
                 OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
                 OPEN, L|U,  PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,U|R,  OPEN,
                 OPEN, PIT|L,PIT,  PIT,  PIT,  PIT,  PIT,  PIT,  PIT,  PIT|R,OPEN,
-                OPEN, PIT|L,PIT,  PIT,  PIT,  PIT,  PIT,  PIT,  PIT,  PIT|R,OPEN,
-                OPEN, PIT|L,PIT,  PIT,  PIT,  PIT,  PIT,  PIT,  PIT,  PIT|R,OPEN,
+                OPEN, PIT|L,PIT,  FACE, PIT,  PIT,  PIT,  FACE, PIT,  PIT|R,OPEN,
+                OPEN, PIT|L,PIT,  PIT|U,PIT,  PIT,  PIT,  PIT|U,PIT,  PIT|R,OPEN,
                 OPEN, L|D,  PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,D|R,  OPEN,
                 OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
         },
@@ -167,7 +172,7 @@ int tiles[TILESH][TILESW];
 
 struct player {
         SDL_Rect pos;
-        struct vel {
+        struct {
                 int x;
                 int y;
         } vel;
@@ -177,6 +182,16 @@ struct player {
         int money;
         int flags;
 } player[4];
+
+struct enemy {
+        SDL_Rect pos;
+        struct {
+                int x;
+                int y;
+        } vel;
+        int frame;
+        int flags;
+} enemy[10];
 
 int nr_players = 1;
 int idle_time = 30;
@@ -196,10 +211,11 @@ void new_game();
 void load_room();
 void key_move(int down);
 void update_stuff();
-int move_player(int velx, int vely, int fake_it);
+int move_player(int velx, int vely, int fake_it, int weave);
 void squishy_move();
 int collide(SDL_Rect r0, SDL_Rect r1);
 int block_collide(int bx, int by, SDL_Rect plyr);
+int world_collide(SDL_Rect plyr);
 void scroll(int dx, int dy);
 void draw_stuff();
 void text(char *fstr, int value, int height);
@@ -259,7 +275,7 @@ void key_move(int down)
         if(event.key.repeat)
                 return;
 
-        int amt = down ? 4 : -4;
+        int amt = down ? PLYR_SPD : -PLYR_SPD;
 
         if(down)
         {
@@ -282,7 +298,8 @@ void key_move(int down)
 //start a new game
 void new_game()
 {
-        gamestate = ALIVE;
+        memset(player, 0, sizeof *player);
+        player[0].flags |= ALIVE;
         player[0].pos.x = STARTPX;
         player[0].pos.y = STARTPY;
         player[0].pos.w = PLYR_W;
@@ -309,6 +326,7 @@ void load_room()
                         tiles[y][x] = rooms[r].tiles[(y-2)*INNERTILESW + (x-2)];
         }
 
+        //load all the doors
         if(rooms[r].doors[0] == LOCKED || rooms[r].doors[0] == SHUTTER || rooms[r].doors[0] == WALL)
                 tiles[5][13] = CLIP;
 
@@ -320,38 +338,35 @@ void load_room()
 
         if(rooms[r].doors[3] == LOCKED || rooms[r].doors[3] == SHUTTER || rooms[r].doors[3] == WALL)
                 tiles[9][7] = CLIP;
+
+        //spawn enemies
+        memset(enemy, 0, sizeof *enemy);
+        enemy[0].flags |= ALIVE;
+        enemy[0].pos = (SDL_Rect){100, 100, BS, BS2};
+        enemy[1].flags |= ALIVE;
+        enemy[1].pos = (SDL_Rect){200, 100, BS, BS2};
+        enemy[2].flags |= ALIVE;
+        enemy[2].pos = (SDL_Rect){300, 100, BS, BS2};
 }
 
-//outta life?
-void game_over()
+void update_player()
 {
-        gamestate = GAMEOVER;
-}
-
-//update everything that needs to update on its own, without input
-void update_stuff()
-{
-        int fake_it = 0;
         struct player *p = player + 0;
 
         if(!p->vel.x ^ !p->vel.y) // moving only one direction
         {
-                if(!move_player(p->vel.x, p->vel.y, 0))
-                {
-                        printf("%d try squishy move\n", frame);
-                        squishy_move();
-                }
+                move_player(p->vel.x, p->vel.y, 0, 1);
         }
         else if((p->ylast || !p->vel.x) && p->vel.y)
         {
                 //only move 1 direction, but try the most recently pressed first
-                fake_it = move_player(0, p->vel.y, 0);
-                move_player(p->vel.x, 0, fake_it);
+                int fake_it = move_player(0, p->vel.y, 0, 0);
+                move_player(p->vel.x, 0, fake_it, 0);
         }
         else
         {
-                fake_it = move_player(p->vel.x, 0, 0);
-                move_player(0, p->vel.y, fake_it);
+                int fake_it = move_player(p->vel.x, 0, 0, 0);
+                move_player(0, p->vel.y, fake_it, 0);
         }
 
         //check for leaving screen
@@ -365,8 +380,59 @@ void update_stuff()
                 scroll(0, 1);
 }
 
+void update_enemies()
+{
+        for(int i = 0; i < 10; i++)
+        {
+                if(!(enemy[i].flags & ALIVE))
+                        continue;
+
+                if(enemy[i].vel.x == 0 && rand()%10 == 0)
+                {
+                        enemy[i].vel.x = (rand()%2 * 4) - 2;
+                        enemy[i].vel.y = (rand()%2 * 4) - 2;
+                }
+
+                SDL_Rect newpos = enemy[i].pos;
+                newpos.x += enemy[i].vel.x;
+                newpos.y += enemy[i].vel.y;
+                if(world_collide(newpos))
+                {
+                        enemy[i].vel.x = 0;
+                        enemy[i].vel.y = 0;
+                }
+                else
+                {
+                        enemy[i].pos = newpos;
+                }
+        }
+}
+
+
+//update everything that needs to update on its own, without input
+void update_stuff()
+{
+        update_player();
+        update_enemies();
+}
+
+//collide a rect with nearby world tiles
+int world_collide(SDL_Rect plyr)
+{
+        for(int i = 0; i < 2; i++) for(int j = 0; j < 2; j++)
+        {
+                int bx = plyr.x/BS + i;
+                int by = plyr.y/BS + j;
+
+                if(block_collide(bx, by, plyr))
+                        return 1;
+        }
+
+        return 0;
+}
+
 //return 0 iff we couldn't actually move
-int move_player(int velx, int vely, int fake_it)
+int move_player(int velx, int vely, int fake_it, int weave)
 {
         SDL_Rect newpos = player[0].pos;
 
@@ -376,30 +442,61 @@ int move_player(int velx, int vely, int fake_it)
         int already_stuck = 0;
         int would_be_stuck = 0;
 
-        for(int i = 0; i < 2; i++) for(int j = 0; j < 2; j++)
+        if(world_collide(player[0].pos))
+                already_stuck = 1;
+
+        if(world_collide(newpos))
+                would_be_stuck = 1;
+
+        // see if we can weave laterally instead?
+        if(!already_stuck && would_be_stuck && !fake_it && weave) for(int k = 0; k < LATERAL_STEPS; k++)
         {
-                int bx = player[0].pos.x/BS + i;
-                int by = player[0].pos.y/BS + j;
+                SDL_Rect latpos = newpos;
 
-                int newbx = newpos.x/BS + i;
-                int newby = newpos.y/BS + j;
+                if(velx > 0) latpos.x -= velx; // don't move positive,
+                if(vely > 0) latpos.y -= vely; // handled by the growing
 
-                if(block_collide(bx, by, player[0].pos))
-                        already_stuck = 1;
-                if(block_collide(newbx, newby, newpos))
+                if(velx)
                 {
-                        printf("newbx%d newby%d x%d y%d w%d h%d\n",
-                                        newbx, newby,
-                                        newpos.x,
-                                        newpos.y,
-                                        newpos.w,
-                                        newpos.h);
-                        would_be_stuck = 1;
+                        latpos.w += abs(velx); // grow box
+                        latpos.y = newpos.y + k * abs(velx);
+                        if(!world_collide(latpos))
+                        {
+                                //this is the winning position!
+                                //move one step laterally!
+                                player[0].pos.y += abs(velx);
+                                return 1;
+                        }
+                        latpos.y = newpos.y - k * abs(velx);
+                        if(!world_collide(latpos))
+                        {
+                                //this is the winning position!
+                                //move one step laterally!
+                                player[0].pos.y -= abs(velx);
+                                return 1;
+                        }
+                }
+                else if(vely)
+                {
+                        latpos.h += abs(vely); // grow box
+                        latpos.x = newpos.x + k * abs(vely);
+                        if(!world_collide(latpos))
+                        {
+                                //this is the winning position!
+                                //move one step laterally!
+                                player[0].pos.x += abs(vely);
+                                return 1;
+                        }
+                        latpos.x = newpos.x - k * abs(vely);
+                        if(!world_collide(latpos))
+                        {
+                                //this is the winning position!
+                                //move one step laterally!
+                                player[0].pos.x -= abs(vely);
+                                return 1;
+                        }
                 }
         }
-
-        if(player[0].vel.x || player[0].vel.y)
-                printf("wouldbe %d    already %d\n", would_be_stuck, already_stuck);
 
         if(!would_be_stuck || already_stuck)
         {
@@ -412,64 +509,9 @@ int move_player(int velx, int vely, int fake_it)
         return 0;
 }
 
-int sign(int n)
-{
-        return n > 0 ?  1 :
-               n < 0 ? -1 : 0;
-}
-
 int legit_tile(int x, int y)
 {
         return x >= 0 && x < TILESW && y >= 0 && y < TILESH;
-}
-
-void squishy_move()
-{
-        struct player *p = player + 0;
-        int posx = p->pos.x;
-        int posy = p->pos.y; // adjust for half-height rect
-
-        bx0 = posx / BS + sign(p->vel.x);
-        by0 = posy / BS + sign(p->vel.y);
-        bx1 = bx0;
-        by1 = by0;
-        int mod;
-        int amtx = 0;
-        int amty = 0;
-
-        if(p->vel.y)
-        {
-                mod = posx % BS;
-                bx1++;
-                amtx = 4;
-        }
-        else
-        {
-                mod = BS2; // posy % BS;
-                by1++;
-                amty = 4;
-        }
-
-        if(legit_tile(bx1, by1))
-        {
-                if(tiles[by1][bx1] > LASTSOLID && mod >= 10)
-                {
-                        move_player(amtx, amty, 0);
-                        return;
-                }
-        }
-
-        if(legit_tile(bx0, by0))
-        {
-                if(tiles[by0][bx0] > LASTSOLID && mod <= BS-10)
-                {
-                        //lame hack alert!
-                        if(tiles[by0][bx0] == HALFCLIP && player[0].pos.y < 220)
-                                move_player(amtx, amty, 0);
-                        else
-                                move_player(-amtx, -amty, 0);
-                }
-        }
 }
 
 void scroll(int dx, int dy)
@@ -503,17 +545,17 @@ int collide(SDL_Rect plyr, SDL_Rect block)
 //collide a rect with a block
 int block_collide(int bx, int by, SDL_Rect plyr)
 {
-                if(bx < 0 || bx >= TILESW && by < 0 && by >= TILESH)
-                        return 0;
-
-                int t = tiles[by][bx];
-                if(t <= LASTSOLID)
-                        return collide(plyr, (SDL_Rect){BS*bx, BS*by, BS, BS});
-                if(t == HALFCLIP)
-                        return collide(plyr, (SDL_Rect){BS*bx, BS*by, BS, BS2-1});
+        if(!legit_tile(bx, by))
                 return 0;
-}
 
+        if(tiles[by][bx] <= LASTSOLID)
+                return collide(plyr, (SDL_Rect){BS*bx, BS*by, BS, BS});
+
+        if(tiles[by][bx] == HALFCLIP)
+                return collide(plyr, (SDL_Rect){BS*bx, BS*by, BS, BS2-1});
+
+        return 0;
+}
 
 //draw everything in the game on the screen
 void draw_stuff()
@@ -559,9 +601,28 @@ void draw_stuff()
                                 &(SDL_Rect){BS*x, BS*y, BS, BS});
         }
 
-        //draw players
-        for(int i = 0; i < nr_players; i++)
+        //draw enemies
+        for(int i = 0; i < 10; i++)
         {
+                if(frame%10 == 0)
+                {
+                        enemy[i].frame = (enemy[i].frame + 1) % 4;
+                        if(enemy[i].frame == 0 && rand()%3 == 0)
+                                enemy[i].frame = 4;
+                }
+
+                src = (SDL_Rect){0+20*enemy[i].frame, 7*20, 20, 20};
+                dest = enemy[i].pos;
+                dest.y -= 20;
+                dest.h += 20;
+                SDL_RenderCopy(renderer, sprites, &src, &dest);
+        }
+
+        //draw players
+        for(int i = 0; i < 4; i++)
+        {
+                if(!(player[i].flags & ALIVE))
+                        continue;
                 src = (SDL_Rect){0, 6*20, 20, 20};
                 dest = player[i].pos;
                 dest.y -= 20;
