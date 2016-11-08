@@ -1,3 +1,5 @@
+// Zel -- http://tinyc.games -- (c) 2016 Jer Wilson
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -14,7 +16,7 @@
 #define DUNH 3                     // entire dungeon width, height
 #define DUNW 3                     // ^
 #define STARTX 1                   // starting screen
-#define STARTY 0                   // ^
+#define STARTY 2                   // ^
 #define BS 60                      // block size
 #define BS2 (BS/2)                 //block size in half
 #define PLYR_W BS                  // physical width and height of the player
@@ -59,7 +61,7 @@ struct room {
         int tiles[INNERTILESH * INNERTILESW];
 } rooms[DUNH * DUNW] = {{
         {HOLE, WALL, WALL, DOOR}, // doors for room 0,0
-        {0,0,0,0,0}, // enemies
+        {SCREW,BOARD,PIG}, // enemies
         0, // treasure
         {
                 OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
@@ -85,7 +87,7 @@ struct room {
         },
 },{
         {WALL, WALL, DOOR, SHUTTER}, // doors for room 0,2
-        {0,0,0,0,0}, // enemies
+        {PIG,PIG,PIG,PIG,PIG}, // enemies
         0, // treasure
         {
                 OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
@@ -98,7 +100,7 @@ struct room {
         },
 },{
         {DOOR, DOOR, WALL, LOCKED}, // doors for room 1,0
-        {0,0,0,0,0}, // enemies
+        {SCREW,0,0,0,0}, // enemies
         0, // treasure
         {
                 OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
