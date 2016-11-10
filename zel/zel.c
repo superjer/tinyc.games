@@ -49,9 +49,12 @@ enum enemytypes {
         BOARD = 9,
         GLOB = 10,
         TOOLBOX = 11,
+        PUFF = 12,
 };
 
+enum dir {EAST=0, NORTH, WEST, SOUTH};
 enum doors {WALL=0, HOLE, DOOR, LOCKED, SHUTTER, ENTRY, MAXDOOR};
+enum playerstates {PL_NORMAL, PL_STAB, PL_HURT, PL_DYING, PL_DEAD};
 enum toolboxstates {TB_READY, TB_JUMP, TB_LAND, TB_OPEN, TB_SHUT, TB_HURT};
 
 struct room {
@@ -184,14 +187,18 @@ int tiles[TILESH][TILESW];
 
 struct player {
         SDL_Rect pos;
+        SDL_Rect hitbox;
         struct {
                 int x;
                 int y;
         } vel;
+        int dir;
         int ylast; // moved in y direction last?
         int hearts;
         int bombs;
         int money;
+        int state;
+        int delay;
         int frame;
         int flags;
 } player[4];
@@ -206,6 +213,8 @@ struct enemy {
         int type;
         int frame;
         int flags;
+        int hp;
+        int stun;
 } enemy[10];
 
 int nr_players = 1;
@@ -304,11 +313,33 @@ void key_move(int down)
 
         switch(event.key.keysym.sym)
         {
-                case SDLK_UP:    player[0].vel.y -= amt; break;
-                case SDLK_DOWN:  player[0].vel.y += amt; break;
-                case SDLK_LEFT:  player[0].vel.x -= amt; break;
-                case SDLK_RIGHT: player[0].vel.x += amt; break;
-                case SDLK_SPACE: drawclip = !drawclip;   break;
+                case SDLK_UP:
+                        player[0].vel.y -= amt;
+                        if(down) player[0].dir = NORTH;
+                        break;
+                case SDLK_DOWN:
+                        player[0].vel.y += amt;
+                        if(down) player[0].dir = SOUTH;
+                        break;
+                case SDLK_LEFT:
+                        player[0].vel.x -= amt;
+                        if(down) player[0].dir = WEST;
+                        break;
+                case SDLK_RIGHT:
+                        player[0].vel.x += amt;
+                        if(down) player[0].dir = EAST;
+                        break;
+                case SDLK_SPACE:
+                        drawclip = !drawclip;
+                        break;
+                case SDLK_z:
+                case SDLK_x:
+                                 if(player[0].state == PL_NORMAL)
+                                 {
+                                        player[0].state = PL_STAB; 
+                                        player[0].delay = 16;
+                                 }
+                                 break;
         }
 }
 
@@ -321,6 +352,7 @@ void new_game()
         player[0].pos.y = STARTPY;
         player[0].pos.w = PLYR_W;
         player[0].pos.h = PLYR_H;
+        player[0].dir = NORTH;
         roomx = STARTX;
         roomy = STARTY;
         load_room();
@@ -365,11 +397,13 @@ void load_room()
                 enemy[i].type = rooms[r].enemies[i];
                 enemy[i].flags |= ALIVE;
                 enemy[i].pos = (SDL_Rect){BS*(2*i + 3), BS*3 - BS2, BS, BS2};
+                enemy[i].hp = 3;
 
                 if(enemy[i].type == TOOLBOX)
                 {
                         enemy[i].pos.w = 2*BS;
                         enemy[i].pos.h = BS;
+                        enemy[i].hp = 15;
                 }
         }
 }
@@ -378,7 +412,28 @@ void update_player()
 {
         struct player *p = player + 0;
 
-        if(!p->vel.x ^ !p->vel.y) // moving only one direction
+        if(p->state == PL_STAB)
+        {
+                p->hitbox = p->pos;
+                p->hitbox.x -= 5;
+                p->hitbox.y -= 5;
+                p->hitbox.w += 10;
+                p->hitbox.h += 10;
+                switch(p->dir)
+                {
+                        case WEST:  p->hitbox.x -= BS;
+                        case EAST:  p->hitbox.w += BS; break;
+                        case NORTH: p->hitbox.y -= BS;
+                        case SOUTH: p->hitbox.h += BS; break;
+                }
+
+                if(--p->delay <= 0)
+                {
+                        p->delay = 0;
+                        p->state = PL_NORMAL;
+                }
+        }
+        else if(!p->vel.x ^ !p->vel.y) // moving only one direction
         {
                 move_player(p->vel.x, p->vel.y, 0, 1);
         }
@@ -412,6 +467,24 @@ void update_enemies()
         {
                 if(!(enemy[i].flags & ALIVE))
                         continue;
+
+                if(enemy[i].stun > 0)
+                        enemy[i].stun--;
+
+                if(player[0].state == PL_STAB &&
+                                enemy[i].type != PUFF &&
+                                enemy[i].stun == 0 &&
+                                collide(player[0].hitbox, enemy[i].pos))
+                {
+                        enemy[i].stun = 25;
+                        if(--enemy[i].hp <= 0)
+                        {
+                                enemy[i].type = PUFF;
+                                enemy[i].frame = 0;
+                                enemy[i].vel.x = 0;
+                                enemy[i].vel.y = 0;
+                        }
+                }
 
                 switch(enemy[i].type)
                 {
@@ -753,6 +826,19 @@ void draw_stuff()
                         dest.y -= BS2;
                         dest.h += BS2;
                 }
+
+                if(enemy[i].type == PUFF)
+                {
+                        src = (SDL_Rect){100+20*enemy[i].frame, 140, 20, 20};
+                        if(frame%8 == 0 && ++enemy[i].frame > 4)
+                                enemy[i].flags &= ~ALIVE;
+                }
+                else if(enemy[i].stun > 0)
+                {
+                        dest.x += (rand()%3 - 1) * SCALE;
+                        dest.y += (rand()%3 - 1) * SCALE;
+                }
+
                 SDL_RenderCopy(renderer, sprites, &src, &dest);
         }
 
@@ -762,23 +848,54 @@ void draw_stuff()
                 if(!(player[i].flags & ALIVE))
                         continue;
 
-                if(frame%5 == 0)
+                int animframe = 0;
+
+                if(player[i].state == PL_STAB)
                 {
-                        player[i].frame = (player[i].frame + 1) % 4;
-                        if(player[i].frame == 0 && rand()%10 == 0)
-                                player[i].frame = 4;
+                        animframe = 5;
+                }
+                else
+                {
+                        if(frame%5 == 0)
+                        {
+                                player[i].frame = (player[i].frame + 1) % 4;
+                                if(player[i].frame == 0 && rand()%10 == 0)
+                                        player[i].frame = 4;
+                        }
+
+                        animframe = player[i].frame;
+                        if(player[i].vel.x == 0 && player[i].vel.y == 0 &&
+                                        player[i].frame != 4)
+                                animframe = 0;
                 }
 
-                int animframe = player[i].frame;
-                if(player[i].vel.x == 0 && player[i].vel.y == 0 &&
-                                player[i].frame != 4)
-                        animframe = 0;
-
-                src = (SDL_Rect){0+20*animframe, 6*20, 20, 20};
+                src = (SDL_Rect){20+20*animframe, 60+20*player[0].dir, 20, 20};
                 dest = player[i].pos;
                 dest.y -= BS2;
                 dest.h += BS2;
                 SDL_RenderCopy(renderer, sprites, &src, &dest);
+
+                if(animframe == 5)
+                {
+                        int screwamt = 0;
+                        int retract = 0;
+                        
+                        if(player[0].delay < 6)
+                                retract = 6 - player[0].delay;
+
+                        if(player[0].delay > 8)
+                                screwamt = (player[0].delay/2) % 2;
+
+                        src.x = 140 + 20*screwamt;
+                        switch(player[0].dir)
+                        {
+                                case EAST:  dest.x += BS - retract; break;
+                                case NORTH: dest.y -= BS - retract; break;
+                                case WEST:  dest.x -= BS - retract; break;
+                                case SOUTH: dest.y += BS - retract; break;
+                        }
+                        SDL_RenderCopy(renderer, sprites, &src, &dest);
+                }
         }
 
         draw_doors_hi();
@@ -795,18 +912,18 @@ void draw_doors_lo()
         int *doors = rooms[r].doors;
 
         //draw right edge
-        src  = (SDL_Rect){13*20, 4*20, 2*20, 3*20};
-        dest = (SDL_Rect){13*BS, 4*BS, 2*BS, 3*BS};
+        src  = (SDL_Rect){11*20, 4*20, 4*20, 3*20};
+        dest = (SDL_Rect){11*BS, 4*BS, 4*BS, 3*BS};
         SDL_RenderCopy(renderer, edgetex[doors[0]], &src, &dest);
 
         //draw top edge
-        src  = (SDL_Rect){6*20, 0*20, 3*20, 2*20};
-        dest = (SDL_Rect){6*BS, 0*BS, 3*BS, 2*BS};
+        src  = (SDL_Rect){6*20, 0*20, 3*20, 4*20};
+        dest = (SDL_Rect){6*BS, 0*BS, 3*BS, 4*BS};
         SDL_RenderCopy(renderer, edgetex[doors[1]], &src, &dest);
 
         //draw left edge
-        src  = (SDL_Rect){0*20, 4*20, 2*20, 3*20};
-        dest = (SDL_Rect){0*BS, 4*BS, 2*BS, 3*BS};
+        src  = (SDL_Rect){0*20, 4*20, 4*20, 3*20};
+        dest = (SDL_Rect){0*BS, 4*BS, 4*BS, 3*BS};
         SDL_RenderCopy(renderer, edgetex[doors[2]], &src, &dest);
 
         //draw bottom edge
@@ -852,6 +969,13 @@ void draw_clipping_boxes()
                         SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS-1});
                 else if(t == HALFCLIP)
                         SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS2-1});
+        }
+
+        SDL_SetRenderDrawColor(renderer, 255, 80, 80, 255);
+        for(int i = 0; i < nr_players; i++)
+        {
+                if(player[i].state == PL_STAB && player[i].flags & ALIVE)
+                        SDL_RenderFillRect(renderer, &player[i].hitbox);
         }
 }
 
