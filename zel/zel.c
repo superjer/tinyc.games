@@ -50,6 +50,7 @@ enum enemytypes {
         GLOB = 10,
         TOOLBOX = 11,
         PUFF = 12,
+        WRENCH = 13,
 };
 
 enum dir {EAST=0, NORTH, WEST, SOUTH};
@@ -229,9 +230,11 @@ SDL_Texture *sprites;
 SDL_Texture *edgetex[20];
 TTF_Font *font;
 
+//prototypes
 void setup();
 void new_game();
 void load_room();
+int find_free_slot(int *slot);
 void key_move(int down);
 void update_stuff();
 int move_player(int velx, int vely, int fake_it, int weave);
@@ -408,6 +411,14 @@ void load_room()
         }
 }
 
+int find_free_slot(int *slot)
+{
+        for(*slot = 0; *slot < 5; (*slot)++)
+                if(!(enemy[*slot].flags & ALIVE))
+                        return 1;
+        return 0;
+}
+
 void update_player()
 {
         struct player *p = player + 0;
@@ -488,6 +499,15 @@ void update_enemies()
 
                 switch(enemy[i].type)
                 {
+                        case WRENCH:
+                                if(enemy[i].vel.x == 0)
+                                {
+                                        if(rand()%2)
+                                                enemy[i].vel.x *= -1;
+                                        else
+                                                enemy[i].vel.y *= -1;
+                                }
+                                break;
                         case PIG:
                                 if(enemy[i].vel.x == 0 && rand()%10 == 0)
                                 {
@@ -575,6 +595,23 @@ void update_enemies()
                                                 }
                                                 break;
                                         case TB_OPEN:
+                                                if(rand()%30 == 0)
+                                                {
+                                                        int slot;
+                                                        if(find_free_slot(&slot))
+                                                        {
+                                                                enemy[slot].type = WRENCH;
+                                                                enemy[slot].flags = ALIVE;
+                                                                enemy[slot].pos = (SDL_Rect){
+                                                                        enemy[i].pos.x + BS2,
+                                                                        enemy[i].pos.y,
+                                                                        BS,
+                                                                        BS2
+                                                                };
+                                                                enemy[slot].vel.x = rand()%2 ? 2 : -2;
+                                                                enemy[slot].vel.y = 2;
+                                                        }
+                                                }
                                                 if(enemy[i].vel.x == 0)
                                                 {
                                                         enemy[i].frame = 6;
@@ -818,6 +855,13 @@ void draw_stuff()
                         dest = enemy[i].pos;
                         dest.y -= BS;
                         dest.h += BS;
+                }
+                else if(enemy[i].type == WRENCH)
+                {
+                        src = (SDL_Rect){280, 140+20*((frame/6)%2), 20, 20};
+                        dest = enemy[i].pos;
+                        dest.y -= BS2;
+                        dest.h += BS2;
                 }
                 else
                 {
