@@ -51,6 +51,7 @@ enum enemytypes {
         TOOLBOX = 11,
         PUFF = 12,
         WRENCH = 13,
+        PIPEWRENCH = 14,
 };
 
 enum dir {EAST=0, NORTH, WEST, SOUTH};
@@ -202,6 +203,8 @@ struct player {
         int delay;
         int frame;
         int flags;
+        int hp;
+        int stun;
 } player[4];
 
 struct enemy {
@@ -212,6 +215,7 @@ struct enemy {
         } vel;
         int state;
         int type;
+        int delay;
         int frame;
         int flags;
         int hp;
@@ -239,7 +243,7 @@ void key_move(int down);
 void update_stuff();
 int move_player(int velx, int vely, int fake_it, int weave);
 void squishy_move();
-int collide(SDL_Rect r0, SDL_Rect r1);
+int collide(SDL_Rect plyr, SDL_Rect block);
 int block_collide(int bx, int by, SDL_Rect plyr);
 int world_collide(SDL_Rect plyr);
 void scroll(int dx, int dy);
@@ -356,6 +360,7 @@ void new_game()
         player[0].pos.w = PLYR_W;
         player[0].pos.h = PLYR_H;
         player[0].dir = NORTH;
+        player[0].hp = 3*4;
         roomx = STARTX;
         roomy = STARTY;
         load_room();
@@ -423,6 +428,31 @@ void update_player()
 {
         struct player *p = player + 0;
 
+        if(player[0].stun > 0)
+                player[0].stun--;
+
+        if(player[0].state == PL_DEAD)
+        {
+                if(player[0].stun < 1)
+                        new_game();
+                return;
+        }
+
+        if(player[0].state == PL_DYING)
+        {
+                if(frame%6 == 0)
+                        player[0].dir = (player[0].dir+1) % 4;
+
+                if(player[0].stun < 1)
+                {
+                        player[0].flags &= ~ALIVE;
+                        player[0].state = PL_DEAD;
+                        player[0].stun = 100;
+                }
+
+                return;
+        }
+
         if(p->state == PL_STAB)
         {
                 p->hitbox = p->pos;
@@ -460,6 +490,28 @@ void update_player()
                 move_player(0, p->vel.y, fake_it, 0);
         }
 
+        //check for enemy collisions
+        for(int i = 0; i < 5; i++)
+        {
+                if((player[0].flags & ALIVE) && (enemy[i].flags & ALIVE) &&
+                                player[0].state != PL_DYING &&
+                                player[0].stun < 1 &&
+                                enemy[i].stun < 1 &&
+                                enemy[i].type != PUFF &&
+                                collide(player[0].pos, enemy[i].pos))
+                {
+                        if(--player[0].hp <= 0)
+                        {
+                                player[0].state = PL_DYING;
+                                player[0].stun = 100;
+                        }
+                        else
+                        {
+                                player[0].stun = 25;
+                        }
+                }
+        }
+
         //check for leaving screen
         if(p->pos.x <= 4)
                 scroll(-1, 0);
@@ -490,6 +542,11 @@ void update_enemies()
                         enemy[i].stun = 25;
                         if(--enemy[i].hp <= 0)
                         {
+                                if(enemy[i].type == TOOLBOX) for(int j = 0; j < 5; j++)
+                                {
+                                        enemy[j].type = PUFF;
+                                        enemy[j].frame = 0;
+                                }
                                 enemy[i].type = PUFF;
                                 enemy[i].frame = 0;
                                 enemy[i].vel.x = 0;
@@ -500,12 +557,11 @@ void update_enemies()
                 switch(enemy[i].type)
                 {
                         case WRENCH:
+                        case PIPEWRENCH:
                                 if(enemy[i].vel.x == 0)
                                 {
-                                        if(rand()%2)
-                                                enemy[i].vel.x *= -1;
-                                        else
-                                                enemy[i].vel.y *= -1;
+                                        enemy[i].vel.x = rand()%2 ? -2 : 2;
+                                        enemy[i].vel.y = rand()%2 ? -2 : 2;
                                 }
                                 break;
                         case PIG:
@@ -600,7 +656,7 @@ void update_enemies()
                                                         int slot;
                                                         if(find_free_slot(&slot))
                                                         {
-                                                                enemy[slot].type = WRENCH;
+                                                                enemy[slot].type = rand()%2 ? WRENCH : PIPEWRENCH;
                                                                 enemy[slot].flags = ALIVE;
                                                                 enemy[slot].pos = (SDL_Rect){
                                                                         enemy[i].pos.x + BS2,
@@ -827,7 +883,7 @@ void draw_stuff()
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
         {
                 int t = tiles[y][x];
-                if(t != OPEN && t != CLIP)
+                if(t != OPEN && t != CLIP && t != HALFCLIP)
                         SDL_RenderCopy(renderer, sprites,
                                 &(SDL_Rect){20*(t%15), 20*(t/15), 20, 20},
                                 &(SDL_Rect){BS*x, BS*y, BS, BS});
@@ -836,6 +892,9 @@ void draw_stuff()
         //draw enemies
         for(int i = 0; i < 10; i++)
         {
+                if(!(enemy[i].flags & ALIVE))
+                        continue;
+
                 if(frame%10 == 0) switch(enemy[i].type)
                 {
                         case PIG:
@@ -858,7 +917,14 @@ void draw_stuff()
                 }
                 else if(enemy[i].type == WRENCH)
                 {
-                        src = (SDL_Rect){280, 140+20*((frame/6)%2), 20, 20};
+                        src = (SDL_Rect){280, 60+20*((frame/4)%4), 20, 20};
+                        dest = enemy[i].pos;
+                        dest.y -= BS2;
+                        dest.h += BS2;
+                }
+                else if(enemy[i].type == PIPEWRENCH)
+                {
+                        src = (SDL_Rect){260, 60+20*((frame/4)%8), 20, 20};
                         dest = enemy[i].pos;
                         dest.y -= BS2;
                         dest.h += BS2;
@@ -879,6 +945,8 @@ void draw_stuff()
                 }
                 else if(enemy[i].stun > 0)
                 {
+                        if((frame/2)%2) continue;
+
                         dest.x += (rand()%3 - 1) * SCALE;
                         dest.y += (rand()%3 - 1) * SCALE;
                 }
@@ -917,7 +985,9 @@ void draw_stuff()
                 dest = player[i].pos;
                 dest.y -= BS2;
                 dest.h += BS2;
-                SDL_RenderCopy(renderer, sprites, &src, &dest);
+
+                if(!player[i].stun || (frame/2)%2)
+                        SDL_RenderCopy(renderer, sprites, &src, &dest);
 
                 if(animframe == 5)
                 {
@@ -943,6 +1013,19 @@ void draw_stuff()
         }
 
         draw_doors_hi();
+
+        //draw health
+        int hp = player[0].hp;
+        dest = (SDL_Rect){10, 10, SCALE*10, SCALE*10};
+        src = (SDL_Rect){290, 140, 10, 10};
+        for(int hc = 20; hc > 0; hc -= 4)
+        {
+                src.y = 140 + 10 * (hp > 4 ? 4 :
+                                    hp < 0 ? 0 : hp);
+                SDL_RenderCopy(renderer, sprites, &src, &dest);
+                hp -= 4;
+                dest.x += SCALE*10;
+        }
 
         if(drawclip) draw_clipping_boxes();
 
