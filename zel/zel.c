@@ -18,13 +18,15 @@
 #define STARTX 1                   // starting screen
 #define STARTY 2                   // ^
 #define BS 60                      // block size
-#define BS2 (BS/2)                 //block size in half
+#define BS2 (BS/2)                 // block size in half
 #define PLYR_W BS                  // physical width and height of the player
 #define PLYR_H BS2                 // ^
 #define PLYR_SPD 6                 // units per frame
 #define STARTPX (7*BS)             // starting position within start screen
 #define STARTPY (9*BS)             // ^
 #define LATERAL_STEPS 8            // how far to check for a way around an obstacle
+#define NR_PLAYERS 4
+#define NR_ENEMIES 8
 
 #define PIT   0        // pit tile and edges:
 #define R     1        // PIT|R for pit with right edge
@@ -34,14 +36,10 @@
 #define FACE 30        // the statue face thing
 #define BLOK 45        // the bevelled block
 #define CLIP 58        // invisible but solid tile
-#define LASTSOLID CLIP // everything below here is solid
+#define LASTSOLID CLIP // everything less than here is solid
 #define HALFCLIP 59    // this is half solid (upper half)
 #define SAND 60        // sand - can walk on like open
 #define OPEN 75        // invisible open, walkable space
-
-enum flags {
-        ALIVE = 1,
-};
 
 enum enemytypes {
         PIG = 7,
@@ -54,175 +52,50 @@ enum enemytypes {
         PIPEWRENCH = 14,
 };
 
-enum dir {EAST=0, NORTH, WEST, SOUTH};
-enum doors {WALL=0, HOLE, DOOR, LOCKED, SHUTTER, ENTRY, MAXDOOR};
+enum dir {NORTH, WEST, EAST, SOUTH};
+enum doors {WALL, LOCKED, SHUTTER, MAXWALL=SHUTTER, DOOR, HOLE, ENTRY, MAXDOOR};
 enum playerstates {PL_NORMAL, PL_STAB, PL_HURT, PL_DYING, PL_DEAD};
 enum toolboxstates {TB_READY, TB_JUMP, TB_LAND, TB_OPEN, TB_SHUT, TB_HURT};
 
-struct room {
-        int doors[4];
-        int enemies[5];
-        int treasure;
-        int tiles[INNERTILESH * INNERTILESW];
-} rooms[DUNH * DUNW] = {{
-        {HOLE, WALL, WALL, DOOR}, // doors for room 0,0
-        {SCREW,BOARD,PIG}, // enemies
-        0, // treasure
-        {
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-        },
-},{
-        {DOOR, WALL, HOLE, DOOR}, // doors for room 0,1
-        {TOOLBOX,0,0,0,0}, // enemies
-        0, // treasure
-        {
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-        },
-},{
-        {WALL, WALL, DOOR, SHUTTER}, // doors for room 0,2
-        {PIG,PIG,PIG,PIG,PIG}, // enemies
-        0, // treasure
-        {
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-        },
-},{
-        {DOOR, DOOR, WALL, LOCKED}, // doors for room 1,0
-        {SCREW,0,0,0,0}, // enemies
-        0, // treasure
-        {
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-        },
-},{
-        {DOOR, DOOR, DOOR, DOOR}, // doors for room 1,1
-        {BOARD,BOARD,BOARD,BOARD,0}, // enemies
-        0, // treasure
-        {
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, L|U,  PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,U|R,  OPEN,
-                OPEN, PIT|L,PIT,  PIT,  PIT,  PIT,  PIT,  PIT,  PIT,  PIT|R,OPEN,
-                OPEN, PIT|L,PIT,  FACE, PIT,  PIT,  PIT,  FACE, PIT,  PIT|R,OPEN,
-                OPEN, PIT|L,PIT,  PIT|U,PIT,  PIT,  PIT,  PIT|U,PIT,  PIT|R,OPEN,
-                OPEN, L|D,  PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,D|R,  OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-        },
-},{
-        {WALL, SHUTTER, DOOR, HOLE}, // doors for room 1,2
-        {0,0,0,0,0}, // enemies
-        0, // treasure
-        {
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-        },
-},{
-        {DOOR, LOCKED, WALL, WALL}, // doors for room 2,0
-        {SCREW,SCREW,0,0,0}, // enemies
-        0, // treasure
-        {
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, BLOK, BLOK, BLOK, BLOK, BLOK, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, BLOK, BLOK, BLOK, BLOK, BLOK, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, BLOK, BLOK, BLOK, BLOK, BLOK, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-        },
-},{
-        {DOOR, DOOR, DOOR, ENTRY}, // doors for room 2,1
-        {0,0,0,0,0}, // enemies
-        0, // treasure
-        {
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, FACE, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, FACE, OPEN,
-                OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, OPEN, SAND, SAND, SAND, OPEN, OPEN, OPEN, OPEN,
-                OPEN, OPEN, OPEN, SAND, SAND, SAND, SAND, SAND, OPEN, OPEN, OPEN,
-                BLOK, FACE, OPEN, SAND, OPEN, OPEN, OPEN, SAND, OPEN, FACE, BLOK,
-                BLOK, BLOK, OPEN, SAND, OPEN, OPEN, OPEN, SAND, OPEN, BLOK, BLOK,
-        },
-},{
-        {WALL, HOLE, DOOR, WALL}, // doors for room 2,2
-        {PIG,PIG,PIG,0,0}, // enemies
-        0, // treasure
-        {
-                SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND,
-                SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND,
-                SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND,
-                SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND,
-                SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND,
-                SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND,
-                SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND, SAND,
-        },
-}};
+#include "level_data.c"
 
+int garbage[10000] = {0};
 int roomx; // current room x,y
 int roomy;
 int tiles[TILESH][TILESW];
 
+struct point { int x, y; };
+
 struct player {
         SDL_Rect pos;
         SDL_Rect hitbox;
-        struct {
-                int x;
-                int y;
-        } vel;
+        struct point vel;
+        int reel;
+        int reeldir;
         int dir;
         int ylast; // moved in y direction last?
-        int hearts;
-        int bombs;
-        int money;
         int state;
         int delay;
         int frame;
-        int flags;
+        int alive;
         int hp;
         int stun;
-} player[4];
+} player[NR_PLAYERS];
 
 struct enemy {
         SDL_Rect pos;
-        struct {
-                int x;
-                int y;
-        } vel;
+        struct point vel;
+        int reel;
+        int reeldir;
         int state;
         int type;
         int delay;
         int frame;
-        int flags;
+        int alive;
         int hp;
         int stun;
-} enemy[10];
+} enemy[NR_ENEMIES];
 
-int nr_players = 1;
 int idle_time = 30;
 int frame = 0;
 int drawclip = 0;
@@ -246,7 +119,7 @@ void squishy_move();
 int collide(SDL_Rect plyr, SDL_Rect block);
 int block_collide(int bx, int by, SDL_Rect plyr);
 int world_collide(SDL_Rect plyr);
-void scroll(int dx, int dy);
+void screen_scroll(int dx, int dy);
 void draw_stuff();
 void draw_doors_lo();
 void draw_doors_hi();
@@ -305,8 +178,7 @@ void setup()
 
 void key_move(int down)
 {
-        if(event.key.repeat)
-                return;
+        if(event.key.repeat) return;
 
         int amt = down ? PLYR_SPD : -PLYR_SPD;
 
@@ -341,12 +213,12 @@ void key_move(int down)
                         break;
                 case SDLK_z:
                 case SDLK_x:
-                                 if(player[0].state == PL_NORMAL)
-                                 {
-                                        player[0].state = PL_STAB; 
-                                        player[0].delay = 16;
-                                 }
-                                 break;
+                        if(player[0].state == PL_NORMAL)
+                        {
+                        player[0].state = PL_STAB; 
+                        player[0].delay = 16;
+                        }
+                        break;
         }
 }
 
@@ -354,7 +226,7 @@ void key_move(int down)
 void new_game()
 {
         memset(player, 0, sizeof player);
-        player[0].flags |= ALIVE;
+        player[0].alive = 1;
         player[0].pos.x = STARTPX;
         player[0].pos.y = STARTPY;
         player[0].pos.w = PLYR_W;
@@ -383,32 +255,53 @@ void load_room()
                         tiles[y][x] = rooms[r].tiles[(y-2)*INNERTILESW + (x-2)];
         }
 
-        //load all the doors
-        if(rooms[r].doors[0] == LOCKED || rooms[r].doors[0] == SHUTTER || rooms[r].doors[0] == WALL)
-                tiles[5][13] = CLIP;
+        //set the clipping to match the doors
+        if(rooms[r].doors[NORTH] <= MAXWALL) tiles[1][ 7] = CLIP;
+        if(rooms[r].doors[WEST ] <= MAXWALL) tiles[5][ 1] = CLIP;
+        if(rooms[r].doors[EAST ] <= MAXWALL) tiles[5][13] = CLIP;
+        if(rooms[r].doors[SOUTH] <= MAXWALL) tiles[9][ 7] = CLIP;
 
-        if(rooms[r].doors[1] == LOCKED || rooms[r].doors[1] == SHUTTER || rooms[r].doors[1] == WALL)
-                tiles[1][7] = CLIP;
+        int spawns[] = {
+                 7,5,   9,2,   4,4,   6,7,   2,2,  10,3,   2,7,   8,4,  11,4,   2,8,  12,6,  
+                 9,8,   8,5,   6,4,   3,6,   9,7,  12,7,  10,7,   8,3,   6,3,   6,8,  11,5,  
+                12,2,  12,3,  11,3,   4,7,  12,5,   9,3,  11,6,   3,3,   7,3,  10,8,   7,8,  
+                10,5,   9,4,   5,6,   8,7,   6,5,  12,8,  10,2,   3,8,   4,8,   2,3,   4,2,  
+                 5,4,   2,4,   5,2,  11,7,   6,6,   7,7,  11,8,   3,7,   3,2,   9,5,   4,3,  
+                 7,2,   2,6,   8,2,   5,5,   4,5,   5,8,  12,4,  10,6,   3,5,   5,7,   4,6,  
+                 3,4,   8,8,  11,2,   8,6,   2,5,   9,6,   7,6,   7,4,   6,2,  10,4,   5,3,  
+                 0,0,
+        };
 
-        if(rooms[r].doors[2] == LOCKED || rooms[r].doors[2] == SHUTTER || rooms[r].doors[2] == WALL)
-                tiles[5][1] = CLIP;
-
-        if(rooms[r].doors[3] == LOCKED || rooms[r].doors[3] == SHUTTER || rooms[r].doors[3] == WALL)
-                tiles[9][7] = CLIP;
-
-        //spawn enemies
+        //load enemies
+        int j = 0;
+        int plx = (player[0].pos.x + BS - 1) / BS;
+        int ply = (player[0].pos.y + BS - 1) / BS;
         memset(enemy, 0, sizeof enemy);
-        for(int i = 0; i < 5; i++)
+        for(int i = 0; i < NR_ENEMIES; i++)
         {
                 if(!rooms[r].enemies[i]) continue;
 
                 enemy[i].type = rooms[r].enemies[i];
-                enemy[i].flags |= ALIVE;
-                enemy[i].pos = (SDL_Rect){BS*(2*i + 3), BS*3 - BS2, BS, BS2};
+                enemy[i].alive = 1;
                 enemy[i].hp = 3;
+
+                //find a good spawn position
+                for(int limit = 0; limit < 70; limit++, j += 2)
+                {
+                        if(spawns[j] == 0)
+                                j = 0; //loop around!
+                        int x = spawns[j];
+                        int y = spawns[j+1];
+                        if(tiles[y][x] <= LASTSOLID)
+                                continue; //no spawning in solids
+                        if(limit == 70 || abs(x-plx) > 5 || abs(y-ply) > 4)
+                                enemy[i].pos = (SDL_Rect){BS*x, BS*y + BS2, BS, BS2};
+                }
 
                 if(enemy[i].type == TOOLBOX)
                 {
+                        enemy[i].pos.x = 13*BS2;
+                        enemy[i].pos.y = 3*BS;
                         enemy[i].pos.w = 2*BS;
                         enemy[i].pos.h = BS;
                         enemy[i].hp = 15;
@@ -418,8 +311,8 @@ void load_room()
 
 int find_free_slot(int *slot)
 {
-        for(*slot = 0; *slot < 5; (*slot)++)
-                if(!(enemy[*slot].flags & ALIVE))
+        for(*slot = 0; *slot < NR_ENEMIES; (*slot)++)
+                if(!enemy[*slot].alive)
                         return 1;
         return 0;
 }
@@ -445,7 +338,7 @@ void update_player()
 
                 if(player[0].stun < 1)
                 {
-                        player[0].flags &= ~ALIVE;
+                        player[0].alive = 0;
                         player[0].state = PL_DEAD;
                         player[0].stun = 100;
                 }
@@ -456,10 +349,10 @@ void update_player()
         if(p->state == PL_STAB)
         {
                 p->hitbox = p->pos;
-                p->hitbox.x -= 5;
-                p->hitbox.y -= 5;
-                p->hitbox.w += 10;
-                p->hitbox.h += 10;
+                p->hitbox.x -= 2;
+                p->hitbox.y -= 2 + BS2;
+                p->hitbox.w += 4;
+                p->hitbox.h += 4 + BS2;
                 switch(p->dir)
                 {
                         case WEST:  p->hitbox.x -= BS;
@@ -491,9 +384,9 @@ void update_player()
         }
 
         //check for enemy collisions
-        for(int i = 0; i < 5; i++)
+        for(int i = 0; i < NR_ENEMIES; i++)
         {
-                if((player[0].flags & ALIVE) && (enemy[i].flags & ALIVE) &&
+                if(player[0].alive && enemy[i].alive &&
                                 player[0].state != PL_DYING &&
                                 player[0].stun < 1 &&
                                 enemy[i].stun < 1 &&
@@ -507,28 +400,30 @@ void update_player()
                         }
                         else
                         {
-                                player[0].stun = 25;
+                                player[0].stun = 50;
+                                player[0].reel = 10;
+                                player[0].reeldir = WEST;
                         }
                 }
         }
 
         //check for leaving screen
         if(p->pos.x <= 4)
-                scroll(-1, 0);
+                screen_scroll(-1, 0);
         else if(p->pos.x >= W - PLYR_W - 4)
-                scroll(1, 0);
+                screen_scroll(1, 0);
 
         if(p->pos.y <= 4)
-                scroll(0, -1);
+                screen_scroll(0, -1);
         else if(p->pos.y >= H - PLYR_H - 4)
-                scroll(0, 1);
+                screen_scroll(0, 1);
 }
 
 void update_enemies()
 {
-        for(int i = 0; i < 10; i++)
+        for(int i = 0; i < NR_ENEMIES; i++)
         {
-                if(!(enemy[i].flags & ALIVE))
+                if(!enemy[i].alive)
                         continue;
 
                 if(enemy[i].stun > 0)
@@ -539,10 +434,15 @@ void update_enemies()
                                 enemy[i].stun == 0 &&
                                 collide(player[0].hitbox, enemy[i].pos))
                 {
-                        enemy[i].stun = 25;
-                        if(--enemy[i].hp <= 0)
+                        enemy[i].stun = 50;
+                        if(--enemy[i].hp > 0)
                         {
-                                if(enemy[i].type == TOOLBOX) for(int j = 0; j < 5; j++)
+                                enemy[i].reel = 30;
+                                enemy[i].reeldir = player[0].dir;
+                        }
+                        else
+                        {
+                                if(enemy[i].type == TOOLBOX) for(int j = 0; j < NR_ENEMIES; j++)
                                 {
                                         enemy[j].type = PUFF;
                                         enemy[j].frame = 0;
@@ -657,7 +557,7 @@ void update_enemies()
                                                         if(find_free_slot(&slot))
                                                         {
                                                                 enemy[slot].type = rand()%2 ? WRENCH : PIPEWRENCH;
-                                                                enemy[slot].flags = ALIVE;
+                                                                enemy[slot].alive = 1;
                                                                 enemy[slot].pos = (SDL_Rect){
                                                                         enemy[i].pos.x + BS2,
                                                                         enemy[i].pos.y,
@@ -704,16 +604,39 @@ void update_enemies()
                 }
 
                 SDL_Rect newpos = enemy[i].pos;
-                newpos.x += enemy[i].vel.x;
-                newpos.y += enemy[i].vel.y;
-                if(world_collide(newpos))
+                if(enemy[i].reel)
                 {
-                        enemy[i].vel.x = 0;
-                        enemy[i].vel.y = 0;
+                        enemy[i].reel--;
+                        switch(enemy[i].reeldir)
+                        {
+                                case NORTH: newpos.y -= 10; break;
+                                case WEST:  newpos.x -= 10; break;
+                                case EAST:  newpos.x += 10; break;
+                                case SOUTH: newpos.y += 10; break;
+                        }
+                        if(!world_collide(newpos) && enemy[i].reel != 0)
+                        {
+                                enemy[i].pos = newpos;
+                        }
+                        else
+                        {
+                                enemy[i].pos.x = ((enemy[i].pos.x + BS2 - 1) / BS2) * BS2;
+                                enemy[i].pos.y = ((enemy[i].pos.y + BS2 - 1) / BS2) * BS2;
+                        }
                 }
                 else
                 {
-                        enemy[i].pos = newpos;
+                        newpos.x += enemy[i].vel.x;
+                        newpos.y += enemy[i].vel.y;
+                        if(world_collide(newpos))
+                        {
+                                enemy[i].vel.x = 0;
+                                enemy[i].vel.y = 0;
+                        }
+                        else
+                        {
+                                enemy[i].pos = newpos;
+                        }
                 }
         }
 }
@@ -823,7 +746,7 @@ int legit_tile(int x, int y)
         return x >= 0 && x < TILESW && y >= 0 && y < TILESH;
 }
 
-void scroll(int dx, int dy)
+void screen_scroll(int dx, int dy)
 {
         roomx += dx;
         roomy += dy;
@@ -890,9 +813,9 @@ void draw_stuff()
         }
 
         //draw enemies
-        for(int i = 0; i < 10; i++)
+        for(int i = 0; i < NR_ENEMIES; i++)
         {
-                if(!(enemy[i].flags & ALIVE))
+                if(!enemy[i].alive)
                         continue;
 
                 if(frame%10 == 0) switch(enemy[i].type)
@@ -941,7 +864,7 @@ void draw_stuff()
                 {
                         src = (SDL_Rect){100+20*enemy[i].frame, 140, 20, 20};
                         if(frame%8 == 0 && ++enemy[i].frame > 4)
-                                enemy[i].flags &= ~ALIVE;
+                                enemy[i].alive = 0;
                 }
                 else if(enemy[i].stun > 0)
                 {
@@ -955,9 +878,9 @@ void draw_stuff()
         }
 
         //draw players
-        for(int i = 0; i < 4; i++)
+        for(int i = 0; i < NR_PLAYERS; i++)
         {
-                if(!(player[i].flags & ALIVE))
+                if(!player[i].alive)
                         continue;
 
                 int animframe = 0;
@@ -1041,22 +964,22 @@ void draw_doors_lo()
         //draw right edge
         src  = (SDL_Rect){11*20, 4*20, 4*20, 3*20};
         dest = (SDL_Rect){11*BS, 4*BS, 4*BS, 3*BS};
-        SDL_RenderCopy(renderer, edgetex[doors[0]], &src, &dest);
+        SDL_RenderCopy(renderer, edgetex[doors[EAST]], &src, &dest);
 
         //draw top edge
         src  = (SDL_Rect){6*20, 0*20, 3*20, 4*20};
         dest = (SDL_Rect){6*BS, 0*BS, 3*BS, 4*BS};
-        SDL_RenderCopy(renderer, edgetex[doors[1]], &src, &dest);
+        SDL_RenderCopy(renderer, edgetex[doors[NORTH]], &src, &dest);
 
         //draw left edge
         src  = (SDL_Rect){0*20, 4*20, 4*20, 3*20};
         dest = (SDL_Rect){0*BS, 4*BS, 4*BS, 3*BS};
-        SDL_RenderCopy(renderer, edgetex[doors[2]], &src, &dest);
+        SDL_RenderCopy(renderer, edgetex[doors[WEST]], &src, &dest);
 
         //draw bottom edge
         src  = (SDL_Rect){6*20, 7*20, 3*20, 4*20};
         dest = (SDL_Rect){6*BS, 7*BS, 3*BS, 4*BS};
-        SDL_RenderCopy(renderer, edgetex[doors[3]], &src, &dest);
+        SDL_RenderCopy(renderer, edgetex[doors[SOUTH]], &src, &dest);
 }
 
 void draw_doors_hi()
@@ -1068,24 +991,25 @@ void draw_doors_hi()
         //draw right edge ABOVE
         src  = (SDL_Rect){14*20, 4*20, 1*20, 3*20};
         dest = (SDL_Rect){14*BS, 4*BS, 1*BS, 3*BS};
-        SDL_RenderCopy(renderer, edgetex[doors[0]], &src, &dest);
+        SDL_RenderCopy(renderer, edgetex[doors[EAST]], &src, &dest);
 
         //draw top edge ABOVE
         src  = (SDL_Rect){6*20, 0*20, 3*20, 1*20};
         dest = (SDL_Rect){6*BS, 0*BS, 3*BS, 1*BS};
-        SDL_RenderCopy(renderer, edgetex[doors[1]], &src, &dest);
+        SDL_RenderCopy(renderer, edgetex[doors[NORTH]], &src, &dest);
 
         //draw left edge ABOVE
         src  = (SDL_Rect){0*20, 4*20, 1*20, 3*20};
         dest = (SDL_Rect){0*BS, 4*BS, 1*BS, 3*BS};
-        SDL_RenderCopy(renderer, edgetex[doors[2]], &src, &dest);
+        SDL_RenderCopy(renderer, edgetex[doors[WEST]], &src, &dest);
 
         //draw bottom edge ABOVE
         src  = (SDL_Rect){6*20, 10*20, 3*20, 1*20};
         dest = (SDL_Rect){6*BS, 10*BS, 3*BS, 1*BS};
-        SDL_RenderCopy(renderer, edgetex[doors[3]], &src, &dest);
+        SDL_RenderCopy(renderer, edgetex[doors[SOUTH]], &src, &dest);
 }
 
+#ifndef TINY
 void draw_clipping_boxes()
 {
         SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
@@ -1099,25 +1023,10 @@ void draw_clipping_boxes()
         }
 
         SDL_SetRenderDrawColor(renderer, 255, 80, 80, 255);
-        for(int i = 0; i < nr_players; i++)
+        for(int i = 0; i < NR_PLAYERS; i++)
         {
-                if(player[i].state == PL_STAB && player[i].flags & ALIVE)
+                if(player[i].state == PL_STAB && player[i].alive)
                         SDL_RenderFillRect(renderer, &player[i].hitbox);
         }
 }
-
-void text(char *fstr, int value, int height)
-{
-        if(!font) return;
-        int w, h;
-        char msg[80];
-        snprintf(msg, 80, fstr, value);
-        TTF_SizeText(font, msg, &w, &h);
-        SDL_Surface *msgsurf = TTF_RenderText_Blended(font, msg, (SDL_Color){255, 255, 255});
-        SDL_Texture *msgtex = SDL_CreateTextureFromSurface(renderer, msgsurf);
-        SDL_Rect fromrec = {0, 0, msgsurf->w, msgsurf->h};
-        SDL_Rect torec = {(W - w)/2, height, msgsurf->w, msgsurf->h};
-        SDL_RenderCopy(renderer, msgtex, &fromrec, &torec);
-        SDL_DestroyTexture(msgtex);
-        SDL_FreeSurface(msgsurf);
-}
+#endif

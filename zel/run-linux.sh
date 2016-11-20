@@ -1,1 +1,1 @@
-tcc -Wall -Wextra -pedantic -I/usr/include/SDL2 -lSDL2 -lSDL2_ttf -run zel.c
+tcc -g -Wall -Wextra -I/usr/include/SDL2 -lSDL2 -lSDL2_ttf -run zel.c
