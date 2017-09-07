@@ -157,8 +157,8 @@ void update_stuff()
 
                 // always brake laterally
                 float latang = speed[i] > 0 ? latdelta : -latdelta;
-                if(     lateral[i] >=  1.0f) { lateral[i] -= 1.0f; angle[i] += latang * 0.1f; }
-                else if(lateral[i] <= -1.0f) { lateral[i] += 1.0f; angle[i] -= latang * 0.1f; }
+                if(     lateral[i] >=  3.0f) { lateral[i] -= 3.0f; speed[i] += 2.0f; angle[i] += latang * 0.1f; }
+                else if(lateral[i] <= -3.0f) { lateral[i] += 3.0f; speed[i] -= 2.0f; angle[i] -= latang * 0.1f; }
                 else                         { lateral[i]  = 0.0f; }
         }
 
