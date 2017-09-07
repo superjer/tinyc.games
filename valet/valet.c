@@ -9,14 +9,14 @@
 #define W 480
 #define H 600
 #define NCARS 20
+#define PI2 (M_PI/2)
 
 enum gamestates {READY, ALIVE, GAMEOVER} gamestate = READY;
 
-float speed;
-float angle[NCARS];
+float speed[NCARS], lateral[NCARS], angle[NCARS];
 float car_x[NCARS], car_y[NCARS];
 int brake, turn_left, turn_right;
-int curcar;
+int cur;
 
 SDL_Event event;
 SDL_Renderer *renderer;
@@ -86,6 +86,7 @@ void setup()
         SDL_Window *win = SDL_CreateWindow("Valet",
                 SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, W, H, SDL_WINDOW_SHOWN);
         renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_PRESENTVSYNC);
+        if(!renderer) renderer = SDL_CreateRenderer(win, -1, 0);
         if(!renderer) exit(fprintf(stderr, "Could not create SDL renderer\n"));
 
         surf = SDL_LoadBMP("res/background.bmp");
@@ -110,16 +111,17 @@ void new_game()
         int i;
         for(i = 0; i < NCARS; i++) car_x[i] = W*2;
         gamestate = ALIVE;
-        curcar = 0;
+        cur = 0;
         new_car();
 }
 
 void new_car()
 {
-        speed = 60.0f + rand() % 40;
-        angle[curcar] = M_PI;
-        car_x[curcar] = 4*W/5;
-        car_y[curcar] = H;
+        speed[cur] = 60.0f + rand() % 40;
+        lateral[cur] = 0.0f;
+        angle[cur] = M_PI;
+        car_x[cur] = 4*W/5;
+        car_y[cur] = H;
 }
 
 //when we hit something
@@ -133,25 +135,67 @@ void update_stuff()
 {
         if(gamestate != ALIVE) return;
 
-        if(speed > 0.1f)
-                angle[curcar] += ((turn_left - turn_right) * speed)/(M_PI * 150.0f);
-
-        car_x[curcar] += sinf(angle[curcar]) * speed * 0.1f;
-        car_y[curcar] += cosf(angle[curcar]) * speed * 0.1f;
-
-        float speed_diff = brake ? 0.5f : 0.1f;
-        if(speed >= speed_diff)
-                speed -= speed_diff;
-        else
-                speed = 0.0f;
-
-        if(speed == 0.0f || car_x[curcar] < 0 || car_x[curcar] > W || car_y[curcar] < 0 || car_y[curcar] > H)
+        // movements
+        for(int i = 0; i < NCARS; i++)
         {
-                curcar++;
-                if(curcar < NCARS)
-                        new_car();
-                else
-                        new_game();
+                if(cur == i && speed[i] > 0.1f)
+                        angle[i] += ((turn_left - turn_right) * speed[i])/(M_PI * 150.0f);
+
+                car_x[i] += sinf(angle[i]) * speed[i] * 0.1f;
+                car_y[i] += cosf(angle[i]) * speed[i] * 0.1f;
+
+                car_x[i] += sinf(angle[i] + PI2) * lateral[i] * 0.1f;
+                car_y[i] += cosf(angle[i] + PI2) * lateral[i] * 0.1f;
+
+                // slow down or brake
+                float delta = (brake || cur != i) ? 0.5f : 0.1f;
+                float latdelta = fabsf(lateral[i]) * 0.01f;
+                delta += latdelta;
+                if(     speed[i] >=  delta) speed[i] -= delta;
+                else if(speed[i] <= -delta) speed[i] += delta;
+                else                        speed[i]  = 0.0f;
+
+                // always brake laterally
+                float latang = speed[i] > 0 ? latdelta : -latdelta;
+                if(     lateral[i] >=  1.0f) { lateral[i] -= 1.0f; angle[i] += latang * 0.1f; }
+                else if(lateral[i] <= -1.0f) { lateral[i] += 1.0f; angle[i] -= latang * 0.1f; }
+                else                         { lateral[i]  = 0.0f; }
+        }
+
+        // collisions
+        for(int i = 0; i < NCARS; i++) for(int j = i+1; j < NCARS; j++)
+        {
+                if(fabsf(car_x[i] - car_x[j]) < 20.0f &&
+                   fabsf(car_y[i] - car_y[j]) < 20.0f)
+                {
+                        float si = speed[i];
+                        float sj = speed[j];
+                        float li = lateral[i];
+                        float lj = lateral[j];
+
+                        speed[i]   *= 0.05f;
+                        speed[j]   *= 0.05f;
+                        lateral[i] *= 0.05f;
+                        lateral[j] *= 0.05f;
+
+                        float ai = angle[i];
+                        float aj = angle[j];
+                        float ix = sinf(ai) * si + sinf(ai + PI2) * li;
+                        float iy = cosf(ai) * si + cosf(ai + PI2) * li;
+                        float jx = sinf(aj) * sj + sinf(aj + PI2) * lj;
+                        float jy = cosf(aj) * sj + cosf(aj + PI2) * lj;
+
+                        speed[i]   += (sinf(ai      )*jx + cosf(ai      )*jy) * 0.95f;
+                        speed[j]   += (sinf(aj      )*ix + cosf(aj      )*iy) * 0.95f;
+                        lateral[i] += (sinf(ai + PI2)*jx + cosf(ai + PI2)*jy) * 0.95f;
+                        lateral[j] += (sinf(aj + PI2)*ix + cosf(aj + PI2)*iy) * 0.95f;
+                }
+        }
+
+        // has our car stopped or gone oob?
+        if(speed[cur] == 0.0f || car_x[cur] < 0 || car_x[cur] > W || car_y[cur] < 0 || car_y[cur] > H)
+        {
+                if(++cur < NCARS) new_car(); else new_game();
         }
 }
 
