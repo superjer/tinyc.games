@@ -94,6 +94,7 @@ struct enemy {
         int alive;
         int hp;
         int stun;
+        int freeze;
 } enemy[NR_ENEMIES];
 
 int idle_time = 30;
@@ -113,7 +114,8 @@ void new_game();
 void load_room();
 int find_free_slot(int *slot);
 void key_move(int down);
-void update_stuff();
+void update_player();
+void update_enemies();
 int move_player(int velx, int vely, int fake_it, int weave);
 void squishy_move();
 int collide(SDL_Rect plyr, SDL_Rect block);
@@ -141,7 +143,8 @@ int main()
                         case SDL_KEYUP:   key_move(0); break;
                 }
 
-                update_stuff();
+                update_player();
+                update_enemies();
                 draw_stuff();
                 SDL_Delay(1000 / 60);
                 frame++;
@@ -215,10 +218,12 @@ void key_move(int down)
                 case SDLK_x:
                         if(player[0].state == PL_NORMAL)
                         {
-                        player[0].state = PL_STAB; 
-                        player[0].delay = 16;
+                                player[0].state = PL_STAB;
+                                player[0].delay = 16;
                         }
                         break;
+                case SDLK_ESCAPE:
+                        exit(0);
         }
 }
 
@@ -262,13 +267,13 @@ void load_room()
         if(rooms[r].doors[SOUTH] <= MAXWALL) tiles[9][ 7] = CLIP;
 
         int spawns[] = {
-                 7,5,   9,2,   4,4,   6,7,   2,2,  10,3,   2,7,   8,4,  11,4,   2,8,  12,6,  
-                 9,8,   8,5,   6,4,   3,6,   9,7,  12,7,  10,7,   8,3,   6,3,   6,8,  11,5,  
-                12,2,  12,3,  11,3,   4,7,  12,5,   9,3,  11,6,   3,3,   7,3,  10,8,   7,8,  
-                10,5,   9,4,   5,6,   8,7,   6,5,  12,8,  10,2,   3,8,   4,8,   2,3,   4,2,  
-                 5,4,   2,4,   5,2,  11,7,   6,6,   7,7,  11,8,   3,7,   3,2,   9,5,   4,3,  
-                 7,2,   2,6,   8,2,   5,5,   4,5,   5,8,  12,4,  10,6,   3,5,   5,7,   4,6,  
-                 3,4,   8,8,  11,2,   8,6,   2,5,   9,6,   7,6,   7,4,   6,2,  10,4,   5,3,  
+                 7,5,   9,2,   4,4,   6,7,   2,2,  10,3,   2,7,   8,4,  11,4,   2,8,  12,6,
+                 9,8,   8,5,   6,4,   3,6,   9,7,  12,7,  10,7,   8,3,   6,3,   6,8,  11,5,
+                12,2,  12,3,  11,3,   4,7,  12,5,   9,3,  11,6,   3,3,   7,3,  10,8,   7,8,
+                10,5,   9,4,   5,6,   8,7,   6,5,  12,8,  10,2,   3,8,   4,8,   2,3,   4,2,
+                 5,4,   2,4,   5,2,  11,7,   6,6,   7,7,  11,8,   3,7,   3,2,   9,5,   4,3,
+                 7,2,   2,6,   8,2,   5,5,   4,5,   5,8,  12,4,  10,6,   3,5,   5,7,   4,6,
+                 3,4,   8,8,  11,2,   8,6,   2,5,   9,6,   7,6,   7,4,   6,2,  10,4,   5,3,
                  0,0,
         };
 
@@ -284,6 +289,7 @@ void load_room()
                 enemy[i].type = rooms[r].enemies[i];
                 enemy[i].alive = 1;
                 enemy[i].hp = 3;
+                enemy[i].freeze = 20 + rand() % 30;
 
                 //find a good spawn position
                 for(int limit = 0; limit < 70; limit++, j += 2)
@@ -305,6 +311,7 @@ void load_room()
                         enemy[i].pos.w = 2*BS;
                         enemy[i].pos.h = BS;
                         enemy[i].hp = 15;
+                        enemy[i].freeze = 10;
                 }
         }
 }
@@ -419,15 +426,119 @@ void update_player()
                 screen_scroll(0, 1);
 }
 
+int toolbox(struct enemy *e)
+{
+        switch(e->state)
+        {
+                case TB_READY:
+                        if(rand()%40 == 0)
+                        {
+                                e->state = TB_JUMP;
+                                e->vel.y = -20;
+                        }
+                        else if(rand()%40 == 0)
+                        {
+                                e->state = TB_OPEN;
+                                e->frame = 0;
+                        }
+                        break;
+                case TB_JUMP:
+                        e->vel.y += 2;
+                        if(e->vel.y >= 20)
+                        {
+                                e->state = TB_LAND;
+                                e->vel.y = 0;
+                        }
+                        break;
+                case TB_LAND:
+                        if(frame%4 == 0)
+                                e->frame = rand()%2 + 2;
+
+                        if(rand()%40 == 0)
+                        {
+                                e->state = TB_READY;
+                                e->frame = 0;
+                        }
+                        break;
+                case TB_OPEN:
+                        if(e->frame == 0)
+                        {
+                                int speed = rand()%10 ? 7 : 9;
+                                if(e->pos.x < 3*BS)
+                                        e->vel.x = speed;
+                                else if(e->pos.x > W - 7*BS)
+                                        e->vel.x = -speed;
+                                else
+                                        e->vel.x = rand()%2 ? speed : -speed;
+                                e->frame = 1;
+                        }
+                        if(frame%8 == 0 && rand()%3 == 0)
+                        {
+                                int slot;
+                                if(find_free_slot(&slot))
+                                {
+                                        enemy[slot].type = rand()%2 ? WRENCH : PIPEWRENCH;
+                                        enemy[slot].alive = 1;
+                                        enemy[slot].pos = (SDL_Rect){
+                                                e->pos.x + BS2,
+                                                e->pos.y,
+                                                BS,
+                                                BS2
+                                        };
+                                        enemy[slot].vel.x = rand()%2 ? 2 : -2;
+                                        enemy[slot].vel.y = 2;
+                                }
+                        }
+                        if(e->vel.x == 0)
+                        {
+                                e->frame = 6;
+                                e->state = TB_SHUT;
+                        }
+                        else if(frame%20 == 0)
+                        {
+                                if(e->vel.x > 0)
+                                        e->vel.x--;
+                                else
+                                        e->vel.x++;
+                        }
+                        break;
+                case TB_SHUT:
+                        if(frame%10 == 0 && rand()%3 == 0)
+                        {
+                                e->state = TB_READY;
+                                e->frame = 0;
+                        }
+                        break;
+                case TB_HURT:
+                        if(e->vel.y >= 0)
+                        {
+                                e->state = TB_OPEN;
+                                e->frame = 0;
+                        }
+                        else if(frame%4 == 0)
+                        {
+                                e->vel.y++;
+                        }
+                        break;
+        }
+}
+
 void update_enemies()
 {
         for(int i = 0; i < NR_ENEMIES; i++)
         {
+                struct enemy *e = enemy + i;
                 if(!enemy[i].alive)
                         continue;
 
                 if(enemy[i].stun > 0)
                         enemy[i].stun--;
+
+                if(enemy[i].freeze > 0)
+                {
+                        enemy[i].freeze--;
+                        continue;
+                }
 
                 if(player[0].state == PL_STAB &&
                                 enemy[i].type != PUFF &&
@@ -437,8 +548,17 @@ void update_enemies()
                         enemy[i].stun = 50;
                         if(--enemy[i].hp > 0)
                         {
-                                enemy[i].reel = 30;
-                                enemy[i].reeldir = player[0].dir;
+                                if(enemy[i].type == TOOLBOX)
+                                {
+                                        e->vel.y = -5;
+                                        e->state = TB_HURT;
+                                        e->frame = 5;
+                                }
+                                else
+                                {
+                                        enemy[i].reel = 30;
+                                        enemy[i].reeldir = player[0].dir;
+                                }
                         }
                         else
                         {
@@ -505,101 +625,7 @@ void update_enemies()
                                 }
                                 break;
                         case TOOLBOX:
-                                switch(enemy[i].state)
-                                {
-                                        case TB_READY:
-                                                if(rand()%40 == 0)
-                                                {
-                                                        enemy[i].state = TB_JUMP;
-                                                        enemy[i].vel.y = -20;
-                                                }
-                                                else if(rand()%40 == 0)
-                                                {
-                                                        enemy[i].state = TB_OPEN;
-                                                        enemy[i].frame = 1;
-                                                        int speed = rand()%10 ? 3 : 9;
-                                                        if(enemy[i].pos.x < 3*BS)
-                                                                enemy[i].vel.x = speed;
-                                                        else if(enemy[i].pos.x > W - 7*BS)
-                                                                enemy[i].vel.x = -speed;
-                                                        else
-                                                                enemy[i].vel.x = rand()%2 ? speed : -speed;
-                                                }
-                                                else if(rand()%40 == 0)
-                                                {
-                                                        enemy[i].vel.y = -5;
-                                                        enemy[i].state = TB_HURT;
-                                                        enemy[i].frame = 5;
-                                                }
-                                                break;
-                                        case TB_JUMP:
-                                                enemy[i].vel.y += 2;
-                                                if(enemy[i].vel.y >= 20)
-                                                {
-                                                        enemy[i].state = TB_LAND;
-                                                        enemy[i].vel.y = 0;
-                                                }
-                                                break;
-                                        case TB_LAND:
-                                                if(frame%4 == 0)
-                                                        enemy[i].frame = rand()%2 + 2;
-
-                                                if(rand()%40 == 0)
-                                                {
-                                                        enemy[i].state = TB_READY;
-                                                        enemy[i].frame = 0;
-                                                }
-                                                break;
-                                        case TB_OPEN:
-                                                if(rand()%30 == 0)
-                                                {
-                                                        int slot;
-                                                        if(find_free_slot(&slot))
-                                                        {
-                                                                enemy[slot].type = rand()%2 ? WRENCH : PIPEWRENCH;
-                                                                enemy[slot].alive = 1;
-                                                                enemy[slot].pos = (SDL_Rect){
-                                                                        enemy[i].pos.x + BS2,
-                                                                        enemy[i].pos.y,
-                                                                        BS,
-                                                                        BS2
-                                                                };
-                                                                enemy[slot].vel.x = rand()%2 ? 2 : -2;
-                                                                enemy[slot].vel.y = 2;
-                                                        }
-                                                }
-                                                if(enemy[i].vel.x == 0)
-                                                {
-                                                        enemy[i].frame = 6;
-                                                        enemy[i].state = TB_SHUT;
-                                                }
-                                                else if(frame%20 == 0)
-                                                {
-                                                        if(enemy[i].vel.x > 0)
-                                                                enemy[i].vel.x--;
-                                                        else
-                                                                enemy[i].vel.x++;
-                                                }
-                                                break;
-                                        case TB_SHUT:
-                                                if(frame%10 == 0 && rand()%3 == 0)
-                                                {
-                                                        enemy[i].state = TB_READY;
-                                                        enemy[i].frame = 0;
-                                                }
-                                                break;
-                                        case TB_HURT:
-                                                if(enemy[i].vel.y >= 0)
-                                                {
-                                                        enemy[i].state = TB_READY;
-                                                        enemy[i].frame = 0;
-                                                }
-                                                else if(frame%4 == 0)
-                                                {
-                                                        enemy[i].vel.y++;
-                                                }
-                                                break;
-                                }
+                                toolbox(enemy + i);
                                 break;
                 }
 
@@ -639,13 +665,6 @@ void update_enemies()
                         }
                 }
         }
-}
-
-//update everything that needs to update on its own, without input
-void update_stuff()
-{
-        update_player();
-        update_enemies();
 }
 
 //collide a rect with nearby world tiles
@@ -860,7 +879,13 @@ void draw_stuff()
                         dest.h += BS2;
                 }
 
-                if(enemy[i].type == PUFF)
+                if(enemy[i].freeze)
+                {
+                        int f = 4 - enemy[i].freeze;
+                        if(f < 0) f = 0;
+                        src = (SDL_Rect){100+20*f, 140, 20, 20};
+                }
+                else if(enemy[i].type == PUFF)
                 {
                         src = (SDL_Rect){100+20*enemy[i].frame, 140, 20, 20};
                         if(frame%8 == 0 && ++enemy[i].frame > 4)
@@ -916,7 +941,7 @@ void draw_stuff()
                 {
                         int screwamt = 0;
                         int retract = 0;
-                        
+
                         if(player[0].delay < 6)
                                 retract = 6 - player[0].delay;
 
