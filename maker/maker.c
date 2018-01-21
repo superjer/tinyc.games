@@ -16,11 +16,10 @@
 #define BS (20*SCALE)              // block size
 #define BS2 (BS/2)                 // block size in half
 #define PLYR_W (16*SCALE)          // physical width and height of the player
-#define PLYR_H (18*SCALE)          // ^
+#define PLYR_H (16*SCALE)          // ^
 #define PLYR_SPD (2*SCALE)         // units per frame
 #define STARTPX (3*BS)             // starting position within start screen
 #define STARTPY (8*BS)             // ^
-#define LATERAL_STEPS 8           // how far to check for a way around an obstacle
 #define NR_PLAYERS 1
 #define NR_ENEMIES 8
 #define GRAV_JUMP 0
@@ -30,7 +29,6 @@
 #define BLOK 45        // the bevelled block
 #define CLIP 58        // invisible but solid tile
 #define LASTSOLID CLIP // everything less than here is solid
-#define HALFCLIP 59    // this is half solid (upper half)
 #define SAND 60        // sand - can walk on like open
 #define OPEN 75        // invisible open, walkable space
 
@@ -59,6 +57,7 @@ struct player {
         struct point vel;
         int goingl;
         int goingr;
+        int jumping;
         int grav;
         int ground;
         int reel;
@@ -144,7 +143,7 @@ void setup()
         srand(time(NULL));
 
         SDL_Init(SDL_INIT_VIDEO);
-        SDL_Window *win = SDL_CreateWindow("Zel",
+        SDL_Window *win = SDL_CreateWindow("Maker",
                 SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, W, H, SDL_WINDOW_SHOWN);
         renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_PRESENTVSYNC);
         if(!renderer) exit(fprintf(stderr, "Could not create SDL renderer\n"));
@@ -185,7 +184,10 @@ void key_move(int down)
                                 && down)
                         {
                                 player[0].grav = GRAV_JUMP;
+                                player[0].jumping = 1;
                         }
+                        if(!down)
+                                player[0].jumping = 0;
                         break;
                 case SDLK_ESCAPE:
                         exit(0);
@@ -288,6 +290,14 @@ if(p->vel.x < -PLYR_SPD)
 
         if(!move_player(p->vel.x, p->vel.y))
                 p->vel.x = 0;
+
+        //shorten jumps
+        if(!p->jumping && p->grav < GRAV_ZERO)
+        {
+                p->grav += 4; 
+                if(p->grav > GRAV_ZERO) // don't start falling right away
+                        p->grav = GRAV_ZERO;
+        }
 
         //gravity
         if(!p->ground || p->grav < GRAV_ZERO)
@@ -505,9 +515,6 @@ int block_collide(int bx, int by, SDL_Rect plyr)
         if(tiles[by][bx] <= LASTSOLID)
                 return collide(plyr, (SDL_Rect){BS*bx, BS*by, BS, BS});
 
-        if(tiles[by][bx] == HALFCLIP)
-                return collide(plyr, (SDL_Rect){BS*bx, BS*by, BS, BS2-1});
-
         return 0;
 }
 
@@ -523,7 +530,7 @@ void draw_stuff()
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
         {
                 int t = tiles[y][x];
-                if(t != OPEN && t != CLIP && t != HALFCLIP)
+                if(t != OPEN && t != CLIP)
                         SDL_RenderCopy(renderer, sprites,
                                 &(SDL_Rect){20*(t%15), 20*(t/15), 20, 20},
                                 &(SDL_Rect){BS*x, BS*y, BS, BS});
@@ -657,8 +664,6 @@ void draw_clipping_boxes()
                 int t = tiles[y][x];
                 if(t <= LASTSOLID)
                         SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS-1});
-                else if(t == HALFCLIP)
-                        SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS2-1});
         }
 }
 #endif
