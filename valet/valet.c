@@ -1,4 +1,6 @@
 // Valet -- http://tinyc.games -- (c) 2016 Jer Wilson
+//
+// Valet is a game about parking cars with bad or no brakes!
 
 #include <stdio.h>
 #include <stdlib.h>

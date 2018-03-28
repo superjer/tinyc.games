@@ -1,4 +1,10 @@
 // Blocko -- http://tinyc.games -- (c) 2018 Jer Wilson
+//
+// Blocko is a barebones 3D platformer using OpenGL via GLEW.
+//
+// Using OpenGL on Windows requires the Windows SDK.
+// The run-windows.bat script will try hard to find the SDK files it needs,
+// otherwise it will tell you what to do.
 
 #include <stdio.h>
 #include <stdlib.h>
