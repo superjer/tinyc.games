@@ -1,4 +1,6 @@
 // Maker -- http://tinyc.games -- (c) 2018 Jer Wilson
+//
+// Maker is 2D platformer with level editing built in, so you can "make" levels.
 
 #include <stdio.h>
 #include <stdlib.h>

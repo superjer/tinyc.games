@@ -1,4 +1,6 @@
 // Tet -- http://tinyc.games -- (c) 2016 Jer Wilson
+//
+// Tet is an extremely small implementation of Tetris.
 
 #include <stdio.h>
 #include <stdlib.h>
