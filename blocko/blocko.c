@@ -3,10 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
 #define GL3_PROTOTYPES 1
 #include <GL/glew.h>
 #include <SDL.h>
-#include <SDL_ttf.h>
 
 #define SCALE 3                    // x magnification
 #define W (300*SCALE)              // window width, height
@@ -28,10 +28,8 @@
 #define GRAV_MAX 42
 
 #define BLOK 45        // the bevelled block
-#define CLIP 58        // invisible but solid tile
-#define LASTSOLID CLIP // everything less than here is solid
+#define LASTSOLID BLOK // everything less than here is solid
 #define HALFCLIP 59    // this is half solid (upper half)
-#define SAND 60        // sand - can walk on like open
 #define OPEN 75        // invisible open, walkable space
 
 int gravity[] = { -30,-27,-24,-21,-19,-17,-15,-13,-11,-10,
@@ -42,7 +40,6 @@ int gravity[] = { -30,-27,-24,-21,-19,-17,-15,-13,-11,-10,
 
 enum enemytypes {
         PIG = 7,
-        SCREW = 8,
         PUFF = 12,
 };
 
@@ -99,29 +96,23 @@ SDL_GLContext ctx;
 SDL_Renderer *renderer;
 SDL_Surface *surf;
 SDL_Texture *sprites;
-TTF_Font *font;
 
 //prototypes
 void setup();
 void new_game();
 void load_level();
-int find_free_slot(int *slot);
 void key_move(int down);
 void update_player();
 void update_enemies();
 int move_player(int velx, int vely);
-void squishy_move();
 int collide(SDL_Rect plyr, SDL_Rect block);
 int block_collide(int bx, int by, SDL_Rect plyr);
 int world_collide(SDL_Rect plyr);
 void draw_stuff();
-void draw_clipping_boxes();
-void text(char *fstr, int value, int height);
 
 //the entry point and main game loop
 int main()
 {
-        printf("grav zero: %d\ngrav max: %d\n", gravity[GRAV_ZERO], gravity[GRAV_MAX]);
         setup();
         new_game();
 
@@ -165,9 +156,6 @@ void setup()
         surf = SDL_LoadBMP("res/sprites.bmp");
         SDL_SetColorKey(surf, 1, 0xffff00);
         sprites = SDL_CreateTextureFromSurface(renderer, surf);
-
-        TTF_Init();
-        font = TTF_OpenFont("res/LiberationSans-Regular.ttf", 42);
 }
 
 void key_move(int down)
@@ -246,14 +234,6 @@ void load_level()
         }
 }
 
-int find_free_slot(int *slot)
-{
-        for(*slot = 0; *slot < NR_ENEMIES; (*slot)++)
-                if(!enemy[*slot].alive)
-                        return 1;
-        return 0;
-}
-
 void update_player()
 {
         struct player *p = player + 0;
@@ -296,8 +276,8 @@ void update_player()
         if(p->vel.x > PLYR_SPD)
                 p->vel.x = PLYR_SPD;
 
-if(p->vel.x < -PLYR_SPD)
-        p->vel.x = -PLYR_SPD;
+        if(p->vel.x < -PLYR_SPD)
+                p->vel.x = -PLYR_SPD;
 
         if(!move_player(p->vel.x, p->vel.y))
                 p->vel.x = 0;
@@ -305,7 +285,6 @@ if(p->vel.x < -PLYR_SPD)
         //gravity
         if(!p->ground || p->grav < GRAV_ZERO)
         {
-                printf("gravity %d\n", gravity[p->grav]);
                 if(!move_player(0, gravity[p->grav]))
                         p->grav = GRAV_ZERO;
                 else if(p->grav < GRAV_MAX)
@@ -549,6 +528,54 @@ void rainbowbox(float x, float y, float z)
         glEnd();
 }
 
+void graybox(float x, float y, float z)
+{
+        glBegin(GL_TRIANGLE_FAN);
+        glColor3f(0.4, 0.4, 0.4); glVertex3f(x*BS   ,y*BS   ,z*BS   );
+        glColor3f(0.5, 0.4, 0.4); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+        glColor3f(0.5, 0.4, 0.5); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
+        glColor3f(0.4, 0.4, 0.5); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
+        glColor3f(0.4, 0.5, 0.5); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+        glColor3f(0.4, 0.5, 0.4); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
+        glColor3f(0.5, 0.5, 0.4); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
+        glColor3f(0.5, 0.4, 0.4); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+        glEnd();
+        glBegin(GL_TRIANGLE_FAN);
+        glColor3f(0.5, 0.5, 0.5); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
+        glColor3f(0.4, 0.5, 0.5); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+        glColor3f(0.4, 0.5, 0.4); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
+        glColor3f(0.5, 0.5, 0.4); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
+        glColor3f(0.5, 0.4, 0.4); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+        glColor3f(0.5, 0.4, 0.5); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
+        glColor3f(0.4, 0.4, 0.5); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
+        glColor3f(0.4, 0.5, 0.5); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+        glEnd();
+}
+
+void redbox(float x, float y, float z)
+{
+        glBegin(GL_TRIANGLE_FAN);
+        glColor3f(0.7, 0.1, 0.1); glVertex3f(x*BS   ,y*BS   ,z*BS   );
+        glColor3f(0.8, 0.1, 0.1); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+        glColor3f(0.8, 0.1, 0.2); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
+        glColor3f(0.7, 0.1, 0.2); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
+        glColor3f(0.7, 0.2, 0.2); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+        glColor3f(0.7, 0.2, 0.1); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
+        glColor3f(0.8, 0.2, 0.1); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
+        glColor3f(0.8, 0.1, 0.1); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+        glEnd();
+        glBegin(GL_TRIANGLE_FAN);
+        glColor3f(0.8, 0.2, 0.2); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
+        glColor3f(0.7, 0.2, 0.2); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+        glColor3f(0.7, 0.2, 0.1); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
+        glColor3f(0.8, 0.2, 0.1); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
+        glColor3f(0.8, 0.1, 0.1); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+        glColor3f(0.8, 0.1, 0.2); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
+        glColor3f(0.7, 0.1, 0.2); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
+        glColor3f(0.7, 0.2, 0.2); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+        glEnd();
+}
+
 //draw everything in the game on the screen
 void draw_stuff()
 {
@@ -556,7 +583,7 @@ void draw_stuff()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        glFrustum(-16, 16, -9, 9, 15, 9999);
+        glFrustum(-16, 16, -9, 9, 16, 9999);
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         static float theta = 1.55;
@@ -566,14 +593,14 @@ void draw_stuff()
                 theta = 0.2;
         */
         float e0 = (TILESW/2)*BS, e1 = (TILESH/2-1)*BS, e2 = -10*BS;
-        float t0 = e0 + cosf(theta), t1 = e1 + 0.1, t2 = e2 + sinf(theta);
+        float t0 = e0 + cos(theta), t1 = e1 + 0.1, t2 = e2 + sin(theta);
         float f0 = t0-e0, f1 = t1-e1, f2 = t2-e2;
-        float fm = sqrtf(f0*f0 + f1*f1 + f2*f2);
+        float fm = sqrt(f0*f0 + f1*f1 + f2*f2);
         f0 /= fm;
         f1 /= fm;
         f2 /= fm;
         float s0 = f1*0 - f2*-1, s1 = f2*0 - f0*0, s2 = f0*-1 - f1*0;
-        float sm = sqrtf(s0*s0 + s1*s1 + s2*s2);
+        float sm = sqrt(s0*s0 + s1*s1 + s2*s2);
         float z0 = s0/sm;
         float z1 = s1/sm;
         float z2 = s2/sm;
@@ -592,8 +619,8 @@ void draw_stuff()
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < 1; z++)
         {
                 int t = tiles[y][x];
-                if(t != OPEN && t != CLIP && t != HALFCLIP)
-                        rainbowbox(x, y, z);
+                if(t != OPEN)
+                        graybox(x, y, z);
         }
 
         SDL_Rect src, dest;
@@ -637,7 +664,7 @@ void draw_stuff()
                         dest.x += (rand()%3 - 1) * SCALE;
                         dest.y += (rand()%3 - 1) * SCALE;
                 }
-                rainbowbox((float)dest.x / BS, (float)dest.y / BS, 0);
+                redbox((float)dest.x / BS, (float)dest.y / BS, 0);
         }
 
         //draw players
@@ -671,43 +698,4 @@ void draw_stuff()
         }
 
         SDL_GL_SwapWindow(win);
-
-        return;
-
-        //draw health
-        int hp = player[0].hp;
-        dest = (SDL_Rect){10, 10, SCALE*10, SCALE*10};
-        src = (SDL_Rect){290, 140, 10, 10};
-        for(int hc = 20; hc > 0; hc -= 4)
-        {
-                src.y = 140 + 10 * (hp > 4 ? 4 :
-                                    hp < 0 ? 0 : hp);
-                SDL_RenderCopy(renderer, sprites, &src, &dest);
-                hp -= 4;
-                dest.x += SCALE*10;
-        }
-
-        if(drawclip) draw_clipping_boxes();
-
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        SDL_Rect pos = player[0].pos;
-        if(player[0].ground)
-                SDL_RenderFillRect(renderer, &(SDL_Rect){pos.x, pos.y+PLYR_H, PLYR_W, 16});
-
-        SDL_RenderPresent(renderer);
 }
-
-#ifndef TINY
-void draw_clipping_boxes()
-{
-        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
-        {
-                int t = tiles[y][x];
-                if(t <= LASTSOLID)
-                        SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS-1});
-                else if(t == HALFCLIP)
-                        SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS2-1});
-        }
-}
-#endif
