@@ -87,6 +87,10 @@ struct enemy {
 int idle_time = 30;
 int frame = 0;
 int drawclip = 0;
+int cursorx = -1;
+int cursory = -1;
+int cblockx = -1;
+int cblocky = -1;
 
 SDL_Event event;
 SDL_Renderer *renderer;
@@ -100,6 +104,7 @@ void new_game();
 void load_level();
 int find_free_slot(int *slot);
 void key_move(int down);
+void mouse_move();
 void update_player();
 void update_enemies();
 int move_player(int velx, int vely);
@@ -122,9 +127,10 @@ int main()
         {
                 while(SDL_PollEvent(&event)) switch(event.type)
                 {
-                        case SDL_QUIT:    exit(0);
-                        case SDL_KEYDOWN: key_move(1); break;
-                        case SDL_KEYUP:   key_move(0); break;
+                        case SDL_QUIT:        exit(0);
+                        case SDL_KEYDOWN:     key_move(1);  break;
+                        case SDL_KEYUP:       key_move(0);  break;
+                        case SDL_MOUSEMOTION: mouse_move(); break;
                 }
 
                 update_player();
@@ -160,23 +166,20 @@ void key_move(int down)
 
         switch(event.key.keysym.sym)
         {
-                case SDLK_UP:
-                        break;
-                case SDLK_DOWN:
-                        break;
                 case SDLK_LEFT:
+                case SDLK_a:
                         player[0].goingl = down;
                         if(down) player[0].dir = WEST;
                         break;
                 case SDLK_RIGHT:
+                case SDLK_d:
                         player[0].goingr = down;
                         if(down) player[0].dir = EAST;
                         break;
                 case SDLK_SPACE:
-                        drawclip = !drawclip;
-                        break;
                 case SDLK_z:
-                case SDLK_x:
+                case SDLK_j:
+                case SDLK_k:
                         if(player[0].state == PL_NORMAL
                                 && player[0].ground
                                 && down)
@@ -184,12 +187,21 @@ void key_move(int down)
                                 player[0].grav = GRAV_JUMP;
                                 player[0].jumping = 1;
                         }
+
                         if(!down)
                                 player[0].jumping = 0;
                         break;
                 case SDLK_ESCAPE:
                         exit(0);
         }
+}
+
+void mouse_move()
+{
+        cursorx = event.motion.x;
+        cursory = event.motion.y;
+        cblockx = cursorx / BS;
+        cblocky = cursory / BS;
 }
 
 //start a new game
@@ -649,6 +661,9 @@ void draw_stuff()
         SDL_Rect pos = player[0].pos;
         if(player[0].ground)
                 SDL_RenderFillRect(renderer, &(SDL_Rect){pos.x, pos.y+PLYR_H, PLYR_W, 16});
+
+        SDL_SetRenderDrawColor(renderer, 255, 127, 0, 127);
+        SDL_RenderFillRect(renderer, &(SDL_Rect){BS*cblockx+1, BS*cblocky+1, BS-1, BS-1});
 
         SDL_RenderPresent(renderer);
 }
