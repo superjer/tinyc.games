@@ -60,6 +60,8 @@ struct player {
         SDL_Rect pos;
         SDL_Rect hitbox;
         struct point vel;
+        float yaw;
+        float pitch;
         int goingl;
         int goingr;
         int grav;
@@ -94,7 +96,6 @@ struct enemy {
 
 int idle_time = 30;
 int frame = 0;
-int drawclip = 0;
 
 SDL_Event event;
 SDL_Window *win;
@@ -108,6 +109,7 @@ void setup();
 void new_game();
 void load_level();
 void key_move(int down);
+void mouse_move();
 void update_player();
 void update_enemies();
 int move_player(int velx, int vely);
@@ -126,9 +128,10 @@ int main()
         {
                 while(SDL_PollEvent(&event)) switch(event.type)
                 {
-                        case SDL_QUIT:    exit(0);
-                        case SDL_KEYDOWN: key_move(1); break;
-                        case SDL_KEYUP:   key_move(0); break;
+                        case SDL_QUIT:        exit(0);
+                        case SDL_KEYDOWN:     key_move(1); break;
+                        case SDL_KEYUP:       key_move(0); break;
+                        case SDL_MOUSEMOTION: mouse_move(); break;
                 }
 
                 update_player();
@@ -162,6 +165,7 @@ void setup()
         surf = SDL_LoadBMP("res/sprites.bmp");
         SDL_SetColorKey(surf, 1, 0xffff00);
         sprites = SDL_CreateTextureFromSurface(renderer, surf);
+        SDL_SetRelativeMouseMode(SDL_TRUE);
 }
 
 void key_move(int down)
@@ -170,23 +174,19 @@ void key_move(int down)
 
         switch(event.key.keysym.sym)
         {
-                case SDLK_UP:
-                        break;
-                case SDLK_DOWN:
-                        break;
-                case SDLK_LEFT:
+                case SDLK_s:
                         player[0].goingl = down;
                         if(down) player[0].dir = WEST;
                         break;
-                case SDLK_RIGHT:
+                case SDLK_w:
                         player[0].goingr = down;
                         if(down) player[0].dir = EAST;
                         break;
-                case SDLK_SPACE:
-                        drawclip = !drawclip;
+                case SDLK_a:
                         break;
-                case SDLK_z:
-                case SDLK_x:
+                case SDLK_d:
+                        break;
+                case SDLK_SPACE:
                         if(player[0].state == PL_NORMAL
                                 && player[0].ground
                                 && down)
@@ -199,6 +199,19 @@ void key_move(int down)
         }
 }
 
+void mouse_move()
+{
+        float pitchlimit = 3.1415926535 * 0.5 - 0.001;
+        player[0].yaw += event.motion.xrel * 0.001;
+        player[0].pitch += event.motion.yrel * 0.001;
+
+        if(player[0].pitch > pitchlimit)
+                player[0].pitch = pitchlimit;
+
+        if(player[0].pitch < -pitchlimit)
+                player[0].pitch = -pitchlimit;
+}
+
 //start a new game
 void new_game()
 {
@@ -208,6 +221,8 @@ void new_game()
         player[0].pos.y = STARTPY;
         player[0].pos.w = PLYR_W;
         player[0].pos.h = PLYR_H;
+        player[0].yaw = 3.1415926535 * 0.5;
+        player[0].pitch = 0;
         player[0].dir = NORTH;
         player[0].hp = 3*4;
         player[0].grav = GRAV_ZERO;
@@ -592,33 +607,47 @@ void draw_stuff()
         glFrustum(-16, 16, -9, 9, 16, 9999);
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
-        static float theta = 1.55;
-        /*
-        theta += 0.01;
-        if(theta > 2.9)
-                theta = 0.2;
-        */
-        float e0 = (TILESW/2)*BS, e1 = (TILESH/2-1)*BS, e2 = -10*BS;
-        float t0 = e0 + cos(theta), t1 = e1 + 0.1, t2 = e2 + sin(theta);
-        float f0 = t0-e0, f1 = t1-e1, f2 = t2-e2;
-        float fm = sqrt(f0*f0 + f1*f1 + f2*f2);
-        f0 /= fm;
-        f1 /= fm;
-        f2 /= fm;
-        float s0 = f1*0 - f2*-1, s1 = f2*0 - f0*0, s2 = f0*-1 - f1*0;
+
+        float eye0, eye1, eye2;
+        eye0 = player[0].pos.x + BS2;
+        eye1 = player[0].pos.y + BS2;
+        eye2 = BS2;
+        float f0, f1, f2;
+        f0 = cos(player[0].pitch) * sin(player[0].yaw);
+        f1 = sin(player[0].pitch);
+        f2 = cos(player[0].pitch) * cos(player[0].yaw);
+        float wing0, wing1, wing2;
+        wing0 = -cos(player[0].yaw);
+        wing1 = 0;
+        wing2 = sin(player[0].yaw);
+        float up0, up1, up2;
+        up0 = f1*wing2 - f2*wing1;
+        up1 = f2*wing0 - f0*wing2;
+        up2 = f0*wing1 - f1*wing0;
+        float upm = sqrt(up0*up0 + up1*up1 + up2*up2);
+        up0 /= upm;
+        up1 /= upm;
+        up2 /= upm;
+        float s0, s1, s2;
+        s0 = f1*up2 - f2*up1;
+        s1 = f2*up0 - f0*up2;
+        s2 = f0*up1 - f1*up0;
         float sm = sqrt(s0*s0 + s1*s1 + s2*s2);
-        float z0 = s0/sm;
-        float z1 = s1/sm;
-        float z2 = s2/sm;
+        float z0, z1, z2;
+        z0 = s0/sm;
+        z1 = s1/sm;
+        z2 = s2/sm;
         float u0 = z1*f2 - z2*f1, u1 = z2*f0 - z0*f2, u2 = z0*f1 - z1*f0;
+
         float M[] = {
                 s0, u0,-f0, 0,
                 s1, u1,-f1, 0,
                 s2, u2,-f2, 0,
                  0,  0,  0, 1
         };
+
         glMultMatrixf(M);
-        glTranslated(-e0, -e1, -e2);
+        glTranslated(-eye0, -eye1, -eye2);
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LEQUAL);
 
@@ -670,7 +699,7 @@ void draw_stuff()
                         dest.x += (rand()%3 - 1) * SCALE;
                         dest.y += (rand()%3 - 1) * SCALE;
                 }
-                redbox((float)dest.x / BS, (float)dest.y / BS, 0);
+                rainbowbox((float)dest.x / BS, (float)dest.y / BS, 0);
         }
 
         //draw players
@@ -700,7 +729,7 @@ void draw_stuff()
                 dest.w += (BS - PLYR_W) / 2;
                 dest.h = BS;
 
-                rainbowbox((float)dest.x / BS, (float)dest.y / BS, 0);
+                //rainbowbox((float)dest.x / BS, (float)dest.y / BS, 0);
         }
 
         SDL_GL_SwapWindow(win);
