@@ -19,14 +19,15 @@
 #define H (220*SCALE)              // ^
 #define TILESW 15                  // total level width, height
 #define TILESH 11                  // ^
+#define TILESD 15                  // ^
 #define BS (20*SCALE)              // block size
 #define BS2 (BS/2)                 // block size in half
 #define PLYR_W (16*SCALE)          // physical width and height of the player
-#define PLYR_H (18*SCALE)          // ^
+#define PLYR_H (BS)                // ^
 #define PLYR_SPD (2*SCALE)         // units per frame
 #define STARTPX (3*BS)             // starting position within start screen
-#define STARTPY (8*BS)             // ^
-#define LATERAL_STEPS 8           // how far to check for a way around an obstacle
+#define STARTPY (7*BS)             // ^
+#define STARTPZ 0                  // ^
 #define NR_PLAYERS 1
 #define NR_ENEMIES 8
 #define GRAV_JUMP 0
@@ -52,23 +53,24 @@ enum enemytypes {
 enum dir {NORTH, WEST, EAST, SOUTH};
 enum playerstates {PL_NORMAL, PL_HURT, PL_DYING, PL_DEAD};
 
-int tiles[TILESH][TILESW];
+int tiles[TILESD][TILESH][TILESW];
 
-struct point { int x, y; };
+struct box { float x, y, z, w, h ,d; };
+struct point { float x, y, z; };
 
 struct player {
-        SDL_Rect pos;
-        SDL_Rect hitbox;
+        struct box pos;
         struct point vel;
         float yaw;
         float pitch;
+        int goingf;
+        int goingb;
         int goingl;
         int goingr;
+        int fvel;
+        int rvel;
         int grav;
         int ground;
-        int reel;
-        int reeldir;
-        int dir;
         int state;
         int delay;
         int frame;
@@ -78,12 +80,10 @@ struct player {
 } player[NR_PLAYERS];
 
 struct enemy {
-        SDL_Rect pos;
+        struct box pos;
         struct point vel;
         int goingl;
         int goingr;
-        int reel;
-        int reeldir;
         int state;
         int type;
         int delay;
@@ -112,10 +112,10 @@ void key_move(int down);
 void mouse_move();
 void update_player();
 void update_enemies();
-int move_player(int velx, int vely);
-int collide(SDL_Rect plyr, SDL_Rect block);
-int block_collide(int bx, int by, SDL_Rect plyr);
-int world_collide(SDL_Rect plyr);
+int move_player(int velx, int vely, int velz);
+int collide(struct box plyr, struct box block);
+int block_collide(int bx, int by, int bz, struct box plyr);
+int world_collide(struct box plyr);
 void draw_stuff();
 
 //the entry point and main game loop
@@ -174,17 +174,17 @@ void key_move(int down)
 
         switch(event.key.keysym.sym)
         {
-                case SDLK_s:
-                        player[0].goingl = down;
-                        if(down) player[0].dir = WEST;
-                        break;
                 case SDLK_w:
-                        player[0].goingr = down;
-                        if(down) player[0].dir = EAST;
+                        player[0].goingf = down;
+                        break;
+                case SDLK_s:
+                        player[0].goingb = down;
                         break;
                 case SDLK_a:
+                        player[0].goingl = down;
                         break;
                 case SDLK_d:
+                        player[0].goingr = down;
                         break;
                 case SDLK_SPACE:
                         if(player[0].state == PL_NORMAL
@@ -219,11 +219,18 @@ void new_game()
         player[0].alive = 1;
         player[0].pos.x = STARTPX;
         player[0].pos.y = STARTPY;
+        player[0].pos.z = STARTPZ;
         player[0].pos.w = PLYR_W;
         player[0].pos.h = PLYR_H;
+        player[0].pos.d = PLYR_W;
+        player[0].goingf = 0;
+        player[0].goingb = 0;
+        player[0].goingl = 0;
+        player[0].goingr = 0;
+        player[0].fvel = 0;
+        player[0].rvel = 0;
         player[0].yaw = 3.1415926535 * 0.5;
         player[0].pitch = 0;
-        player[0].dir = NORTH;
         player[0].hp = 3*4;
         player[0].grav = GRAV_ZERO;
         load_level();
@@ -231,12 +238,12 @@ void new_game()
 
 void load_level()
 {
-        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
+        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
         {
                 if(y > TILESH - 3)
-                        tiles[y][x] = rand() % 8 == 1 ? OPEN : BLOK;
+                        tiles[z][y][x] = rand() % 8 == 1 ? OPEN : BLOK;
                 else
-                        tiles[y][x] = rand() % 8 == 1 ? BLOK : OPEN;
+                        tiles[z][y][x] = rand() % 8 == 1 ? BLOK : OPEN;
         }
 
         //load enemies
@@ -251,7 +258,8 @@ void load_level()
                 //find a good spawn position
                 int x = i*4 + 2;
                 int y = 0;
-                enemy[i].pos = (SDL_Rect){BS*x, BS*y + BS2, BS, BS2};
+                int z = 0;
+                enemy[i].pos = (struct box){BS*x, BS*y + BS2, BS*z, BS, BS2, BS};
         }
 }
 
@@ -262,7 +270,7 @@ void update_player()
         if(player[0].stun > 0)
                 player[0].stun--;
 
-        if(player[0].state == PL_DEAD || player[0].pos.y > H + 100)
+        if(player[0].state == PL_DEAD || player[0].pos.y > H + 10000)
         {
                 if(player[0].stun < 1)
                         new_game();
@@ -271,9 +279,6 @@ void update_player()
 
         if(player[0].state == PL_DYING)
         {
-                if(frame%6 == 0)
-                        player[0].dir = (player[0].dir+1) % 4;
-
                 if(player[0].stun < 1)
                 {
                         player[0].alive = 0;
@@ -284,36 +289,52 @@ void update_player()
                 return;
         }
 
-        if(p->goingl && !p->goingr)
-                p->vel.x--;
-        else if(p->vel.x < 0)
-                p->vel.x++;
+        if(p->goingf && !p->goingb) { p->fvel++; }
+        else if(p->fvel > 0)        { p->fvel--; }
 
-        if(p->goingr && !p->goingl)
-                p->vel.x++;
-        else if(p->vel.x > 0)
-                p->vel.x--;
+        if(p->goingb && !p->goingf) { p->fvel--; }
+        else if(p->fvel < 0)        { p->fvel++; }
 
-        if(p->vel.x > PLYR_SPD)
-                p->vel.x = PLYR_SPD;
+        if(p->goingr && !p->goingl) { p->rvel++; }
+        else if(p->rvel > 0)        { p->rvel--; }
 
-        if(p->vel.x < -PLYR_SPD)
-                p->vel.x = -PLYR_SPD;
+        if(p->goingl && !p->goingr) { p->rvel--; }
+        else if(p->rvel < 0)        { p->rvel++; }
 
-        if(!move_player(p->vel.x, p->vel.y))
-                p->vel.x = 0;
+        //limit speed
+        float totalvel = sqrt(p->fvel * p->fvel + p->rvel * p->rvel);
+        if(totalvel > PLYR_SPD)
+        {
+                totalvel = PLYR_SPD / totalvel;
+                p->fvel *= totalvel;
+                p->rvel *= totalvel;
+        }
+
+        float fwdx = sin(p->yaw);
+        float fwdz = cos(p->yaw);
+
+        p->vel.x = fwdx * p->fvel + fwdz * p->rvel;
+        p->vel.z = fwdz * p->fvel - fwdx * p->rvel;
+
+        if(!move_player(p->vel.x, p->vel.y, p->vel.z))
+        {
+                p->fvel = 0;
+                p->rvel = 0;
+        }
 
         //gravity
         if(!p->ground || p->grav < GRAV_ZERO)
         {
-                if(!move_player(0, gravity[p->grav]))
+                if(!move_player(0, gravity[p->grav], 0))
                         p->grav = GRAV_ZERO;
                 else if(p->grav < GRAV_MAX)
                         p->grav++;
         }
 
         //detect ground
-        SDL_Rect foot = (SDL_Rect){p->pos.x, p->pos.y + p->pos.h, p->pos.w, 1};
+        struct box foot = (struct box){
+                p->pos.x, p->pos.y + PLYR_H, p->pos.z,
+                PLYR_W, 1, PLYR_W};
         p->ground = world_collide(foot);
 
         if(p->ground)
@@ -337,8 +358,6 @@ void update_player()
                         else
                         {
                                 player[0].stun = 50;
-                                player[0].reel = 10;
-                                player[0].reeldir = WEST;
                         }
                 }
         }
@@ -371,7 +390,7 @@ void update_enemies()
                 else
                         enemy[i].vel.x = 1;
 
-                SDL_Rect newpos = enemy[i].pos;
+                struct box newpos = enemy[i].pos;
                 newpos.y += enemy[i].vel.y;
 
                 // try falling
@@ -426,15 +445,16 @@ void update_enemies()
         }
 }
 
-//collide a rect with nearby world tiles
-int world_collide(SDL_Rect plyr)
+//collide a box with nearby world tiles
+int world_collide(struct box box)
 {
-        for(int i = 0; i < 3; i++) for(int j = 0; j < 2; j++)
+        for(int i = -1; i < 2; i++) for(int j = -1; j < 3; j++) for(int k = -1; k < 2; k++)
         {
-                int bx = plyr.x/BS + i;
-                int by = plyr.y/BS + j;
+                int bx = box.x/BS + i;
+                int by = box.y/BS + j;
+                int bz = box.z/BS + k;
 
-                if(block_collide(bx, by, plyr))
+                if(block_collide(bx, by, bz, box))
                         return 1;
         }
 
@@ -442,36 +462,47 @@ int world_collide(SDL_Rect plyr)
 }
 
 //return 0 iff we couldn't actually move
-int move_player(int velx, int vely)
+int move_player(int velx, int vely, int velz)
 {
         int last_was_x = 0;
+        int last_was_z = 0;
         int already_stuck = 0;
         int moved = 0;
 
-        if(!velx && !vely)
+        if(!velx && !vely && !velz)
                 return 1;
 
         if(world_collide(player[0].pos))
                 already_stuck = 1;
 
-        while(velx || vely)
+        while(velx || vely || velz)
         {
-                SDL_Rect testpos = player[0].pos;
+                struct box testpos = player[0].pos;
                 int amt;
 
-                if(!velx || last_was_x && vely)
+                if((!velx && !velz) || (last_was_x || last_was_z) && vely)
                 {
                         amt = vely > 0 ? 1 : -1;
                         testpos.y += amt;
                         vely -= amt;
                         last_was_x = 0;
+                        last_was_z = 0;
                 }
-                else
+                else if(!velz || last_was_z && velx)
                 {
                         amt = velx > 0 ? 1 : -1;
                         testpos.x += amt;
                         velx -= amt;
+                        last_was_z = 0;
                         last_was_x = 1;
+                }
+                else
+                {
+                        amt = velz > 0 ? 1 : -1;
+                        testpos.z += amt;
+                        velz -= amt;
+                        last_was_x = 0;
+                        last_was_z = 1;
                 }
 
                 int would_be_stuck = 0;
@@ -485,6 +516,8 @@ int move_player(int velx, int vely)
                 {
                         if(last_was_x)
                                 velx = 0;
+                        else if(last_was_z)
+                                velz = 0;
                         else
                                 vely = 0;
                         continue;
@@ -497,30 +530,33 @@ int move_player(int velx, int vely)
         return moved;
 }
 
-int legit_tile(int x, int y)
+int legit_tile(int x, int y, int z)
 {
-        return x >= 0 && x < TILESW && y >= 0 && y < TILESH;
+        return x >= 0 && x < TILESW
+            && y >= 0 && y < TILESH
+            && z >= 0 && z < TILESD;
 }
 
 //collide a rect with a rect
-int collide(SDL_Rect plyr, SDL_Rect block)
+int collide(struct box l, struct box r)
 {
-        int xcollide = block.x + block.w >= plyr.x && block.x < plyr.x + plyr.w;
-        int ycollide = block.y + block.h >= plyr.y && block.y < plyr.y + plyr.h;
-        return xcollide && ycollide;
+        int xcollide = l.x + l.w >= r.x && l.x < r.x + r.w;
+        int ycollide = l.y + l.h >= r.y && l.y < r.y + r.h;
+        int zcollide = l.z + l.d >= r.z && l.z < r.z + r.d;
+        return xcollide && ycollide && zcollide;
 }
 
 //collide a rect with a block
-int block_collide(int bx, int by, SDL_Rect plyr)
+int block_collide(int bx, int by, int bz, struct box box)
 {
-        if(!legit_tile(bx, by))
+        if(!legit_tile(bx, by, bz))
                 return 0;
 
-        if(tiles[by][bx] <= LASTSOLID)
-                return collide(plyr, (SDL_Rect){BS*bx, BS*by, BS, BS});
+        if(tiles[bz][by][bx] <= LASTSOLID)
+                return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS, BS});
 
-        if(tiles[by][bx] == HALFCLIP)
-                return collide(plyr, (SDL_Rect){BS*bx, BS*by, BS, BS2-1});
+        if(tiles[bz][by][bx] == HALFCLIP)
+                return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS2-1 , BS});
 
         return 0;
 }
@@ -609,9 +645,9 @@ void draw_stuff()
         glLoadIdentity();
 
         float eye0, eye1, eye2;
-        eye0 = player[0].pos.x + BS2;
-        eye1 = player[0].pos.y + BS2;
-        eye2 = BS2;
+        eye0 = player[0].pos.x + PLYR_W / 2;
+        eye1 = player[0].pos.y - BS * 3 / 4;
+        eye2 = player[0].pos.z + PLYR_W / 2;
         float f0, f1, f2;
         f0 = cos(player[0].pitch) * sin(player[0].yaw);
         f1 = sin(player[0].pitch);
@@ -637,7 +673,10 @@ void draw_stuff()
         z0 = s0/sm;
         z1 = s1/sm;
         z2 = s2/sm;
-        float u0 = z1*f2 - z2*f1, u1 = z2*f0 - z0*f2, u2 = z0*f1 - z1*f0;
+        float u0, u1, u2;
+        u0 = z1*f2 - z2*f1;
+        u1 = z2*f0 - z0*f2;
+        u2 = z0*f1 - z1*f0;
 
         float M[] = {
                 s0, u0,-f0, 0,
@@ -651,14 +690,13 @@ void draw_stuff()
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LEQUAL);
 
-        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < 1; z++)
+        // draw world
+        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
         {
-                int t = tiles[y][x];
+                int t = tiles[z][y][x];
                 if(t != OPEN)
                         graybox(x, y, z);
         }
-
-        SDL_Rect src, dest;
 
         //draw enemies
         for(int i = 0; i < NR_ENEMIES; i++)
@@ -675,8 +713,7 @@ void draw_stuff()
                                 break;
                 }
 
-                src = (SDL_Rect){0+20*enemy[i].frame, enemy[i].type*20, 20, 20};
-                dest = enemy[i].pos;
+                struct box dest = enemy[i].pos;
                 dest.y -= BS2;
                 dest.h += BS2;
 
@@ -684,11 +721,9 @@ void draw_stuff()
                 {
                         int f = 4 - enemy[i].freeze;
                         if(f < 0) f = 0;
-                        src = (SDL_Rect){100+20*f, 140, 20, 20};
                 }
                 else if(enemy[i].type == PUFF)
                 {
-                        src = (SDL_Rect){100+20*enemy[i].frame, 140, 20, 20};
                         if(frame%8 == 0 && ++enemy[i].frame > 4)
                                 enemy[i].alive = 0;
                 }
@@ -699,38 +734,10 @@ void draw_stuff()
                         dest.x += (rand()%3 - 1) * SCALE;
                         dest.y += (rand()%3 - 1) * SCALE;
                 }
-                rainbowbox((float)dest.x / BS, (float)dest.y / BS, 0);
+                redbox(dest.x / BS, dest.y / BS, dest.z / BS);
         }
 
-        //draw players
-        for(int i = 0; i < NR_PLAYERS; i++)
-        {
-                if(!player[i].alive)
-                        continue;
-
-                int animframe = 0;
-
-                if(frame%5 == 0)
-                {
-                        player[i].frame = (player[i].frame + 1) % 4;
-                        if(player[i].frame == 0 && rand()%10 == 0)
-                                player[i].frame = 4;
-                }
-
-                animframe = player[i].frame;
-                if(player[i].vel.x == 0 && player[i].vel.y == 0 &&
-                                player[i].frame != 4)
-                        animframe = 0;
-
-                src = (SDL_Rect){20+20*animframe, 60+20*player[0].dir, 20, 20};
-                dest = player[i].pos;
-                dest.y -= BS - PLYR_H;
-                dest.x -= (BS - PLYR_W) / 2;
-                dest.w += (BS - PLYR_W) / 2;
-                dest.h = BS;
-
-                //rainbowbox((float)dest.x / BS, (float)dest.y / BS, 0);
-        }
+        //rainbowbox(player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS);
 
         SDL_GL_SwapWindow(win);
 }
