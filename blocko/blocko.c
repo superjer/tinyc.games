@@ -17,9 +17,9 @@
 #define SCALE 3                    // x magnification
 #define W (300*SCALE)              // window width, height
 #define H (220*SCALE)              // ^
-#define TILESW 15                  // total level width, height
+#define TILESW 45                  // total level width, height
 #define TILESH 11                  // ^
-#define TILESD 15                  // ^
+#define TILESD 45                  // ^
 #define BS (20*SCALE)              // block size
 #define BS2 (BS/2)                 // block size in half
 #define PLYR_W (16*SCALE)          // physical width and height of the player
@@ -241,9 +241,18 @@ void load_level()
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
         {
                 if(y > TILESH - 3)
-                        tiles[z][y][x] = rand() % 8 == 1 ? OPEN : BLOK;
+                        tiles[z][y][x] = BLOK;
                 else
-                        tiles[z][y][x] = rand() % 8 == 1 ? BLOK : OPEN;
+                        tiles[z][y][x] = OPEN;
+
+                if(z == 4 && x + y < 10)
+                        tiles[z][y][x] = BLOK;
+
+                if(x == 7 && z + y > 10 && z < 14)
+                        tiles[z][y][x] = BLOK;
+
+                if(x > 9 && z > 9 & y == TILESH - 3)
+                        tiles[z][y][x] = BLOK;
         }
 
         //load enemies
@@ -641,6 +650,7 @@ void draw_stuff()
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
         glFrustum(-16, 16, -9, 9, 16, 9999);
+        //glOrtho(-160, 160, -90, 90, 16, 9999);
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
