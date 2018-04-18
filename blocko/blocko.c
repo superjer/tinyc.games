@@ -15,8 +15,8 @@
 #include <SDL.h>
 
 #define SCALE 3                    // x magnification
-#define W (300*SCALE)              // window width, height
-#define H (220*SCALE)              // ^
+#define W 1366                     // window width, height
+#define H 768                      // ^
 #define TILESW 45                  // total level width, height
 #define TILESH 11                  // ^
 #define TILESD 45                  // ^
@@ -26,7 +26,7 @@
 #define PLYR_H (BS)                // ^
 #define PLYR_SPD (2*SCALE)         // units per frame
 #define STARTPX (3*BS)             // starting position within start screen
-#define STARTPY (7*BS)             // ^
+#define STARTPY (4*BS)             // ^
 #define STARTPZ 0                  // ^
 #define NR_PLAYERS 1
 #define NR_ENEMIES 8
@@ -97,6 +97,10 @@ struct enemy {
 int idle_time = 30;
 int frame = 0;
 
+int mouselook = 1;
+int screenw = W;
+int screenh = H;
+
 SDL_Event event;
 SDL_Window *win;
 SDL_GLContext ctx;
@@ -106,10 +110,12 @@ SDL_Texture *sprites;
 
 //prototypes
 void setup();
+void resize();
 void new_game();
 void load_level();
 void key_move(int down);
 void mouse_move();
+void mouse_button(int down);
 void update_player();
 void update_enemies();
 int move_player(int velx, int vely, int velz);
@@ -128,10 +134,19 @@ int main()
         {
                 while(SDL_PollEvent(&event)) switch(event.type)
                 {
-                        case SDL_QUIT:        exit(0);
-                        case SDL_KEYDOWN:     key_move(1); break;
-                        case SDL_KEYUP:       key_move(0); break;
-                        case SDL_MOUSEMOTION: mouse_move(); break;
+                        case SDL_QUIT:            exit(0);
+                        case SDL_KEYDOWN:         key_move(1);       break;
+                        case SDL_KEYUP:           key_move(0);       break;
+                        case SDL_MOUSEMOTION:     mouse_move();      break;
+                        case SDL_MOUSEBUTTONDOWN: mouse_button(1);   break;
+                        case SDL_MOUSEBUTTONUP:   mouse_button(0);   break;
+                        case SDL_WINDOWEVENT:
+                                switch(event.window.event) {
+                                        case SDL_WINDOWEVENT_SIZE_CHANGED:
+                                                resize();
+                                                break;
+                                }
+                                break;
                 }
 
                 update_player();
@@ -148,8 +163,8 @@ void setup()
         srand(time(NULL));
 
         SDL_Init(SDL_INIT_VIDEO);
-        win = SDL_CreateWindow("Blocko",
-                SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, W, H, SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL);
+        win = SDL_CreateWindow("Blocko", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                W, H, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
         if(!win) exit(fprintf(stderr, "%s\n", SDL_GetError()));
         ctx = SDL_GL_CreateContext(win);
         if(!ctx) exit(fprintf(stderr, "Could not create GL context\n"));
@@ -166,6 +181,12 @@ void setup()
         SDL_SetColorKey(surf, 1, 0xffff00);
         sprites = SDL_CreateTextureFromSurface(renderer, surf);
         SDL_SetRelativeMouseMode(SDL_TRUE);
+}
+
+void resize()
+{
+        screenw = event.window.data1;
+        screenh = event.window.data2;
 }
 
 void key_move(int down)
@@ -195,12 +216,16 @@ void key_move(int down)
                         }
                         break;
                 case SDLK_ESCAPE:
-                        exit(0);
+                        SDL_SetRelativeMouseMode(SDL_FALSE);
+                        mouselook = 0;
+                        break;
         }
 }
 
 void mouse_move()
 {
+        if(!mouselook) return;
+
         float pitchlimit = 3.1415926535 * 0.5 - 0.001;
         player[0].yaw += event.motion.xrel * 0.001;
         player[0].pitch += event.motion.yrel * 0.001;
@@ -210,6 +235,17 @@ void mouse_move()
 
         if(player[0].pitch < -pitchlimit)
                 player[0].pitch = -pitchlimit;
+}
+
+void mouse_button(int down)
+{
+        if(!down) return;
+
+        if(event.button.button == SDL_BUTTON_LEFT)
+        {
+                SDL_SetRelativeMouseMode(SDL_TRUE);
+                mouselook = 1;
+        }
 }
 
 //start a new game
@@ -240,7 +276,8 @@ void load_level()
 {
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
         {
-                if(y > TILESH - 3)
+                float h = 3 + 3*sin(0.1 * x) + 3*cos(0.2 * z);
+                if(y > TILESH - h)
                         tiles[z][y][x] = BLOK;
                 else
                         tiles[z][y][x] = OPEN;
@@ -249,9 +286,6 @@ void load_level()
                         tiles[z][y][x] = BLOK;
 
                 if(x == 7 && z + y > 10 && z < 14)
-                        tiles[z][y][x] = BLOK;
-
-                if(x > 9 && z > 9 & y == TILESH - 3)
                         tiles[z][y][x] = BLOK;
         }
 
@@ -279,7 +313,7 @@ void update_player()
         if(player[0].stun > 0)
                 player[0].stun--;
 
-        if(player[0].state == PL_DEAD || player[0].pos.y > H + 10000)
+        if(player[0].state == PL_DEAD || player[0].pos.y > TILESH*BS + 6000)
         {
                 if(player[0].stun < 1)
                         new_game();
@@ -436,20 +470,20 @@ void update_enemies()
                 }
 
                 //check if enemy fell too far
-                if(enemy[i].pos.y > H + 100)
+                if(enemy[i].pos.y > TILESH*BS + 100)
                 {
                         enemy[i].pos.y = 0;
                 }
 
                 // or went left/right too far
-                if(enemy[i].pos.x > W + 100)
+                if(enemy[i].pos.x > TILESW*BS + 100)
                 {
                         enemy[i].pos.x = 0;
                 }
 
                 if(enemy[i].pos.x < -100)
                 {
-                        enemy[i].pos.x = W-BS;
+                        enemy[i].pos.x = TILESW*BS-BS;
                 }
         }
 }
@@ -645,12 +679,13 @@ void redbox(float x, float y, float z)
 //draw everything in the game on the screen
 void draw_stuff()
 {
+        glViewport(0, 0, screenw, screenh);
         glClearColor(0.05, 0.07, 0.03, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        glFrustum(-16, 16, -9, 9, 16, 9999);
-        //glOrtho(-160, 160, -90, 90, 16, 9999);
+        float frustw = 9.0 * screenw / screenh;
+        glFrustum(-frustw, frustw, -9, 9, 16, 9999);
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
