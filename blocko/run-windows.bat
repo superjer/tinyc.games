@@ -7,6 +7,7 @@ reg Query "HKLM\Hardware\Description\System\CentralProcessor\0" | find /i "x86" 
 set CC=..\_win\tcc-%ARCH%\tcc.exe
 set GLEW=..\_win\glew-2.1.0
 set SDL=..\_win\SDL2-2.0.5
+set SDLIMG=..\_win\SDL2_image*
 set WINSDK="C:\Program Files (x86)\Windows Kits"
 
 for /r %WINSDK% %%a in (*) do if "%%~nxa"=="Windows.h" set WININC=%%~dpa
@@ -33,4 +34,4 @@ if defined WININC (
 set PATH=%PATH%;%GLEW%\bin\Release\%ARCHW%
 set PATH=%PATH%;%SDL%\lib\%ARCH%
 
-%CC% -DSDL_MAIN_HANDLED -I%WININC% -I%WININC%\..\shared -I%GLEW%\include -I%SDL%\include -L%GLEW%\bin\Release\%ARCHW% -L%SDL%\lib\%ARCH% -lmsvcrt -lglew32 -lOpenGL32 -lSDL2 -run blocko.c
+%CC% -DSDL_MAIN_HANDLED -I%WININC% -I%WININC%\..\shared -I%GLEW%\include -I%SDL%\include -I%SDLIMG%\include -L%GLEW%\bin\Release\%ARCHW% -L%SDL%\lib\%ARCH% -L%SDLIMG%\lib\%ARCH% -lmsvcrt -lglew32 -lOpenGL32 -lSDL2 -lSDL2_image -run blocko.c

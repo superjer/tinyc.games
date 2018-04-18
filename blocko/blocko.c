@@ -13,6 +13,7 @@
 #define GL3_PROTOTYPES 1
 #include <GL/glew.h>
 #include <SDL.h>
+#include <SDL_image.h>
 
 #define SCALE 3                    // x magnification
 #define W 1366                     // window width, height
@@ -106,7 +107,10 @@ SDL_Window *win;
 SDL_GLContext ctx;
 SDL_Renderer *renderer;
 SDL_Surface *surf;
-SDL_Texture *sprites;
+
+SDL_Texture *top;
+SDL_Texture *side;
+SDL_Texture *bottom;
 
 //prototypes
 void setup();
@@ -177,9 +181,42 @@ void setup()
         glewInit();
         #endif
 
-        surf = SDL_LoadBMP("res/sprites.bmp");
-        SDL_SetColorKey(surf, 1, 0xffff00);
-        sprites = SDL_CreateTextureFromSurface(renderer, surf);
+	int texid = 0;
+	int mode;
+ 
+        surf = IMG_Load("res/top.png");
+	glGenTextures(1, &texid);
+	glBindTexture(GL_TEXTURE_2D, texid);
+	printf("texid %d\n", texid);
+	mode = surf->format->BytesPerPixel == 4 ? GL_RGBA : GL_RGB;
+	glTexImage2D(GL_TEXTURE_2D, 0, mode, surf->w, surf->h, 0, mode, GL_UNSIGNED_BYTE, surf->pixels);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        surf = IMG_Load("res/side.png");
+	glGenTextures(1, &texid);
+	glBindTexture(GL_TEXTURE_2D, texid);
+	printf("texid %d\n", texid);
+	mode = surf->format->BytesPerPixel == 4 ? GL_RGBA : GL_RGB;
+        printf("bytes %d, rmask %x, gmask %x, bmask %x, amask %x\n",
+                        surf->format->BytesPerPixel,
+                        surf->format->Rmask,
+                        surf->format->Gmask,
+                        surf->format->Bmask,
+                        surf->format->Amask);
+	glTexImage2D(GL_TEXTURE_2D, 0, mode, surf->w, surf->h, 0, mode, GL_UNSIGNED_BYTE, surf->pixels);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        surf = IMG_Load("res/bottom.png");
+	glGenTextures(1, &texid);
+	glBindTexture(GL_TEXTURE_2D, texid);
+	printf("texid %d\n", texid);
+	mode = surf->format->BytesPerPixel == 4 ? GL_RGBA : GL_RGB;
+	glTexImage2D(GL_TEXTURE_2D, 0, mode, surf->w, surf->h, 0, mode, GL_UNSIGNED_BYTE, surf->pixels);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
         SDL_SetRelativeMouseMode(SDL_TRUE);
 }
 
@@ -628,27 +665,81 @@ void rainbowbox(float x, float y, float z)
         glEnd();
 }
 
-void graybox(float x, float y, float z)
+void grasstop(float x, float y, float z)
 {
+	glBindTexture(GL_TEXTURE_2D, 1);
+        glColor3f(0.9, 0.9, 0.9); 
+
         glBegin(GL_TRIANGLE_FAN);
-        glColor3f(0.4, 0.4, 0.4); glVertex3f(x*BS   ,y*BS   ,z*BS   );
-        glColor3f(0.5, 0.4, 0.4); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glColor3f(0.5, 0.4, 0.5); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
-        glColor3f(0.4, 0.4, 0.5); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
-        glColor3f(0.4, 0.5, 0.5); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
-        glColor3f(0.4, 0.5, 0.4); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
-        glColor3f(0.5, 0.5, 0.4); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
-        glColor3f(0.5, 0.4, 0.4); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+	glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS   ,z*BS   );
+        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
+        glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
         glEnd();
+}
+
+void grasssouth(float x, float y, float z)
+{
+	glBindTexture(GL_TEXTURE_2D, 2);
+        glColor3f(0.7, 0.7, 0.7); 
+
         glBegin(GL_TRIANGLE_FAN);
-        glColor3f(0.5, 0.5, 0.5); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
-        glColor3f(0.4, 0.5, 0.5); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
-        glColor3f(0.4, 0.5, 0.4); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
-        glColor3f(0.5, 0.5, 0.4); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
-        glColor3f(0.5, 0.4, 0.4); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glColor3f(0.5, 0.4, 0.5); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
-        glColor3f(0.4, 0.4, 0.5); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
-        glColor3f(0.4, 0.5, 0.5); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+	glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
+        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
+        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+        glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS   ,z*BS   );
+        glEnd();
+}
+
+void grassnorth(float x, float y, float z)
+{
+	glBindTexture(GL_TEXTURE_2D, 2);
+        glColor3f(0.7, 0.7, 0.7); 
+
+        glBegin(GL_TRIANGLE_FAN);
+        glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
+        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
+        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
+	glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+        glEnd();
+}
+
+void grasswest(float x, float y, float z)
+{
+	glBindTexture(GL_TEXTURE_2D, 2);
+        glColor3f(0.5, 0.5, 0.5); 
+
+        glBegin(GL_TRIANGLE_FAN);
+        glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS   ,z*BS   );
+        glTexCoord2i(1, 0); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
+        glTexCoord2i(1, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+	glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
+        glEnd();
+}
+
+void grasseast(float x, float y, float z)
+{
+	glBindTexture(GL_TEXTURE_2D, 2);
+        glColor3f(0.5, 0.5, 0.5); 
+
+        glBegin(GL_TRIANGLE_FAN);
+	glTexCoord2i(0, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
+        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
+        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
+        glTexCoord2i(0, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+        glEnd();
+}
+
+void grassbottom(float x, float y, float z)
+{
+	glBindTexture(GL_TEXTURE_2D, 3);
+        glColor3f(0.3, 0.3, 0.3); 
+
+        glBegin(GL_TRIANGLE_FAN);
+        glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
+        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
+	glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
         glEnd();
 }
 
@@ -733,14 +824,31 @@ void draw_stuff()
         glMultMatrixf(M);
         glTranslated(-eye0, -eye1, -eye2);
         glEnable(GL_DEPTH_TEST);
+        glEnable(GL_TEXTURE_2D);
+        glEnable(GL_CULL_FACE);
         glDepthFunc(GL_LEQUAL);
 
         // draw world
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
         {
-                int t = tiles[z][y][x];
-                if(t != OPEN)
-                        graybox(x, y, z);
+                if(tiles[z][y][x] == BLOK && (y == 0 || tiles[z][y-1][x] == OPEN))
+                        grasstop(x, y, z);
+        }
+        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
+        {
+                if(tiles[z][y][x] == BLOK && (z == 0 || tiles[z-1][y][x] == OPEN))
+                        grasssouth(x, y, z);
+                if(tiles[z][y][x] == BLOK && (z == TILESD-1 || tiles[z+1][y][x] == OPEN))
+                        grassnorth(x, y, z);
+                if(tiles[z][y][x] == BLOK && (x == 0 || tiles[z][y][x-1] == OPEN))
+                        grasswest(x, y, z);
+                if(tiles[z][y][x] == BLOK && (x == TILESW-1 || tiles[z][y][x+1] == OPEN))
+                        grasseast(x, y, z);
+        }
+        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
+        {
+                if(tiles[z][y][x] == BLOK && (y == TILESH-1 || tiles[z][y+1][x] == OPEN))
+                        grassbottom(x, y, z);
         }
 
         //draw enemies
