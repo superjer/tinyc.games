@@ -15,8 +15,8 @@
 #include <SDL.h>
 
 #define SCALE 3                    // x magnification
-#define W (300*SCALE)              // window width, height
-#define H (220*SCALE)              // ^
+#define W 1920                     // window width, height
+#define H 1080                     // ^
 #define TILESW 45                  // total level width, height
 #define TILESH 11                  // ^
 #define TILESD 45                  // ^
@@ -26,7 +26,7 @@
 #define PLYR_H (BS)                // ^
 #define PLYR_SPD (2*SCALE)         // units per frame
 #define STARTPX (3*BS)             // starting position within start screen
-#define STARTPY (7*BS)             // ^
+#define STARTPY (4*BS)             // ^
 #define STARTPZ 0                  // ^
 #define NR_PLAYERS 1
 #define NR_ENEMIES 8
@@ -240,7 +240,8 @@ void load_level()
 {
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
         {
-                if(y > TILESH - 3)
+                float h = 3 + 3*sin(0.1 * x) + 3*cos(0.2 * z);
+                if(y > TILESH - h)
                         tiles[z][y][x] = BLOK;
                 else
                         tiles[z][y][x] = OPEN;
@@ -249,9 +250,6 @@ void load_level()
                         tiles[z][y][x] = BLOK;
 
                 if(x == 7 && z + y > 10 && z < 14)
-                        tiles[z][y][x] = BLOK;
-
-                if(x > 9 && z > 9 & y == TILESH - 3)
                         tiles[z][y][x] = BLOK;
         }
 
@@ -279,7 +277,7 @@ void update_player()
         if(player[0].stun > 0)
                 player[0].stun--;
 
-        if(player[0].state == PL_DEAD || player[0].pos.y > H + 10000)
+        if(player[0].state == PL_DEAD || player[0].pos.y > TILESH*BS + 6000)
         {
                 if(player[0].stun < 1)
                         new_game();
@@ -436,20 +434,20 @@ void update_enemies()
                 }
 
                 //check if enemy fell too far
-                if(enemy[i].pos.y > H + 100)
+                if(enemy[i].pos.y > TILESH*BS + 100)
                 {
                         enemy[i].pos.y = 0;
                 }
 
                 // or went left/right too far
-                if(enemy[i].pos.x > W + 100)
+                if(enemy[i].pos.x > TILESW*BS + 100)
                 {
                         enemy[i].pos.x = 0;
                 }
 
                 if(enemy[i].pos.x < -100)
                 {
-                        enemy[i].pos.x = W-BS;
+                        enemy[i].pos.x = TILESW*BS-BS;
                 }
         }
 }
