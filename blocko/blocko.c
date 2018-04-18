@@ -35,8 +35,9 @@
 #define GRAV_ZERO 24
 #define GRAV_MAX 42
 
-#define BLOK 45        // the bevelled block
-#define LASTSOLID BLOK // everything less than here is solid
+#define DIRT 45
+#define GRAS 46
+#define LASTSOLID GRAS // everything less than here is solid
 #define HALFCLIP 59    // this is half solid (upper half)
 #define OPEN 75        // invisible open, walkable space
 
@@ -313,17 +314,18 @@ void load_level()
 {
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
         {
-                float h = 3 + 3*sin(0.1 * x) + 3*cos(0.2 * z);
-                if(y > TILESH - h)
-                        tiles[z][y][x] = BLOK;
+                float h =  3 + 3*sin(0.1 * x) + 3*cos(0.2 * z);
+                float s = -14 + 12*sin(1 + 0.14 * x) + 13*cos(2 + 0.18 * z);
+                if(y == TILESH-1 || y > TILESH - h || y > TILESH - s)
+                        tiles[z][y][x] = GRAS;
                 else
                         tiles[z][y][x] = OPEN;
 
                 if(z == 4 && x + y < 10)
-                        tiles[z][y][x] = BLOK;
+                        tiles[z][y][x] = GRAS;
 
                 if(x == 7 && z + y > 10 && z < 14)
-                        tiles[z][y][x] = BLOK;
+                        tiles[z][y][x] = GRAS;
         }
 
         //load enemies
@@ -771,7 +773,7 @@ void redbox(float x, float y, float z)
 void draw_stuff()
 {
         glViewport(0, 0, screenw, screenh);
-        glClearColor(0.05, 0.07, 0.03, 1.0);
+        glClearColor(0.3, 0.9, 1.0, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
@@ -831,23 +833,23 @@ void draw_stuff()
         // draw world
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
         {
-                if(tiles[z][y][x] == BLOK && (y == 0 || tiles[z][y-1][x] == OPEN))
+                if(tiles[z][y][x] == GRAS && (y == 0 || tiles[z][y-1][x] == OPEN))
                         grasstop(x, y, z);
         }
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
         {
-                if(tiles[z][y][x] == BLOK && (z == 0 || tiles[z-1][y][x] == OPEN))
+                if(tiles[z][y][x] == GRAS && (z == 0 || tiles[z-1][y][x] == OPEN))
                         grasssouth(x, y, z);
-                if(tiles[z][y][x] == BLOK && (z == TILESD-1 || tiles[z+1][y][x] == OPEN))
+                if(tiles[z][y][x] == GRAS && (z == TILESD-1 || tiles[z+1][y][x] == OPEN))
                         grassnorth(x, y, z);
-                if(tiles[z][y][x] == BLOK && (x == 0 || tiles[z][y][x-1] == OPEN))
+                if(tiles[z][y][x] == GRAS && (x == 0 || tiles[z][y][x-1] == OPEN))
                         grasswest(x, y, z);
-                if(tiles[z][y][x] == BLOK && (x == TILESW-1 || tiles[z][y][x+1] == OPEN))
+                if(tiles[z][y][x] == GRAS && (x == TILESW-1 || tiles[z][y][x+1] == OPEN))
                         grasseast(x, y, z);
         }
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
         {
-                if(tiles[z][y][x] == BLOK && (y == TILESH-1 || tiles[z][y+1][x] == OPEN))
+                if(tiles[z][y][x] == GRAS && (y == TILESH-1 || tiles[z][y+1][x] == OPEN))
                         grassbottom(x, y, z);
         }
 
