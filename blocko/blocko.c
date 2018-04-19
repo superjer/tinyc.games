@@ -100,6 +100,8 @@ int idle_time = 30;
 int frame = 0;
 
 int mouselook = 1;
+int target_x, target_y, target_z;
+int place_x, place_y, place_z;
 int screenw = W;
 int screenh = H;
 
@@ -281,8 +283,19 @@ void mouse_button(int down)
 
         if(event.button.button == SDL_BUTTON_LEFT)
         {
-                SDL_SetRelativeMouseMode(SDL_TRUE);
-                mouselook = 1;
+                if(!mouselook)
+                {
+                        SDL_SetRelativeMouseMode(SDL_TRUE);
+                        mouselook = 1;
+                }
+                else
+                {
+                        tiles[target_z][target_y][target_x] = OPEN;
+                }
+        }
+        else if(event.button.button == SDL_BUTTON_RIGHT)
+        {
+                tiles[place_z][place_y][place_x] = GRAS;
         }
 }
 
@@ -643,27 +656,28 @@ int block_collide(int bx, int by, int bz, struct box box)
         return 0;
 }
 
-void rainbowbox(float x, float y, float z)
+void blacklines(float x, float y, float z)
 {
-        glBegin(GL_TRIANGLE_FAN);
-        glColor3f(0, 0, 0); glVertex3f(x*BS   ,y*BS   ,z*BS   );
-        glColor3f(1, 0, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glColor3f(1, 0, 1); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
-        glColor3f(0, 0, 1); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
-        glColor3f(0, 1, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
-        glColor3f(0, 1, 0); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
-        glColor3f(1, 1, 0); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
-        glColor3f(1, 0, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glEnd();
-        glBegin(GL_TRIANGLE_FAN);
-        glColor3f(1, 1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
-        glColor3f(0, 1, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
-        glColor3f(0, 1, 0); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
-        glColor3f(1, 1, 0); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
-        glColor3f(1, 0, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glColor3f(1, 0, 1); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
-        glColor3f(0, 0, 1); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
-        glColor3f(0, 1, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+        glBegin(GL_LINE_STRIP);
+        glColor3f(0, 0, 0);
+        glVertex3f(x*BS   ,y*BS   ,z*BS   ); //top
+        glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+        glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
+        glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
+        glVertex3f(x*BS   ,y*BS   ,z*BS   );
+
+        glVertex3f(x*BS   ,y*BS+BS,z*BS   ); //bottom
+        glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
+        glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
+        glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+        glVertex3f(x*BS   ,y*BS+BS,z*BS   );
+
+        glVertex3f(x*BS   ,y*BS+BS,z*BS+BS); //missing sides
+        glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
+        glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
+        glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
+        glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
+        glVertex3f(x*BS+BS,y*BS   ,z*BS   );
         glEnd();
 }
 
@@ -769,6 +783,53 @@ void redbox(float x, float y, float z)
         glEnd();
 }
 
+//select block from eye following vector f
+void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
+{
+        int x = (int)(eye0 / BS);
+        int y = (int)(eye1 / BS);
+        int z = (int)(eye2 / BS);
+
+        for(int i = 0; ; i++)
+        {
+                float a0 = (BS * (x + (f0 > 0 ? 1 : 0)) - eye0) / f0;
+                float a1 = (BS * (y + (f1 > 0 ? 1 : 0)) - eye1) / f1;
+                float a2 = (BS * (z + (f2 > 0 ? 1 : 0)) - eye2) / f2;
+                float amt = 0;
+
+                place_x = x;
+                place_y = y;
+                place_z = z;
+
+                if(a0 < a1 && a0 < a2) { x += (f0 > 0 ? 1 : -1); amt = a0; }
+                else if(a1 < a2)       { y += (f1 > 0 ? 1 : -1); amt = a1; }
+                else                   { z += (f2 > 0 ? 1 : -1); amt = a2; }
+
+                eye0 += amt * f0 * 1.0001;
+                eye1 += amt * f1 * 1.0001;
+                eye2 += amt * f2 * 1.0001;
+
+                if(x < 0 || y < 0 || z < 0 || x >= TILESW || y >= TILESH || z >= TILESD)
+                        goto bad;
+
+                if(tiles[z][y][x] != OPEN)
+                        break;
+
+                if(i == 6)
+                        goto bad;
+        }
+
+        target_x = x;
+        target_y = y;
+        target_z = z;
+
+        return;
+
+        bad:
+        target_x = target_y = target_z = 0;
+        place_x = place_y = place_z = 0;
+}
+
 //draw everything in the game on the screen
 void draw_stuff()
 {
@@ -822,6 +883,8 @@ void draw_stuff()
                 s2, u2,-f2, 0,
                  0,  0,  0, 1
         };
+
+        rayshot(eye0, eye1, eye2, f0, f1, f2);
 
         glMultMatrixf(M);
         glTranslated(-eye0, -eye1, -eye2);
@@ -892,7 +955,10 @@ void draw_stuff()
                 redbox(dest.x / BS, dest.y / BS, dest.z / BS);
         }
 
-        //rainbowbox(player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS);
+        //glDisable(GL_DEPTH_TEST);
+        glDisable(GL_TEXTURE_2D);
+        glDisable(GL_CULL_FACE);
+        blacklines(target_x, target_y, target_z);
 
         SDL_GL_SwapWindow(win);
 }
