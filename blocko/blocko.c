@@ -13,10 +13,11 @@
 #define GL3_PROTOTYPES 1
 #include <GL/glew.h>
 #include <SDL.h>
+#include <SDL_image.h>
 
 #define SCALE 3                    // x magnification
-#define W 1920                     // window width, height
-#define H 1080                     // ^
+#define W 1366                     // window width, height
+#define H 768                      // ^
 #define TILESW 45                  // total level width, height
 #define TILESH 11                  // ^
 #define TILESD 45                  // ^
@@ -34,8 +35,9 @@
 #define GRAV_ZERO 24
 #define GRAV_MAX 42
 
-#define BLOK 45        // the bevelled block
-#define LASTSOLID BLOK // everything less than here is solid
+#define DIRT 45
+#define GRAS 46
+#define LASTSOLID GRAS // everything less than here is solid
 #define HALFCLIP 59    // this is half solid (upper half)
 #define OPEN 75        // invisible open, walkable space
 
@@ -97,19 +99,28 @@ struct enemy {
 int idle_time = 30;
 int frame = 0;
 
+int mouselook = 1;
+int screenw = W;
+int screenh = H;
+
 SDL_Event event;
 SDL_Window *win;
 SDL_GLContext ctx;
 SDL_Renderer *renderer;
 SDL_Surface *surf;
-SDL_Texture *sprites;
+
+SDL_Texture *top;
+SDL_Texture *side;
+SDL_Texture *bottom;
 
 //prototypes
 void setup();
+void resize();
 void new_game();
 void load_level();
 void key_move(int down);
 void mouse_move();
+void mouse_button(int down);
 void update_player();
 void update_enemies();
 int move_player(int velx, int vely, int velz);
@@ -128,10 +139,19 @@ int main()
         {
                 while(SDL_PollEvent(&event)) switch(event.type)
                 {
-                        case SDL_QUIT:        exit(0);
-                        case SDL_KEYDOWN:     key_move(1); break;
-                        case SDL_KEYUP:       key_move(0); break;
-                        case SDL_MOUSEMOTION: mouse_move(); break;
+                        case SDL_QUIT:            exit(0);
+                        case SDL_KEYDOWN:         key_move(1);       break;
+                        case SDL_KEYUP:           key_move(0);       break;
+                        case SDL_MOUSEMOTION:     mouse_move();      break;
+                        case SDL_MOUSEBUTTONDOWN: mouse_button(1);   break;
+                        case SDL_MOUSEBUTTONUP:   mouse_button(0);   break;
+                        case SDL_WINDOWEVENT:
+                                switch(event.window.event) {
+                                        case SDL_WINDOWEVENT_SIZE_CHANGED:
+                                                resize();
+                                                break;
+                                }
+                                break;
                 }
 
                 update_player();
@@ -148,8 +168,8 @@ void setup()
         srand(time(NULL));
 
         SDL_Init(SDL_INIT_VIDEO);
-        win = SDL_CreateWindow("Blocko",
-                SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, W, H, SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL);
+        win = SDL_CreateWindow("Blocko", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                W, H, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
         if(!win) exit(fprintf(stderr, "%s\n", SDL_GetError()));
         ctx = SDL_GL_CreateContext(win);
         if(!ctx) exit(fprintf(stderr, "Could not create GL context\n"));
@@ -162,10 +182,49 @@ void setup()
         glewInit();
         #endif
 
-        surf = SDL_LoadBMP("res/sprites.bmp");
-        SDL_SetColorKey(surf, 1, 0xffff00);
-        sprites = SDL_CreateTextureFromSurface(renderer, surf);
+	int texid = 0;
+	int mode;
+ 
+        surf = IMG_Load("res/top.png");
+	glGenTextures(1, &texid);
+	glBindTexture(GL_TEXTURE_2D, texid);
+	printf("texid %d\n", texid);
+	mode = surf->format->BytesPerPixel == 4 ? GL_RGBA : GL_RGB;
+	glTexImage2D(GL_TEXTURE_2D, 0, mode, surf->w, surf->h, 0, mode, GL_UNSIGNED_BYTE, surf->pixels);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        surf = IMG_Load("res/side.png");
+	glGenTextures(1, &texid);
+	glBindTexture(GL_TEXTURE_2D, texid);
+	printf("texid %d\n", texid);
+	mode = surf->format->BytesPerPixel == 4 ? GL_RGBA : GL_RGB;
+        printf("bytes %d, rmask %x, gmask %x, bmask %x, amask %x\n",
+                        surf->format->BytesPerPixel,
+                        surf->format->Rmask,
+                        surf->format->Gmask,
+                        surf->format->Bmask,
+                        surf->format->Amask);
+	glTexImage2D(GL_TEXTURE_2D, 0, mode, surf->w, surf->h, 0, mode, GL_UNSIGNED_BYTE, surf->pixels);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        surf = IMG_Load("res/bottom.png");
+	glGenTextures(1, &texid);
+	glBindTexture(GL_TEXTURE_2D, texid);
+	printf("texid %d\n", texid);
+	mode = surf->format->BytesPerPixel == 4 ? GL_RGBA : GL_RGB;
+	glTexImage2D(GL_TEXTURE_2D, 0, mode, surf->w, surf->h, 0, mode, GL_UNSIGNED_BYTE, surf->pixels);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
         SDL_SetRelativeMouseMode(SDL_TRUE);
+}
+
+void resize()
+{
+        screenw = event.window.data1;
+        screenh = event.window.data2;
 }
 
 void key_move(int down)
@@ -195,12 +254,16 @@ void key_move(int down)
                         }
                         break;
                 case SDLK_ESCAPE:
-                        exit(0);
+                        SDL_SetRelativeMouseMode(SDL_FALSE);
+                        mouselook = 0;
+                        break;
         }
 }
 
 void mouse_move()
 {
+        if(!mouselook) return;
+
         float pitchlimit = 3.1415926535 * 0.5 - 0.001;
         player[0].yaw += event.motion.xrel * 0.001;
         player[0].pitch += event.motion.yrel * 0.001;
@@ -210,6 +273,17 @@ void mouse_move()
 
         if(player[0].pitch < -pitchlimit)
                 player[0].pitch = -pitchlimit;
+}
+
+void mouse_button(int down)
+{
+        if(!down) return;
+
+        if(event.button.button == SDL_BUTTON_LEFT)
+        {
+                SDL_SetRelativeMouseMode(SDL_TRUE);
+                mouselook = 1;
+        }
 }
 
 //start a new game
@@ -240,17 +314,18 @@ void load_level()
 {
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
         {
-                float h = 3 + 3*sin(0.1 * x) + 3*cos(0.2 * z);
-                if(y > TILESH - h)
-                        tiles[z][y][x] = BLOK;
+                float h =  3 + 3*sin(0.1 * x) + 3*cos(0.2 * z);
+                float s = -14 + 12*sin(1 + 0.14 * x) + 13*cos(2 + 0.18 * z);
+                if(y == TILESH-1 || y > TILESH - h || y > TILESH - s)
+                        tiles[z][y][x] = GRAS;
                 else
                         tiles[z][y][x] = OPEN;
 
                 if(z == 4 && x + y < 10)
-                        tiles[z][y][x] = BLOK;
+                        tiles[z][y][x] = GRAS;
 
                 if(x == 7 && z + y > 10 && z < 14)
-                        tiles[z][y][x] = BLOK;
+                        tiles[z][y][x] = GRAS;
         }
 
         //load enemies
@@ -592,27 +667,81 @@ void rainbowbox(float x, float y, float z)
         glEnd();
 }
 
-void graybox(float x, float y, float z)
+void grasstop(float x, float y, float z)
 {
+	glBindTexture(GL_TEXTURE_2D, 1);
+        glColor3f(0.9, 0.9, 0.9); 
+
         glBegin(GL_TRIANGLE_FAN);
-        glColor3f(0.4, 0.4, 0.4); glVertex3f(x*BS   ,y*BS   ,z*BS   );
-        glColor3f(0.5, 0.4, 0.4); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glColor3f(0.5, 0.4, 0.5); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
-        glColor3f(0.4, 0.4, 0.5); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
-        glColor3f(0.4, 0.5, 0.5); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
-        glColor3f(0.4, 0.5, 0.4); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
-        glColor3f(0.5, 0.5, 0.4); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
-        glColor3f(0.5, 0.4, 0.4); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+	glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS   ,z*BS   );
+        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
+        glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
         glEnd();
+}
+
+void grasssouth(float x, float y, float z)
+{
+	glBindTexture(GL_TEXTURE_2D, 2);
+        glColor3f(0.7, 0.7, 0.7); 
+
         glBegin(GL_TRIANGLE_FAN);
-        glColor3f(0.5, 0.5, 0.5); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
-        glColor3f(0.4, 0.5, 0.5); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
-        glColor3f(0.4, 0.5, 0.4); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
-        glColor3f(0.5, 0.5, 0.4); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
-        glColor3f(0.5, 0.4, 0.4); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glColor3f(0.5, 0.4, 0.5); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
-        glColor3f(0.4, 0.4, 0.5); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
-        glColor3f(0.4, 0.5, 0.5); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+	glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
+        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
+        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+        glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS   ,z*BS   );
+        glEnd();
+}
+
+void grassnorth(float x, float y, float z)
+{
+	glBindTexture(GL_TEXTURE_2D, 2);
+        glColor3f(0.7, 0.7, 0.7); 
+
+        glBegin(GL_TRIANGLE_FAN);
+        glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
+        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
+        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
+	glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+        glEnd();
+}
+
+void grasswest(float x, float y, float z)
+{
+	glBindTexture(GL_TEXTURE_2D, 2);
+        glColor3f(0.5, 0.5, 0.5); 
+
+        glBegin(GL_TRIANGLE_FAN);
+        glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS   ,z*BS   );
+        glTexCoord2i(1, 0); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
+        glTexCoord2i(1, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+	glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
+        glEnd();
+}
+
+void grasseast(float x, float y, float z)
+{
+	glBindTexture(GL_TEXTURE_2D, 2);
+        glColor3f(0.5, 0.5, 0.5); 
+
+        glBegin(GL_TRIANGLE_FAN);
+	glTexCoord2i(0, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
+        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
+        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
+        glTexCoord2i(0, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
+        glEnd();
+}
+
+void grassbottom(float x, float y, float z)
+{
+	glBindTexture(GL_TEXTURE_2D, 3);
+        glColor3f(0.3, 0.3, 0.3); 
+
+        glBegin(GL_TRIANGLE_FAN);
+        glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
+        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
+        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
+	glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
         glEnd();
 }
 
@@ -643,12 +772,13 @@ void redbox(float x, float y, float z)
 //draw everything in the game on the screen
 void draw_stuff()
 {
-        glClearColor(0.05, 0.07, 0.03, 1.0);
+        glViewport(0, 0, screenw, screenh);
+        glClearColor(0.3, 0.9, 1.0, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        glFrustum(-16, 16, -9, 9, 16, 9999);
-        //glOrtho(-160, 160, -90, 90, 16, 9999);
+        float frustw = 9.0 * screenw / screenh;
+        glFrustum(-frustw, frustw, -9, 9, 16, 9999);
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
 
@@ -696,14 +826,31 @@ void draw_stuff()
         glMultMatrixf(M);
         glTranslated(-eye0, -eye1, -eye2);
         glEnable(GL_DEPTH_TEST);
+        glEnable(GL_TEXTURE_2D);
+        glEnable(GL_CULL_FACE);
         glDepthFunc(GL_LEQUAL);
 
         // draw world
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
         {
-                int t = tiles[z][y][x];
-                if(t != OPEN)
-                        graybox(x, y, z);
+                if(tiles[z][y][x] == GRAS && (y == 0 || tiles[z][y-1][x] == OPEN))
+                        grasstop(x, y, z);
+        }
+        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
+        {
+                if(tiles[z][y][x] == GRAS && (z == 0 || tiles[z-1][y][x] == OPEN))
+                        grasssouth(x, y, z);
+                if(tiles[z][y][x] == GRAS && (z == TILESD-1 || tiles[z+1][y][x] == OPEN))
+                        grassnorth(x, y, z);
+                if(tiles[z][y][x] == GRAS && (x == 0 || tiles[z][y][x-1] == OPEN))
+                        grasswest(x, y, z);
+                if(tiles[z][y][x] == GRAS && (x == TILESW-1 || tiles[z][y][x+1] == OPEN))
+                        grasseast(x, y, z);
+        }
+        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
+        {
+                if(tiles[z][y][x] == GRAS && (y == TILESH-1 || tiles[z][y+1][x] == OPEN))
+                        grassbottom(x, y, z);
         }
 
         //draw enemies
