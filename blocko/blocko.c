@@ -13,7 +13,9 @@
 #define GL3_PROTOTYPES 1
 #include <GL/glew.h>
 #include <SDL.h>
-#include <SDL_image.h>
+#define STBI_NO_SIMD
+#define STB_IMAGE_IMPLEMENTATION
+#include "../_stb/stb_image.h"
 
 #define SCALE 3                    // x magnification
 #define W 1366                     // window width, height
@@ -30,15 +32,12 @@
 #define STARTPY (4*BS)             // ^
 #define STARTPZ 0                  // ^
 #define NR_PLAYERS 1
-#define NR_ENEMIES 8
 #define GRAV_JUMP 0
 #define GRAV_ZERO 24
 #define GRAV_MAX 42
 
-#define DIRT 45
 #define GRAS 46
 #define LASTSOLID GRAS // everything less than here is solid
-#define HALFCLIP 59    // this is half solid (upper half)
 #define OPEN 75        // invisible open, walkable space
 
 int gravity[] = { -30,-27,-24,-21,-19,-17,-15,-13,-11,-10,
@@ -46,14 +45,6 @@ int gravity[] = { -30,-27,-24,-21,-19,-17,-15,-13,-11,-10,
                    -2, -1, -1, -1,  0,  1,  2,  3,  4,  5,
                     6,  7,  8,  9, 10, 11, 12, 13, 14, 16,
                    18, 20, 22, };
-
-enum enemytypes {
-        PIG = 7,
-        PUFF = 12,
-};
-
-enum dir {NORTH, WEST, EAST, SOUTH};
-enum playerstates {PL_NORMAL, PL_HURT, PL_DYING, PL_DEAD};
 
 int tiles[TILESD][TILESH][TILESW];
 
@@ -73,28 +64,7 @@ struct player {
         int rvel;
         int grav;
         int ground;
-        int state;
-        int delay;
-        int frame;
-        int alive;
-        int hp;
-        int stun;
 } player[NR_PLAYERS];
-
-struct enemy {
-        struct box pos;
-        struct point vel;
-        int goingl;
-        int goingr;
-        int state;
-        int type;
-        int delay;
-        int frame;
-        int alive;
-        int hp;
-        int stun;
-        int freeze;
-} enemy[NR_ENEMIES];
 
 int idle_time = 30;
 int frame = 0;
@@ -124,7 +94,6 @@ void key_move(int down);
 void mouse_move();
 void mouse_button(int down);
 void update_player();
-void update_enemies();
 int move_player(int velx, int vely, int velz);
 int collide(struct box plyr, struct box block);
 int block_collide(int bx, int by, int bz, struct box plyr);
@@ -157,7 +126,6 @@ int main()
                 }
 
                 update_player();
-                update_enemies();
                 draw_stuff();
                 SDL_Delay(1000 / 60);
                 frame++;
@@ -184,41 +152,20 @@ void setup()
         glewInit();
         #endif
 
-	int texid = 0;
-	int mode;
- 
-        surf = IMG_Load("res/top.png");
-	glGenTextures(1, &texid);
-	glBindTexture(GL_TEXTURE_2D, texid);
-	printf("texid %d\n", texid);
-	mode = surf->format->BytesPerPixel == 4 ? GL_RGBA : GL_RGB;
-	glTexImage2D(GL_TEXTURE_2D, 0, mode, surf->w, surf->h, 0, mode, GL_UNSIGNED_BYTE, surf->pixels);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-        surf = IMG_Load("res/side.png");
-	glGenTextures(1, &texid);
-	glBindTexture(GL_TEXTURE_2D, texid);
-	printf("texid %d\n", texid);
-	mode = surf->format->BytesPerPixel == 4 ? GL_RGBA : GL_RGB;
-        printf("bytes %d, rmask %x, gmask %x, bmask %x, amask %x\n",
-                        surf->format->BytesPerPixel,
-                        surf->format->Rmask,
-                        surf->format->Gmask,
-                        surf->format->Bmask,
-                        surf->format->Amask);
-	glTexImage2D(GL_TEXTURE_2D, 0, mode, surf->w, surf->h, 0, mode, GL_UNSIGNED_BYTE, surf->pixels);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-        surf = IMG_Load("res/bottom.png");
-	glGenTextures(1, &texid);
-	glBindTexture(GL_TEXTURE_2D, texid);
-	printf("texid %d\n", texid);
-	mode = surf->format->BytesPerPixel == 4 ? GL_RGBA : GL_RGB;
-	glTexImage2D(GL_TEXTURE_2D, 0, mode, surf->w, surf->h, 0, mode, GL_UNSIGNED_BYTE, surf->pixels);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        // load all the textures
+        int x, y, n, mode, texid = 0;
+        unsigned char *pixels;
+        char *files[] = { "res/top.png", "res/side.png", "res/bottom.png", "" };
+        for(int f = 0; files[f][0]; f++)
+        {
+                pixels = stbi_load(files[f], &x, &y, &n, 0);
+                glGenTextures(1, &texid);
+                glBindTexture(GL_TEXTURE_2D, texid);
+                mode = n == 4 ? GL_RGBA : GL_RGB;
+                glTexImage2D(GL_TEXTURE_2D, 0, mode, x, y, 0, mode, GL_UNSIGNED_BYTE, pixels);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        }
 
         SDL_SetRelativeMouseMode(SDL_TRUE);
 }
@@ -248,12 +195,8 @@ void key_move(int down)
                         player[0].goingr = down;
                         break;
                 case SDLK_SPACE:
-                        if(player[0].state == PL_NORMAL
-                                && player[0].ground
-                                && down)
-                        {
+                        if(player[0].ground && down)
                                 player[0].grav = GRAV_JUMP;
-                        }
                         break;
                 case SDLK_ESCAPE:
                         SDL_SetRelativeMouseMode(SDL_FALSE);
@@ -303,7 +246,6 @@ void mouse_button(int down)
 void new_game()
 {
         memset(player, 0, sizeof player);
-        player[0].alive = 1;
         player[0].pos.x = STARTPX;
         player[0].pos.y = STARTPY;
         player[0].pos.z = STARTPZ;
@@ -318,7 +260,6 @@ void new_game()
         player[0].rvel = 0;
         player[0].yaw = 3.1415926535 * 0.5;
         player[0].pitch = 0;
-        player[0].hp = 3*4;
         player[0].grav = GRAV_ZERO;
         load_level();
 }
@@ -340,47 +281,15 @@ void load_level()
                 if(x == 7 && z + y > 10 && z < 14)
                         tiles[z][y][x] = GRAS;
         }
-
-        //load enemies
-        memset(enemy, 0, sizeof enemy);
-        for(int i = 0; i < NR_ENEMIES && i < 3; i++)
-        {
-                enemy[i].type = PIG;
-                enemy[i].alive = 1;
-                enemy[i].hp = 3;
-                enemy[i].freeze = 50;
-
-                //find a good spawn position
-                int x = i*4 + 2;
-                int y = 0;
-                int z = 0;
-                enemy[i].pos = (struct box){BS*x, BS*y + BS2, BS*z, BS, BS2, BS};
-        }
 }
 
 void update_player()
 {
         struct player *p = player + 0;
 
-        if(player[0].stun > 0)
-                player[0].stun--;
-
-        if(player[0].state == PL_DEAD || player[0].pos.y > TILESH*BS + 6000)
+        if(player[0].pos.y > TILESH*BS + 6000)
         {
-                if(player[0].stun < 1)
-                        new_game();
-                return;
-        }
-
-        if(player[0].state == PL_DYING)
-        {
-                if(player[0].stun < 1)
-                {
-                        player[0].alive = 0;
-                        player[0].state = PL_DEAD;
-                        player[0].stun = 100;
-                }
-
+                new_game();
                 return;
         }
 
@@ -435,109 +344,6 @@ void update_player()
         if(p->ground)
                 p->grav = GRAV_ZERO;
 
-        //check for enemy collisions
-        for(int i = 0; i < NR_ENEMIES; i++)
-        {
-                if(player[0].alive && enemy[i].alive &&
-                                player[0].state != PL_DYING &&
-                                player[0].stun < 1 &&
-                                enemy[i].stun < 1 &&
-                                enemy[i].type != PUFF &&
-                                collide(player[0].pos, enemy[i].pos))
-                {
-                        if(--player[0].hp <= 0)
-                        {
-                                player[0].state = PL_DYING;
-                                player[0].stun = 100;
-                        }
-                        else
-                        {
-                                player[0].stun = 50;
-                        }
-                }
-        }
-}
-
-void update_enemies()
-{
-        for(int i = 0; i < NR_ENEMIES; i++)
-        {
-                struct enemy *e = enemy + i;
-                if(!enemy[i].alive)
-                        continue;
-
-                if(enemy[i].stun > 0)
-                        enemy[i].stun--;
-
-                if(enemy[i].freeze > 0)
-                {
-                        enemy[i].freeze--;
-                        continue;
-                }
-
-                if(enemy[i].vel.y < 10)
-                        enemy[i].vel.y += 1;
-
-                if(enemy[i].goingr)
-                        enemy[i].vel.x = 1;
-                else if(enemy[i].goingl)
-                        enemy[i].vel.x = -1;
-                else
-                        enemy[i].vel.x = 1;
-
-                struct box newpos = enemy[i].pos;
-                newpos.y += enemy[i].vel.y;
-
-                // try falling
-                if(world_collide(newpos))
-                {
-                        if(!enemy[i].goingl)
-                                enemy[i].goingr = 1;
-                        enemy[i].vel.y = 0;
-                }
-                else
-                {
-                        enemy[i].pos = newpos;
-                }
-
-                newpos = enemy[i].pos;
-                newpos.x += enemy[i].vel.x;
-
-                if(world_collide(newpos))
-                {
-                        if(enemy[i].goingr)
-                        {
-                                enemy[i].goingl = 1;
-                                enemy[i].goingr = 0;
-                        }
-                        else
-                        {
-                                enemy[i].goingl = 0;
-                                enemy[i].goingr = 1;
-                        }
-                }
-                else
-                {
-                        enemy[i].pos = newpos;
-                }
-
-                //check if enemy fell too far
-                if(enemy[i].pos.y > TILESH*BS + 100)
-                {
-                        enemy[i].pos.y = 0;
-                }
-
-                // or went left/right too far
-                if(enemy[i].pos.x > TILESW*BS + 100)
-                {
-                        enemy[i].pos.x = 0;
-                }
-
-                if(enemy[i].pos.x < -100)
-                {
-                        enemy[i].pos.x = TILESW*BS-BS;
-                }
-        }
 }
 
 //collide a box with nearby world tiles
@@ -650,9 +456,6 @@ int block_collide(int bx, int by, int bz, struct box box)
         if(tiles[bz][by][bx] <= LASTSOLID)
                 return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS, BS});
 
-        if(tiles[bz][by][bx] == HALFCLIP)
-                return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS2-1 , BS});
-
         return 0;
 }
 
@@ -756,30 +559,6 @@ void grassbottom(float x, float y, float z)
         glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
         glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
 	glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
-        glEnd();
-}
-
-void redbox(float x, float y, float z)
-{
-        glBegin(GL_TRIANGLE_FAN);
-        glColor3f(0.7, 0.1, 0.1); glVertex3f(x*BS   ,y*BS   ,z*BS   );
-        glColor3f(0.8, 0.1, 0.1); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glColor3f(0.8, 0.1, 0.2); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
-        glColor3f(0.7, 0.1, 0.2); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
-        glColor3f(0.7, 0.2, 0.2); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
-        glColor3f(0.7, 0.2, 0.1); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
-        glColor3f(0.8, 0.2, 0.1); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
-        glColor3f(0.8, 0.1, 0.1); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glEnd();
-        glBegin(GL_TRIANGLE_FAN);
-        glColor3f(0.8, 0.2, 0.2); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
-        glColor3f(0.7, 0.2, 0.2); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
-        glColor3f(0.7, 0.2, 0.1); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
-        glColor3f(0.8, 0.2, 0.1); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
-        glColor3f(0.8, 0.1, 0.1); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glColor3f(0.8, 0.1, 0.2); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
-        glColor3f(0.7, 0.1, 0.2); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
-        glColor3f(0.7, 0.2, 0.2); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
         glEnd();
 }
 
@@ -916,46 +695,6 @@ void draw_stuff()
                         grassbottom(x, y, z);
         }
 
-        //draw enemies
-        for(int i = 0; i < NR_ENEMIES; i++)
-        {
-                if(!enemy[i].alive)
-                        continue;
-
-                if(frame%10 == 0) switch(enemy[i].type)
-                {
-                        case PIG:
-                                enemy[i].frame = (enemy[i].frame + 1) % 4;
-                                if(enemy[i].frame == 0 && rand()%10 == 0)
-                                        enemy[i].frame = 4;
-                                break;
-                }
-
-                struct box dest = enemy[i].pos;
-                dest.y -= BS2;
-                dest.h += BS2;
-
-                if(enemy[i].freeze)
-                {
-                        int f = 4 - enemy[i].freeze;
-                        if(f < 0) f = 0;
-                }
-                else if(enemy[i].type == PUFF)
-                {
-                        if(frame%8 == 0 && ++enemy[i].frame > 4)
-                                enemy[i].alive = 0;
-                }
-                else if(enemy[i].stun > 0)
-                {
-                        if((frame/2)%2) continue;
-
-                        dest.x += (rand()%3 - 1) * SCALE;
-                        dest.y += (rand()%3 - 1) * SCALE;
-                }
-                redbox(dest.x / BS, dest.y / BS, dest.z / BS);
-        }
-
-        //glDisable(GL_DEPTH_TEST);
         glDisable(GL_TEXTURE_2D);
         glDisable(GL_CULL_FACE);
         blacklines(target_x, target_y, target_z);
