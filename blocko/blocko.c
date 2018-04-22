@@ -99,6 +99,7 @@ int collide(struct box plyr, struct box block);
 int block_collide(int bx, int by, int bz, struct box plyr);
 int world_collide(struct box plyr);
 void draw_stuff();
+void debrief();
 
 //the entry point and main game loop
 int main()
@@ -127,6 +128,7 @@ int main()
 
                 update_player();
                 draw_stuff();
+                debrief();
                 SDL_Delay(1000 / 60);
                 frame++;
         }
@@ -153,7 +155,8 @@ void setup()
         #endif
 
         // load all the textures
-        int x, y, n, mode, texid = 0;
+        int x, y, n, mode;
+        GLuint texid = 0;
         unsigned char *pixels;
         char *files[] = { "res/top.png", "res/side.png", "res/bottom.png", "" };
         for(int f = 0; files[f][0]; f++)
@@ -381,7 +384,7 @@ int move_player(int velx, int vely, int velz)
                 struct box testpos = player[0].pos;
                 int amt;
 
-                if((!velx && !velz) || (last_was_x || last_was_z) && vely)
+                if((!velx && !velz) || ((last_was_x || last_was_z) && vely))
                 {
                         amt = vely > 0 ? 1 : -1;
                         testpos.y += amt;
@@ -389,7 +392,7 @@ int move_player(int velx, int vely, int velz)
                         last_was_x = 0;
                         last_was_z = 0;
                 }
-                else if(!velz || last_was_z && velx)
+                else if(!velz || (last_was_z && velx))
                 {
                         amt = velx > 0 ? 1 : -1;
                         testpos.x += amt;
@@ -700,4 +703,9 @@ void draw_stuff()
         blacklines(target_x, target_y, target_z);
 
         SDL_GL_SwapWindow(win);
+}
+
+void debrief()
+{
+        printf("%f %f\n", player[0].pos.x, player[0].pos.z);
 }
