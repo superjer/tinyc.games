@@ -11,7 +11,13 @@
 #include <time.h>
 #include <math.h>
 #define GL3_PROTOTYPES 1
+
+#ifdef __APPLE__
+#include <gl.h>
+#else
 #include <GL/glew.h>
+#endif
+
 #include <SDL.h>
 #define STBI_NO_SIMD
 #define STB_IMAGE_IMPLEMENTATION
