@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#define SDL_DISABLE_IMMINTRIN_H
 #include <SDL.h>
 #include <SDL_ttf.h>
 
@@ -119,7 +120,7 @@ void new_game()
 
 void new_car()
 {
-        speed[cur] = 60.0f + rand() % 40;
+        speed[cur] = 40.0f + rand() % 30;
         lateral[cur] = 0.0f;
         angle[cur] = M_PI;
         car_x[cur] = 4*W/5;
