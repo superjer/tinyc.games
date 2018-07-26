@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#define SDL_DISABLE_IMMINTRIN_H
 #include <SDL.h>
 #include <SDL_ttf.h>
 
