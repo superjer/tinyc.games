@@ -18,6 +18,7 @@
 #include <GL/glew.h>
 #endif
 
+#define SDL_DISABLE_IMMINTRIN_H
 #include <SDL.h>
 #define STBI_NO_SIMD
 #define STB_IMAGE_IMPLEMENTATION
