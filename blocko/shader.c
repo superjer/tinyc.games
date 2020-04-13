@@ -87,9 +87,6 @@ void main(void)\n\
 	glDeleteShader(vertex);
 	glDeleteShader(fragment);
 	glDeleteShader(geometry);
-
-        // just use it now!
-	glUseProgram(ID);
 }
 
 /* uniform examples

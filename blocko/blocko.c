@@ -94,6 +94,8 @@ SDL_Texture *top;
 SDL_Texture *side;
 SDL_Texture *bottom;
 
+unsigned int vbo, vao;
+
 //prototypes
 void setup();
 void resize();
@@ -181,6 +183,67 @@ void setup()
 
         load_shaders();
 
+        float verts[] = {
+                -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+                 0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
+                 0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+                 0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+                -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+                -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+
+                -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+                 0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+                 0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+                 0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+                -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
+                -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+
+                -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+                -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+                -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+                -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+                -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+                -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+                 0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+                 0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+                 0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+                 0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+                 0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+                 0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+                -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+                 0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
+                 0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+                 0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
+                -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+                -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+
+                -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
+                 0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
+                 0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+                 0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+                -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
+                -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
+        };
+
+        glGenVertexArrays(1, &vao);
+        glGenBuffers(1, &vbo);
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+        // position
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof (float), NULL);
+        glEnableVertexAttribArray(0);
+        // texture
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof (float), (void*)(3 * sizeof (float)));
+        glEnableVertexAttribArray(1);
+
+        // set texture uniforms
+	glUseProgram(ID);
+        glUniform1i(glGetUniformLocation(ID, "texture1"), 0);
+        glUniform1i(glGetUniformLocation(ID, "texture2"), 1);
+
         SDL_SetRelativeMouseMode(SDL_TRUE);
 }
 
@@ -216,6 +279,8 @@ void key_move(int down)
                         SDL_SetRelativeMouseMode(SDL_FALSE);
                         mouselook = 0;
                         break;
+                case SDLK_q:
+                        exit(-1);
         }
 }
 
@@ -629,12 +694,38 @@ void draw_stuff()
         glViewport(0, 0, screenw, screenh);
         glClearColor(0.3, 0.9, 1.0, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        float frustw = 9.0 * screenw / screenh;
-        glFrustum(-frustw, frustw, -9, 9, 16, 9999);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, 1);
+	glUseProgram(ID);
+
+        //glMatrixMode(GL_PROJECTION);
+        //glLoadIdentity();
+        float near = 16.f;
+        float far = 9999.f;
+        float frustw = 9.f * screenw / screenh;
+        //glFrustum(-frustw, frustw, -9, 9, 16, 9999);
+        float FM00 = (2.f * near) / (frustw - -frustw);
+        float FM11 = -(2.f * near) / (-9 - 9);
+        float A = 0;
+        float B = 0;
+        float C = -(far + near) / (far - near);
+        float D = -(2.f * far * near) / (far - near);
+        float frustM[] = {
+                FM00,    0, 0,  0,
+                   0, FM11, 0,  0,
+                   A,    B, C, -1,
+                   0,    0, D,  0
+        };
+        //float ident[] = {
+        //        1, 0, 0, 0,
+        //        0, 1, 0, 0,
+        //        0, 0, 1, 0,
+        //        0, 0, 0, 1
+        //};
+        glUniformMatrix4fv(glGetUniformLocation(ID, "projection"), 1, GL_FALSE, frustM);
 
         float eye0, eye1, eye2;
         eye0 = player[0].pos.x + PLYR_W / 2;
@@ -670,7 +761,7 @@ void draw_stuff()
         u1 = z2*f0 - z0*f2;
         u2 = z0*f1 - z1*f0;
 
-        float M[] = {
+        float viewM[] = {
                 s0, u0,-f0, 0,
                 s1, u1,-f1, 0,
                 s2, u2,-f2, 0,
@@ -679,12 +770,47 @@ void draw_stuff()
 
         rayshot(eye0, eye1, eye2, f0, f1, f2);
 
-        glMultMatrixf(M);
-        glTranslated(-eye0, -eye1, -eye2);
+        //glMatrixMode(GL_MODELVIEW);
+        //glLoadIdentity();
+        //glMultMatrixf(viewM);
+        //glTranslated(-eye0, -eye1, -eye2);
+        // translate by hand
+        viewM[12] = (viewM[0] * -eye0) + (viewM[4] * -eye1) + (viewM[ 8] * -eye2);
+        viewM[13] = (viewM[1] * -eye0) + (viewM[5] * -eye1) + (viewM[ 9] * -eye2);
+        viewM[14] = (viewM[2] * -eye0) + (viewM[6] * -eye1) + (viewM[10] * -eye2);
+        //glGetFloatv(GL_MODELVIEW_MATRIX, ident);
+        //printf("G %f %f %f %f\n", ident[ 0], ident[ 1], ident[ 2], ident[ 3]);
+        //printf("G %f %f %f %f\n", ident[ 4], ident[ 5], ident[ 6], ident[ 7]);
+        //printf("G %f %f %f %f\n", ident[ 8], ident[ 9], ident[10], ident[11]);
+        //printf("G %f %f %f %f\n", ident[12], ident[13], ident[14], ident[15]);
+        //printf("-----------\n");
+        //printf("> %f %f %f %f\n", viewM[ 0], viewM[ 1], viewM[ 2], viewM[ 3]);
+        //printf("> %f %f %f %f\n", viewM[ 4], viewM[ 5], viewM[ 6], viewM[ 7]);
+        //printf("> %f %f %f %f\n", viewM[ 8], viewM[ 9], viewM[10], viewM[11]);
+        //printf("> %f %f %f %f\n", viewM[12], viewM[13], viewM[14], viewM[15]);
+        //printf("-----------\n");
+
+        glUniformMatrix4fv(glGetUniformLocation(ID, "view"), 1, GL_FALSE, viewM);
+
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_TEXTURE_2D);
         glEnable(GL_CULL_FACE);
         glDepthFunc(GL_LEQUAL);
+
+        // fake
+        glBindVertexArray(vao);
+        for (unsigned int i = 0; i < 10; i++)
+        {
+                int j = 9 - (int)i;
+                float M[] = {
+                        1, 0, 0, 0,
+                        0, 1, 0, 0,
+                        0, 0, 1, 0,
+                        j*100, j*10, j*10,    1
+                };
+                glUniformMatrix4fv(glGetUniformLocation(ID, "model"), 1, GL_FALSE, M);
+                glDrawArrays(GL_TRIANGLES, 0, 36);
+        }
 
         // draw world
         for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
@@ -718,5 +844,5 @@ void draw_stuff()
 
 void debrief()
 {
-        printf("%f %f\n", player[0].pos.x, player[0].pos.z);
+        //printf("%f %f\n", player[0].pos.x, player[0].pos.z);
 }
