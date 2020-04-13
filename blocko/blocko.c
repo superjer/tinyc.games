@@ -1,4 +1,4 @@
-// Blocko -- http://tinyc.games -- (c) 2018 Jer Wilson
+  // Blocko -- http://tinyc.games -- (c) 2018 Jer Wilson
 //
 // Blocko is a barebones 3D platformer using OpenGL via GLEW.
 //
@@ -23,6 +23,8 @@
 #define STBI_NO_SIMD
 #define STB_IMAGE_IMPLEMENTATION
 #include "../_stb/stb_image.h"
+
+#include "./shader.c"
 
 #define SCALE 3                    // x magnification
 #define W 1366                     // window width, height
@@ -176,6 +178,8 @@ void setup()
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         }
+
+        load_shaders();
 
         SDL_SetRelativeMouseMode(SDL_TRUE);
 }
