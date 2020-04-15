@@ -15,9 +15,13 @@ void load_shaders()
 	const char *vertex_code = "\
 #version 330 core\n\
 layout (location = 0) in vec3 aPos;\n\
-layout (location = 1) in vec2 aTexCoord;\n\
+layout (location = 1) in float aTMix;\n\
+layout (location = 2) in vec2 aTexCoord;\n\
+layout (location = 3) in vec3 aColor;\n\
 \n\
 out vec2 TexCoord;\n\
+flat out int TMix;\n\
+out vec3 Color;\n\
 \n\
 uniform mat4 model;\n\
 uniform mat4 view;\n\
@@ -27,6 +31,8 @@ void main()\n\
 {\n\
     gl_Position = projection * view * model * vec4(aPos, 1.0f);\n\
     TexCoord = vec2(aTexCoord.x, 1.0 - aTexCoord.y);\n\
+    TMix = int(aTMix);\n\
+    Color = aColor;\n\
 }\n\
 ";
 
@@ -35,13 +41,21 @@ void main()\n\
 out vec4 FragColor;\n\
 \n\
 in vec2 TexCoord;\n\
+flat in int TMix;\n\
+in vec3 Color;\n\
 \n\
 uniform sampler2D texture1;\n\
 uniform sampler2D texture2;\n\
+uniform sampler2D texture3;\n\
 \n\
 void main()\n\
 {\n\
-    FragColor = mix(texture(texture1, TexCoord), texture(texture2, TexCoord), 0.2);\n\
+    if (TMix == 1)\n\
+        FragColor = texture(texture1, TexCoord) * vec4(Color, 0);\n\
+    else if(TMix == 2)\n\
+        FragColor = texture(texture2, TexCoord) * vec4(Color, 0);\n\
+    else if(TMix == 3)\n\
+        FragColor = texture(texture3, TexCoord) * vec4(Color, 0);\n\
 }\n\
 ";
 
@@ -81,7 +95,7 @@ void main(void)\n\
 	ID = glCreateProgram();
 	glAttachShader(ID, vertex);
 	glAttachShader(ID, fragment);
-	glAttachShader(ID, geometry);
+	//glAttachShader(ID, geometry); // skip geometry shader for now (conflict with QUADS?)
 	glLinkProgram(ID);
 	check_compile_errors(ID, 'P');
 	glDeleteShader(vertex);

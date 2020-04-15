@@ -1,4 +1,4 @@
-  // Blocko -- http://tinyc.games -- (c) 2018 Jer Wilson
+// Blocko -- http://tinyc.games -- (c) 2018 Jer Wilson
 //
 // Blocko is a barebones 3D platformer using OpenGL via GLEW.
 //
@@ -24,14 +24,15 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "../_stb/stb_image.h"
 
+#include "./timer.c"
 #include "./shader.c"
 
 #define SCALE 3                    // x magnification
 #define W 1366                     // window width, height
 #define H 768                      // ^
-#define TILESW 45                  // total level width, height
+#define TILESW 250                 // total level width, height
 #define TILESH 11                  // ^
-#define TILESD 45                  // ^
+#define TILESD 250                 // ^
 #define BS (20*SCALE)              // block size
 #define BS2 (BS/2)                 // block size in half
 #define PLYR_W (16*SCALE)          // physical width and height of the player
@@ -48,6 +49,10 @@
 #define GRAS 46
 #define LASTSOLID GRAS // everything less than here is solid
 #define OPEN 75        // invisible open, walkable space
+
+#define VERTEX_BUFLEN 1000000
+#define V(a,b,c,d,e,f,g,h,i) { X(a) X(b) X(c) X(d) X(e) X(f) X(g) X(h) X(i) }
+#define X(a) { *v++ = a; }
 
 int gravity[] = { -30,-27,-24,-21,-19,-17,-15,-13,-11,-10,
                    -9, -8, -7, -6, -5, -4, -4, -3, -3, -2,
@@ -75,7 +80,6 @@ struct player {
         int ground;
 } player[NR_PLAYERS];
 
-int idle_time = 30;
 int frame = 0;
 
 int mouselook = 1;
@@ -90,11 +94,11 @@ SDL_GLContext ctx;
 SDL_Renderer *renderer;
 SDL_Surface *surf;
 
-SDL_Texture *top;
-SDL_Texture *side;
-SDL_Texture *bottom;
-
 unsigned int vbo, vao;
+float vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding
+float *v_limit = vbuf + VERTEX_BUFLEN;
+float *v = vbuf;
+#define VSTRIDE 9
 
 //prototypes
 void setup();
@@ -140,7 +144,7 @@ int main()
                 update_player();
                 draw_stuff();
                 debrief();
-                SDL_Delay(1000 / 60);
+                //SDL_Delay(1000 / 60);
                 frame++;
         }
 }
@@ -174,6 +178,7 @@ void setup()
         {
                 pixels = stbi_load(files[f], &x, &y, &n, 0);
                 glGenTextures(1, &texid);
+                printf("texid: %d\n", texid);
                 glBindTexture(GL_TEXTURE_2D, texid);
                 mode = n == 4 ? GL_RGBA : GL_RGB;
                 glTexImage2D(GL_TEXTURE_2D, 0, mode, x, y, 0, mode, GL_UNSIGNED_BYTE, pixels);
@@ -183,66 +188,35 @@ void setup()
 
         load_shaders();
 
-        float verts[] = {
-                -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
-                 0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
-                 0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-                 0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-                -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
-                -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
-
-                -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-                 0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
-                 0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
-                 0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
-                -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
-                -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-
-                -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-                -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-                -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-                -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-                -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-                -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-
-                 0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-                 0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-                 0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-                 0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-                 0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-                 0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-
-                -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-                 0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
-                 0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
-                 0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
-                -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-                -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-
-                -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
-                 0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-                 0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-                 0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-                -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
-                -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
-        };
-
         glGenVertexArrays(1, &vao);
         glGenBuffers(1, &vbo);
         glBindVertexArray(vao);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+        //glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STATIC_DRAW);
         // position
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof (float), NULL);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 9 * sizeof (float), (void*)(0 * sizeof (float)));
         glEnableVertexAttribArray(0);
-        // texture
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof (float), (void*)(3 * sizeof (float)));
+        // tmix
+        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 9 * sizeof (float), (void*)(3 * sizeof (float)));
         glEnableVertexAttribArray(1);
+        // texture coords
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 9 * sizeof (float), (void*)(4 * sizeof (float)));
+        glEnableVertexAttribArray(2);
+        // color
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 9 * sizeof (float), (void*)(6 * sizeof (float)));
+        glEnableVertexAttribArray(3);
 
-        // set texture uniforms
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, 1);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, 2);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, 3);
 	glUseProgram(ID);
+        // set texture uniforms
         glUniform1i(glGetUniformLocation(ID, "texture1"), 0);
         glUniform1i(glGetUniformLocation(ID, "texture2"), 1);
+        glUniform1i(glGetUniformLocation(ID, "texture3"), 2);
 
         SDL_SetRelativeMouseMode(SDL_TRUE);
 }
@@ -278,6 +252,9 @@ void key_move(int down)
                 case SDLK_ESCAPE:
                         SDL_SetRelativeMouseMode(SDL_FALSE);
                         mouselook = 0;
+                        break;
+                case SDLK_j:
+                        player[0].pos.y -= 1000;
                         break;
                 case SDLK_q:
                         exit(-1);
@@ -541,7 +518,6 @@ int block_collide(int bx, int by, int bz, struct box box)
 void blacklines(float x, float y, float z)
 {
         glBegin(GL_LINE_STRIP);
-        glColor3f(0, 0, 0);
         glVertex3f(x*BS   ,y*BS   ,z*BS   ); //top
         glVertex3f(x*BS+BS,y*BS   ,z*BS   );
         glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
@@ -565,80 +541,50 @@ void blacklines(float x, float y, float z)
 
 void grasstop(float x, float y, float z)
 {
-	glBindTexture(GL_TEXTURE_2D, 1);
-        glColor3f(0.9, 0.9, 0.9); 
-
-        glBegin(GL_TRIANGLE_FAN);
-	glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS   ,z*BS   );
-        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
-        glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
-        glEnd();
+        V(x*BS   , y*BS   , z*BS   , 1, 0, 0, 0.9f, 0.9f, 0.9f); 
+        V(x*BS+BS, y*BS   , z*BS   , 1, 1, 0, 0.9f, 0.9f, 0.9f); 
+        V(x*BS+BS, y*BS   , z*BS+BS, 1, 1, 1, 0.9f, 0.9f, 0.9f); 
+        V(x*BS   , y*BS   , z*BS+BS, 1, 0, 1, 0.9f, 0.9f, 0.9f); 
 }
 
-void grasssouth(float x, float y, float z)
+void grasssouth(float x, float y, float z, int buried)
 {
-	glBindTexture(GL_TEXTURE_2D, 2);
-        glColor3f(0.7, 0.7, 0.7); 
-
-        glBegin(GL_TRIANGLE_FAN);
-	glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
-        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
-        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS   ,z*BS   );
-        glEnd();
+	V(x*BS   , y*BS+BS, z*BS   , 2 + buried, 0, 0, 0.7f, 0.7f, 0.7f);
+        V(x*BS+BS, y*BS+BS, z*BS   , 2 + buried, 1, 0, 0.7f, 0.7f, 0.7f);
+        V(x*BS+BS, y*BS   , z*BS   , 2 + buried, 1, 1, 0.7f, 0.7f, 0.7f);
+        V(x*BS   , y*BS   , z*BS   , 2 + buried, 0, 1, 0.7f, 0.7f, 0.7f);
 }
 
-void grassnorth(float x, float y, float z)
+void grassnorth(float x, float y, float z, int buried)
 {
-	glBindTexture(GL_TEXTURE_2D, 2);
-        glColor3f(0.7, 0.7, 0.7); 
-
-        glBegin(GL_TRIANGLE_FAN);
-        glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
-        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
-        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
-	glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
-        glEnd();
+        V(x*BS   , y*BS   , z*BS+BS, 2 + buried, 0, 1, 0.7f, 0.7f, 0.7f);
+        V(x*BS+BS, y*BS   , z*BS+BS, 2 + buried, 1, 1, 0.7f, 0.7f, 0.7f);
+        V(x*BS+BS, y*BS+BS, z*BS+BS, 2 + buried, 1, 0, 0.7f, 0.7f, 0.7f);
+	V(x*BS   , y*BS+BS, z*BS+BS, 2 + buried, 0, 0, 0.7f, 0.7f, 0.7f);
 }
 
-void grasswest(float x, float y, float z)
+void grasswest(float x, float y, float z, int buried)
 {
-	glBindTexture(GL_TEXTURE_2D, 2);
-        glColor3f(0.5, 0.5, 0.5); 
-
-        glBegin(GL_TRIANGLE_FAN);
-        glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS   ,z*BS   );
-        glTexCoord2i(1, 0); glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
-        glTexCoord2i(1, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
-	glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
-        glEnd();
+        V(x*BS   , y*BS   , z*BS   , 2 + buried, 0, 1, 0.5f, 0.5f, 0.5f);
+        V(x*BS   , y*BS   , z*BS+BS, 2 + buried, 1, 1, 0.5f, 0.5f, 0.5f);
+        V(x*BS   , y*BS+BS, z*BS+BS, 2 + buried, 1, 0, 0.5f, 0.5f, 0.5f);
+	V(x*BS   , y*BS+BS, z*BS   , 2 + buried, 0, 0, 0.5f, 0.5f, 0.5f);
 }
 
-void grasseast(float x, float y, float z)
+void grasseast(float x, float y, float z, int buried)
 {
-	glBindTexture(GL_TEXTURE_2D, 2);
-        glColor3f(0.5, 0.5, 0.5); 
-
-        glBegin(GL_TRIANGLE_FAN);
-	glTexCoord2i(0, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
-        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
-        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
-        glTexCoord2i(0, 0); glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glEnd();
+	V(x*BS+BS, y*BS+BS, z*BS   , 2 + buried, 0, 0, 0.5f, 0.5f, 0.5f);
+        V(x*BS+BS, y*BS+BS, z*BS+BS, 2 + buried, 1, 0, 0.5f, 0.5f, 0.5f);
+        V(x*BS+BS, y*BS   , z*BS+BS, 2 + buried, 1, 1, 0.5f, 0.5f, 0.5f);
+        V(x*BS+BS, y*BS   , z*BS   , 2 + buried, 0, 1, 0.5f, 0.5f, 0.5f);
 }
 
 void grassbottom(float x, float y, float z)
 {
-	glBindTexture(GL_TEXTURE_2D, 3);
-        glColor3f(0.3, 0.3, 0.3); 
-
-        glBegin(GL_TRIANGLE_FAN);
-        glTexCoord2i(0, 1); glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
-        glTexCoord2i(1, 1); glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
-        glTexCoord2i(1, 0); glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
-	glTexCoord2i(0, 0); glVertex3f(x*BS   ,y*BS+BS,z*BS   );
-        glEnd();
+        V(x*BS   , y*BS+BS, z*BS+BS, 3, 0, 1, 0.3f, 0.3f, 0.3f);
+        V(x*BS+BS, y*BS+BS, z*BS+BS, 3, 1, 1, 0.3f, 0.3f, 0.3f);
+        V(x*BS+BS, y*BS+BS, z*BS   , 3, 1, 0, 0.3f, 0.3f, 0.3f);
+	V(x*BS   , y*BS+BS, z*BS   , 3, 0, 0, 0.3f, 0.3f, 0.3f);
 }
 
 //select block from eye following vector f
@@ -695,18 +641,10 @@ void draw_stuff()
         glClearColor(0.3, 0.9, 1.0, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, 1);
-	glUseProgram(ID);
-
-        //glMatrixMode(GL_PROJECTION);
-        //glLoadIdentity();
+        // compute proj matrix
         float near = 16.f;
-        float far = 9999.f;
+        float far = 199999.f;
         float frustw = 9.f * screenw / screenh;
-        //glFrustum(-frustw, frustw, -9, 9, 16, 9999);
         float FM00 = (2.f * near) / (frustw - -frustw);
         float FM11 = -(2.f * near) / (-9 - 9);
         float A = 0;
@@ -719,14 +657,9 @@ void draw_stuff()
                    A,    B, C, -1,
                    0,    0, D,  0
         };
-        //float ident[] = {
-        //        1, 0, 0, 0,
-        //        0, 1, 0, 0,
-        //        0, 0, 1, 0,
-        //        0, 0, 0, 1
-        //};
         glUniformMatrix4fv(glGetUniformLocation(ID, "projection"), 1, GL_FALSE, frustM);
 
+        // compute view matrix
         float eye0, eye1, eye2;
         eye0 = player[0].pos.x + PLYR_W / 2;
         eye1 = player[0].pos.y - BS * 3 / 4;
@@ -760,7 +693,6 @@ void draw_stuff()
         u0 = z1*f2 - z2*f1;
         u1 = z2*f0 - z0*f2;
         u2 = z0*f1 - z1*f0;
-
         float viewM[] = {
                 s0, u0,-f0, 0,
                 s1, u1,-f1, 0,
@@ -768,81 +700,92 @@ void draw_stuff()
                  0,  0,  0, 1
         };
 
+        // find where we are pointing at
         rayshot(eye0, eye1, eye2, f0, f1, f2);
 
-        //glMatrixMode(GL_MODELVIEW);
-        //glLoadIdentity();
-        //glMultMatrixf(viewM);
-        //glTranslated(-eye0, -eye1, -eye2);
         // translate by hand
         viewM[12] = (viewM[0] * -eye0) + (viewM[4] * -eye1) + (viewM[ 8] * -eye2);
         viewM[13] = (viewM[1] * -eye0) + (viewM[5] * -eye1) + (viewM[ 9] * -eye2);
         viewM[14] = (viewM[2] * -eye0) + (viewM[6] * -eye1) + (viewM[10] * -eye2);
-        //glGetFloatv(GL_MODELVIEW_MATRIX, ident);
-        //printf("G %f %f %f %f\n", ident[ 0], ident[ 1], ident[ 2], ident[ 3]);
-        //printf("G %f %f %f %f\n", ident[ 4], ident[ 5], ident[ 6], ident[ 7]);
-        //printf("G %f %f %f %f\n", ident[ 8], ident[ 9], ident[10], ident[11]);
-        //printf("G %f %f %f %f\n", ident[12], ident[13], ident[14], ident[15]);
-        //printf("-----------\n");
-        //printf("> %f %f %f %f\n", viewM[ 0], viewM[ 1], viewM[ 2], viewM[ 3]);
-        //printf("> %f %f %f %f\n", viewM[ 4], viewM[ 5], viewM[ 6], viewM[ 7]);
-        //printf("> %f %f %f %f\n", viewM[ 8], viewM[ 9], viewM[10], viewM[11]);
-        //printf("> %f %f %f %f\n", viewM[12], viewM[13], viewM[14], viewM[15]);
-        //printf("-----------\n");
 
         glUniformMatrix4fv(glGetUniformLocation(ID, "view"), 1, GL_FALSE, viewM);
 
         glEnable(GL_DEPTH_TEST);
-        glEnable(GL_TEXTURE_2D);
         glEnable(GL_CULL_FACE);
         glDepthFunc(GL_LEQUAL);
 
-        // fake
-        glBindVertexArray(vao);
-        for (unsigned int i = 0; i < 10; i++)
-        {
-                int j = 9 - (int)i;
-                float M[] = {
-                        1, 0, 0, 0,
-                        0, 1, 0, 0,
-                        0, 0, 1, 0,
-                        j*100, j*10, j*10,    1
-                };
-                glUniformMatrix4fv(glGetUniformLocation(ID, "model"), 1, GL_FALSE, M);
-                glDrawArrays(GL_TRIANGLES, 0, 36);
-        }
+        // identity for model view for world drawing
+        float modelM[] = {
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1
+        };
+        glUniformMatrix4fv(glGetUniformLocation(ID, "model"), 1, GL_FALSE, modelM);
+
+        v = vbuf; // reset vertex buffer pointer
 
         // draw world
-        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
+        TIMER(buildvbo)
+        for (int x = 0; x < TILESW; x++) for (int y = 0; y < TILESH; y++) for (int z = 0; z < TILESD; z++)
         {
-                if(tiles[z][y][x] == GRAS && (y == 0 || tiles[z][y-1][x] == OPEN))
+                if (v >= v_limit) {
+                        TIMERSTOP(buildvbo)
+                        TIMER(glBufferData)
+                        //printf("buffer full, draw %ld verts\n", (v - vbuf) / VSTRIDE);
+                        glBufferData(GL_ARRAY_BUFFER, sizeof vbuf, vbuf, GL_STATIC_DRAW);
+                        TIMERSTOP(glBufferData)
+                        TIMER(glDrawArrays)
+                        glDrawArrays(GL_QUADS, 0, (v - vbuf) / VSTRIDE);
+                        TIMERSTOP(glDrawArrays);
+                        v = vbuf;
+                        TIMER(buildvbo)
+                }
+                if (tiles[z][y][x] == GRAS && (y == 0 || tiles[z][y-1][x] == OPEN))
                         grasstop(x, y, z);
-        }
-        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
-        {
-                if(tiles[z][y][x] == GRAS && (z == 0 || tiles[z-1][y][x] == OPEN))
-                        grasssouth(x, y, z);
-                if(tiles[z][y][x] == GRAS && (z == TILESD-1 || tiles[z+1][y][x] == OPEN))
-                        grassnorth(x, y, z);
-                if(tiles[z][y][x] == GRAS && (x == 0 || tiles[z][y][x-1] == OPEN))
-                        grasswest(x, y, z);
-                if(tiles[z][y][x] == GRAS && (x == TILESW-1 || tiles[z][y][x+1] == OPEN))
-                        grasseast(x, y, z);
-        }
-        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
-        {
-                if(tiles[z][y][x] == GRAS && (y == TILESH-1 || tiles[z][y+1][x] == OPEN))
+                if (tiles[z][y][x] == GRAS && (z == 0 || tiles[z-1][y][x] == OPEN))
+                        grasssouth(x, y, z, y && tiles[z][y-1][x] == GRAS);
+                if (tiles[z][y][x] == GRAS && (z == TILESD-1 || tiles[z+1][y][x] == OPEN))
+                        grassnorth(x, y, z, y && tiles[z][y-1][x] == GRAS);
+                if (tiles[z][y][x] == GRAS && (x == 0 || tiles[z][y][x-1] == OPEN))
+                        grasswest(x, y, z, y && tiles[z][y-1][x] == GRAS);
+                if (tiles[z][y][x] == GRAS && (x == TILESW-1 || tiles[z][y][x+1] == OPEN))
+                        grasseast(x, y, z, y && tiles[z][y-1][x] == GRAS);
+                if (tiles[z][y][x] == GRAS && (y == TILESH-1 || tiles[z][y+1][x] == OPEN))
                         grassbottom(x, y, z);
         }
+        TIMERSTOP(buildvbo)
 
-        glDisable(GL_TEXTURE_2D);
+        if (v > vbuf) {
+                //printf("done, draw %ld verts\n", (v - vbuf) / VSTRIDE);
+                TIMER(glBufferData)
+                glBufferData(GL_ARRAY_BUFFER, sizeof vbuf, vbuf, GL_STATIC_DRAW);
+                TIMERSTOP(glBufferData)
+                TIMER(glDrawArrays)
+                glDrawArrays(GL_QUADS, 0, (v - vbuf) / VSTRIDE);
+                TIMERSTOP(glDrawArrays)
+                v = vbuf;
+        }
+
         glDisable(GL_CULL_FACE);
         blacklines(target_x, target_y, target_z);
 
+        TIMER(swapwindow);
         SDL_GL_SwapWindow(win);
+        TIMERSTOP(swapwindow);
 }
 
 void debrief()
 {
-        //printf("%f %f\n", player[0].pos.x, player[0].pos.z);
+        static unsigned last_ticks = 0;
+        static unsigned last_frame = 0;
+        unsigned ticks = SDL_GetTicks();
+
+        if (ticks - last_ticks >= 1000) {
+                printf("%.1f FPS\n", 1000.f * ((float)frame - last_frame) / ((float)ticks - last_ticks) );
+                printf("player pos %0.0f %0.0f %0.0f\n", player[0].pos.x, player[0].pos.y, player[0].pos.z);
+                last_ticks = ticks;
+                last_frame = frame;
+                timer_print();
+        }
 }
