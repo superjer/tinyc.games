@@ -30,37 +30,49 @@
 #define SCALE 3                    // x magnification
 #define W 1366                     // window width, height
 #define H 768                      // ^
-#define TILESW 250                 // total level width, height
-#define TILESH 11                  // ^
-#define TILESD 250                 // ^
+#define TILESW 200                 // total level width, height
+#define TILESH 40                  // ^
+#define TILESD 200                 // ^
 #define BS (20*SCALE)              // block size
 #define BS2 (BS/2)                 // block size in half
 #define PLYR_W (16*SCALE)          // physical width and height of the player
 #define PLYR_H (BS)                // ^
 #define PLYR_SPD (2*SCALE)         // units per frame
-#define STARTPX (3*BS)             // starting position within start screen
-#define STARTPY (4*BS)             // ^
-#define STARTPZ 0                  // ^
+#define STARTPX (TILESW*BS2)       // starting position within start screen
+#define STARTPY (0)                // ^
+#define STARTPZ (TILESD*BS2)       // ^
 #define NR_PLAYERS 1
 #define GRAV_JUMP 0
-#define GRAV_ZERO 24
-#define GRAV_MAX 42
+#define GRAV_ZERO 14
+#define GRAV_MAX 30
 
+#define UP    1
+#define EAST  2
+#define NORTH 3
+#define WEST  4
+#define SOUTH 5
+#define DOWN  6
+
+#define DIRT 45
 #define GRAS 46
 #define LASTSOLID GRAS // everything less than here is solid
 #define OPEN 75        // invisible open, walkable space
 
-#define VERTEX_BUFLEN 1000000
-#define V(a,b,c,d,e,f,g,h,i) { X(a) X(b) X(c) X(d) X(e) X(f) X(g) X(h) X(i) }
-#define X(a) { *v++ = a; }
+#define VERTEX_BUFLEN 100000
 
-int gravity[] = { -30,-27,-24,-21,-19,-17,-15,-13,-11,-10,
-                   -9, -8, -7, -6, -5, -4, -4, -3, -3, -2,
-                   -2, -1, -1, -1,  0,  1,  2,  3,  4,  5,
-                    6,  7,  8,  9, 10, 11, 12, 13, 14, 16,
-                   18, 20, 22, };
+struct vbufv { // vertex buffer vertex
+        float tex;
+        float orient;
+        float x, y, z;
+        float illum;
+};
 
-int tiles[TILESD][TILESH][TILESW];
+int gravity[] = { -20, -17, -14, -12, -10, -8, -6, -5, -4, -3,
+                   -2,  -2,  -1,  -1,   0,  1,  1,  2,  2,  3,
+                    4,   5,   6,   7,   8, 10, 12, 14, 17, 20,
+                   22, };
+
+char tiles[TILESD][TILESH][TILESW];
 
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
@@ -81,6 +93,8 @@ struct player {
 } player[NR_PLAYERS];
 
 int frame = 0;
+int noisy = 0;
+int polys = 0;
 
 int mouselook = 1;
 int target_x, target_y, target_z;
@@ -95,10 +109,9 @@ SDL_Renderer *renderer;
 SDL_Surface *surf;
 
 unsigned int vbo, vao;
-float vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding
-float *v_limit = vbuf + VERTEX_BUFLEN;
-float *v = vbuf;
-#define VSTRIDE 9
+struct vbufv vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding
+struct vbufv *v_limit = vbuf + VERTEX_BUFLEN;
+struct vbufv *v = vbuf;
 
 //prototypes
 void setup();
@@ -108,6 +121,8 @@ void load_level();
 void key_move(int down);
 void mouse_move();
 void mouse_button(int down);
+void jump(int down);
+void update_world();
 void update_player();
 int move_player(int velx, int vely, int velz);
 int collide(struct box plyr, struct box block);
@@ -115,6 +130,22 @@ int block_collide(int bx, int by, int bz, struct box plyr);
 int world_collide(struct box plyr);
 void draw_stuff();
 void debrief();
+
+void GLAPIENTRY
+MessageCallback( GLenum source,
+                 GLenum type,
+                 GLuint id,
+                 GLenum severity,
+                 GLsizei length,
+                 const GLchar* message,
+                 const void* userParam )
+{
+        /*
+  fprintf( stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
+           ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
+            type, severity, message );
+            */
+}
 
 //the entry point and main game loop
 int main()
@@ -142,6 +173,7 @@ int main()
                 }
 
                 update_player();
+                update_world();
                 draw_stuff();
                 debrief();
                 //SDL_Delay(1000 / 60);
@@ -169,22 +201,37 @@ void setup()
         glewInit();
         #endif
 
+        // enable debug output
+        glEnable              ( GL_DEBUG_OUTPUT );
+        glDebugMessageCallback( MessageCallback, 0 );
+
         // load all the textures
+        glActiveTexture(GL_TEXTURE0);
         int x, y, n, mode;
         GLuint texid = 0;
-        unsigned char *pixels;
+        glGenTextures(1, &texid);
+        printf("texid: %d\n", texid);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, texid);
+
+        unsigned char *texels;
         char *files[] = { "res/top.png", "res/side.png", "res/bottom.png", "" };
         for(int f = 0; files[f][0]; f++)
         {
-                pixels = stbi_load(files[f], &x, &y, &n, 0);
-                glGenTextures(1, &texid);
-                printf("texid: %d\n", texid);
-                glBindTexture(GL_TEXTURE_2D, texid);
+                texels = stbi_load(files[f], &x, &y, &n, 0);
                 mode = n == 4 ? GL_RGBA : GL_RGB;
-                glTexImage2D(GL_TEXTURE_2D, 0, mode, x, y, 0, mode, GL_UNSIGNED_BYTE, pixels);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                if (f == 0)
+                        glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RGBA8, x, y, 256);
+                glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, f, x, y, 1, mode, GL_UNSIGNED_BYTE, texels);
+                printf("%d\n", glGetError());
+                stbi_image_free(texels);
         }
+
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 1);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
 
         load_shaders();
 
@@ -192,31 +239,21 @@ void setup()
         glGenBuffers(1, &vbo);
         glBindVertexArray(vao);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        //glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STATIC_DRAW);
-        // position
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 9 * sizeof (float), (void*)(0 * sizeof (float)));
+        // tex number
+        glVertexAttribPointer(0, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->tex);
         glEnableVertexAttribArray(0);
-        // tmix
-        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 9 * sizeof (float), (void*)(3 * sizeof (float)));
+        // orientation
+        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->orient);
         glEnableVertexAttribArray(1);
-        // texture coords
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 9 * sizeof (float), (void*)(4 * sizeof (float)));
+        // position
+        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->x);
         glEnableVertexAttribArray(2);
-        // color
-        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 9 * sizeof (float), (void*)(6 * sizeof (float)));
+        // illum
+        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->illum);
         glEnableVertexAttribArray(3);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, 1);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, 2);
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, 3);
 	glUseProgram(ID);
-        // set texture uniforms
-        glUniform1i(glGetUniformLocation(ID, "texture1"), 0);
-        glUniform1i(glGetUniformLocation(ID, "texture2"), 1);
-        glUniform1i(glGetUniformLocation(ID, "texture3"), 2);
+        glUniform1i(glGetUniformLocation(ID, "tarray"), 0);
 
         SDL_SetRelativeMouseMode(SDL_TRUE);
 }
@@ -246,15 +283,17 @@ void key_move(int down)
                         player[0].goingr = down;
                         break;
                 case SDLK_SPACE:
-                        if(player[0].ground && down)
-                                player[0].grav = GRAV_JUMP;
+                        jump(down);
                         break;
                 case SDLK_ESCAPE:
                         SDL_SetRelativeMouseMode(SDL_FALSE);
                         mouselook = 0;
                         break;
                 case SDLK_j:
-                        player[0].pos.y -= 1000;
+                        if (!down) player[0].pos.y -= 1000;
+                        break;
+                case SDLK_n:
+                        if (!down) noisy = !noisy;
                         break;
                 case SDLK_q:
                         exit(-1);
@@ -294,7 +333,11 @@ void mouse_button(int down)
         }
         else if(event.button.button == SDL_BUTTON_RIGHT)
         {
-                tiles[place_z][place_y][place_x] = GRAS;
+                tiles[place_z][place_y][place_x] = DIRT;
+        }
+        else if(event.button.button == SDL_BUTTON_X1)
+        {
+                jump(down);
         }
 }
 
@@ -314,7 +357,7 @@ void new_game()
         player[0].goingr = 0;
         player[0].fvel = 0;
         player[0].rvel = 0;
-        player[0].yaw = 3.1415926535 * 0.5;
+        player[0].yaw = 3.1415926535 * 0.23;
         player[0].pitch = 0;
         player[0].grav = GRAV_ZERO;
         load_level();
@@ -322,20 +365,65 @@ void new_game()
 
 void load_level()
 {
-        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++) for(int z = 0; z < TILESD; z++)
+        for(int x = 0; x < TILESW; x++) for(int z = 0; z < TILESD; z++) for(int y = 0; y < TILESH; y++)
         {
-                float h =  3 + 3*sin(0.1 * x) + 3*cos(0.2 * z);
+                float xd = (x - 2 * TILESW / 3);
+                float zd = (z - 1 * TILESD / 3);
+                float d = sqrtf(xd * xd + zd * zd);
+                float h =  3 + 3*sin(0.1 * x) + 3*cos(0.2 * z + 0.02 * x) + 0.1 * (z + x);
                 float s = -14 + 12*sin(1 + 0.14 * x) + 13*cos(2 + 0.18 * z);
-                if(y == TILESH-1 || y > TILESH - h || y > TILESH - s)
-                        tiles[z][y][x] = GRAS;
+                if (d < 40) {
+                        float hmin = h * (40 / d) * 0.6;
+                        if (hmin > h) h = hmin;
+                }
+
+                if (y == TILESH-1 || y > TILESH - h || y > TILESH - s)
+                        tiles[z][y][x] = ((y == 0 || tiles[z][y-1][x] == OPEN) && rand() % 100 == 1) ? GRAS : DIRT;
                 else
                         tiles[z][y][x] = OPEN;
 
-                if(z == 4 && x + y < 10)
-                        tiles[z][y][x] = GRAS;
+                if (z == 4 && x + y < 10)
+                        tiles[z][y][x] = DIRT;
 
-                if(x == 7 && z + y > 10 && z < 14)
-                        tiles[z][y][x] = GRAS;
+                if (x == 7 && z + y > 10 && z < 14)
+                        tiles[z][y][x] = DIRT;
+        }
+}
+
+void jump(int down)
+{
+        if(player[0].ground && down)
+                player[0].grav = GRAV_JUMP;
+}
+
+void update_world()
+{
+        int i, x, y, z;
+        for (i = 0; i < 100; i++) {
+                x = 1 + rand() % (TILESW - 2);
+                z = 1 + rand() % (TILESD - 2);
+
+                for (y = 1; y < TILESH - 1; y++) {
+                        if (tiles[z][y][x] == DIRT) {
+                                if (tiles[z  ][y-1][x  ] == OPEN && (
+                                    tiles[z+1][y  ][x  ] == GRAS ||
+                                    tiles[z-1][y  ][x  ] == GRAS ||
+                                    tiles[z  ][y  ][x+1] == GRAS ||
+                                    tiles[z  ][y  ][x-1] == GRAS ||
+                                    tiles[z+1][y+1][x  ] == GRAS ||
+                                    tiles[z-1][y+1][x  ] == GRAS ||
+                                    tiles[z  ][y+1][x+1] == GRAS ||
+                                    tiles[z  ][y+1][x-1] == GRAS ||
+                                    tiles[z+1][y-1][x  ] == GRAS ||
+                                    tiles[z-1][y-1][x  ] == GRAS ||
+                                    tiles[z  ][y-1][x+1] == GRAS ||
+                                    tiles[z  ][y-1][x-1] == GRAS) ) {
+                                        //fprintf(stderr, "grassing %d %d %d\n", x, y, z);
+                                        tiles[z][y][x] = GRAS;
+                                }
+                                break;
+                        }
+                }
         }
 }
 
@@ -366,8 +454,8 @@ void update_player()
         if(totalvel > PLYR_SPD)
         {
                 totalvel = PLYR_SPD / totalvel;
-                p->fvel *= totalvel;
-                p->rvel *= totalvel;
+                if (p->fvel > 4 || p->fvel < -4) p->fvel *= totalvel;
+                if (p->rvel > 4 || p->rvel < -4) p->rvel *= totalvel;
         }
 
         float fwdx = sin(p->yaw);
@@ -539,14 +627,7 @@ void blacklines(float x, float y, float z)
         glEnd();
 }
 
-void grasstop(float x, float y, float z)
-{
-        V(x*BS   , y*BS   , z*BS   , 1, 0, 0, 0.9f, 0.9f, 0.9f); 
-        V(x*BS+BS, y*BS   , z*BS   , 1, 1, 0, 0.9f, 0.9f, 0.9f); 
-        V(x*BS+BS, y*BS   , z*BS+BS, 1, 1, 1, 0.9f, 0.9f, 0.9f); 
-        V(x*BS   , y*BS   , z*BS+BS, 1, 0, 1, 0.9f, 0.9f, 0.9f); 
-}
-
+/*
 void grasssouth(float x, float y, float z, int buried)
 {
 	V(x*BS   , y*BS+BS, z*BS   , 2 + buried, 0, 0, 0.7f, 0.7f, 0.7f);
@@ -586,6 +667,7 @@ void grassbottom(float x, float y, float z)
         V(x*BS+BS, y*BS+BS, z*BS   , 3, 1, 0, 0.3f, 0.3f, 0.3f);
 	V(x*BS   , y*BS+BS, z*BS   , 3, 0, 0, 0.3f, 0.3f, 0.3f);
 }
+*/
 
 //select block from eye following vector f
 void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
@@ -657,7 +739,7 @@ void draw_stuff()
                    A,    B, C, -1,
                    0,    0, D,  0
         };
-        glUniformMatrix4fv(glGetUniformLocation(ID, "projection"), 1, GL_FALSE, frustM);
+        glUniformMatrix4fv(glGetUniformLocation(ID, "proj"), 1, GL_FALSE, frustM);
 
         // compute view matrix
         float eye0, eye1, eye2;
@@ -723,6 +805,8 @@ void draw_stuff()
         };
         glUniformMatrix4fv(glGetUniformLocation(ID, "model"), 1, GL_FALSE, modelM);
 
+        glUniform1f(glGetUniformLocation(ID, "BS"), BS);
+
         v = vbuf; // reset vertex buffer pointer
 
         // draw world
@@ -732,43 +816,49 @@ void draw_stuff()
                 if (v >= v_limit) {
                         TIMERSTOP(buildvbo)
                         TIMER(glBufferData)
-                        //printf("buffer full, draw %ld verts\n", (v - vbuf) / VSTRIDE);
+                        //printf("buffer full, draw %ld verts\n", v - vbuf);
+                        polys += (v - vbuf) * 2;
                         glBufferData(GL_ARRAY_BUFFER, sizeof vbuf, vbuf, GL_STATIC_DRAW);
                         TIMERSTOP(glBufferData)
                         TIMER(glDrawArrays)
-                        glDrawArrays(GL_QUADS, 0, (v - vbuf) / VSTRIDE);
+                        glDrawArrays(GL_POINTS, 0, v - vbuf);
                         TIMERSTOP(glDrawArrays);
                         v = vbuf;
                         TIMER(buildvbo)
                 }
-                if (tiles[z][y][x] == GRAS && (y == 0 || tiles[z][y-1][x] == OPEN))
-                        grasstop(x, y, z);
-                if (tiles[z][y][x] == GRAS && (z == 0 || tiles[z-1][y][x] == OPEN))
-                        grasssouth(x, y, z, y && tiles[z][y-1][x] == GRAS);
-                if (tiles[z][y][x] == GRAS && (z == TILESD-1 || tiles[z+1][y][x] == OPEN))
-                        grassnorth(x, y, z, y && tiles[z][y-1][x] == GRAS);
-                if (tiles[z][y][x] == GRAS && (x == 0 || tiles[z][y][x-1] == OPEN))
-                        grasswest(x, y, z, y && tiles[z][y-1][x] == GRAS);
-                if (tiles[z][y][x] == GRAS && (x == TILESW-1 || tiles[z][y][x+1] == OPEN))
-                        grasseast(x, y, z, y && tiles[z][y-1][x] == GRAS);
-                if (tiles[z][y][x] == GRAS && (y == TILESH-1 || tiles[z][y+1][x] == OPEN))
-                        grassbottom(x, y, z);
+
+                if (tiles[z][y][x] == GRAS) {
+                        if (y == 0        || tiles[z][y-1][x] == OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, 1.0f };
+                        if (z == 0        || tiles[z-1][y][x] == OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, 0.9f };
+                        if (z == TILESD-1 || tiles[z+1][y][x] == OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, 0.9f };
+                        if (x == 0        || tiles[z][y][x-1] == OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, 0.7f };
+                        if (x == TILESW-1 || tiles[z][y][x+1] == OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, 0.7f };
+                        if (y == TILESH-1 || tiles[z][y+1][x] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, 0.5f };
+                } else if (tiles[z][y][x] == DIRT) {
+                        if (y == 0        || tiles[z][y-1][x] == OPEN) *v++ = (struct vbufv){ 2,    UP, x, y, z, 1.0f };
+                        if (z == 0        || tiles[z-1][y][x] == OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, 0.9f };
+                        if (z == TILESD-1 || tiles[z+1][y][x] == OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, 0.9f };
+                        if (x == 0        || tiles[z][y][x-1] == OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, 0.7f };
+                        if (x == TILESW-1 || tiles[z][y][x+1] == OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, 0.7f };
+                        if (y == TILESH-1 || tiles[z][y+1][x] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, 0.5f };
+                }
         }
         TIMERSTOP(buildvbo)
 
         if (v > vbuf) {
-                //printf("done, draw %ld verts\n", (v - vbuf) / VSTRIDE);
+                //printf("done, draw %ld verts\n", v - vbuf);
+                polys += (v - vbuf) * 2;
                 TIMER(glBufferData)
                 glBufferData(GL_ARRAY_BUFFER, sizeof vbuf, vbuf, GL_STATIC_DRAW);
                 TIMERSTOP(glBufferData)
                 TIMER(glDrawArrays)
-                glDrawArrays(GL_QUADS, 0, (v - vbuf) / VSTRIDE);
+                glDrawArrays(GL_POINTS, 0, v - vbuf);
                 TIMERSTOP(glDrawArrays)
                 v = vbuf;
         }
 
         glDisable(GL_CULL_FACE);
-        blacklines(target_x, target_y, target_z);
+        //blacklines(target_x, target_y, target_z);
 
         TIMER(swapwindow);
         SDL_GL_SwapWindow(win);
@@ -782,10 +872,17 @@ void debrief()
         unsigned ticks = SDL_GetTicks();
 
         if (ticks - last_ticks >= 1000) {
-                printf("%.1f FPS\n", 1000.f * ((float)frame - last_frame) / ((float)ticks - last_ticks) );
-                printf("player pos %0.0f %0.0f %0.0f\n", player[0].pos.x, player[0].pos.y, player[0].pos.z);
+                if (noisy) {
+                        float elapsed = ((float)ticks - last_ticks);
+                        float frames = frame - last_frame;
+                        printf("%.1f FPS\n", 1000.f * frames / elapsed );
+                        printf("%.1f polys/sec\n", 1000.f * (float)polys / elapsed);
+                        printf("%.1f polys/frame\n", (float)polys / frames);
+                        printf("player pos %0.0f %0.0f %0.0f\n", player[0].pos.x, player[0].pos.y, player[0].pos.z);
+                        timer_print();
+                }
                 last_ticks = ticks;
                 last_frame = frame;
-                timer_print();
+                polys = 0;
         }
 }
