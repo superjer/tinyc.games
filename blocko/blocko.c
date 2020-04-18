@@ -59,6 +59,7 @@
 #define OPEN 75        // invisible open, walkable space
 
 #define VERTEX_BUFLEN 100000
+#define SUNQLEN 100000
 
 #define CLAMP(v, l, u) { if (v < l) v = l; else if (v > u) v = u; }
 
@@ -75,11 +76,20 @@ int gravity[] = { -20, -17, -14, -12, -10, -8, -6, -5, -4, -3,
                    22, };
 
 unsigned char tiles[TILESD][TILESH][TILESW];
-unsigned char skylt[TILESD+1][TILESH+1][TILESW+1];
+unsigned char sunlight[TILESD+1][TILESH+1][TILESW+1];
+unsigned char gndheight[TILESD][TILESW];
 float cornlt[TILESD+2][TILESH+2][TILESW+2];
 
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
+
+struct qitem { int x, y, z; };
+struct qitem sunq0_[SUNQLEN+1];
+struct qitem sunq1_[SUNQLEN+1];
+struct qitem *sunq_curr = sunq0_;
+struct qitem *sunq_next = sunq1_;
+size_t sq_curr_len;
+size_t sq_next_len;
 
 struct player {
         struct box pos;
@@ -97,7 +107,7 @@ struct player {
 } player[NR_PLAYERS];
 
 int frame = 0;
-int noisy = 1;
+int noisy = 0;
 int polys = 0;
 
 int mouselook = 1;
@@ -124,6 +134,9 @@ void setup();
 void resize();
 void new_game();
 void gen_world();
+void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light);
+void recalc_gndheight(int x, int z);
+void step_sunlight();
 void recalc_corner_lighting();
 void key_move(int down);
 void mouse_move();
@@ -181,6 +194,8 @@ int main()
 
                 update_player();
                 update_world();
+                step_sunlight();
+                recalc_corner_lighting();
                 draw_stuff();
                 debrief();
                 //SDL_Delay(1000 / 60);
@@ -305,6 +320,12 @@ void key_move(int down)
                 case SDLK_n:
                         if (!down) noisy = !noisy;
                         break;
+                case SDLK_l:
+                        if (down)
+                        {
+                                recalc_gndheight(target_x, target_z);
+                        }
+                        break;
                 case SDLK_q:
                         exit(-1);
         }
@@ -338,7 +359,19 @@ void mouse_button(int down)
                 }
                 else
                 {
-                        tiles[target_z][target_y][target_x] = OPEN;
+                        int x = target_x;
+                        int y = target_y;
+                        int z = target_z;
+                        tiles[z][y][x] = OPEN;
+                        recalc_gndheight(x, z);
+                        unsigned char max = 0;
+                        if (sunlight[z-1][y  ][x  ] > max) max = sunlight[z-1][y  ][x  ];
+                        if (sunlight[z+1][y  ][x  ] > max) max = sunlight[z+1][y  ][x  ];
+                        if (sunlight[z  ][y-1][x  ] > max) max = sunlight[z  ][y-1][x  ];
+                        if (sunlight[z  ][y+1][x  ] > max) max = sunlight[z  ][y+1][x  ];
+                        if (sunlight[z  ][y  ][x-1] > max) max = sunlight[z  ][y  ][x-1];
+                        if (sunlight[z  ][y  ][x+1] > max) max = sunlight[z  ][y  ][x+1];
+                        sun_enqueue(place_x, place_y, place_z, 0, max ? max - 1 : 0);
                 }
         }
         else if(event.button.button == SDL_BUTTON_RIGHT)
@@ -389,24 +422,85 @@ void gen_world()
                 }
 
                 if (y == TILESH-1 || y > TILESH - h || y > TILESH - s)
-                {
                         tiles[z][y][x] = ((y == 0 || tiles[z][y-1][x] == OPEN) && rand() % 100 == 1) ? GRAS : DIRT;
-                        skylt[z][y][x] = 0;
-                }
                 else
-                {
                         tiles[z][y][x] = OPEN;
-                        skylt[z][y][x] = 15;
-                }
 
                 // clunky thing
                 if ((z == 4 && x + y < 10) || (x == 7 && z + y > 10 && z < 14))
                 {
                         tiles[z][y][x] = DIRT;
-                        skylt[z][y][x] = 0;
                 }
         }
-        recalc_corner_lighting();
+        //recalc_gndheight();
+        //step_sunlight();
+        //recalc_corner_lighting();
+}
+
+void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
+{
+        if (sunlight[z][y][x] >= incoming_light)
+                return; // already brighter
+
+        if (tiles[z][y][x] != OPEN)
+                return; // no lighting for solid blocks (FIXME: hmmmm?)
+
+        sunlight[z][y][x] = incoming_light;
+
+        for (int i = base; i < sq_curr_len; i++)
+                if (sunq_curr[i].x == x && sunq_curr[i].y == y && sunq_curr[i].z == z)
+                        return; // already queued in current queue
+
+        for (int i = 0; i < sq_next_len; i++)
+                if (sunq_next[i].x == x && sunq_next[i].y == y && sunq_next[i].z == z)
+                        return; // already queued in next queue
+
+        if (sq_next_len >= SUNQLEN)
+        {
+                printf("out of room in sun queue\n");
+                return;
+        }
+
+        sunq_next[sq_next_len].x = x;
+        sunq_next[sq_next_len].y = y;
+        sunq_next[sq_next_len].z = z;
+        sq_next_len++;
+}
+
+void recalc_gndheight(int x, int z)
+{
+        for (int y = 0; y < TILESH; y++)
+        {
+                if (tiles[z][y][x] != OPEN)
+                {
+                        gndheight[z][x] = y;
+                        break;
+                }
+                if (y) sun_enqueue(x, y-1, z, SUNQLEN, 15);
+        }
+}
+
+void step_sunlight()
+{
+        // swap the queues
+        sunq_curr = sunq_next;
+        sq_curr_len = sq_next_len;
+        sq_next_len = 0;
+        sunq_next = (sunq_curr == sunq0_) ? sunq1_ : sunq0_;
+
+        for (int i = 0; i < sq_curr_len; i++)
+        {
+                int x = sunq_curr[i].x;
+                int y = sunq_curr[i].y;
+                int z = sunq_curr[i].z;
+                if (x           ) sun_enqueue(x-1, y  , z  , i+1, sunlight[z][y][x] - 1);
+                if (y           ) sun_enqueue(x  , y-1, z  , i+1, sunlight[z][y][x] - 1);
+                if (z           ) sun_enqueue(x  , y  , z-1, i+1, sunlight[z][y][x] - 1);
+                if (x < TILESW-1) sun_enqueue(x+1, y  , z  , i+1, sunlight[z][y][x] - 1);
+                if (y < TILESH-1) sun_enqueue(x  , y+1, z  , i+1, sunlight[z][y][x] - 1);
+                if (z < TILESD-1) sun_enqueue(x  , y  , z+1, i+1, sunlight[z][y][x] - 1);
+        }
+
 }
 
 void recalc_corner_lighting()
@@ -417,8 +511,8 @@ void recalc_corner_lighting()
                 int y_ = (y == 0) ? 0 : y - 1;
                 int z_ = (z == 0) ? 0 : z - 1;
                 cornlt[z][y][x] = 0.008f * (
-                                skylt[z_][y_][x_] + skylt[z_][y_][x ] + skylt[z_][y ][x_] + skylt[z_][y ][x ] +
-                                skylt[z ][y_][x_] + skylt[z ][y_][x ] + skylt[z ][y ][x_] + skylt[z ][y ][x ]);
+                                sunlight[z_][y_][x_] + sunlight[z_][y_][x ] + sunlight[z_][y ][x_] + sunlight[z_][y ][x ] +
+                                sunlight[z ][y_][x_] + sunlight[z ][y_][x ] + sunlight[z ][y ][x_] + sunlight[z ][y ][x ]);
         }
 }
 
@@ -456,6 +550,8 @@ void update_world()
                                 break;
                         }
                 }
+
+                if (rand() % 100 == 0) recalc_gndheight(x, z);
         }
 }
 
