@@ -44,7 +44,7 @@
 #define NR_PLAYERS 1
 #define GRAV_JUMP 0
 #define GRAV_ZERO 14
-#define GRAV_MAX 30
+#define GRAV_MAX 39
 
 #define UP    1
 #define EAST  2
@@ -53,13 +53,19 @@
 #define SOUTH 5
 #define DOWN  6
 
-#define DIRT 45
-#define GRAS 46
+#define STON 41
+#define DIRT 42
+
+#define GRG1 45
+#define GRG2 46
+#define GRAS 47
+
 #define LASTSOLID GRAS // everything less than here is solid
 #define OPEN 75        // invisible open, walkable space
+#define SKYL 76        // open, sky light source
 
 #define VERTEX_BUFLEN 100000
-#define SUNQLEN 100000
+#define SUNQLEN 1000
 
 #define CLAMP(v, l, u) { if (v < l) v = l; else if (v > u) v = u; }
 
@@ -73,7 +79,7 @@ struct vbufv { // vertex buffer vertex
 int gravity[] = { -20, -17, -14, -12, -10, -8, -6, -5, -4, -3,
                    -2,  -2,  -1,  -1,   0,  1,  1,  2,  2,  3,
                     4,   5,   6,   7,   8, 10, 12, 14, 17, 20,
-                   22, };
+                   22,  10,  10,  10,  10, 10, 10, 10, 10, 10};
 
 unsigned char tiles[TILESD][TILESH][TILESW];
 unsigned char sunlight[TILESD+1][TILESH+1][TILESW+1];
@@ -107,7 +113,7 @@ struct player {
 } player[NR_PLAYERS];
 
 int frame = 0;
-int noisy = 0;
+int noisy = 1;
 int polys = 0;
 
 int mouselook = 1;
@@ -236,7 +242,15 @@ void setup()
         glBindTexture(GL_TEXTURE_2D_ARRAY, texid);
 
         unsigned char *texels;
-        char *files[] = { "res/top.png", "res/side.png", "res/bottom.png", "" };
+        char *files[] = {
+                "res/grass_top.png",
+                "res/grass_side.png",
+                "res/dirt.png",
+                "res/grass_grow1_top.png",
+                "res/grass_grow2_top.png",
+                "res/stone.png",
+                ""
+        };
         for(int f = 0; files[f][0]; f++)
         {
                 texels = stbi_load(files[f], &x, &y, &n, 0);
@@ -432,6 +446,16 @@ void gen_world()
                         tiles[z][y][x] = DIRT;
                 }
         }
+
+        int X = 80;
+        int Y = 15;
+        int Z = 65;
+        for (int a = -15; a <= 15; a++) for (int b = -15; b <= 15; b++) for (int c = -15; c <= 15; c++)
+        {
+                int dist = abs(a) + abs(b) + abs(c);
+                if (dist != 15 && dist != 14) continue;
+                tiles[Z+c][Y+b][X+a] = STON;
+        }
         //recalc_gndheight();
         //step_sunlight();
         //recalc_corner_lighting();
@@ -457,7 +481,7 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
 
         if (sq_next_len >= SUNQLEN)
         {
-                printf("out of room in sun queue\n");
+                //printf("out of room in sun queue\n");
                 return;
         }
 
@@ -474,9 +498,14 @@ void recalc_gndheight(int x, int z)
                 if (tiles[z][y][x] != OPEN)
                 {
                         gndheight[z][x] = y;
+                        if (y)
+                        {
+                                sunlight[z][y-1][x] = 0; // prevent short out:
+                                sun_enqueue(x, y-1, z, SUNQLEN, 15);
+                        }
                         break;
                 }
-                if (y) sun_enqueue(x, y-1, z, SUNQLEN, 15);
+                sunlight[z][y][x] = 15; // light pure sky
         }
 }
 
@@ -493,12 +522,14 @@ void step_sunlight()
                 int x = sunq_curr[i].x;
                 int y = sunq_curr[i].y;
                 int z = sunq_curr[i].z;
-                if (x           ) sun_enqueue(x-1, y  , z  , i+1, sunlight[z][y][x] - 1);
-                if (y           ) sun_enqueue(x  , y-1, z  , i+1, sunlight[z][y][x] - 1);
-                if (z           ) sun_enqueue(x  , y  , z-1, i+1, sunlight[z][y][x] - 1);
-                if (x < TILESW-1) sun_enqueue(x+1, y  , z  , i+1, sunlight[z][y][x] - 1);
-                if (y < TILESH-1) sun_enqueue(x  , y+1, z  , i+1, sunlight[z][y][x] - 1);
-                if (z < TILESD-1) sun_enqueue(x  , y  , z+1, i+1, sunlight[z][y][x] - 1);
+                char pass_on = sunlight[z][y][x];
+                if (pass_on) pass_on--; else continue;
+                if (x           ) sun_enqueue(x-1, y  , z  , i+1, pass_on);
+                if (y           ) sun_enqueue(x  , y-1, z  , i+1, pass_on);
+                if (z           ) sun_enqueue(x  , y  , z-1, i+1, pass_on);
+                if (x < TILESW-1) sun_enqueue(x+1, y  , z  , i+1, pass_on);
+                if (y < TILESH-1) sun_enqueue(x  , y+1, z  , i+1, pass_on);
+                if (z < TILESD-1) sun_enqueue(x  , y  , z+1, i+1, pass_on);
         }
 
 }
@@ -530,36 +561,43 @@ void update_world()
                 z = 1 + rand() % (TILESD - 2);
 
                 for (y = 1; y < TILESH - 1; y++) {
-                        if (tiles[z][y][x] == DIRT) {
+                        if (0) ;
+                        else if (tiles[z][y][x] == GRG1) tiles[z][y][x] = GRG2;
+                        else if (tiles[z][y][x] == GRG2) tiles[z][y][x] = GRAS;
+                        else if (tiles[z][y][x] == DIRT) {
                                 if (tiles[z  ][y-1][x  ] == OPEN && (
-                                    tiles[z+1][y  ][x  ] == GRAS ||
-                                    tiles[z-1][y  ][x  ] == GRAS ||
-                                    tiles[z  ][y  ][x+1] == GRAS ||
-                                    tiles[z  ][y  ][x-1] == GRAS ||
-                                    tiles[z+1][y+1][x  ] == GRAS ||
-                                    tiles[z-1][y+1][x  ] == GRAS ||
-                                    tiles[z  ][y+1][x+1] == GRAS ||
-                                    tiles[z  ][y+1][x-1] == GRAS ||
-                                    tiles[z+1][y-1][x  ] == GRAS ||
-                                    tiles[z-1][y-1][x  ] == GRAS ||
-                                    tiles[z  ][y-1][x+1] == GRAS ||
-                                    tiles[z  ][y-1][x-1] == GRAS) ) {
-                                        //fprintf(stderr, "grassing %d %d %d\n", x, y, z);
-                                        tiles[z][y][x] = GRAS;
+                                    (tiles[z+1][y  ][x  ] | 1) == GRAS ||
+                                    (tiles[z-1][y  ][x  ] | 1) == GRAS ||
+                                    (tiles[z  ][y  ][x+1] | 1) == GRAS ||
+                                    (tiles[z  ][y  ][x-1] | 1) == GRAS ||
+                                    (tiles[z+1][y+1][x  ] | 1) == GRAS ||
+                                    (tiles[z-1][y+1][x  ] | 1) == GRAS ||
+                                    (tiles[z  ][y+1][x+1] | 1) == GRAS ||
+                                    (tiles[z  ][y+1][x-1] | 1) == GRAS ||
+                                    (tiles[z+1][y-1][x  ] | 1) == GRAS ||
+                                    (tiles[z-1][y-1][x  ] | 1) == GRAS ||
+                                    (tiles[z  ][y-1][x+1] | 1) == GRAS ||
+                                    (tiles[z  ][y-1][x-1] | 1) == GRAS) ) {
+                                        tiles[z][y][x] = GRG1;
                                 }
                                 break;
                         }
                 }
 
-                if (rand() % 100 == 0) recalc_gndheight(x, z);
+                if (rand() % 10 == 0) recalc_gndheight(x, z);
         }
+}
+
+void personal_light(int x, int y, int z)
+{
+        sunlight[z][y][x] = 0;
 }
 
 void update_player()
 {
         struct player *p = player + 0;
 
-        if(player[0].pos.y > TILESH*BS + 6000)
+        if(player[0].pos.y > TILESH*BS + 6000) // fell too far
         {
                 new_game();
                 return;
@@ -615,6 +653,8 @@ void update_player()
 
         if(p->ground)
                 p->grav = GRAV_ZERO;
+
+        personal_light(place_x, place_y, place_z);
 
         //zooming
         zoom_amt *= zooming ? 0.9f : 1.2f;
@@ -898,7 +938,8 @@ void draw_stuff()
                 float dse = cornlt[z  ][y+1][x+1];
                 float dnw = cornlt[z+1][y+1][x  ];
                 float dne = cornlt[z+1][y+1][x+1];
-                if (tiles[z][y][x] == GRAS)
+                int t = tiles[z][y][x];
+                if (t == GRAS)
                 {
                         if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une };
                         if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, use, usw, dse, dsw };
@@ -907,14 +948,26 @@ void draw_stuff()
                         if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, une, use, dne, dse };
                         if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw };
                 }
-                else if (tiles[z][y][x] == DIRT)
+                else if (t == DIRT || t == GRG1 || t == GRG2)
                 {
-                        if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ 2,    UP, x, y, z, usw, use, unw, une };
+                        int u = (t == DIRT) ? 2 :
+                                (t == GRG1) ? 3 :
+                                              4 ;
+                        if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ u,    UP, x, y, z, usw, use, unw, une };
                         if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, use, usw, dse, dsw };
                         if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, unw, une, dnw, dne };
                         if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, usw, unw, dsw, dnw };
                         if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse };
                         if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw };
+                }
+                else if (t == STON)
+                {
+                        if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ 5,    UP, x, y, z, usw, use, unw, une };
+                        if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 5, SOUTH, x, y, z, use, usw, dse, dsw };
+                        if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 5, NORTH, x, y, z, unw, une, dnw, dne };
+                        if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ 5,  WEST, x, y, z, usw, unw, dsw, dnw };
+                        if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 5,  EAST, x, y, z, une, use, dne, dse };
+                        if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 5,  DOWN, x, y, z, dse, dsw, dne, dnw };
                 }
         }
         TIMERSTOP(buildvbo)
