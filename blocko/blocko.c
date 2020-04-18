@@ -76,6 +76,7 @@ int gravity[] = { -20, -17, -14, -12, -10, -8, -6, -5, -4, -3,
 
 unsigned char tiles[TILESD][TILESH][TILESW];
 unsigned char skylt[TILESD+1][TILESH+1][TILESW+1];
+float cornlt[TILESD+2][TILESH+2][TILESW+2];
 
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
@@ -123,6 +124,7 @@ void setup();
 void resize();
 void new_game();
 void gen_world();
+void recalc_corner_lighting();
 void key_move(int down);
 void mouse_move();
 void mouse_button(int down);
@@ -403,6 +405,20 @@ void gen_world()
                         tiles[z][y][x] = DIRT;
                         skylt[z][y][x] = 0;
                 }
+        }
+        recalc_corner_lighting();
+}
+
+void recalc_corner_lighting()
+{
+        for (int z = 0; z <= TILESD; z++) for (int y = 0; y <= TILESH; y++) for (int x = 0; x <= TILESW; x++)
+        {
+                int x_ = (x == 0) ? 0 : x - 1;
+                int y_ = (y == 0) ? 0 : y - 1;
+                int z_ = (z == 0) ? 0 : z - 1;
+                cornlt[z][y][x] = 0.008f * (
+                                skylt[z_][y_][x_] + skylt[z_][y_][x ] + skylt[z_][y ][x_] + skylt[z_][y ][x ] +
+                                skylt[z ][y_][x_] + skylt[z ][y_][x ] + skylt[z ][y ][x_] + skylt[z ][y ][x ]);
         }
 }
 
@@ -778,18 +794,14 @@ void draw_stuff()
                 if (tiles[z][y][x] == OPEN) continue;
 
                 //lighting
-                int x_ = (x == 0) ? 0 : x - 1;
-                int y_ = (y == 0) ? 0 : y - 1;
-                int z_ = (z == 0) ? 0 : z - 1;
-                float mylight = skylt[z][y][x];
-                float usw = 0.008f * (skylt[z_ ][y_ ][x_ ] + skylt[z  ][y_ ][x_ ] + skylt[z  ][y  ][x_ ] + skylt[z_ ][y  ][x_ ] + skylt[z_ ][y  ][x  ] + skylt[z_ ][y_ ][x  ] + skylt[z  ][y_ ][x_ ] + mylight);
-                float use = 0.008f * (skylt[z_ ][y_ ][x+1] + skylt[z  ][y_ ][x+1] + skylt[z  ][y  ][x+1] + skylt[z_ ][y  ][x+1] + skylt[z_ ][y  ][x  ] + skylt[z_ ][y_ ][x  ] + skylt[z  ][y_ ][x+1] + mylight);
-                float unw = 0.008f * (skylt[z+1][y_ ][x_ ] + skylt[z  ][y_ ][x_ ] + skylt[z  ][y  ][x_ ] + skylt[z+1][y  ][x_ ] + skylt[z+1][y  ][x  ] + skylt[z+1][y_ ][x  ] + skylt[z  ][y_ ][x_ ] + mylight);
-                float une = 0.008f * (skylt[z+1][y_ ][x+1] + skylt[z  ][y_ ][x+1] + skylt[z  ][y  ][x+1] + skylt[z+1][y  ][x+1] + skylt[z+1][y  ][x  ] + skylt[z+1][y_ ][x  ] + skylt[z  ][y_ ][x+1] + mylight);
-                float dsw = 0.008f * (skylt[z_ ][y+1][x_ ] + skylt[z  ][y+1][x_ ] + skylt[z  ][y  ][x_ ] + skylt[z_ ][y  ][x_ ] + skylt[z_ ][y  ][x  ] + skylt[z_ ][y+1][x  ] + skylt[z  ][y+1][x_ ] + mylight);
-                float dse = 0.008f * (skylt[z_ ][y+1][x+1] + skylt[z  ][y+1][x+1] + skylt[z  ][y  ][x+1] + skylt[z_ ][y  ][x+1] + skylt[z_ ][y  ][x  ] + skylt[z_ ][y+1][x  ] + skylt[z  ][y+1][x+1] + mylight);
-                float dnw = 0.008f * (skylt[z+1][y+1][x_ ] + skylt[z  ][y+1][x_ ] + skylt[z  ][y  ][x_ ] + skylt[z+1][y  ][x_ ] + skylt[z+1][y  ][x  ] + skylt[z+1][y+1][x  ] + skylt[z  ][y+1][x_ ] + mylight);
-                float dne = 0.008f * (skylt[z+1][y+1][x+1] + skylt[z  ][y+1][x+1] + skylt[z  ][y  ][x+1] + skylt[z+1][y  ][x+1] + skylt[z+1][y  ][x  ] + skylt[z+1][y+1][x  ] + skylt[z  ][y+1][x+1] + mylight);
+                float usw = cornlt[z  ][y  ][x  ];
+                float use = cornlt[z  ][y  ][x+1];
+                float unw = cornlt[z+1][y  ][x  ];
+                float une = cornlt[z+1][y  ][x+1];
+                float dsw = cornlt[z  ][y+1][x  ];
+                float dse = cornlt[z  ][y+1][x+1];
+                float dnw = cornlt[z+1][y+1][x  ];
+                float dne = cornlt[z+1][y+1][x+1];
                 if (tiles[z][y][x] == GRAS)
                 {
                         if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une };
