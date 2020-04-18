@@ -33,6 +33,8 @@
 #define TILESW 200                 // total level width, height
 #define TILESH 40                  // ^
 #define TILESD 200                 // ^
+#define VBOW 4                     // how many VBOs wide
+#define VBOD 4                     // how many VBOs deep
 #define BS (20*SCALE)              // block size
 #define BS2 (BS/2)                 // block size in half
 #define PLYR_W (16*SCALE)          // physical width and height of the player
@@ -44,7 +46,7 @@
 #define NR_PLAYERS 1
 #define GRAV_JUMP 0
 #define GRAV_ZERO 14
-#define GRAV_MAX 39
+#define GRAV_MAX 49
 
 #define UP    1
 #define EAST  2
@@ -78,8 +80,9 @@ struct vbufv { // vertex buffer vertex
 
 int gravity[] = { -20, -17, -14, -12, -10, -8, -6, -5, -4, -3,
                    -2,  -2,  -1,  -1,   0,  1,  1,  2,  2,  3,
-                    4,   5,   6,   7,   8, 10, 12, 14, 17, 20,
-                   22,  10,  10,  10,  10, 10, 10, 10, 10, 10};
+                    3,   4,   4,   5,   5,  6,  6,  7,  7,  8,
+                    9,  10,  10,  11,  12, 12, 13, 14, 15, 16,
+                   17,  18,  19,  20,  21, 22, 23, 24, 25, 26};
 
 unsigned char tiles[TILESD][TILESH][TILESW];
 unsigned char sunlight[TILESD+1][TILESH+1][TILESW+1];
@@ -158,19 +161,13 @@ void draw_stuff();
 void debrief();
 
 void GLAPIENTRY
-MessageCallback( GLenum source,
-                 GLenum type,
-                 GLuint id,
-                 GLenum severity,
-                 GLsizei length,
-                 const GLchar* message,
-                 const void* userParam )
+MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
+                GLsizei length, const GLchar* message, const void* userParam)
 {
-        /*
-  fprintf( stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
-           ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
-            type, severity, message );
-            */
+        if (type != GL_DEBUG_TYPE_ERROR) return; // too much yelling
+        fprintf( stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
+                        ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
+                        type, severity, message );
 }
 
 //the entry point and main game loop
@@ -198,10 +195,10 @@ int main()
                                 break;
                 }
 
-                update_player();
-                update_world();
-                step_sunlight();
-                recalc_corner_lighting();
+                TIMECALL(update_player, ());
+                TIMECALL(update_world, ());
+                TIMECALL(step_sunlight, ());
+                TIMECALL(recalc_corner_lighting, ());
                 draw_stuff();
                 debrief();
                 //SDL_Delay(1000 / 60);
@@ -329,7 +326,11 @@ void key_move(int down)
                         zooming = down;
                         break;
                 case SDLK_j:
-                        if (!down) player[0].pos.y -= 1000;
+                        if (!down)
+                        {
+                                player[0].pos.y -= 1000;
+                                player[0].grav = GRAV_ZERO;
+                        }
                         break;
                 case SDLK_n:
                         if (!down) noisy = !noisy;
@@ -447,6 +448,7 @@ void gen_world()
                 }
         }
 
+        // monolith
         int X = 80;
         int Y = 15;
         int Z = 65;
@@ -456,9 +458,6 @@ void gen_world()
                 if (dist != 15 && dist != 14) continue;
                 tiles[Z+c][Y+b][X+a] = STON;
         }
-        //recalc_gndheight();
-        //step_sunlight();
-        //recalc_corner_lighting();
 }
 
 void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
@@ -471,19 +470,19 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
 
         sunlight[z][y][x] = incoming_light;
 
-        for (int i = base; i < sq_curr_len; i++)
-                if (sunq_curr[i].x == x && sunq_curr[i].y == y && sunq_curr[i].z == z)
-                        return; // already queued in current queue
-
-        for (int i = 0; i < sq_next_len; i++)
-                if (sunq_next[i].x == x && sunq_next[i].y == y && sunq_next[i].z == z)
-                        return; // already queued in next queue
-
         if (sq_next_len >= SUNQLEN)
         {
                 //printf("out of room in sun queue\n");
                 return;
         }
+
+        for (size_t i = base; i < sq_curr_len; i++)
+                if (sunq_curr[i].x == x && sunq_curr[i].y == y && sunq_curr[i].z == z)
+                        return; // already queued in current queue
+
+        for (size_t i = 0; i < sq_next_len; i++)
+                if (sunq_next[i].x == x && sunq_next[i].y == y && sunq_next[i].z == z)
+                        return; // already queued in next queue
 
         sunq_next[sq_next_len].x = x;
         sunq_next[sq_next_len].y = y;
@@ -493,7 +492,8 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
 
 void recalc_gndheight(int x, int z)
 {
-        for (int y = 0; y < TILESH; y++)
+        int y;
+        for (y = 0; y < TILESH; y++)
         {
                 if (tiles[z][y][x] != OPEN)
                 {
@@ -507,6 +507,12 @@ void recalc_gndheight(int x, int z)
                 }
                 sunlight[z][y][x] = 15; // light pure sky
         }
+
+        // continue darkening
+        for (; y < TILESH; y++)
+        {
+                sunlight[z][y][x] = 0;
+        }
 }
 
 void step_sunlight()
@@ -517,7 +523,7 @@ void step_sunlight()
         sq_next_len = 0;
         sunq_next = (sunq_curr == sunq0_) ? sunq1_ : sunq0_;
 
-        for (int i = 0; i < sq_curr_len; i++)
+        for (size_t i = 0; i < sq_curr_len; i++)
         {
                 int x = sunq_curr[i].x;
                 int y = sunq_curr[i].y;

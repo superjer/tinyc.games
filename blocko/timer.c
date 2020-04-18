@@ -2,8 +2,15 @@
 
 #define TIMER(name) { timer_times[ timer_ ## name ] -= SDL_GetTicks(); }
 #define TIMERSTOP(name) { timer_times[ timer_ ## name ] += SDL_GetTicks(); }
+#define TIMECALL(f, args) { timer_times[ timer_ ## f ] -= SDL_GetTicks(); \
+                            (f)args; \
+                            timer_times[ timer_ ## f ] += SDL_GetTicks(); }
 
 #define NAMES \
+        X(update_world), \
+        X(update_player), \
+        X(step_sunlight), \
+        X(recalc_corner_lighting), \
         X(buildvbo), \
         X(glBufferData), \
         X(glDrawArrays), \
