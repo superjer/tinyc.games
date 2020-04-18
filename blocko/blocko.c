@@ -60,11 +60,13 @@
 
 #define VERTEX_BUFLEN 100000
 
+#define CLAMP(v, l, u) { if (v < l) v = l; else if (v > u) v = u; }
+
 struct vbufv { // vertex buffer vertex
         float tex;
         float orient;
         float x, y, z;
-        float illum;
+        float illum0, illum1, illum2, illum3;
 };
 
 int gravity[] = { -20, -17, -14, -12, -10, -8, -6, -5, -4, -3,
@@ -72,7 +74,8 @@ int gravity[] = { -20, -17, -14, -12, -10, -8, -6, -5, -4, -3,
                     4,   5,   6,   7,   8, 10, 12, 14, 17, 20,
                    22, };
 
-char tiles[TILESD][TILESH][TILESW];
+unsigned char tiles[TILESD][TILESH][TILESW];
+unsigned char skylt[TILESD+1][TILESH+1][TILESW+1];
 
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
@@ -93,7 +96,7 @@ struct player {
 } player[NR_PLAYERS];
 
 int frame = 0;
-int noisy = 0;
+int noisy = 1;
 int polys = 0;
 
 int mouselook = 1;
@@ -101,6 +104,8 @@ int target_x, target_y, target_z;
 int place_x, place_y, place_z;
 int screenw = W;
 int screenh = H;
+int zooming = 0;
+float zoom_amt = 1.f;
 
 SDL_Event event;
 SDL_Window *win;
@@ -117,7 +122,7 @@ struct vbufv *v = vbuf;
 void setup();
 void resize();
 void new_game();
-void load_level();
+void gen_world();
 void key_move(int down);
 void mouse_move();
 void mouse_button(int down);
@@ -249,11 +254,11 @@ void setup()
         glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->x);
         glEnableVertexAttribArray(2);
         // illum
-        glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->illum);
+        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->illum0);
         glEnableVertexAttribArray(3);
 
-	glUseProgram(ID);
-        glUniform1i(glGetUniformLocation(ID, "tarray"), 0);
+	glUseProgram(prog_id);
+        glUniform1i(glGetUniformLocation(prog_id, "tarray"), 0);
 
         SDL_SetRelativeMouseMode(SDL_TRUE);
 }
@@ -288,6 +293,9 @@ void key_move(int down)
                 case SDLK_ESCAPE:
                         SDL_SetRelativeMouseMode(SDL_FALSE);
                         mouselook = 0;
+                        break;
+                case SDLK_z:
+                        zooming = down;
                         break;
                 case SDLK_j:
                         if (!down) player[0].pos.y -= 1000;
@@ -360,33 +368,41 @@ void new_game()
         player[0].yaw = 3.1415926535 * 0.23;
         player[0].pitch = 0;
         player[0].grav = GRAV_ZERO;
-        load_level();
+        gen_world();
 }
 
-void load_level()
+void gen_world()
 {
-        for(int x = 0; x < TILESW; x++) for(int z = 0; z < TILESD; z++) for(int y = 0; y < TILESH; y++)
+        for (int x = 0; x < TILESW; x++) for (int z = 0; z < TILESD; z++) for (int y = 0; y < TILESH; y++)
         {
                 float xd = (x - 2 * TILESW / 3);
                 float zd = (z - 1 * TILESD / 3);
-                float d = sqrtf(xd * xd + zd * zd);
+                float d = sqrt(xd * xd + zd * zd);
                 float h =  3 + 3*sin(0.1 * x) + 3*cos(0.2 * z + 0.02 * x) + 0.1 * (z + x);
                 float s = -14 + 12*sin(1 + 0.14 * x) + 13*cos(2 + 0.18 * z);
-                if (d < 40) {
+                if (d < 40)
+                {
                         float hmin = h * (40 / d) * 0.6;
                         if (hmin > h) h = hmin;
                 }
 
                 if (y == TILESH-1 || y > TILESH - h || y > TILESH - s)
+                {
                         tiles[z][y][x] = ((y == 0 || tiles[z][y-1][x] == OPEN) && rand() % 100 == 1) ? GRAS : DIRT;
+                        skylt[z][y][x] = 0;
+                }
                 else
+                {
                         tiles[z][y][x] = OPEN;
+                        skylt[z][y][x] = 15;
+                }
 
-                if (z == 4 && x + y < 10)
+                // clunky thing
+                if ((z == 4 && x + y < 10) || (x == 7 && z + y > 10 && z < 14))
+                {
                         tiles[z][y][x] = DIRT;
-
-                if (x == 7 && z + y > 10 && z < 14)
-                        tiles[z][y][x] = DIRT;
+                        skylt[z][y][x] = 0;
+                }
         }
 }
 
@@ -488,6 +504,9 @@ void update_player()
         if(p->ground)
                 p->grav = GRAV_ZERO;
 
+        //zooming
+        zoom_amt *= zooming ? 0.9f : 1.2f;
+        CLAMP(zoom_amt, 0.25f, 1.0f);
 }
 
 //collide a box with nearby world tiles
@@ -603,72 +622,6 @@ int block_collide(int bx, int by, int bz, struct box box)
         return 0;
 }
 
-void blacklines(float x, float y, float z)
-{
-        glBegin(GL_LINE_STRIP);
-        glVertex3f(x*BS   ,y*BS   ,z*BS   ); //top
-        glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
-        glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
-        glVertex3f(x*BS   ,y*BS   ,z*BS   );
-
-        glVertex3f(x*BS   ,y*BS+BS,z*BS   ); //bottom
-        glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
-        glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
-        glVertex3f(x*BS   ,y*BS+BS,z*BS+BS);
-        glVertex3f(x*BS   ,y*BS+BS,z*BS   );
-
-        glVertex3f(x*BS   ,y*BS+BS,z*BS+BS); //missing sides
-        glVertex3f(x*BS   ,y*BS   ,z*BS+BS);
-        glVertex3f(x*BS+BS,y*BS   ,z*BS+BS);
-        glVertex3f(x*BS+BS,y*BS+BS,z*BS+BS);
-        glVertex3f(x*BS+BS,y*BS+BS,z*BS   );
-        glVertex3f(x*BS+BS,y*BS   ,z*BS   );
-        glEnd();
-}
-
-/*
-void grasssouth(float x, float y, float z, int buried)
-{
-	V(x*BS   , y*BS+BS, z*BS   , 2 + buried, 0, 0, 0.7f, 0.7f, 0.7f);
-        V(x*BS+BS, y*BS+BS, z*BS   , 2 + buried, 1, 0, 0.7f, 0.7f, 0.7f);
-        V(x*BS+BS, y*BS   , z*BS   , 2 + buried, 1, 1, 0.7f, 0.7f, 0.7f);
-        V(x*BS   , y*BS   , z*BS   , 2 + buried, 0, 1, 0.7f, 0.7f, 0.7f);
-}
-
-void grassnorth(float x, float y, float z, int buried)
-{
-        V(x*BS   , y*BS   , z*BS+BS, 2 + buried, 0, 1, 0.7f, 0.7f, 0.7f);
-        V(x*BS+BS, y*BS   , z*BS+BS, 2 + buried, 1, 1, 0.7f, 0.7f, 0.7f);
-        V(x*BS+BS, y*BS+BS, z*BS+BS, 2 + buried, 1, 0, 0.7f, 0.7f, 0.7f);
-	V(x*BS   , y*BS+BS, z*BS+BS, 2 + buried, 0, 0, 0.7f, 0.7f, 0.7f);
-}
-
-void grasswest(float x, float y, float z, int buried)
-{
-        V(x*BS   , y*BS   , z*BS   , 2 + buried, 0, 1, 0.5f, 0.5f, 0.5f);
-        V(x*BS   , y*BS   , z*BS+BS, 2 + buried, 1, 1, 0.5f, 0.5f, 0.5f);
-        V(x*BS   , y*BS+BS, z*BS+BS, 2 + buried, 1, 0, 0.5f, 0.5f, 0.5f);
-	V(x*BS   , y*BS+BS, z*BS   , 2 + buried, 0, 0, 0.5f, 0.5f, 0.5f);
-}
-
-void grasseast(float x, float y, float z, int buried)
-{
-	V(x*BS+BS, y*BS+BS, z*BS   , 2 + buried, 0, 0, 0.5f, 0.5f, 0.5f);
-        V(x*BS+BS, y*BS+BS, z*BS+BS, 2 + buried, 1, 0, 0.5f, 0.5f, 0.5f);
-        V(x*BS+BS, y*BS   , z*BS+BS, 2 + buried, 1, 1, 0.5f, 0.5f, 0.5f);
-        V(x*BS+BS, y*BS   , z*BS   , 2 + buried, 0, 1, 0.5f, 0.5f, 0.5f);
-}
-
-void grassbottom(float x, float y, float z)
-{
-        V(x*BS   , y*BS+BS, z*BS+BS, 3, 0, 1, 0.3f, 0.3f, 0.3f);
-        V(x*BS+BS, y*BS+BS, z*BS+BS, 3, 1, 1, 0.3f, 0.3f, 0.3f);
-        V(x*BS+BS, y*BS+BS, z*BS   , 3, 1, 0, 0.3f, 0.3f, 0.3f);
-	V(x*BS   , y*BS+BS, z*BS   , 3, 0, 0, 0.3f, 0.3f, 0.3f);
-}
-*/
-
 //select block from eye following vector f
 void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
 {
@@ -726,20 +679,15 @@ void draw_stuff()
         // compute proj matrix
         float near = 16.f;
         float far = 199999.f;
-        float frustw = 9.f * screenw / screenh;
-        float FM00 = (2.f * near) / (frustw - -frustw);
-        float FM11 = -(2.f * near) / (-9 - 9);
-        float A = 0;
-        float B = 0;
-        float C = -(far + near) / (far - near);
-        float D = -(2.f * far * near) / (far - near);
+        float frustw = 9.f * zoom_amt * screenw / screenh;
+        float frusth = 9.f * zoom_amt;
         float frustM[] = {
-                FM00,    0, 0,  0,
-                   0, FM11, 0,  0,
-                   A,    B, C, -1,
-                   0,    0, D,  0
+                near/frustw,           0,                                  0,  0,
+                          0, near/frusth,                                  0,  0,
+                          0,           0,       -(far + near) / (far - near), -1,
+                          0,           0, -(2.f * far * near) / (far - near),  0
         };
-        glUniformMatrix4fv(glGetUniformLocation(ID, "proj"), 1, GL_FALSE, frustM);
+        glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, frustM);
 
         // compute view matrix
         float eye0, eye1, eye2;
@@ -790,7 +738,7 @@ void draw_stuff()
         viewM[13] = (viewM[1] * -eye0) + (viewM[5] * -eye1) + (viewM[ 9] * -eye2);
         viewM[14] = (viewM[2] * -eye0) + (viewM[6] * -eye1) + (viewM[10] * -eye2);
 
-        glUniformMatrix4fv(glGetUniformLocation(ID, "view"), 1, GL_FALSE, viewM);
+        glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, viewM);
 
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
@@ -803,9 +751,9 @@ void draw_stuff()
                 0, 0, 1, 0,
                 0, 0, 0, 1
         };
-        glUniformMatrix4fv(glGetUniformLocation(ID, "model"), 1, GL_FALSE, modelM);
+        glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, modelM);
 
-        glUniform1f(glGetUniformLocation(ID, "BS"), BS);
+        glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
 
         v = vbuf; // reset vertex buffer pointer
 
@@ -827,20 +775,38 @@ void draw_stuff()
                         TIMER(buildvbo)
                 }
 
-                if (tiles[z][y][x] == GRAS) {
-                        if (y == 0        || tiles[z][y-1][x] == OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, 1.0f };
-                        if (z == 0        || tiles[z-1][y][x] == OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, 0.9f };
-                        if (z == TILESD-1 || tiles[z+1][y][x] == OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, 0.9f };
-                        if (x == 0        || tiles[z][y][x-1] == OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, 0.7f };
-                        if (x == TILESW-1 || tiles[z][y][x+1] == OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, 0.7f };
-                        if (y == TILESH-1 || tiles[z][y+1][x] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, 0.5f };
-                } else if (tiles[z][y][x] == DIRT) {
-                        if (y == 0        || tiles[z][y-1][x] == OPEN) *v++ = (struct vbufv){ 2,    UP, x, y, z, 1.0f };
-                        if (z == 0        || tiles[z-1][y][x] == OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, 0.9f };
-                        if (z == TILESD-1 || tiles[z+1][y][x] == OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, 0.9f };
-                        if (x == 0        || tiles[z][y][x-1] == OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, 0.7f };
-                        if (x == TILESW-1 || tiles[z][y][x+1] == OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, 0.7f };
-                        if (y == TILESH-1 || tiles[z][y+1][x] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, 0.5f };
+                if (tiles[z][y][x] == OPEN) continue;
+
+                //lighting
+                int x_ = (x == 0) ? 0 : x - 1;
+                int y_ = (y == 0) ? 0 : y - 1;
+                int z_ = (z == 0) ? 0 : z - 1;
+                float mylight = skylt[z][y][x];
+                float usw = 0.008f * (skylt[z_ ][y_ ][x_ ] + skylt[z  ][y_ ][x_ ] + skylt[z  ][y  ][x_ ] + skylt[z_ ][y  ][x_ ] + skylt[z_ ][y  ][x  ] + skylt[z_ ][y_ ][x  ] + skylt[z  ][y_ ][x_ ] + mylight);
+                float use = 0.008f * (skylt[z_ ][y_ ][x+1] + skylt[z  ][y_ ][x+1] + skylt[z  ][y  ][x+1] + skylt[z_ ][y  ][x+1] + skylt[z_ ][y  ][x  ] + skylt[z_ ][y_ ][x  ] + skylt[z  ][y_ ][x+1] + mylight);
+                float unw = 0.008f * (skylt[z+1][y_ ][x_ ] + skylt[z  ][y_ ][x_ ] + skylt[z  ][y  ][x_ ] + skylt[z+1][y  ][x_ ] + skylt[z+1][y  ][x  ] + skylt[z+1][y_ ][x  ] + skylt[z  ][y_ ][x_ ] + mylight);
+                float une = 0.008f * (skylt[z+1][y_ ][x+1] + skylt[z  ][y_ ][x+1] + skylt[z  ][y  ][x+1] + skylt[z+1][y  ][x+1] + skylt[z+1][y  ][x  ] + skylt[z+1][y_ ][x  ] + skylt[z  ][y_ ][x+1] + mylight);
+                float dsw = 0.008f * (skylt[z_ ][y+1][x_ ] + skylt[z  ][y+1][x_ ] + skylt[z  ][y  ][x_ ] + skylt[z_ ][y  ][x_ ] + skylt[z_ ][y  ][x  ] + skylt[z_ ][y+1][x  ] + skylt[z  ][y+1][x_ ] + mylight);
+                float dse = 0.008f * (skylt[z_ ][y+1][x+1] + skylt[z  ][y+1][x+1] + skylt[z  ][y  ][x+1] + skylt[z_ ][y  ][x+1] + skylt[z_ ][y  ][x  ] + skylt[z_ ][y+1][x  ] + skylt[z  ][y+1][x+1] + mylight);
+                float dnw = 0.008f * (skylt[z+1][y+1][x_ ] + skylt[z  ][y+1][x_ ] + skylt[z  ][y  ][x_ ] + skylt[z+1][y  ][x_ ] + skylt[z+1][y  ][x  ] + skylt[z+1][y+1][x  ] + skylt[z  ][y+1][x_ ] + mylight);
+                float dne = 0.008f * (skylt[z+1][y+1][x+1] + skylt[z  ][y+1][x+1] + skylt[z  ][y  ][x+1] + skylt[z+1][y  ][x+1] + skylt[z+1][y  ][x  ] + skylt[z+1][y+1][x  ] + skylt[z  ][y+1][x+1] + mylight);
+                if (tiles[z][y][x] == GRAS)
+                {
+                        if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une };
+                        if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, use, usw, dse, dsw };
+                        if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, unw, une, dnw, dne };
+                        if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, usw, unw, dsw, dnw };
+                        if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, une, use, dne, dse };
+                        if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw };
+                }
+                else if (tiles[z][y][x] == DIRT)
+                {
+                        if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ 2,    UP, x, y, z, usw, use, unw, une };
+                        if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, use, usw, dse, dsw };
+                        if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, unw, une, dnw, dne };
+                        if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, usw, unw, dsw, dnw };
+                        if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse };
+                        if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw };
                 }
         }
         TIMERSTOP(buildvbo)
@@ -856,9 +822,6 @@ void draw_stuff()
                 TIMERSTOP(glDrawArrays)
                 v = vbuf;
         }
-
-        glDisable(GL_CULL_FACE);
-        //blacklines(target_x, target_y, target_z);
 
         TIMER(swapwindow);
         SDL_GL_SwapWindow(win);
