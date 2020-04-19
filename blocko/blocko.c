@@ -43,7 +43,7 @@
 #define PLYR_W (14*SCALE)          // physical width and height of the player
 #define PLYR_H (36*SCALE)          // ^
 #define PLYR_SPD (2*SCALE)         // units per frame
-#define EYEDOWN 5                  // how far down are the eyes from the top of the head
+#define EYEDOWN 10                 // how far down are the eyes from the top of the head
 #define STARTPX (TILESW*BS2)       // starting position within start screen
 #define STARTPY (0)                // ^
 #define STARTPZ (TILESD*BS2)       // ^
@@ -116,6 +116,9 @@ struct player {
         int goingl;
         int goingr;
         int jumping;
+        int breaking;
+        int building;
+        int cooldown;
         int fvel;
         int rvel;
         int grav;
@@ -184,9 +187,9 @@ int main()
         setup();
         new_game();
 
-        for(;;)
+        for (;;)
         {
-                while(SDL_PollEvent(&event)) switch(event.type)
+                while (SDL_PollEvent(&event)) switch (event.type)
                 {
                         case SDL_QUIT:            exit(0);
                         case SDL_KEYDOWN:         key_move(1);       break;
@@ -195,7 +198,8 @@ int main()
                         case SDL_MOUSEBUTTONDOWN: mouse_button(1);   break;
                         case SDL_MOUSEBUTTONUP:   mouse_button(0);   break;
                         case SDL_WINDOWEVENT:
-                                switch(event.window.event) {
+                                switch (event.window.event)
+                                {
                                         case SDL_WINDOWEVENT_SIZE_CHANGED:
                                                 resize();
                                                 break;
@@ -221,9 +225,9 @@ void setup()
         SDL_Init(SDL_INIT_VIDEO);
         win = SDL_CreateWindow("Blocko", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                 W, H, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
-        if(!win) exit(fprintf(stderr, "%s\n", SDL_GetError()));
+        if (!win) exit(fprintf(stderr, "%s\n", SDL_GetError()));
         ctx = SDL_GL_CreateContext(win);
-        if(!ctx) exit(fprintf(stderr, "Could not create GL context\n"));
+        if (!ctx) exit(fprintf(stderr, "Could not create GL context\n"));
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -254,7 +258,7 @@ void setup()
                 "res/stone.png",
                 ""
         };
-        for(int f = 0; files[f][0]; f++)
+        for (int f = 0; files[f][0]; f++)
         {
                 texels = stbi_load(files[f], &x, &y, &n, 0);
                 mode = n == 4 ? GL_RGBA : GL_RGB;
@@ -305,9 +309,9 @@ void resize()
 
 void key_move(int down)
 {
-        if(event.key.repeat) return;
+        if (event.key.repeat) return;
 
-        switch(event.key.keysym.sym)
+        switch (event.key.keysym.sym)
         {
                 case SDLK_w:
                         player[0].goingf = down;
@@ -357,55 +361,46 @@ void key_move(int down)
 
 void mouse_move()
 {
-        if(!mouselook) return;
+        if (!mouselook) return;
 
         float pitchlimit = 3.1415926535 * 0.5 - 0.001;
         player[0].yaw += event.motion.xrel * 0.001;
         player[0].pitch += event.motion.yrel * 0.001;
 
-        if(player[0].pitch > pitchlimit)
+        if (player[0].pitch > pitchlimit)
                 player[0].pitch = pitchlimit;
 
-        if(player[0].pitch < -pitchlimit)
+        if (player[0].pitch < -pitchlimit)
                 player[0].pitch = -pitchlimit;
 }
 
 void mouse_button(int down)
 {
-        if(!down) return;
-
-        if(event.button.button == SDL_BUTTON_LEFT)
+        if (!mouselook)
         {
-                if(!mouselook)
+                if (down)
                 {
                         SDL_SetRelativeMouseMode(SDL_TRUE);
                         mouselook = 1;
                 }
-                else
-                {
-                        int x = target_x;
-                        int y = target_y;
-                        int z = target_z;
-                        tiles[z][y][x] = OPEN;
-                        recalc_gndheight(x, z);
-                        unsigned char max = 0;
-                        if (sunlight[z-1][y  ][x  ] > max) max = sunlight[z-1][y  ][x  ];
-                        if (sunlight[z+1][y  ][x  ] > max) max = sunlight[z+1][y  ][x  ];
-                        if (sunlight[z  ][y-1][x  ] > max) max = sunlight[z  ][y-1][x  ];
-                        if (sunlight[z  ][y+1][x  ] > max) max = sunlight[z  ][y+1][x  ];
-                        if (sunlight[z  ][y  ][x-1] > max) max = sunlight[z  ][y  ][x-1];
-                        if (sunlight[z  ][y  ][x+1] > max) max = sunlight[z  ][y  ][x+1];
-                        sun_enqueue(place_x, place_y, place_z, 0, max ? max - 1 : 0);
-                }
         }
-        else if(event.button.button == SDL_BUTTON_RIGHT)
+        else if (event.button.button == SDL_BUTTON_LEFT)
         {
-                tiles[place_z][place_y][place_x] = DIRT;
+                player[0].breaking = down;
         }
-        else if(event.button.button == SDL_BUTTON_X1)
+        else if (event.button.button == SDL_BUTTON_RIGHT)
+        {
+                player[0].building = down;
+        }
+        else if (event.button.button == SDL_BUTTON_X1)
         {
                 if (down) player[0].jumping = JUMP_BUFFER_FRAMES;
         }
+}
+
+void move_to_ground(float *inout, int x, int y, int z)
+{
+        *inout = gndheight[z][x] * BS - PLYR_H - 1;
 }
 
 //start a new game
@@ -428,6 +423,8 @@ void new_game()
         player[0].pitch = 0;
         player[0].grav = GRAV_ZERO;
         gen_world();
+        recalc_gndheight(STARTPX/BS, STARTPZ/BS);
+        move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
 }
 
 void gen_world()
@@ -565,7 +562,7 @@ void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
 void update_world()
 {
         int i, x, y, z;
-        for (i = 0; i < 1000; i++) {
+        for (i = 0; i < 500; i++) {
                 x = 1 + rand() % (TILESW - 2);
                 z = 1 + rand() % (TILESD - 2);
 
@@ -606,7 +603,7 @@ void update_player()
 {
         struct player *p = player + 0;
 
-        if(player[0].pos.y > TILESH*BS + 6000) // fell too far
+        if (player[0].pos.y > TILESH*BS + 6000) // fell too far
         {
                 new_game();
                 return;
@@ -615,28 +612,54 @@ void update_player()
         if (player[0].jumping)
         {
                 player[0].jumping--; // reduce buffer frames
-                if(player[0].ground) {
+                if (player[0].ground)
+                {
                         player[0].grav = GRAV_JUMP;
                         player[0].jumping = 0;
                 }
         }
 
+        if (player[0].cooldown) player[0].cooldown--;
 
-        if(p->goingf && !p->goingb) { p->fvel++; }
-        else if(p->fvel > 0)        { p->fvel--; }
+        if (player[0].breaking && !player[0].cooldown)
+        {
+                int x = target_x;
+                int y = target_y;
+                int z = target_z;
+                tiles[z][y][x] = OPEN;
+                recalc_gndheight(x, z);
+                unsigned char max = 0;
+                if (sunlight[z-1][y  ][x  ] > max) max = sunlight[z-1][y  ][x  ];
+                if (sunlight[z+1][y  ][x  ] > max) max = sunlight[z+1][y  ][x  ];
+                if (sunlight[z  ][y-1][x  ] > max) max = sunlight[z  ][y-1][x  ];
+                if (sunlight[z  ][y+1][x  ] > max) max = sunlight[z  ][y+1][x  ];
+                if (sunlight[z  ][y  ][x-1] > max) max = sunlight[z  ][y  ][x-1];
+                if (sunlight[z  ][y  ][x+1] > max) max = sunlight[z  ][y  ][x+1];
+                sun_enqueue(place_x, place_y, place_z, 0, max ? max - 1 : 0);
+                player[0].cooldown = 5;
+        }
 
-        if(p->goingb && !p->goingf) { p->fvel--; }
-        else if(p->fvel < 0)        { p->fvel++; }
+        if (player[0].building && !player[0].cooldown) {
+                if (!collide(player[0].pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
+                        tiles[place_z][place_y][place_x] = DIRT;
+                player[0].cooldown = 10;
+        }
 
-        if(p->goingr && !p->goingl) { p->rvel++; }
-        else if(p->rvel > 0)        { p->rvel--; }
+        if (p->goingf && !p->goingb) { p->fvel++; }
+        else if (p->fvel > 0)        { p->fvel--; }
 
-        if(p->goingl && !p->goingr) { p->rvel--; }
-        else if(p->rvel < 0)        { p->rvel++; }
+        if (p->goingb && !p->goingf) { p->fvel--; }
+        else if (p->fvel < 0)        { p->fvel++; }
+
+        if (p->goingr && !p->goingl) { p->rvel++; }
+        else if (p->rvel > 0)        { p->rvel--; }
+
+        if (p->goingl && !p->goingr) { p->rvel--; }
+        else if (p->rvel < 0)        { p->rvel++; }
 
         //limit speed
         float totalvel = sqrt(p->fvel * p->fvel + p->rvel * p->rvel);
-        if(totalvel > PLYR_SPD)
+        if (totalvel > PLYR_SPD)
         {
                 totalvel = PLYR_SPD / totalvel;
                 if (p->fvel > 4 || p->fvel < -4) p->fvel *= totalvel;
@@ -649,18 +672,18 @@ void update_player()
         p->vel.x = fwdx * p->fvel + fwdz * p->rvel;
         p->vel.z = fwdz * p->fvel - fwdx * p->rvel;
 
-        if(!move_player(p->vel.x, p->vel.y, p->vel.z))
+        if (!move_player(p->vel.x, p->vel.y, p->vel.z))
         {
                 p->fvel = 0;
                 p->rvel = 0;
         }
 
         //gravity
-        if(!p->ground || p->grav < GRAV_ZERO)
+        if (!p->ground || p->grav < GRAV_ZERO)
         {
-                if(!move_player(0, gravity[p->grav], 0))
+                if (!move_player(0, gravity[p->grav], 0))
                         p->grav = GRAV_ZERO;
-                else if(p->grav < GRAV_MAX)
+                else if (p->grav < GRAV_MAX)
                         p->grav++;
         }
 
@@ -670,7 +693,7 @@ void update_player()
                 PLYR_W, 1, PLYR_W};
         p->ground = world_collide(foot);
 
-        if(p->ground)
+        if (p->ground)
                 p->grav = GRAV_ZERO;
 
         personal_light(place_x, place_y, place_z);
@@ -683,13 +706,13 @@ void update_player()
 //collide a box with nearby world tiles
 int world_collide(struct box box)
 {
-        for(int i = -1; i < 2; i++) for(int j = -1; j < 3; j++) for(int k = -1; k < 2; k++)
+        for (int i = -1; i < 2; i++) for (int j = -1; j < 3; j++) for (int k = -1; k < 2; k++)
         {
                 int bx = box.x/BS + i;
                 int by = box.y/BS + j;
                 int bz = box.z/BS + k;
 
-                if(block_collide(bx, by, bz, box))
+                if (block_collide(bx, by, bz, box))
                         return 1;
         }
 
@@ -704,18 +727,18 @@ int move_player(int velx, int vely, int velz)
         int already_stuck = 0;
         int moved = 0;
 
-        if(!velx && !vely && !velz)
+        if (!velx && !vely && !velz)
                 return 1;
 
-        if(world_collide(player[0].pos))
+        if (world_collide(player[0].pos))
                 already_stuck = 1;
 
-        while(velx || vely || velz)
+        while (velx || vely || velz)
         {
                 struct box testpos = player[0].pos;
                 int amt;
 
-                if((!velx && !velz) || ((last_was_x || last_was_z) && vely))
+                if ((!velx && !velz) || ((last_was_x || last_was_z) && vely))
                 {
                         amt = vely > 0 ? 1 : -1;
                         testpos.y += amt;
@@ -723,7 +746,7 @@ int move_player(int velx, int vely, int velz)
                         last_was_x = 0;
                         last_was_z = 0;
                 }
-                else if(!velz || (last_was_z && velx))
+                else if (!velz || (last_was_z && velx))
                 {
                         amt = velx > 0 ? 1 : -1;
                         testpos.x += amt;
@@ -742,16 +765,16 @@ int move_player(int velx, int vely, int velz)
 
                 int would_be_stuck = 0;
 
-                if(world_collide(testpos))
+                if (world_collide(testpos))
                         would_be_stuck = 1;
                 else
                         already_stuck = 0;
 
-                if(would_be_stuck && !already_stuck)
+                if (would_be_stuck && !already_stuck)
                 {
-                        if(last_was_x)
+                        if (last_was_x)
                                 velx = 0;
-                        else if(last_was_z)
+                        else if (last_was_z)
                                 velz = 0;
                         else
                                 vely = 0;
@@ -784,10 +807,10 @@ int collide(struct box l, struct box r)
 //collide a rect with a block
 int block_collide(int bx, int by, int bz, struct box box)
 {
-        if(!legit_tile(bx, by, bz))
+        if (!legit_tile(bx, by, bz))
                 return 0;
 
-        if(tiles[bz][by][bx] <= LASTSOLID)
+        if (tiles[bz][by][bx] <= LASTSOLID)
                 return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS, BS});
 
         return 0;
@@ -800,7 +823,7 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
         int y = (int)(eye1 / BS);
         int z = (int)(eye2 / BS);
 
-        for(int i = 0; ; i++)
+        for (int i = 0; ; i++)
         {
                 float a0 = (BS * (x + (f0 > 0 ? 1 : 0)) - eye0) / f0;
                 float a1 = (BS * (y + (f1 > 0 ? 1 : 0)) - eye1) / f1;
@@ -811,21 +834,21 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
                 place_y = y;
                 place_z = z;
 
-                if(a0 < a1 && a0 < a2) { x += (f0 > 0 ? 1 : -1); amt = a0; }
-                else if(a1 < a2)       { y += (f1 > 0 ? 1 : -1); amt = a1; }
-                else                   { z += (f2 > 0 ? 1 : -1); amt = a2; }
+                if (a0 < a1 && a0 < a2) { x += (f0 > 0 ? 1 : -1); amt = a0; }
+                else if (a1 < a2)       { y += (f1 > 0 ? 1 : -1); amt = a1; }
+                else                    { z += (f2 > 0 ? 1 : -1); amt = a2; }
 
                 eye0 += amt * f0 * 1.0001;
                 eye1 += amt * f1 * 1.0001;
                 eye2 += amt * f2 * 1.0001;
 
-                if(x < 0 || y < 0 || z < 0 || x >= TILESW || y >= TILESH || z >= TILESD)
+                if (x < 0 || y < 0 || z < 0 || x >= TILESW || y >= TILESH || z >= TILESD)
                         goto bad;
 
-                if(tiles[z][y][x] != OPEN)
+                if (tiles[z][y][x] != OPEN)
                         break;
 
-                if(i == 6)
+                if (i == 6)
                         goto bad;
         }
 
@@ -1022,7 +1045,7 @@ void draw_stuff()
                 vbo_len[myvbo[my]] = v - vbuf;
                 polys += vbo_len[myvbo[my]];
                 TIMER(glBufferData)
-                glBufferData(GL_ARRAY_BUFFER, vbo_len[myvbo[my]] * sizeof(struct vbufv), vbuf, GL_STATIC_DRAW);
+                glBufferData(GL_ARRAY_BUFFER, vbo_len[myvbo[my]] * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
                 TIMER(glDrawArrays)
                 glDrawArrays(GL_POINTS, 0, vbo_len[myvbo[my]]); // draw the newly buffered verts
         }
