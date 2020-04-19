@@ -44,9 +44,9 @@
 #define PLYR_H (36*SCALE)          // ^
 #define PLYR_SPD (2*SCALE)         // units per frame
 #define EYEDOWN 10                 // how far down are the eyes from the top of the head
-#define STARTPX (TILESW*BS2)       // starting position within start screen
-#define STARTPY (0)                // ^
-#define STARTPZ (TILESD*BS2)       // ^
+#define STARTPX 19971              // starting position within start screen
+#define STARTPY 0                  // ^
+#define STARTPZ 20710              // ^
 #define NR_PLAYERS 1
 #define JUMP_BUFFER_FRAMES 6
 #define GRAV_JUMP 0
@@ -60,7 +60,8 @@
 #define SOUTH 5
 #define DOWN  6
 
-#define STON 41
+#define STON 40
+#define SAND 41
 #define DIRT 42
 
 #define GRG1 45
@@ -220,7 +221,8 @@ int main()
 //initial setup to get the window and rendering going
 void setup()
 {
-        srand(time(NULL));
+        //srand(time(NULL));
+        srand(2020);
 
         SDL_Init(SDL_INIT_VIDEO);
         win = SDL_CreateWindow("Blocko", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
@@ -256,6 +258,7 @@ void setup()
                 "res/grass_grow1_top.png",
                 "res/grass_grow2_top.png",
                 "res/stone.png",
+                "res/sand.png",
                 ""
         };
         for (int f = 0; files[f][0]; f++)
@@ -427,36 +430,99 @@ void new_game()
         move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
 }
 
+int hmap[TILESW][TILESD];
+int hmap2[TILESW][TILESD];
+
+void gen_hmap(int x0, int x2, int z0, int z2)
+{
+        int x1 = (x0 + x2) / 2;
+        int z1 = (z0 + z2) / 2;
+        int w = (x2 - x0) / 4;
+        int d = (z2 - z0) / 4;
+        w = w ? w : 1;
+        d = d ? d : 1;
+
+        int r = w > 2 ? 1 : 0;
+
+        // edges middles
+        if (!hmap[x0][z1])
+                hmap[x0][z1] = (hmap[x0][z0] + hmap[x0][z2]) / 2 + r * ((rand() % d) - d / 2);
+        if (!hmap[x2][z1])
+                hmap[x2][z1] = (hmap[x2][z0] + hmap[x2][z2]) / 2 + r * ((rand() % d) - d / 2);
+        if (!hmap[x1][z0])
+                hmap[x1][z0] = (hmap[x0][z0] + hmap[x2][z0]) / 2 + r * ((rand() % d) - d / 2);
+        if (!hmap[x1][z2])
+                hmap[x1][z2] = (hmap[x0][z2] + hmap[x2][z2]) / 2 + r * ((rand() % d) - d / 2);
+
+        // middle middle
+        hmap[x1][z1] = (hmap[x0][z1] + hmap[x2][z1] + hmap[x1][z0] + hmap[x1][z2]) / 4 + r * ((rand() % (d * 2)) - d);
+
+        // recurse if there are any unfilled spots
+        if(x1 - x0 > 1 || x2 - x1 > 1 || z1 - z0 > 1 || z2 - z1 > 1)
+        {
+                gen_hmap(x0, x1, z0, z1);
+                gen_hmap(x0, x1, z1, z2);
+                gen_hmap(x1, x2, z0, z1);
+                gen_hmap(x1, x2, z1, z2);
+        }
+}
+
+void smooth_hmap()
+{
+        for (int x = 0; x < TILESW; x++) for (int z = 0; z < TILESD; z++)
+        {
+                int x0 = x - 3;
+                int x1 = x + 3;
+                int z0 = z - 3;
+                int z1 = z + 3;
+                CLAMP(x0, 0, TILESW-1);
+                CLAMP(x1, 0, TILESW-1);
+                CLAMP(z0, 0, TILESD-1);
+                CLAMP(z1, 0, TILESD-1);
+                int sum = 0, n = 0;
+                for (int i = x0; i < x1; i++) for (int j = z0; j < z1; j++)
+                {
+                        sum += hmap[i][j];
+                        n++;
+                }
+                int res = sum / n;
+
+                if (res > 105)
+                {
+                        res -= 13; // sea shelf
+                        if (res > 115) res = ((res - 115) / 5) + 115;
+                }
+                else if (res > 90) // beaches
+                {
+                        res = ((res - 90) / 7) + 90;
+                }
+
+                hmap2[x][z] = res < TILESH - 1 ? res : TILESH - 1;
+        }
+}
+
 void gen_world()
 {
+        // pick corners
+        hmap[0       ][0       ] = 70 + rand() % 30;
+        hmap[0       ][TILESD-1] = 70 + rand() % 30;
+        hmap[TILESW-1][0       ] = 70 + rand() % 30;
+        hmap[TILESW-1][TILESD-1] = 70 + rand() % 30;
+        gen_hmap(0, TILESW-1, 0, TILESD-1);
+        smooth_hmap();
+
         for (int x = 0; x < TILESW; x++) for (int z = 0; z < TILESD; z++) for (int y = 0; y < TILESH; y++)
         {
-                float xd = (x - 2 * TILESW / 3);
-                float zd = (z - 1 * TILESD / 3);
-                float d = sqrt(xd * xd + zd * zd);
-                float h =  3 + 3*sin(0.1 * x) + 3*cos(0.2 * z + 0.02 * x) + 0.1 * (z + x);
-                float s = -14 + 12*sin(1 + 0.14 * x) + 13*cos(2 + 0.18 * z);
-                if (d < 40)
-                {
-                        float hmin = fmod(h, 200.f) * (40 / d) * 0.6;
-                        if (hmin > h) h = hmin;
-                }
-
-                if (y == TILESH-1 || y > TILESH - h || y > TILESH - s)
-                        tiles[z][y][x] = ((y == 0 || tiles[z][y-1][x] == OPEN) && rand() % 100 == 1) ? GRAS : DIRT;
-                else
-                        tiles[z][y][x] = OPEN;
-
-                // clunky thing
-                if ((z == 4 && x + y < 10) || (x == 7 && z + y > 10 && z < 14))
-                {
-                        tiles[z][y][x] = DIRT;
-                }
+                if (y < hmap2[x][z]) tiles[z][y][x] = OPEN;
+                else if (y < 66)     tiles[z][y][x] = STON;
+                else if (y < 86)     tiles[z][y][x] = DIRT;
+                else if (y < 91)     tiles[z][y][x] = GRAS;
+                else                 tiles[z][y][x] = SAND;
         }
 
         // monolith
         int X = 80;
-        int Y = 15;
+        int Y = 80;
         int Z = 65;
         for (int a = -15; a <= 15; a++) for (int b = -15; b <= 15; b++) for (int c = -15; c <= 15; c++)
         {
@@ -1031,14 +1097,15 @@ void draw_stuff()
                                 if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse };
                                 if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw };
                         }
-                        else if (t == STON)
+                        else if (t == STON || t == SAND)
                         {
-                                if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ 5,    UP, x, y, z, usw, use, unw, une };
-                                if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 5, SOUTH, x, y, z, use, usw, dse, dsw };
-                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 5, NORTH, x, y, z, unw, une, dnw, dne };
-                                if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ 5,  WEST, x, y, z, usw, unw, dsw, dnw };
-                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 5,  EAST, x, y, z, une, use, dne, dse };
-                                if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 5,  DOWN, x, y, z, dse, dsw, dne, dnw };
+                                int f = (t == STON) ? 5 : 6;
+                                if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ f,    UP, x, y, z, usw, use, unw, une };
+                                if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ f, SOUTH, x, y, z, use, usw, dse, dsw };
+                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ f, NORTH, x, y, z, unw, une, dnw, dne };
+                                if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ f,  WEST, x, y, z, usw, unw, dsw, dnw };
+                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ f,  EAST, x, y, z, une, use, dne, dse };
+                                if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ f,  DOWN, x, y, z, dse, dsw, dne, dnw };
                         }
                 }
 
