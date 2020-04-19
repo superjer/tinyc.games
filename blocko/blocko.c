@@ -28,22 +28,27 @@
 #include "./shader.c"
 
 #define SCALE 3                    // x magnification
-#define W 1366                     // window width, height
-#define H 768                      // ^
-#define TILESW 200                 // total level width, height
-#define TILESH 40                  // ^
-#define TILESD 200                 // ^
-#define VBOW 4                     // how many VBOs wide
-#define VBOD 4                     // how many VBOs deep
+#define W 1920                     // window width, height
+#define H 1080                     // ^
+#define CHUNKW 16
+#define CHUNKD 16
+#define VAOW 32                    // how many VAOs wide
+#define VAOD 32                    // how many VAOs deep
+#define VAOS (VAOW*VAOD)           // total nr of vbos
+#define TILESW (CHUNKW*VAOW)       // total level width, height
+#define TILESH 128                 // ^
+#define TILESD (CHUNKD*VAOD)       // ^
 #define BS (20*SCALE)              // block size
 #define BS2 (BS/2)                 // block size in half
-#define PLYR_W (16*SCALE)          // physical width and height of the player
-#define PLYR_H (BS)                // ^
+#define PLYR_W (14*SCALE)          // physical width and height of the player
+#define PLYR_H (36*SCALE)          // ^
 #define PLYR_SPD (2*SCALE)         // units per frame
+#define EYEDOWN 5                  // how far down are the eyes from the top of the head
 #define STARTPX (TILESW*BS2)       // starting position within start screen
 #define STARTPY (0)                // ^
 #define STARTPZ (TILESD*BS2)       // ^
 #define NR_PLAYERS 1
+#define JUMP_BUFFER_FRAMES 6
 #define GRAV_JUMP 0
 #define GRAV_ZERO 14
 #define GRAV_MAX 49
@@ -62,9 +67,10 @@
 #define GRG2 46
 #define GRAS 47
 
-#define LASTSOLID GRAS // everything less than here is solid
+#define BARR 48
+
+#define LASTSOLID BARR // everything less than or eq here is solid
 #define OPEN 75        // invisible open, walkable space
-#define SKYL 76        // open, sky light source
 
 #define VERTEX_BUFLEN 100000
 #define SUNQLEN 1000
@@ -87,7 +93,7 @@ int gravity[] = { -20, -17, -14, -12, -10, -8, -6, -5, -4, -3,
 unsigned char tiles[TILESD][TILESH][TILESW];
 unsigned char sunlight[TILESD+1][TILESH+1][TILESW+1];
 unsigned char gndheight[TILESD][TILESW];
-float cornlt[TILESD+2][TILESH+2][TILESW+2];
+float cornlight[TILESD+2][TILESH+2][TILESW+2];
 
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
@@ -109,6 +115,7 @@ struct player {
         int goingb;
         int goingl;
         int goingr;
+        int jumping;
         int fvel;
         int rvel;
         int grav;
@@ -126,6 +133,7 @@ int screenw = W;
 int screenh = H;
 int zooming = 0;
 float zoom_amt = 1.f;
+float near = 8.f;
 
 SDL_Event event;
 SDL_Window *win;
@@ -133,7 +141,8 @@ SDL_GLContext ctx;
 SDL_Renderer *renderer;
 SDL_Surface *surf;
 
-unsigned int vbo, vao;
+unsigned int vbo[VAOS], vao[VAOS];
+size_t vbo_len[VAOS];
 struct vbufv vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding
 struct vbufv *v_limit = vbuf + VERTEX_BUFLEN;
 struct vbufv *v = vbuf;
@@ -146,11 +155,10 @@ void gen_world();
 void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light);
 void recalc_gndheight(int x, int z);
 void step_sunlight();
-void recalc_corner_lighting();
+void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi);
 void key_move(int down);
 void mouse_move();
 void mouse_button(int down);
-void jump(int down);
 void update_world();
 void update_player();
 int move_player(int velx, int vely, int velz);
@@ -198,7 +206,6 @@ int main()
                 TIMECALL(update_player, ());
                 TIMECALL(update_world, ());
                 TIMECALL(step_sunlight, ());
-                TIMECALL(recalc_corner_lighting, ());
                 draw_stuff();
                 debrief();
                 //SDL_Delay(1000 / 60);
@@ -235,7 +242,6 @@ void setup()
         int x, y, n, mode;
         GLuint texid = 0;
         glGenTextures(1, &texid);
-        printf("texid: %d\n", texid);
         glBindTexture(GL_TEXTURE_2D_ARRAY, texid);
 
         unsigned char *texels;
@@ -255,7 +261,6 @@ void setup()
                 if (f == 0)
                         glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RGBA8, x, y, 256);
                 glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, f, x, y, 1, mode, GL_UNSIGNED_BYTE, texels);
-                printf("%d\n", glGetError());
                 stbi_image_free(texels);
         }
 
@@ -265,29 +270,30 @@ void setup()
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-
         load_shaders();
 
-        glGenVertexArrays(1, &vao);
-        glGenBuffers(1, &vbo);
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        // tex number
-        glVertexAttribPointer(0, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->tex);
-        glEnableVertexAttribArray(0);
-        // orientation
-        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->orient);
-        glEnableVertexAttribArray(1);
-        // position
-        glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->x);
-        glEnableVertexAttribArray(2);
-        // illum
-        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->illum0);
-        glEnableVertexAttribArray(3);
+        glGenVertexArrays(VAOS, vao);
+        glGenBuffers(VAOS, vbo);
+        for (int i = 0; i < VAOS; i++)
+        {
+                glBindVertexArray(vao[i]);
+                glBindBuffer(GL_ARRAY_BUFFER, vbo[i]);
+                // tex number
+                glVertexAttribPointer(0, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->tex);
+                glEnableVertexAttribArray(0);
+                // orientation
+                glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->orient);
+                glEnableVertexAttribArray(1);
+                // position
+                glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->x);
+                glEnableVertexAttribArray(2);
+                // illum
+                glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->illum0);
+                glEnableVertexAttribArray(3);
+        }
 
-	glUseProgram(prog_id);
+        glUseProgram(prog_id);
         glUniform1i(glGetUniformLocation(prog_id, "tarray"), 0);
-
         SDL_SetRelativeMouseMode(SDL_TRUE);
 }
 
@@ -316,7 +322,7 @@ void key_move(int down)
                         player[0].goingr = down;
                         break;
                 case SDLK_SPACE:
-                        jump(down);
+                        if (down) player[0].jumping = JUMP_BUFFER_FRAMES;
                         break;
                 case SDLK_ESCAPE:
                         SDL_SetRelativeMouseMode(SDL_FALSE);
@@ -340,6 +346,9 @@ void key_move(int down)
                         {
                                 recalc_gndheight(target_x, target_z);
                         }
+                        break;
+                case SDLK_p:
+                        if (down) near--;
                         break;
                 case SDLK_q:
                         exit(-1);
@@ -395,7 +404,7 @@ void mouse_button(int down)
         }
         else if(event.button.button == SDL_BUTTON_X1)
         {
-                jump(down);
+                if (down) player[0].jumping = JUMP_BUFFER_FRAMES;
         }
 }
 
@@ -432,7 +441,7 @@ void gen_world()
                 float s = -14 + 12*sin(1 + 0.14 * x) + 13*cos(2 + 0.18 * z);
                 if (d < 40)
                 {
-                        float hmin = h * (40 / d) * 0.6;
+                        float hmin = fmod(h, 200.f) * (40 / d) * 0.6;
                         if (hmin > h) h = hmin;
                 }
 
@@ -540,29 +549,23 @@ void step_sunlight()
 
 }
 
-void recalc_corner_lighting()
+void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
 {
-        for (int z = 0; z <= TILESD; z++) for (int y = 0; y <= TILESH; y++) for (int x = 0; x <= TILESW; x++)
+        for (int z = zlo; z <= zhi; z++) for (int y = 0; y <= TILESH; y++) for (int x = xlo; x <= xhi; x++)
         {
                 int x_ = (x == 0) ? 0 : x - 1;
                 int y_ = (y == 0) ? 0 : y - 1;
                 int z_ = (z == 0) ? 0 : z - 1;
-                cornlt[z][y][x] = 0.008f * (
+                cornlight[z][y][x] = 0.008f * (
                                 sunlight[z_][y_][x_] + sunlight[z_][y_][x ] + sunlight[z_][y ][x_] + sunlight[z_][y ][x ] +
                                 sunlight[z ][y_][x_] + sunlight[z ][y_][x ] + sunlight[z ][y ][x_] + sunlight[z ][y ][x ]);
         }
 }
 
-void jump(int down)
-{
-        if(player[0].ground && down)
-                player[0].grav = GRAV_JUMP;
-}
-
 void update_world()
 {
         int i, x, y, z;
-        for (i = 0; i < 100; i++) {
+        for (i = 0; i < 1000; i++) {
                 x = 1 + rand() % (TILESW - 2);
                 z = 1 + rand() % (TILESD - 2);
 
@@ -608,6 +611,16 @@ void update_player()
                 new_game();
                 return;
         }
+
+        if (player[0].jumping)
+        {
+                player[0].jumping--; // reduce buffer frames
+                if(player[0].ground) {
+                        player[0].grav = GRAV_JUMP;
+                        player[0].jumping = 0;
+                }
+        }
+
 
         if(p->goingf && !p->goingb) { p->fvel++; }
         else if(p->fvel > 0)        { p->fvel--; }
@@ -835,10 +848,9 @@ void draw_stuff()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // compute proj matrix
-        float near = 16.f;
-        float far = 199999.f;
-        float frustw = 9.f * zoom_amt * screenw / screenh;
-        float frusth = 9.f * zoom_amt;
+        float far = 99999.f;
+        float frustw = 4.5f * zoom_amt * screenw / screenh;
+        float frusth = 4.5f * zoom_amt;
         float frustM[] = {
                 near/frustw,           0,                                  0,  0,
                           0, near/frusth,                                  0,  0,
@@ -850,7 +862,7 @@ void draw_stuff()
         // compute view matrix
         float eye0, eye1, eye2;
         eye0 = player[0].pos.x + PLYR_W / 2;
-        eye1 = player[0].pos.y - BS * 3 / 4;
+        eye1 = player[0].pos.y + EYEDOWN;
         eye2 = player[0].pos.z + PLYR_W / 2;
         float f0, f1, f2;
         f0 = cos(player[0].pitch) * sin(player[0].yaw);
@@ -913,86 +925,111 @@ void draw_stuff()
 
         glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
 
-        v = vbuf; // reset vertex buffer pointer
+        //determine which chunks to send to gl
+        int pli = (player[0].pos.x - BS2 * CHUNKW) / (BS * CHUNKW);
+        int plj = (player[0].pos.z - BS2 * CHUNKD) / (BS * CHUNKD);
+        CLAMP(pli, 0, VAOW - 1);
+        CLAMP(plj, 0, VAOD - 1);
+        int myi[5] = { pli, pli+1, pli  , pli+1, 0 };
+        int myj[5] = { plj, plj  , plj+1, plj+1, 0 };
+        int myvbo[5] = {
+                myi[0] * VAOD + myj[0],
+                myi[1] * VAOD + myj[1],
+                myi[2] * VAOD + myj[2],
+                myi[3] * VAOD + myj[3],
+                0 };
 
-        // draw world
-        TIMER(buildvbo)
-        for (int x = 0; x < TILESW; x++) for (int y = 0; y < TILESH; y++) for (int z = 0; z < TILESD; z++)
+        TIMER(drawstale)
+        for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOW; j++)
         {
-                if (v >= v_limit) {
-                        TIMERSTOP(buildvbo)
-                        TIMER(glBufferData)
-                        //printf("buffer full, draw %ld verts\n", v - vbuf);
-                        polys += (v - vbuf) * 2;
-                        glBufferData(GL_ARRAY_BUFFER, sizeof vbuf, vbuf, GL_STATIC_DRAW);
-                        TIMERSTOP(glBufferData)
-                        TIMER(glDrawArrays)
-                        glDrawArrays(GL_POINTS, 0, v - vbuf);
-                        TIMERSTOP(glDrawArrays);
-                        v = vbuf;
-                        TIMER(buildvbo)
+                int which = i * VAOD + j;
+                if (frame % VAOS == which) // you're the lucky vbo!
+                {
+                        myvbo[4] = which;
+                        myi[4] = i;
+                        myj[4] = j;
+                        continue;
                 }
 
-                if (tiles[z][y][x] == OPEN) continue;
-
-                //lighting
-                float usw = cornlt[z  ][y  ][x  ];
-                float use = cornlt[z  ][y  ][x+1];
-                float unw = cornlt[z+1][y  ][x  ];
-                float une = cornlt[z+1][y  ][x+1];
-                float dsw = cornlt[z  ][y+1][x  ];
-                float dse = cornlt[z  ][y+1][x+1];
-                float dnw = cornlt[z+1][y+1][x  ];
-                float dne = cornlt[z+1][y+1][x+1];
-                int t = tiles[z][y][x];
-                if (t == GRAS)
-                {
-                        if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une };
-                        if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, use, usw, dse, dsw };
-                        if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, unw, une, dnw, dne };
-                        if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, usw, unw, dsw, dnw };
-                        if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, une, use, dne, dse };
-                        if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw };
-                }
-                else if (t == DIRT || t == GRG1 || t == GRG2)
-                {
-                        int u = (t == DIRT) ? 2 :
-                                (t == GRG1) ? 3 :
-                                              4 ;
-                        if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ u,    UP, x, y, z, usw, use, unw, une };
-                        if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, use, usw, dse, dsw };
-                        if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, unw, une, dnw, dne };
-                        if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, usw, unw, dsw, dnw };
-                        if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse };
-                        if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw };
-                }
-                else if (t == STON)
-                {
-                        if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ 5,    UP, x, y, z, usw, use, unw, une };
-                        if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 5, SOUTH, x, y, z, use, usw, dse, dsw };
-                        if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 5, NORTH, x, y, z, unw, une, dnw, dne };
-                        if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ 5,  WEST, x, y, z, usw, unw, dsw, dnw };
-                        if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 5,  EAST, x, y, z, une, use, dne, dse };
-                        if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 5,  DOWN, x, y, z, dse, dsw, dne, dnw };
-                }
+                glBindVertexArray(vao[which]);
+                glDrawArrays(GL_POINTS, 0, vbo_len[which]);
+                polys += vbo_len[which];
         }
-        TIMERSTOP(buildvbo)
 
-        if (v > vbuf) {
-                //printf("done, draw %ld verts\n", v - vbuf);
-                polys += (v - vbuf) * 2;
+        TIMER(buildvbo);
+        for (int my = 0; my < 5; my++)
+        {
+                glBindVertexArray(vao[myvbo[my]]);
+                glBindBuffer(GL_ARRAY_BUFFER, vbo[myvbo[my]]);
+                v = vbuf; // reset vertex buffer pointer
+
+                int xlo = myi[my] * CHUNKW;
+                int xhi = xlo + CHUNKW;
+                int zlo = myj[my] * CHUNKD;
+                int zhi = zlo + CHUNKD;
+
+                TIMECALL(recalc_corner_lighting, (xlo, xhi, zlo, zhi));
+                TIMER(buildvbo);
+
+                for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH; y++) for (int x = xlo; x < xhi; x++)
+                {
+                        if (v >= v_limit) break; //shouldnt reasonably happen
+
+                        if (tiles[z][y][x] == OPEN) continue;
+
+                        //lighting
+                        float usw = cornlight[z  ][y  ][x  ];
+                        float use = cornlight[z  ][y  ][x+1];
+                        float unw = cornlight[z+1][y  ][x  ];
+                        float une = cornlight[z+1][y  ][x+1];
+                        float dsw = cornlight[z  ][y+1][x  ];
+                        float dse = cornlight[z  ][y+1][x+1];
+                        float dnw = cornlight[z+1][y+1][x  ];
+                        float dne = cornlight[z+1][y+1][x+1];
+                        int t = tiles[z][y][x];
+                        if (t == GRAS)
+                        {
+                                if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une };
+                                if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, use, usw, dse, dsw };
+                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, unw, une, dnw, dne };
+                                if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, usw, unw, dsw, dnw };
+                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, une, use, dne, dse };
+                                if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw };
+                        }
+                        else if (t == DIRT || t == GRG1 || t == GRG2)
+                        {
+                                int u = (t == DIRT) ? 2 :
+                                        (t == GRG1) ? 3 :
+                                                4 ;
+                                if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ u,    UP, x, y, z, usw, use, unw, une };
+                                if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, use, usw, dse, dsw };
+                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, unw, une, dnw, dne };
+                                if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, usw, unw, dsw, dnw };
+                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse };
+                                if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw };
+                        }
+                        else if (t == STON)
+                        {
+                                if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ 5,    UP, x, y, z, usw, use, unw, une };
+                                if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 5, SOUTH, x, y, z, use, usw, dse, dsw };
+                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 5, NORTH, x, y, z, unw, une, dnw, dne };
+                                if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ 5,  WEST, x, y, z, usw, unw, dsw, dnw };
+                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 5,  EAST, x, y, z, une, use, dne, dse };
+                                if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 5,  DOWN, x, y, z, dse, dsw, dne, dnw };
+                        }
+                }
+
+                vbo_len[myvbo[my]] = v - vbuf;
+                polys += vbo_len[myvbo[my]];
                 TIMER(glBufferData)
-                glBufferData(GL_ARRAY_BUFFER, sizeof vbuf, vbuf, GL_STATIC_DRAW);
-                TIMERSTOP(glBufferData)
+                glBufferData(GL_ARRAY_BUFFER, vbo_len[myvbo[my]] * sizeof(struct vbufv), vbuf, GL_STATIC_DRAW);
                 TIMER(glDrawArrays)
-                glDrawArrays(GL_POINTS, 0, v - vbuf);
-                TIMERSTOP(glDrawArrays)
-                v = vbuf;
+                glDrawArrays(GL_POINTS, 0, vbo_len[myvbo[my]]); // draw the newly buffered verts
         }
 
         TIMER(swapwindow);
         SDL_GL_SwapWindow(win);
-        TIMERSTOP(swapwindow);
+        TIMER();
 }
 
 void debrief()

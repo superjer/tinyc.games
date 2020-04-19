@@ -59,8 +59,8 @@ uniform float BS;                                                               
                                                                                 \n\
 void main(void) // geometry                                                     \n\
 {                                                                               \n\
-    float BQ = BS + 0.002f; // overdraw the edges a bit                         \n\
-    float Q = -0.002f;                                                          \n\
+    float BQ = BS + 0.01f; // overdraw the edges a bit                          \n\
+    float Q = -0.01f;                                                           \n\
     float sidel = 0.0f;                                                         \n\
     vec4 a, b, c, d;                                                            \n\
     switch(int(orient_vs[0])) {                                                 \n\
