@@ -21,6 +21,7 @@
 
 #define NAMES \
         X(gen_world), \
+        X(smooth_hmap), \
         X(update_world), \
         X(update_player), \
         X(step_sunlight), \

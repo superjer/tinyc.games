@@ -19,10 +19,12 @@ layout (location = 0) in float tex_in;                                          
 layout (location = 1) in float orient_in;                                       \n\
 layout (location = 2) in vec3 pos_in;                                           \n\
 layout (location = 3) in vec4 illum_in;                                         \n\
+layout (location = 4) in float alpha_in;                                        \n\
                                                                                 \n\
 out float tex_vs;                                                               \n\
 out float orient_vs;                                                            \n\
 out vec4 illum_vs;                                                              \n\
+out float alpha_vs;                                                             \n\
                                                                                 \n\
 uniform mat4 model;                                                             \n\
 uniform mat4 view;                                                              \n\
@@ -36,6 +38,7 @@ void main(void)                                                                 
     tex_vs = tex_in;                                                            \n\
     orient_vs = orient_in;                                                      \n\
     illum_vs = illum_in;                                                        \n\
+    alpha_vs = alpha_in;                                                        \n\
 }                                                                               \n\
 ";
 
@@ -47,9 +50,11 @@ layout (triangle_strip, max_vertices = 4) out;                                  
 in float tex_vs[];                                                              \n\
 in float orient_vs[];                                                           \n\
 in vec4 illum_vs[];                                                             \n\
+in float alpha_vs[];                                                            \n\
                                                                                 \n\
 out float tex;                                                                  \n\
 out float illum;                                                                \n\
+out float alpha;                                                                \n\
 out vec2 uv;                                                                    \n\
 out float fog;                                                                  \n\
                                                                                 \n\
@@ -64,52 +69,54 @@ void main(void) // geometry                                                     
     float Q = -0.01f;                                                           \n\
     float sidel = 0.0f;                                                         \n\
     vec4 a, b, c, d;                                                            \n\
+    mat4 mvp = proj * view * model;                                             \n\
     switch(int(orient_vs[0])) {                                                 \n\
         case 1: // UP                                                           \n\
-            a = proj * view * model * vec4( Q, 0, Q,0);                         \n\
-            b = proj * view * model * vec4(BQ, 0, Q,0);                         \n\
-            c = proj * view * model * vec4( Q, 0,BQ,0);                         \n\
-            d = proj * view * model * vec4(BQ, 0,BQ,0);                         \n\
+            a = mvp * vec4( Q, 0, Q,0);                                         \n\
+            b = mvp * vec4(BQ, 0, Q,0);                                         \n\
+            c = mvp * vec4( Q, 0,BQ,0);                                         \n\
+            d = mvp * vec4(BQ, 0,BQ,0);                                         \n\
             sidel = 1.0f;                                                       \n\
             break;                                                              \n\
         case 2: // EAST                                                         \n\
-            a = proj * view * model * vec4(BS, Q,BQ,0);                         \n\
-            b = proj * view * model * vec4(BS, Q, Q,0);                         \n\
-            c = proj * view * model * vec4(BS,BQ,BQ,0);                         \n\
-            d = proj * view * model * vec4(BS,BQ, Q,0);                         \n\
+            a = mvp * vec4(BS, Q,BQ,0);                                         \n\
+            b = mvp * vec4(BS, Q, Q,0);                                         \n\
+            c = mvp * vec4(BS,BQ,BQ,0);                                         \n\
+            d = mvp * vec4(BS,BQ, Q,0);                                         \n\
             sidel = 0.9f;                                                       \n\
             break;                                                              \n\
         case 3: // NORTH                                                        \n\
-            a = proj * view * model * vec4( Q, Q,BS,0);                         \n\
-            b = proj * view * model * vec4(BQ, Q,BS,0);                         \n\
-            c = proj * view * model * vec4( Q,BQ,BS,0);                         \n\
-            d = proj * view * model * vec4(BQ,BQ,BS,0);                         \n\
+            a = mvp * vec4( Q, Q,BS,0);                                         \n\
+            b = mvp * vec4(BQ, Q,BS,0);                                         \n\
+            c = mvp * vec4( Q,BQ,BS,0);                                         \n\
+            d = mvp * vec4(BQ,BQ,BS,0);                                         \n\
             sidel = 0.8f;                                                       \n\
             break;                                                              \n\
         case 4: // WEST                                                         \n\
-            a = proj * view * model * vec4( 0, Q, Q,0);                         \n\
-            b = proj * view * model * vec4( 0, Q,BQ,0);                         \n\
-            c = proj * view * model * vec4( 0,BQ, Q,0);                         \n\
-            d = proj * view * model * vec4( 0,BQ,BQ,0);                         \n\
+            a = mvp * vec4( 0, Q, Q,0);                                         \n\
+            b = mvp * vec4( 0, Q,BQ,0);                                         \n\
+            c = mvp * vec4( 0,BQ, Q,0);                                         \n\
+            d = mvp * vec4( 0,BQ,BQ,0);                                         \n\
             sidel = 0.9f;                                                       \n\
             break;                                                              \n\
         case 5: // SOUTH                                                        \n\
-            a = proj * view * model * vec4(BQ, Q, 0,0);                         \n\
-            b = proj * view * model * vec4( Q, Q, 0,0);                         \n\
-            c = proj * view * model * vec4(BQ,BQ, 0,0);                         \n\
-            d = proj * view * model * vec4( Q,BQ, 0,0);                         \n\
+            a = mvp * vec4(BQ, Q, 0,0);                                         \n\
+            b = mvp * vec4( Q, Q, 0,0);                                         \n\
+            c = mvp * vec4(BQ,BQ, 0,0);                                         \n\
+            d = mvp * vec4( Q,BQ, 0,0);                                         \n\
             sidel = 0.8f;                                                       \n\
             break;                                                              \n\
         case 6: // DOWN                                                         \n\
-            a = proj * view * model * vec4(BQ,BS, Q,0);                         \n\
-            b = proj * view * model * vec4( Q,BS, Q,0);                         \n\
-            c = proj * view * model * vec4(BQ,BS,BQ,0);                         \n\
-            d = proj * view * model * vec4( Q,BS,BQ,0);                         \n\
+            a = mvp * vec4(BQ,BS, Q,0);                                         \n\
+            b = mvp * vec4( Q,BS, Q,0);                                         \n\
+            c = mvp * vec4(BQ,BS,BQ,0);                                         \n\
+            d = mvp * vec4( Q,BS,BQ,0);                                         \n\
             sidel = 0.6f;                                                       \n\
             break;                                                              \n\
     }                                                                           \n\
                                                                                 \n\
     tex = tex_vs[0];                                                            \n\
+    alpha = alpha_vs[0];                                                        \n\
                                                                                 \n\
     vec4 eye = vec4(0, 0, 0, 1);                                                \n\
     float dist = distance(eye, gl_in[0].gl_Position);                           \n\
@@ -147,6 +154,7 @@ out vec4 color;                                                                 
                                                                                 \n\
 in float tex;                                                                   \n\
 in float illum;                                                                 \n\
+in float alpha;                                                                 \n\
 in vec2 uv;                                                                     \n\
 in float fog;                                                                   \n\
                                                                                 \n\
@@ -156,8 +164,8 @@ uniform vec4 eye;                                                               
 void main(void)                                                                 \n\
 {                                                                               \n\
     color = mix(                                                                \n\
-            texture(tarray, vec3(uv, tex)) * vec4(illum, illum, illum, 0),      \n\
-            vec4(0.31, 0.91, 1.01, 0),                                          \n\
+            texture(tarray, vec3(uv, tex)) * vec4(illum, illum, illum, alpha),  \n\
+            vec4(0.31, 0.91, 1.01, alpha),                                      \n\
             fog                                                                 \n\
     );                                                                          \n\
 }                                                                               \n\
