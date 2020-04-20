@@ -29,7 +29,7 @@ uniform mat4 view;                                                              
 uniform mat4 proj;                                                              \n\
 uniform float BS;                                                               \n\
                                                                                 \n\
-void main()                                                                     \n\
+void main(void)                                                                 \n\
 {                                                                               \n\
     vec3 pos = BS * pos_in;                                                     \n\
     gl_Position = proj * view * model * vec4(pos, 1.0f);                        \n\
@@ -51,6 +51,7 @@ in vec4 illum_vs[];                                                             
 out float tex;                                                                  \n\
 out float illum;                                                                \n\
 out vec2 uv;                                                                    \n\
+out float fog;                                                                  \n\
                                                                                 \n\
 uniform mat4 model;                                                             \n\
 uniform mat4 view;                                                              \n\
@@ -110,6 +111,12 @@ void main(void) // geometry                                                     
                                                                                 \n\
     tex = tex_vs[0];                                                            \n\
                                                                                 \n\
+    vec4 eye = vec4(0, 0, 0, 1);                                                \n\
+    float dist = distance(eye, gl_in[0].gl_Position);                           \n\
+    if (dist >= 100000) fog = 1;                                                \n\
+    else if (dist <=  10000) fog = 0;                                           \n\
+    else fog = 1 - (100000 - dist) / (100000 - 10000);                          \n\
+                                                                                \n\
     gl_Position = gl_in[0].gl_Position + a;                                     \n\
     illum = (0.1 + illum_vs[0].x) * sidel;                                      \n\
     uv = vec2(1,0);                                                             \n\
@@ -141,12 +148,18 @@ out vec4 color;                                                                 
 in float tex;                                                                   \n\
 in float illum;                                                                 \n\
 in vec2 uv;                                                                     \n\
+in float fog;                                                                   \n\
                                                                                 \n\
 uniform sampler2DArray tarray;                                                  \n\
+uniform vec4 eye;                                                               \n\
                                                                                 \n\
-void main()                                                                     \n\
+void main(void)                                                                 \n\
 {                                                                               \n\
-    color = texture(tarray, vec3(uv, tex)) * vec4(illum, illum, illum, 0);      \n\
+    color = mix(                                                                \n\
+            texture(tarray, vec3(uv, tex)) * vec4(illum, illum, illum, 0),      \n\
+            vec4(0.31, 0.91, 1.01, 0),                                          \n\
+            fog                                                                 \n\
+    );                                                                          \n\
 }                                                                               \n\
 ";
 

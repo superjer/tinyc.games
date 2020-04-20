@@ -26,14 +26,15 @@
 
 #include "./timer.c"
 #include "./shader.c"
+#include "./perlin.c"
 
 #define SCALE 3                    // x magnification
 #define W 1920                     // window width, height
 #define H 1080                     // ^
-#define CHUNKW 16
-#define CHUNKD 16
-#define VAOW 32                    // how many VAOs wide
-#define VAOD 32                    // how many VAOs deep
+#define CHUNKW 16                  // chunk size (vao size)
+#define CHUNKD 16                  // ^
+#define VAOW 64                    // how many VAOs wide
+#define VAOD 64                    // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
 #define TILESW (CHUNKW*VAOW)       // total level width, height
 #define TILESH 128                 // ^
@@ -43,10 +44,12 @@
 #define PLYR_W (14*SCALE)          // physical width and height of the player
 #define PLYR_H (36*SCALE)          // ^
 #define PLYR_SPD (2*SCALE)         // units per frame
+#define PLYR_SPD_R (4*SCALE)       // units per frame
+#define PLYR_SPD_S (1*SCALE)       // units per frame
 #define EYEDOWN 10                 // how far down are the eyes from the top of the head
-#define STARTPX 19971              // starting position within start screen
+#define STARTPX (TILESW*BS2)       // starting position within start screen
 #define STARTPY 0                  // ^
-#define STARTPZ 20710              // ^
+#define STARTPZ (TILESD*BS2)       // ^
 #define NR_PLAYERS 1
 #define JUMP_BUFFER_FRAMES 6
 #define GRAV_JUMP 0
@@ -72,6 +75,7 @@
 
 #define LASTSOLID BARR // everything less than or eq here is solid
 #define OPEN 75        // invisible open, walkable space
+#define WATR 76
 
 #define VERTEX_BUFLEN 100000
 #define SUNQLEN 1000
@@ -117,6 +121,8 @@ struct player {
         int goingl;
         int goingr;
         int jumping;
+        int sneaking;
+        int running;
         int breaking;
         int building;
         int cooldown;
@@ -137,7 +143,7 @@ int screenw = W;
 int screenh = H;
 int zooming = 0;
 float zoom_amt = 1.f;
-float near = 8.f;
+float fast = 1.f;
 
 SDL_Event event;
 SDL_Window *win;
@@ -221,8 +227,7 @@ int main()
 //initial setup to get the window and rendering going
 void setup()
 {
-        //srand(time(NULL));
-        srand(2020);
+        srand(time(NULL));
 
         SDL_Init(SDL_INIT_VIDEO);
         win = SDL_CreateWindow("Blocko", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
@@ -259,6 +264,7 @@ void setup()
                 "res/grass_grow2_top.png",
                 "res/stone.png",
                 "res/sand.png",
+                "res/water.png",
                 ""
         };
         for (int f = 0; files[f][0]; f++)
@@ -316,49 +322,41 @@ void key_move(int down)
 
         switch (event.key.keysym.sym)
         {
-                case SDLK_w:
-                        player[0].goingf = down;
-                        break;
-                case SDLK_s:
-                        player[0].goingb = down;
-                        break;
-                case SDLK_a:
-                        player[0].goingl = down;
-                        break;
-                case SDLK_d:
-                        player[0].goingr = down;
-                        break;
+                // continuous movement stuff
+                case SDLK_w:      player[0].goingf   = down; break;
+                case SDLK_s:      player[0].goingb   = down; break;
+                case SDLK_a:      player[0].goingl   = down; break;
+                case SDLK_d:      player[0].goingr   = down; break;
+                case SDLK_LSHIFT: player[0].sneaking = down; break;
+                case SDLK_LCTRL:  player[0].running  = down; break;
+                case SDLK_z:      zooming            = down; break;
+
+                // instantaneous movement
                 case SDLK_SPACE:
                         if (down) player[0].jumping = JUMP_BUFFER_FRAMES;
                         break;
+
+                // menu stuff
                 case SDLK_ESCAPE:
                         SDL_SetRelativeMouseMode(SDL_FALSE);
                         mouselook = 0;
                         break;
-                case SDLK_z:
-                        zooming = down;
-                        break;
-                case SDLK_j:
+
+                // debug stuff
+                case SDLK_u: // go up a lot
                         if (!down)
                         {
                                 player[0].pos.y -= 1000;
                                 player[0].grav = GRAV_ZERO;
                         }
                         break;
-                case SDLK_n:
+                case SDLK_f: // go fast
+                        if (down)
+                                fast = (fast == 1.f) ? 8.f : 1.f;
+                        break;
+                case SDLK_F3: // show FPS and timings etc.
                         if (!down) noisy = !noisy;
                         break;
-                case SDLK_l:
-                        if (down)
-                        {
-                                recalc_gndheight(target_x, target_z);
-                        }
-                        break;
-                case SDLK_p:
-                        if (down) near--;
-                        break;
-                case SDLK_q:
-                        exit(-1);
         }
 }
 
@@ -416,16 +414,9 @@ void new_game()
         player[0].pos.w = PLYR_W;
         player[0].pos.h = PLYR_H;
         player[0].pos.d = PLYR_W;
-        player[0].goingf = 0;
-        player[0].goingb = 0;
-        player[0].goingl = 0;
-        player[0].goingr = 0;
-        player[0].fvel = 0;
-        player[0].rvel = 0;
         player[0].yaw = 3.1415926535 * 0.23;
-        player[0].pitch = 0;
         player[0].grav = GRAV_ZERO;
-        gen_world();
+        TIMECALL(gen_world, ());
         recalc_gndheight(STARTPX/BS, STARTPZ/BS);
         move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
 }
@@ -435,6 +426,12 @@ int hmap2[TILESW][TILESD];
 
 void gen_hmap(int x0, int x2, int z0, int z2)
 {
+        // pick corners if they aren't set
+        if (hmap[x0][z0] == 0) hmap[x0][z0] = 64 + rand() % 64;
+        if (hmap[x0][z2] == 0) hmap[x0][z2] = 64 + rand() % 64;
+        if (hmap[x2][z0] == 0) hmap[x2][z0] = 64 + rand() % 64;
+        if (hmap[x2][z2] == 0) hmap[x2][z2] = 64 + rand() % 64;
+
         int x1 = (x0 + x2) / 2;
         int z1 = (z0 + z2) / 2;
         int w = (x2 - x0) / 4;
@@ -503,21 +500,59 @@ void smooth_hmap()
 
 void gen_world()
 {
-        // pick corners
-        hmap[0       ][0       ] = 70 + rand() % 30;
-        hmap[0       ][TILESD-1] = 70 + rand() % 30;
-        hmap[TILESW-1][0       ] = 70 + rand() % 30;
-        hmap[TILESW-1][TILESD-1] = 70 + rand() % 30;
-        gen_hmap(0, TILESW-1, 0, TILESD-1);
+        // generate in pieces
+        for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++)
+        {
+                int x0 = (i  ) * TILESW / 8;
+                int x1 = (i+1) * TILESW / 8;
+                int z0 = (j  ) * TILESD / 8;
+                int z1 = (j+1) * TILESD / 8;
+                CLAMP(x1, 0, TILESW-1);
+                CLAMP(z1, 0, TILESD-1);
+                gen_hmap(x0, x1, z0 , z1);
+        }
+
         smooth_hmap();
 
-        for (int x = 0; x < TILESW; x++) for (int z = 0; z < TILESD; z++) for (int y = 0; y < TILESH; y++)
+        for (int x = 0; x < TILESW; x++) for (int z = 0; z < TILESD; z++)
         {
-                if (y < hmap2[x][z]) tiles[z][y][x] = OPEN;
-                else if (y < 66)     tiles[z][y][x] = STON;
-                else if (y < 86)     tiles[z][y][x] = DIRT;
-                else if (y < 91)     tiles[z][y][x] = GRAS;
-                else                 tiles[z][y][x] = SAND;
+                // FIXME move to generate hmap
+                float p200 = improved_perlin_noise(x, 0, z, 200);
+                float p80 = improved_perlin_noise(x, 0, z, 80);
+
+                if (p200 > 0.2f)
+                {
+                        float flatten = (p200 - 0.2f) * 80;
+                        CLAMP(flatten, 1, 12);
+                        hmap2[x][z] -= 100;
+                        hmap2[x][z] /= flatten;
+                        hmap2[x][z] += 100;
+                }
+
+                int depth = 0;
+                for (int y = 0; y < TILESH; y++)
+                {
+                        float p64 = improved_perlin_noise(x, y, z, 64);
+                        float lumpy = p64 > 0.3 ? (10 - 30 * (p64 - 0.3)) : 0;
+                        if (p80 < 0.3) lumpy = 0;
+
+                        if (y < hmap2[x][z] + lumpy)
+                        {
+                                tiles[z][y][x] = y > 100 ? WATR : OPEN;
+                                sunlight[z][y][x] = 14;
+                                depth = 0;
+                                continue;
+                        }
+
+                        depth++;
+                        float p16 = improved_perlin_noise(x, y, z, 16);
+
+                        if      (depth > 5 + 5 * p16) tiles[z][y][x] = STON;
+                        else if (y <  76 - 5 * p16) tiles[z][y][x] = STON;
+                        else if (y <  86 - 5 * p16) tiles[z][y][x] = DIRT;
+                        else if (y < 100 - 5 * p16) tiles[z][y][x] = depth == 1 ? GRAS : DIRT;
+                        else                        tiles[z][y][x] = SAND;
+                }
         }
 
         // monolith
@@ -687,7 +722,7 @@ void update_player()
 
         if (player[0].cooldown) player[0].cooldown--;
 
-        if (player[0].breaking && !player[0].cooldown)
+        if (player[0].breaking && !player[0].cooldown && target_x >= 0)
         {
                 int x = target_x;
                 int y = target_y;
@@ -705,7 +740,7 @@ void update_player()
                 player[0].cooldown = 5;
         }
 
-        if (player[0].building && !player[0].cooldown) {
+        if (player[0].building && !player[0].cooldown && place_x >= 0) {
                 if (!collide(player[0].pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
                         tiles[place_z][place_y][place_x] = DIRT;
                 player[0].cooldown = 10;
@@ -725,9 +760,13 @@ void update_player()
 
         //limit speed
         float totalvel = sqrt(p->fvel * p->fvel + p->rvel * p->rvel);
-        if (totalvel > PLYR_SPD)
+        float limit = player[0].running  ? PLYR_SPD_R :
+                      player[0].sneaking ? PLYR_SPD_S :
+                                           PLYR_SPD;
+        limit *= fast;
+        if (totalvel > limit)
         {
-                totalvel = PLYR_SPD / totalvel;
+                totalvel = limit / totalvel;
                 if (p->fvel > 4 || p->fvel < -4) p->fvel *= totalvel;
                 if (p->rvel > 4 || p->rvel < -4) p->rvel *= totalvel;
         }
@@ -762,7 +801,8 @@ void update_player()
         if (p->ground)
                 p->grav = GRAV_ZERO;
 
-        personal_light(place_x, place_y, place_z);
+        if (place_x >= 0)
+                personal_light(place_x, place_y, place_z);
 
         //zooming
         zoom_amt *= zooming ? 0.9f : 1.2f;
@@ -925,8 +965,8 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
         return;
 
         bad:
-        target_x = target_y = target_z = 0;
-        place_x = place_y = place_z = 0;
+        target_x = target_y = target_z = -1;
+        place_x = place_y = place_z = -1;
 }
 
 //draw everything in the game on the screen
@@ -937,6 +977,7 @@ void draw_stuff()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // compute proj matrix
+        float near = 8.f;
         float far = 99999.f;
         float frustw = 4.5f * zoom_amt * screenw / screenh;
         float frusth = 4.5f * zoom_amt;
@@ -974,20 +1015,23 @@ void draw_stuff()
         s1 = f2*up0 - f0*up2;
         s2 = f0*up1 - f1*up0;
         float sm = sqrt(s0*s0 + s1*s1 + s2*s2);
-        float z0, z1, z2;
-        z0 = s0/sm;
-        z1 = s1/sm;
-        z2 = s2/sm;
+        float zz0, zz1, zz2;
+        zz0 = s0/sm;
+        zz1 = s1/sm;
+        zz2 = s2/sm;
         float u0, u1, u2;
-        u0 = z1*f2 - z2*f1;
-        u1 = z2*f0 - z0*f2;
-        u2 = z0*f1 - z1*f0;
+        u0 = zz1*f2 - zz2*f1;
+        u1 = zz2*f0 - zz0*f2;
+        u2 = zz0*f1 - zz1*f0;
         float viewM[] = {
                 s0, u0,-f0, 0,
                 s1, u1,-f1, 0,
                 s2, u2,-f2, 0,
                  0,  0,  0, 1
         };
+
+        //glUniform4f(glGetUniformLocation(prog_id, "eye"), eye0, eye1, eye2, 1);
+        glUniform4f(glGetUniformLocation(prog_id, "eye"), 0, 0, 0, 1);
 
         // find where we are pointing at
         rayshot(eye0, eye1, eye2, f0, f1, f2);
@@ -1014,47 +1058,81 @@ void draw_stuff()
 
         glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
 
-        //determine which chunks to send to gl
-        int pli = (player[0].pos.x - BS2 * CHUNKW) / (BS * CHUNKW);
-        int plj = (player[0].pos.z - BS2 * CHUNKD) / (BS * CHUNKD);
-        CLAMP(pli, 0, VAOW - 1);
-        CLAMP(plj, 0, VAOD - 1);
-        int myi[5] = { pli, pli+1, pli  , pli+1, 0 };
-        int myj[5] = { plj, plj  , plj+1, plj+1, 0 };
-        int myvbo[5] = {
-                myi[0] * VAOD + myj[0],
-                myi[1] * VAOD + myj[1],
-                myi[2] * VAOD + myj[2],
-                myi[3] * VAOD + myj[3],
-                0 };
+        // determine which chunks to send to gl
+        TIMER(rings)
+        int x0 = ((int)player[0].pos.x - BS2 * CHUNKW) / (BS * CHUNKW);
+        int z0 = ((int)player[0].pos.z - BS2 * CHUNKD) / (BS * CHUNKD);
+        CLAMP(x0, 0, VAOW - 1);
+        CLAMP(z0, 0, VAOD - 1);
+        int x1 = x0 + 1;
+        int z1 = z0 + 1;
 
-        TIMER(drawstale)
-        for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOW; j++)
+        // initialize with ring0 chunks
+        struct qitem fresh[104] = {{x0, 0, z0}, {x0, 0, z1}, {x1, 0, z0}, {x1, 0, z1}};
+        size_t fresh_len = 4;
+
+	static struct qitem ringpos[VAOW + VAOD] = {0};
+        for (int r = 1; r < VAOW + VAOD; r++)
         {
-                int which = i * VAOD + j;
-                if (frame % VAOS == which) // you're the lucky vbo!
-                {
-                        myvbo[4] = which;
-                        myi[4] = i;
-                        myj[4] = j;
-                        continue;
-                }
+		// expand ring in all directions
+		x0--; x1++; z0--; z1++;
 
-                glBindVertexArray(vao[which]);
-                glDrawArrays(GL_POINTS, 0, vbo_len[which]);
-                polys += vbo_len[which];
+                // freshen farther rings less and less often
+                if (r >= 3 && r <= 6 && frame % 2 != r % 2)   continue;
+                if (r >= 7 && r <= 14 && frame % 4 != r % 4)  continue;
+                if (r >= 15 && r <= 30 && frame % 8 != r % 8) continue;
+                if (r >= 31 && frame % 16 != r % 16)          continue;
+
+                int *x = &ringpos[r].x;
+                int *z = &ringpos[r].z;
+
+                // wrap around
+		if (--(*x) < x0) { *x = x1; --(*z); }
+
+                // reset if o-o-b
+		if (*z < z0) { *x = x1; *z = z1; }
+
+                // get out of the middle
+		if (*z != z0 && *z != z1 && *x != x1) { *x = x0; }
+
+                if (*x >= 0 && *x < VAOW && *z > 0 && *z < VAOD)
+                {
+                        fresh[fresh_len].x = *x;
+                        fresh[fresh_len].z = *z;
+                        fresh_len++;
+                }
         }
 
-        TIMER(buildvbo);
-        for (int my = 0; my < 5; my++)
+        // render non-fresh chunks
+        TIMER(drawstale)
+        for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
         {
-                glBindVertexArray(vao[myvbo[my]]);
-                glBindBuffer(GL_ARRAY_BUFFER, vbo[myvbo[my]]);
+                // skip chunks we will draw fresh this frame
+                for (size_t k = 0; k < fresh_len; k++)
+                        if (fresh[k].x == i && fresh[k].z == j)
+                                goto skip;
+
+                int myvbo = i * VAOD + j;
+                glBindVertexArray(vao[myvbo]);
+                glDrawArrays(GL_POINTS, 0, vbo_len[myvbo]);
+                polys += vbo_len[myvbo];
+
+                skip: ;
+        }
+
+        // build and render fresh chunks (while the stales are rendering!)
+        TIMER(buildvbo);
+        for (size_t my = 0; my < fresh_len; my++)
+        {
+                int myvbo = fresh[my].x * VAOD + fresh[my].z;
+
+                glBindVertexArray(vao[myvbo]);
+                glBindBuffer(GL_ARRAY_BUFFER, vbo[myvbo]);
                 v = vbuf; // reset vertex buffer pointer
 
-                int xlo = myi[my] * CHUNKW;
+                int xlo = fresh[my].x * CHUNKW;
                 int xhi = xlo + CHUNKW;
-                int zlo = myj[my] * CHUNKD;
+                int zlo = fresh[my].z * CHUNKD;
                 int zhi = zlo + CHUNKD;
 
                 TIMECALL(recalc_corner_lighting, (xlo, xhi, zlo, zhi));
@@ -1078,43 +1156,50 @@ void draw_stuff()
                         int t = tiles[z][y][x];
                         if (t == GRAS)
                         {
-                                if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une };
-                                if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, use, usw, dse, dsw };
-                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, unw, une, dnw, dne };
-                                if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, usw, unw, dsw, dnw };
-                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, une, use, dne, dse };
-                                if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw };
+                                if (y == 0        || tiles[z  ][y-1][x  ] >= OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une };
+                                if (z == 0        || tiles[z-1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, use, usw, dse, dsw };
+                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, unw, une, dnw, dne };
+                                if (x == 0        || tiles[z  ][y  ][x-1] >= OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, usw, unw, dsw, dnw };
+                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] >= OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, une, use, dne, dse };
+                                if (y == TILESH-1 || tiles[z  ][y+1][x  ] >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw };
                         }
                         else if (t == DIRT || t == GRG1 || t == GRG2)
                         {
                                 int u = (t == DIRT) ? 2 :
                                         (t == GRG1) ? 3 :
                                                 4 ;
-                                if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ u,    UP, x, y, z, usw, use, unw, une };
-                                if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, use, usw, dse, dsw };
-                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, unw, une, dnw, dne };
-                                if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, usw, unw, dsw, dnw };
-                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse };
-                                if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw };
+                                if (y == 0        || tiles[z  ][y-1][x  ] >= OPEN) *v++ = (struct vbufv){ u,    UP, x, y, z, usw, use, unw, une };
+                                if (z == 0        || tiles[z-1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, use, usw, dse, dsw };
+                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, unw, une, dnw, dne };
+                                if (x == 0        || tiles[z  ][y  ][x-1] >= OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, usw, unw, dsw, dnw };
+                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] >= OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse };
+                                if (y == TILESH-1 || tiles[z  ][y+1][x  ] >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw };
                         }
                         else if (t == STON || t == SAND)
                         {
                                 int f = (t == STON) ? 5 : 6;
-                                if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) *v++ = (struct vbufv){ f,    UP, x, y, z, usw, use, unw, une };
-                                if (z == 0        || tiles[z-1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ f, SOUTH, x, y, z, use, usw, dse, dsw };
-                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] == OPEN) *v++ = (struct vbufv){ f, NORTH, x, y, z, unw, une, dnw, dne };
-                                if (x == 0        || tiles[z  ][y  ][x-1] == OPEN) *v++ = (struct vbufv){ f,  WEST, x, y, z, usw, unw, dsw, dnw };
-                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] == OPEN) *v++ = (struct vbufv){ f,  EAST, x, y, z, une, use, dne, dse };
-                                if (y == TILESH-1 || tiles[z  ][y+1][x  ] == OPEN) *v++ = (struct vbufv){ f,  DOWN, x, y, z, dse, dsw, dne, dnw };
+                                if (y == 0        || tiles[z  ][y-1][x  ] >= OPEN) *v++ = (struct vbufv){ f,    UP, x, y, z, usw, use, unw, une };
+                                if (z == 0        || tiles[z-1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ f, SOUTH, x, y, z, use, usw, dse, dsw };
+                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ f, NORTH, x, y, z, unw, une, dnw, dne };
+                                if (x == 0        || tiles[z  ][y  ][x-1] >= OPEN) *v++ = (struct vbufv){ f,  WEST, x, y, z, usw, unw, dsw, dnw };
+                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] >= OPEN) *v++ = (struct vbufv){ f,  EAST, x, y, z, une, use, dne, dse };
+                                if (y == TILESH-1 || tiles[z  ][y+1][x  ] >= OPEN) *v++ = (struct vbufv){ f,  DOWN, x, y, z, dse, dsw, dne, dnw };
+                        }
+                        else if (t == WATR)
+                        {
+                                if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) {
+                                                                                   *v++ = (struct vbufv){ 7,    UP, x, y+0.06f, z, usw, use, unw, une };
+                                                                                   *v++ = (struct vbufv){ 7,  DOWN, x, y-0.94f, z, dse, dsw, dne, dnw };
+                                }
                         }
                 }
 
-                vbo_len[myvbo[my]] = v - vbuf;
-                polys += vbo_len[myvbo[my]];
+                vbo_len[myvbo] = v - vbuf;
+                polys += vbo_len[myvbo];
                 TIMER(glBufferData)
-                glBufferData(GL_ARRAY_BUFFER, vbo_len[myvbo[my]] * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
+                glBufferData(GL_ARRAY_BUFFER, vbo_len[myvbo] * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
                 TIMER(glDrawArrays)
-                glDrawArrays(GL_POINTS, 0, vbo_len[myvbo[my]]); // draw the newly buffered verts
+                glDrawArrays(GL_POINTS, 0, vbo_len[myvbo]); // draw the newly buffered verts
         }
 
         TIMER(swapwindow);
@@ -1135,7 +1220,7 @@ void debrief()
                         printf("%.1f FPS\n", 1000.f * frames / elapsed );
                         printf("%.1f polys/sec\n", 1000.f * (float)polys / elapsed);
                         printf("%.1f polys/frame\n", (float)polys / frames);
-                        printf("player pos %0.0f %0.0f %0.0f\n", player[0].pos.x, player[0].pos.y, player[0].pos.z);
+                        printf("player pos X=%0.0f Y=%0.0f Z=%0.0f\n", player[0].pos.x, player[0].pos.y, player[0].pos.z);
                         timer_print();
                 }
                 last_ticks = ticks;

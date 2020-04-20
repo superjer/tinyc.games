@@ -20,10 +20,12 @@
 }
 
 #define NAMES \
+        X(gen_world), \
         X(update_world), \
         X(update_player), \
         X(step_sunlight), \
         X(recalc_corner_lighting), \
+        X(rings), \
         X(drawstale), \
         X(buildvbo), \
         X(glBufferData), \
