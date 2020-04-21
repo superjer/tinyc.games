@@ -1,0 +1,8 @@
+title: tinyc.games
+description: Tiny C games you can compile and run RIGHT NOW
+google_analytics: 
+show_downloads: true
+theme: jekyll-theme-tactile
+
+gems:
+  - jekyll-mentions
