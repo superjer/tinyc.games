@@ -33,8 +33,8 @@
 #define H 1080                     // ^
 #define CHUNKW 16                  // chunk size (vao size)
 #define CHUNKD 16                  // ^
-#define VAOW 32                    // how many VAOs wide
-#define VAOD 32                    // how many VAOs deep
+#define VAOW 64                    // how many VAOs wide
+#define VAOD 64                    // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
 #define TILESW (CHUNKW*VAOW)       // total level width, height
 #define TILESH 128                 // ^
@@ -102,6 +102,7 @@ unsigned char tiles[TILESD][TILESH][TILESW];
 unsigned char sunlight[TILESD+1][TILESH+1][TILESW+1];
 unsigned char gndheight[TILESD][TILESW];
 float cornlight[TILESD+2][TILESH+2][TILESW+2];
+char already_generated[VAOW][VAOD];
 
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
@@ -152,8 +153,6 @@ float fast = 1.f;
 SDL_Event event;
 SDL_Window *win;
 SDL_GLContext ctx;
-SDL_Renderer *renderer;
-SDL_Surface *surf;
 
 unsigned int vbo[VAOS], vao[VAOS];
 size_t vbo_len[VAOS];
@@ -165,7 +164,8 @@ struct vbufv *v = vbuf;
 void setup();
 void resize();
 void new_game();
-void gen_world();
+void create_hmap();
+void gen_chunk();
 void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light);
 void recalc_gndheight(int x, int z);
 void step_sunlight();
@@ -218,8 +218,20 @@ int main()
                                 break;
                 }
 
-                TIMECALL(update_player, ());
-                TIMECALL(update_world, ());
+                float interval = 1000.f / 60.f;
+                static float accumulated_elapsed = 0.f;
+                static int last_ticks = 0;
+                int ticks = SDL_GetTicks();
+                accumulated_elapsed += ticks - last_ticks;
+                last_ticks = ticks;
+                CLAMP(accumulated_elapsed, 0, interval * 3 - 1);
+                while (accumulated_elapsed >= interval)
+                {
+                        TIMECALL(update_player, ());
+                        TIMECALL(update_world, ());
+                        accumulated_elapsed -= interval;
+                }
+
                 TIMECALL(step_sunlight, ());
                 draw_stuff();
                 debrief();
@@ -231,8 +243,8 @@ int main()
 //initial setup to get the window and rendering going
 void setup()
 {
-        //srand(time(NULL));
-        srand(2020);
+        srand(time(NULL));
+        init_perlin();
 
         SDL_Init(SDL_INIT_VIDEO);
         win = SDL_CreateWindow("Blocko", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
@@ -360,7 +372,7 @@ void key_move(int down)
                         break;
 
                 // debug stuff
-                case SDLK_u: // go up a lot
+                case SDLK_q: // go up alot
                         if (!down)
                         {
                                 player[0].pos.y -= 1000;
@@ -433,7 +445,7 @@ void new_game()
         player[0].pos.d = PLYR_W;
         player[0].yaw = 3.1415926535 * 0.23;
         player[0].grav = GRAV_ZERO;
-        TIMECALL(gen_world, ());
+        TIMECALL(create_hmap, ());
         recalc_gndheight(STARTPX/BS, STARTPZ/BS);
         move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
 }
@@ -537,7 +549,7 @@ void smooth_hmap()
         }
 }
 
-void gen_world()
+void create_hmap()
 {
         // generate in pieces
         for (int i = 0; i < 8; i++) for (int j = 0; j < 8; j++)
@@ -551,14 +563,26 @@ void gen_world()
                 gen_hmap(x0, x1, z0 , z1);
         }
 
-        TIMER(smooth_hmap);
         smooth_hmap();
-        TIMER(gen_world);
+}
 
-        for (int x = 0; x < TILESW; x++) for (int z = 0; z < TILESD; z++)
+void gen_chunk(int xlo, int xhi, int zlo, int zhi)
+{
+        CLAMP(xlo, 0, TILESW);
+        CLAMP(xhi, 0, TILESW);
+        CLAMP(zlo, 0, TILESD);
+        CLAMP(zhi, 0, TILESD);
+
+        static char column_already_generated[TILESW][TILESD];
+
+        for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
         {
+                if (column_already_generated[x][z])
+                        continue;
+                column_already_generated[x][z] = 1;
+
                 float p530 = improved_perlin_noise(z, 0, x, 530);
-                float p630 = improved_perlin_noise(-z, 0, x, 630);
+                float p630 = improved_perlin_noise(-z, 0, x, 629);
                 float p200 = improved_perlin_noise(x, 0, z, 200);
                 float p80 = improved_perlin_noise(x, 0, z, 80);
 
@@ -626,17 +650,6 @@ void gen_world()
                         tiles[z][y][x] = cave ? GRAS : OPEN;
                         */
                 }
-        }
-
-        // monolith
-        int X = 80;
-        int Y = 80;
-        int Z = 65;
-        for (int a = -15; a <= 15; a++) for (int b = -15; b <= 15; b++) for (int c = -15; c <= 15; c++)
-        {
-                int dist = abs(a) + abs(b) + abs(c);
-                if (dist != 15 && dist != 14) continue;
-                tiles[Z+c][Y+b][X+a] = STON;
         }
 }
 
@@ -1159,6 +1172,7 @@ void draw_stuff()
         struct qitem fresh[104] = {{x0, 0, z0}, {x0, 0, z1}, {x1, 0, z0}, {x1, 0, z1}};
         size_t fresh_len = 4;
 
+        // position within each ring that we're at this frame
 	static struct qitem ringpos[VAOW + VAOD] = {0};
         for (int r = 1; r < VAOW + VAOD; r++)
         {
@@ -1174,16 +1188,23 @@ void draw_stuff()
                 int *x = &ringpos[r].x;
                 int *z = &ringpos[r].z;
 
-                // wrap around
-		if (--(*x) < x0) { *x = x1; --(*z); }
+                // move to next chunk, maybe on ring
+                --(*x);
 
-                // reset if o-o-b
-		if (*z < z0) { *x = x1; *z = z1; }
+                // wrap around the ring
+		int x_too_low = (*x < x0);
+                if (x_too_low) { *x = x1; --(*z); }
+
+                // reset if out of the ring
+		int z_too_low = (*z < z0);
+                if (z_too_low) { *x = x1; *z = z1; }
 
                 // get out of the middle
-		if (*z != z0 && *z != z1 && *x != x1) { *x = x0; }
+		int is_on_ring = (*z == z0 || *z == z1 || *x == x1);
+                if (!is_on_ring) { *x = x0; }
 
-                if (*x >= 0 && *x < VAOW && *z > 0 && *z < VAOD)
+                // render if in bounds
+                if (*x >= 0 && *x < VAOW && *z >= 0 && *z < VAOD)
                 {
                         fresh[fresh_len].x = *x;
                         fresh[fresh_len].z = *z;
@@ -1212,16 +1233,24 @@ void draw_stuff()
         TIMER(buildvbo);
         for (size_t my = 0; my < fresh_len; my++)
         {
-                int myvbo = fresh[my].x * VAOD + fresh[my].z;
+                int myx = fresh[my].x;
+                int myz = fresh[my].z;
+                int myvbo = myx * VAOD + myz;
 
                 glBindVertexArray(vao[myvbo]);
                 glBindBuffer(GL_ARRAY_BUFFER, vbo[myvbo]);
                 v = vbuf; // reset vertex buffer pointer
 
-                int xlo = fresh[my].x * CHUNKW;
+                int xlo = myx * CHUNKW;
                 int xhi = xlo + CHUNKW;
-                int zlo = fresh[my].z * CHUNKD;
+                int zlo = myz * CHUNKD;
                 int zhi = zlo + CHUNKD;
+
+                if (!already_generated[myx][myz])
+                {
+                        TIMECALL(gen_chunk, (xlo-1, xhi+1, zlo-1, zhi+1));
+                        already_generated[myx][myz] = 1;
+                }
 
                 TIMECALL(recalc_corner_lighting, (xlo, xhi, zlo, zhi));
                 TIMER(buildvbo);
@@ -1311,6 +1340,7 @@ void debrief()
                         printf("player pos X=%0.0f Y=%0.0f Z=%0.0f\n", player[0].pos.x, player[0].pos.y, player[0].pos.z);
                         printf("player block X=%0.0f Y=%0.0f Z=%0.0f\n", player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS);
                         timer_print();
+                        printf("perlin calls %lld\n", perlin_calls);
                 }
                 last_ticks = ticks;
                 last_frame = frame;
