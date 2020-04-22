@@ -33,6 +33,8 @@
 #define H 1080                     // ^
 #define CHUNKW 16                  // chunk size (vao size)
 #define CHUNKD 16                  // ^
+#define CHUNKW2 (CHUNKW/2)
+#define CHUNKD2 (CHUNKD/2)
 #define VAOW 64                    // how many VAOs wide
 #define VAOD 64                    // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
@@ -64,10 +66,13 @@
 #define SOUTH 5
 #define DOWN  6
 
-#define STON 39
-#define ORE  40
+#define STON 34
+#define ORE  35
+#define HARD 36
+
 #define SAND 41
 #define DIRT 42
+#define WOOD 43
 
 #define GRG1 45
 #define GRG2 46
@@ -106,6 +111,7 @@ char already_generated[VAOW][VAOD];
 
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
+struct qchunk { int x, y, z, sqdist; };
 
 struct qitem { int x, y, z; };
 struct qitem sunq0_[SUNQLEN+1];
@@ -141,6 +147,7 @@ struct player camplayer;
 struct point lerped_pos;
 
 int frame = 0;
+int pframe = 0;
 int noisy = 0;
 int polys = 0;
 
@@ -165,6 +172,10 @@ struct vbufv vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding
 struct vbufv *v_limit = vbuf + VERTEX_BUFLEN;
 struct vbufv *v = vbuf;
 
+struct vbufv wbuf[VERTEX_BUFLEN + 1000]; // water buffer
+struct vbufv *w_limit = wbuf + VERTEX_BUFLEN;
+struct vbufv *w = wbuf;
+
 //prototypes
 void setup();
 void resize();
@@ -179,7 +190,7 @@ void key_move(int down);
 void mouse_move();
 void mouse_button(int down);
 void update_world();
-void lerp_player(float t, struct player *a, struct player *b);
+void lerp_camera(float t, struct player *a, struct player *b);
 void update_player(struct player * p, int real);
 int move_player(struct player * p, int velx, int vely, int velz);
 int collide(struct box plyr, struct box block);
@@ -238,6 +249,7 @@ int main()
                 {
                         TIMECALL(update_player, (&player[0], 1));
                         TIMECALL(update_world, ());
+                        pframe++;
                         accumulated_elapsed -= interval;
                 }
 
@@ -248,7 +260,7 @@ int main()
                         TIMECALL(update_player, (&camplayer, 0));
                 }
 
-                lerp_player(accumulated_elapsed / interval, &player[0], &camplayer);
+                lerp_camera(accumulated_elapsed / interval, &player[0], &camplayer);
                 TIMECALL(step_sunlight, ());
                 draw_stuff();
                 debrief();
@@ -297,8 +309,13 @@ void setup()
                 "res/grass_grow2_top.png",
                 "res/stone.png",
                 "res/sand.png",
-                "res/water.png",
-                "res/ore.png",
+                "res/water.png",     //  7
+                "res/water2.png",
+                "res/water3.png",
+                "res/water4.png",
+                "res/ore.png",       // 11 
+                "res/hard.png",      // 12
+                "res/wood_side.png", // 13
                 ""
         };
         for (int f = 0; files[f][0]; f++)
@@ -628,9 +645,11 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
                 int depth = 0;
                 int slicey_bit = 0;
+                int above_gnd = 1;
+                unsigned char light_level = 15;
                 for (int y = 0; y < TILESH; y++)
                 {
-                        if (y == TILESH - 1) { tiles[z][y][x] = STON; continue; }
+                        if (y == TILESH - 1) { tiles[z][y][x] = HARD; continue; }
 
                         float p300 = improved_perlin_noise(x, y, z, 300);
                         float p32 = improved_perlin_noise(x, y, z, 16 + 16 * (1.1 + p300));
@@ -653,12 +672,11 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         {
                                 if (!slicey_bit || rand() % 20 == 0)
                                 {
-                                        int watr = hmap2[x][z] > 99 ? WATR : OPEN; //only allow water below low heightmap
-                                        tiles[z][y][x] = y > 100 ? watr : OPEN;
-                                        sunlight[z][y][x] = 14;
+                                        int type = (y > 100 && hmap2[x][z] > 99) ? WATR : OPEN; //only allow water below low heightmap
+                                        tiles[z][y][x] = type;
                                         depth = 0;
                                         slicey_bit = 0;
-                                        continue;
+                                        goto out;
                                 }
                         }
                         else
@@ -669,36 +687,46 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         int slv = 76 + p530 * 20;
                         int dlv = 86 + p630 * 20;
 
-                        if      (slicey_bit)        tiles[z][y][x] = SAND;
-                        else if (ore)               tiles[z][y][x] = ORE;
-                        else if (depth > 5 + 5 * p16) tiles[z][y][x] = STON;
-                        else if (y < slv - 5 * p16) tiles[z][y][x] = STON;
-                        else if (y < dlv - 5 * p16) tiles[z][y][x] = p80 > (-depth * 0.1f) ? DIRT : OPEN; // erosion
-                        else if (y < 100 - 5 * p16) tiles[z][y][x] = depth == 1 ? GRAS : DIRT;
-                        else                        tiles[z][y][x] = SAND;
+                        if      (slicey_bit)          tiles[z][y][x] = p9 > 0.4f ? HARD : SAND;
+                        else if (ore)                 tiles[z][y][x] = ORE;
+                        else if (depth > 5 + 5 * p16) tiles[z][y][x] = p9 < -0.4f ? ORE : STON;
+                        else if (y < slv - 5 * p16)   tiles[z][y][x] = STON;
+                        else if (y < dlv - 5 * p16)   tiles[z][y][x] = p80 > (-depth * 0.1f) ? DIRT : OPEN; // erosion
+                        else if (y < 100 - 5 * p16)   tiles[z][y][x] = depth == 1 ? GRAS : DIRT;
+                        else                          tiles[z][y][x] = SAND;
 
-                        /* cave test
-                        tiles[z][y][x] = cave ? GRAS : OPEN;
-                        */
+                        out:
+                        if (tiles[z][y][x] == WATR)
+                        {
+                                if (light_level) light_level--;
+                                if (light_level) light_level--;
+                        }
+                        else if (tiles[z][y][x] < OPEN)
+                                above_gnd = 0;
+                        else if (above_gnd)
+                                sunlight[z][y][x] = light_level;
                 }
         }
 }
 
 void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
 {
+        if (incoming_light == 0)
+                return;
+
+        if (tiles[z][y][x] == WATR)
+                incoming_light--; // water blocks more light
+
         if (sunlight[z][y][x] >= incoming_light)
                 return; // already brighter
 
-        if (tiles[z][y][x] != OPEN)
-                return; // no lighting for solid blocks (FIXME: hmmmm?)
+        if (tiles[z][y][x] < OPEN)
+                return; // no lighting for solid blocks
 
         sunlight[z][y][x] = incoming_light;
 
         if (sq_next_len >= SUNQLEN)
-        {
-                //printf("out of room in sun queue\n");
-                return;
-        }
+                return; // out of room in sun queue
 
         for (size_t i = base; i < sq_curr_len; i++)
                 if (sunq_curr[i].x == x && sunq_curr[i].y == y && sunq_curr[i].z == z)
@@ -817,7 +845,7 @@ void personal_light(int x, int y, int z)
         sunlight[z][y][x] = 0;
 }
 
-void lerp_player(float t, struct player *a, struct player *b)
+void lerp_camera(float t, struct player *a, struct player *b)
 {
         lerped_pos.x = lerp(t, a->pos.x, b->pos.x);
         lerped_pos.y = lerp(t, a->pos.y, b->pos.y);
@@ -868,7 +896,7 @@ void update_player(struct player *p, int real)
 
         if (real && p->building && !p->cooldown && place_x >= 0) {
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
-                        tiles[place_z][place_y][place_x] = DIRT;
+                        tiles[place_z][place_y][place_x] = WOOD;
                 p->cooldown = 10;
         }
 
@@ -1108,6 +1136,14 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
         place_x = place_y = place_z = 0;
 }
 
+int sorter(const void * _a, const void * _b)
+{
+        const struct qitem *a = _a;
+        const struct qitem *b = _b;
+        return (a->y == b->y) ?  0 :
+               (a->y <  b->y) ?  1 : -1;
+}
+
 //draw everything in the game on the screen
 void draw_stuff()
 {
@@ -1201,15 +1237,26 @@ void draw_stuff()
 
         // determine which chunks to send to gl
         TIMER(rings)
-        int x0 = ((int)camplayer.pos.x - BS2 * CHUNKW) / (BS * CHUNKW);
-        int z0 = ((int)camplayer.pos.z - BS2 * CHUNKD) / (BS * CHUNKD);
+        int x0 = (eye0 - BS * CHUNKW2) / (BS * CHUNKW);
+        int z0 = (eye2 - BS * CHUNKW2) / (BS * CHUNKD);
         CLAMP(x0, 0, VAOW - 2);
         CLAMP(z0, 0, VAOD - 2);
         int x1 = x0 + 1;
         int z1 = z0 + 1;
 
+        int x0d = ((x0 * BS * CHUNKW + BS * CHUNKW2) - eye0);
+        int x1d = ((x1 * BS * CHUNKW + BS * CHUNKW2) - eye0);
+        int z0d = ((z0 * BS * CHUNKD + BS * CHUNKD2) - eye2);
+        int z1d = ((z1 * BS * CHUNKD + BS * CHUNKD2) - eye2);
+
         // initialize with ring0 chunks
-        struct qitem fresh[104] = {{x0, 0, z0}, {x0, 0, z1}, {x1, 0, z0}, {x1, 0, z1}};
+        struct qitem fresh[104] = { // chunkx, distance sq, chunkz
+                {x0, (x0d * x0d + z0d * z0d), z0},
+                {x0, (x0d * x0d + z1d * z1d), z1},
+                {x1, (x1d * x1d + z0d * z0d), z0},
+                {x1, (x1d * x1d + z1d * z1d), z1}
+        };
+        qsort(fresh, 4, sizeof(struct qitem), sorter);
         size_t fresh_len = 4;
 
         // position within each ring that we're at this frame
@@ -1254,19 +1301,32 @@ void draw_stuff()
 
         // render non-fresh chunks
         TIMER(drawstale)
+        struct qitem stale[VAOW * VAOD] = {0}; // chunkx, distance sq, chunkz
+        size_t stale_len = 0;
         for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
         {
                 // skip chunks we will draw fresh this frame
-                for (size_t k = 0; k < fresh_len; k++)
+                for (size_t k = 0; k < 4; k++)
                         if (fresh[k].x == i && fresh[k].z == j)
                                 goto skip;
 
-                int myvbo = i * VAOD + j;
+                stale[stale_len].x = i;
+                stale[stale_len].z = j;
+                int xd = ((i * BS * CHUNKW + BS * CHUNKW2) - eye0);
+                int zd = ((j * BS * CHUNKW + BS * CHUNKW2) - eye2);
+                stale[stale_len].y = (xd * xd + zd * zd);
+                stale_len++;
+
+                skip: ;
+        }
+
+        qsort(stale, stale_len, sizeof(struct qitem), sorter);
+        for (size_t my = 0; my < stale_len; my++)
+        {
+                int myvbo = stale[my].x * VAOD + stale[my].z;
                 glBindVertexArray(vao[myvbo]);
                 glDrawArrays(GL_POINTS, 0, vbo_len[myvbo]);
                 polys += vbo_len[myvbo];
-
-                skip: ;
         }
 
         // build and render fresh chunks (while the stales are rendering!)
@@ -1280,6 +1340,7 @@ void draw_stuff()
                 glBindVertexArray(vao[myvbo]);
                 glBindBuffer(GL_ARRAY_BUFFER, vbo[myvbo]);
                 v = vbuf; // reset vertex buffer pointer
+                w = wbuf; // same for water buffer
 
                 int xlo = myx * CHUNKW;
                 int xhi = xlo + CHUNKW;
@@ -1297,7 +1358,9 @@ void draw_stuff()
 
                 for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH; y++) for (int x = xlo; x < xhi; x++)
                 {
-                        if (v >= v_limit) break; //shouldnt reasonably happen
+                        if (v >= v_limit) break; // out of vertex space, shouldnt reasonably happen
+
+                        if (w >= w_limit) w -= 10; // just overwrite water if we run out of space
 
                         if (tiles[z][y][x] == OPEN) continue;
 
@@ -1331,10 +1394,14 @@ void draw_stuff()
                                 if (x == TILESW-1 || tiles[z  ][y  ][x+1] >= OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse, 1 };
                                 if (y <  TILESH-1 && tiles[z  ][y+1][x  ] >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
                         }
-                        else if (t == STON || t == SAND || t == ORE)
+                        else if (t == STON || t == SAND || t == ORE || t == HARD || t == WOOD)
                         {
-                                int f = (t == STON) ? 5 :
-                                        (t == SAND) ? 6 : 8;
+                                int f = (t == STON) ?  5 :
+                                        (t == SAND) ?  6 :
+                                        (t == ORE ) ? 11 :
+                                        (t == HARD) ? 12 :
+                                        (t == WOOD) ? 13 :
+                                                       0 ;
                                 if (y == 0        || tiles[z  ][y-1][x  ] >= OPEN) *v++ = (struct vbufv){ f,    UP, x, y, z, usw, use, unw, une, 1 };
                                 if (z == 0        || tiles[z-1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ f, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
                                 if (z == TILESD-1 || tiles[z+1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ f, NORTH, x, y, z, unw, une, dnw, dne, 1 };
@@ -1344,19 +1411,30 @@ void draw_stuff()
                         }
                         else if (t == WATR)
                         {
-                                if (y == 0        || tiles[z  ][y-1][x  ] == OPEN) {
-                                                                                   *v++ = (struct vbufv){ 7,    UP, x, y+0.06f, z, usw, use, unw, une, 0.5f };
-                                                                                   *v++ = (struct vbufv){ 7,  DOWN, x, y-0.94f, z, dse, dsw, dne, dnw, 0.5f };
+                                if (y == 0        || tiles[z  ][y-1][x  ] == OPEN)
+                                {
+                                        int f = 7 + (pframe / 10 + (x ^ z)) % 4;
+                                        *w++ = (struct vbufv){ f,    UP, x, y+0.06f, z, usw, use, unw, une, 0.5f };
+                                        *w++ = (struct vbufv){ f,  DOWN, x, y-0.94f, z, dse, dsw, dne, dnw, 0.5f };
                                 }
                         }
+                }
+
+                if (w - wbuf < v_limit - v) // room for water in vertex buffer?
+                {
+                        memcpy(v, wbuf, (w - wbuf) * sizeof *wbuf);
+                        v += w - wbuf;
                 }
 
                 vbo_len[myvbo] = v - vbuf;
                 polys += vbo_len[myvbo];
                 TIMER(glBufferData)
                 glBufferData(GL_ARRAY_BUFFER, vbo_len[myvbo] * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
-                TIMER(glDrawArrays)
-                glDrawArrays(GL_POINTS, 0, vbo_len[myvbo]); // draw the newly buffered verts
+                if (my < 4) // draw the newly buffered verts
+                {
+                        TIMER(glDrawArrays)
+                        glDrawArrays(GL_POINTS, 0, vbo_len[myvbo]);
+                }
         }
 
         TIMER(swapwindow);
