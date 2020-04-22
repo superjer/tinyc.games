@@ -80,11 +80,15 @@
 #define GRG2 46
 #define GRAS 47
 
-#define BARR 48
+#define BARR 64
 
 #define LASTSOLID BARR // everything less than or eq here is solid
 #define OPEN 75        // invisible open, walkable space
 #define WATR 76
+
+#define RLEF 81
+#define YLEF 82
+
 
 #define VERTEX_BUFLEN 100000
 #define SUNQLEN 1000
@@ -312,15 +316,17 @@ void setup()
                 "res/grass_grow2_top.png",
                 "res/stone.png",
                 "res/sand.png",
-                "res/water.png",     //  7
+                "res/water.png",      //  7
                 "res/water2.png",
                 "res/water3.png",
                 "res/water4.png",
-                "res/ore.png",       // 11 
-                "res/ore_hint.png",  // 12 
-                "res/hard.png",      // 13
-                "res/wood_side.png", // 14
-                "res/granite.png",   // 15
+                "res/ore.png",        // 11
+                "res/ore_hint.png",   // 12
+                "res/hard.png",       // 13
+                "res/wood_side.png",  // 14
+                "res/granite.png",    // 15
+                "res/leaves_red.png", // 16
+                "res/leaves_gold.png",// 17
                 ""
         };
         for (int f = 0; files[f][0]; f++)
@@ -423,7 +429,7 @@ void key_move(int down)
                         break;
                 case SDLK_h: // delete all ore hints
                         if (down)
-                                for (int x = 0; x < TILESW-1; x++) for (int z = 0; z < TILESD-1; z++) for (int y = 0; y < TILESH-1; y++) 
+                                for (int x = 0; x < TILESW-1; x++) for (int z = 0; z < TILESD-1; z++) for (int y = 0; y < TILESH-1; y++)
                                         if (tiles[z][y][x] == OREH)
                                                 tiles[z][y][x] = OPEN;
                         break;
@@ -748,6 +754,37 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                                 tiles[z][y][x] = WOOD;
                 }
         }
+
+        // trees?
+        float p191 = improved_perlin_noise(zlo, 0, xlo, 191);
+        if (p191 > 0.2f) while (rand() % 20 < 14)
+        {
+                char leaves = rand() % 2 ? RLEF : YLEF;
+                float radius = (float)(rand()%300) * 0.01f + 1.0f;
+                int x = xlo + CHUNKW/2 + 5 - (rand() % 11);
+                int z = zlo + CHUNKD/2 + 5 - (rand() % 11);
+                for (int y = 10; y < TILESH-2; y++)
+                {
+                        if (tiles[z][y][x] == OPEN)
+                                continue;
+
+                        if (tiles[z][y][x] != GRAS && tiles[z][y][x] != DIRT)
+                                break;
+
+                        int yy = y;
+                        for (; yy >= y - 3 - (rand() % 6); yy--)
+                                tiles[z][yy][x] = WOOD;
+
+                        for (int i = x-3; i <= x+3; i++) for (int j = yy-3; j <= yy+3; j++) for (int k = z-3; k <= z+3; k++)
+                        {
+                                float dist = (i-x) * (i-x) + (j-yy) * (j-yy) + (k-z) * (k-z);
+                                if (tiles[k][j][i] == OPEN && dist < radius * radius)
+                                        tiles[k][j][i] = leaves;
+                        }
+
+                        break;
+                }
+        }
 }
 
 void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
@@ -757,6 +794,12 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
 
         if (tiles[z][y][x] == WATR)
                 incoming_light--; // water blocks more light
+
+        if (tiles[z][y][x] == RLEF || tiles[z][y][x] == YLEF)
+        {
+                incoming_light--; // leaves block more light
+                if (incoming_light) incoming_light--;
+        }
 
         if (sunlight[z][y][x] >= incoming_light)
                 return; // already brighter
@@ -937,7 +980,7 @@ void update_player(struct player *p, int real)
 
         if (real && p->building && !p->cooldown && place_x >= 0) {
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
-                        tiles[place_z][place_y][place_x] = WOOD;
+                        tiles[place_z][place_y][place_x] = HARD;
                 p->cooldown = 10;
         }
 
@@ -1435,7 +1478,8 @@ void draw_stuff()
                                 if (x == TILESW-1 || tiles[z  ][y  ][x+1] >= OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse, 1 };
                                 if (y <  TILESH-1 && tiles[z  ][y+1][x  ] >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
                         }
-                        else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN)
+                        else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN ||
+                                 t == RLEF || t == YLEF)
                         {
                                 int f = (t == STON) ?  5 :
                                         (t == SAND) ?  6 :
@@ -1444,7 +1488,9 @@ void draw_stuff()
                                         (t == HARD) ? 13 :
                                         (t == WOOD) ? 14 :
                                         (t == GRAN) ? 15 :
-                                                      16 ;
+                                        (t == RLEF) ? 16 :
+                                        (t == YLEF) ? 17 :
+                                                       0 ;
                                 if (y == 0        || tiles[z  ][y-1][x  ] >= OPEN) *v++ = (struct vbufv){ f,    UP, x, y, z, usw, use, unw, une, 1 };
                                 if (z == 0        || tiles[z-1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ f, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
                                 if (z == TILESD-1 || tiles[z+1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ f, NORTH, x, y, z, unw, une, dnw, dne, 1 };

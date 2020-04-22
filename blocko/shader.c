@@ -168,6 +168,7 @@ void main(void)                                                                 
             vec4(0.31, 0.91, 1.01, alpha),                                      \n\
             fog                                                                 \n\
     );                                                                          \n\
+    if (color.a < 0.00001) discard;                                             \n\
 }                                                                               \n\
 ";
 
