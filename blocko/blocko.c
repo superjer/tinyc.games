@@ -138,6 +138,7 @@ struct player {
 } player[NR_PLAYERS];
 
 struct player camplayer;
+struct point lerped_pos;
 
 int frame = 0;
 int noisy = 0;
@@ -151,7 +152,7 @@ int screenh = H;
 int zooming = 0;
 float zoom_amt = 1.f;
 float fast = 1.f;
-int regulated = 0;
+int regulated = 1;
 int vsync = 1;
 
 SDL_Event event;
@@ -178,7 +179,8 @@ void key_move(int down);
 void mouse_move();
 void mouse_button(int down);
 void update_world();
-void update_player(struct player * p, int real, float amt);
+void lerp_player(float t, struct player *a, struct player *b);
+void update_player(struct player * p, int real);
 int move_player(struct player * p, int velx, int vely, int velz);
 int collide(struct box plyr, struct box block);
 int block_collide(int bx, int by, int bz, struct box plyr, int wet);
@@ -234,16 +236,19 @@ int main()
 
                 while (accumulated_elapsed >= interval)
                 {
-                        TIMECALL(update_player, (&player[0], 1, 1.f));
+                        TIMECALL(update_player, (&player[0], 1));
                         TIMECALL(update_world, ());
                         accumulated_elapsed -= interval;
                 }
 
                 camplayer = player[0];
-                float amt = accumulated_elapsed / interval;
-                printf("amt %f\n", amt);
 
-                TIMECALL(update_player, (&camplayer, 0, amt));
+                if (regulated)
+                {
+                        TIMECALL(update_player, (&camplayer, 0));
+                }
+
+                lerp_player(accumulated_elapsed / interval, &player[0], &camplayer);
                 TIMECALL(step_sunlight, ());
                 draw_stuff();
                 debrief();
@@ -812,7 +817,14 @@ void personal_light(int x, int y, int z)
         sunlight[z][y][x] = 0;
 }
 
-void update_player(struct player *p, int real, float amt)
+void lerp_player(float t, struct player *a, struct player *b)
+{
+        lerped_pos.x = lerp(t, a->pos.x, b->pos.x);
+        lerped_pos.y = lerp(t, a->pos.y, b->pos.y);
+        lerped_pos.z = lerp(t, a->pos.z, b->pos.z);
+}
+
+void update_player(struct player *p, int real)
 {
         if (real && p->pos.y > TILESH*BS + 6000) // fell too far
         {
@@ -891,7 +903,7 @@ void update_player(struct player *p, int real, float amt)
         p->vel.x = fwdx * p->fvel + fwdz * p->rvel;
         p->vel.z = fwdz * p->fvel - fwdx * p->rvel;
 
-        if (!move_player(p, round(p->vel.x * amt), round(p->vel.y * amt), round(p->vel.z * amt)))
+        if (!move_player(p, p->vel.x, p->vel.y, p->vel.z))
         {
                 p->fvel = 0;
                 p->rvel = 0;
@@ -907,7 +919,7 @@ void update_player(struct player *p, int real, float amt)
         if (!p->ground || p->grav < GRAV_ZERO)
         {
                 float fall_dist = gravity[p->grav] / (p->wet ? 3 : 1);
-                if (!move_player(p, 0, fall_dist * amt, 0))
+                if (!move_player(p, 0, fall_dist, 0))
                         p->grav = GRAV_ZERO;
                 else if (p->grav < GRAV_MAX)
                         p->grav++;
@@ -926,8 +938,11 @@ void update_player(struct player *p, int real, float amt)
                 personal_light(place_x, place_y, place_z);
 
         //zooming
-        zoom_amt *= pow(zooming ? 0.9f : 1.2f, amt);
-        CLAMP(zoom_amt, 0.25f, 1.0f);
+        if (real)
+        {
+                zoom_amt *= zooming ? 0.9f : 1.2f;
+                CLAMP(zoom_amt, 0.25f, 1.0f);
+        }
 }
 
 //collide a box with nearby world tiles
@@ -1115,9 +1130,9 @@ void draw_stuff()
 
         // compute view matrix
         float eye0, eye1, eye2;
-        eye0 = camplayer.pos.x + PLYR_W / 2;
-        eye1 = camplayer.pos.y + EYEDOWN * (camplayer.sneaking ? 2 : 1);
-        eye2 = camplayer.pos.z + PLYR_W / 2;
+        eye0 = lerped_pos.x + PLYR_W / 2;
+        eye1 = lerped_pos.y + EYEDOWN * (camplayer.sneaking ? 2 : 1);
+        eye2 = lerped_pos.z + PLYR_W / 2;
         float f0, f1, f2;
         f0 = cos(camplayer.pitch) * sin(camplayer.yaw);
         f1 = sin(camplayer.pitch);
