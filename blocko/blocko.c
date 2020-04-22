@@ -138,7 +138,7 @@ struct player {
 } player[NR_PLAYERS];
 
 int frame = 0;
-int noisy = 1;
+int noisy = 0;
 int polys = 0;
 
 int mouselook = 1;
@@ -149,6 +149,8 @@ int screenh = H;
 int zooming = 0;
 float zoom_amt = 1.f;
 float fast = 1.f;
+int regulated = 0;
+int vsync = 1;
 
 SDL_Event event;
 SDL_Window *win;
@@ -225,6 +227,7 @@ int main()
                 accumulated_elapsed += ticks - last_ticks;
                 last_ticks = ticks;
                 CLAMP(accumulated_elapsed, 0, interval * 3 - 1);
+                if (!regulated) accumulated_elapsed = interval;
                 while (accumulated_elapsed >= interval)
                 {
                         TIMECALL(update_player, ());
@@ -255,7 +258,7 @@ void setup()
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-        SDL_GL_SetSwapInterval(1);
+        SDL_GL_SetSwapInterval(vsync);
         #ifndef __APPLE__
         glewExperimental = GL_TRUE;
         glewInit();
@@ -382,6 +385,21 @@ void key_move(int down)
                 case SDLK_f: // go fast
                         if (down)
                                 fast = (fast == 1.f) ? 8.f : 1.f;
+                        break;
+                case SDLK_r: // toggle phys step regulation
+                        if (down)
+                        {
+                                regulated = !regulated;
+                                fprintf(stderr, "%s\n", regulated ? "regulated" : "unregulated");
+                        }
+                        break;
+                case SDLK_v: // toggle vsync
+                        if (down)
+                        {
+                                vsync = !vsync;
+                                SDL_GL_SetSwapInterval(vsync);
+                                fprintf(stderr, "%s\n", vsync ? "vsync" : " no vsync");
+                        }
                         break;
                 case SDLK_F3: // show FPS and timings etc.
                         if (!down) noisy = !noisy;
