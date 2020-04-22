@@ -137,6 +137,8 @@ struct player {
         int ground;
 } player[NR_PLAYERS];
 
+struct player camplayer;
+
 int frame = 0;
 int noisy = 1;
 int polys = 0;
@@ -174,8 +176,8 @@ void key_move(int down);
 void mouse_move();
 void mouse_button(int down);
 void update_world();
-void update_player();
-int move_player(int velx, int vely, int velz);
+void update_player(struct player * p, int real, float amt);
+int move_player(struct player * p, int velx, int vely, int velz);
 int collide(struct box plyr, struct box block);
 int block_collide(int bx, int by, int bz, struct box plyr, int wet);
 int world_collide(struct box plyr, int wet);
@@ -227,15 +229,19 @@ int main()
                 CLAMP(accumulated_elapsed, 0, interval * 3 - 1);
                 while (accumulated_elapsed >= interval)
                 {
-                        TIMECALL(update_player, ());
+                        TIMECALL(update_player, (&player[0], 1, 1.f));
                         TIMECALL(update_world, ());
                         accumulated_elapsed -= interval;
                 }
 
+                camplayer = player[0];
+                float amt = accumulated_elapsed / interval;
+                printf("amt %f\n", amt);
+
+                TIMECALL(update_player, (&camplayer, 0, amt));
                 TIMECALL(step_sunlight, ());
                 draw_stuff();
                 debrief();
-                //SDL_Delay(1000 / 60);
                 frame++;
         }
 }
@@ -255,7 +261,7 @@ void setup()
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-        SDL_GL_SetSwapInterval(1);
+        SDL_GL_SetSwapInterval(0);
         #ifndef __APPLE__
         glewExperimental = GL_TRUE;
         glewInit();
@@ -786,11 +792,9 @@ void personal_light(int x, int y, int z)
         sunlight[z][y][x] = 0;
 }
 
-void update_player()
+void update_player(struct player *p, int real, float amt)
 {
-        struct player *p = player + 0;
-
-        if (p->pos.y > TILESH*BS + 6000) // fell too far
+        if (real && p->pos.y > TILESH*BS + 6000) // fell too far
         {
                 new_game();
                 return;
@@ -812,7 +816,7 @@ void update_player()
 
         if (p->cooldown) p->cooldown--;
 
-        if (p->breaking && !p->cooldown && target_x >= 0)
+        if (real && p->breaking && !p->cooldown && target_x >= 0)
         {
                 int x = target_x;
                 int y = target_y;
@@ -830,7 +834,7 @@ void update_player()
                 p->cooldown = 5;
         }
 
-        if (p->building && !p->cooldown && place_x >= 0) {
+        if (real && p->building && !p->cooldown && place_x >= 0) {
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
                         tiles[place_z][place_y][place_x] = DIRT;
                 p->cooldown = 10;
@@ -856,9 +860,9 @@ void update_player()
         limit *= fast;
         if (totalvel > limit)
         {
-                totalvel = limit / totalvel;
-                if (p->fvel > 4 || p->fvel < -4) p->fvel *= totalvel;
-                if (p->rvel > 4 || p->rvel < -4) p->rvel *= totalvel;
+                limit /= totalvel;
+                if (p->fvel > 4 || p->fvel < -4) p->fvel *= limit;
+                if (p->rvel > 4 || p->rvel < -4) p->rvel *= limit;
         }
 
         float fwdx = sin(p->yaw);
@@ -867,7 +871,7 @@ void update_player()
         p->vel.x = fwdx * p->fvel + fwdz * p->rvel;
         p->vel.z = fwdz * p->fvel - fwdx * p->rvel;
 
-        if (!move_player(p->vel.x, p->vel.y, p->vel.z))
+        if (!move_player(p, round(p->vel.x * amt), round(p->vel.y * amt), round(p->vel.z * amt)))
         {
                 p->fvel = 0;
                 p->rvel = 0;
@@ -882,7 +886,8 @@ void update_player()
         //gravity
         if (!p->ground || p->grav < GRAV_ZERO)
         {
-                if (!move_player(0, gravity[p->grav] / (p->wet ? 3 : 1), 0))
+                float fall_dist = gravity[p->grav] / (p->wet ? 3 : 1);
+                if (!move_player(p, 0, fall_dist * amt, 0))
                         p->grav = GRAV_ZERO;
                 else if (p->grav < GRAV_MAX)
                         p->grav++;
@@ -897,11 +902,11 @@ void update_player()
         if (p->ground)
                 p->grav = GRAV_ZERO;
 
-        if (place_x >= 0)
+        if (real && place_x >= 0)
                 personal_light(place_x, place_y, place_z);
 
         //zooming
-        zoom_amt *= zooming ? 0.9f : 1.2f;
+        zoom_amt *= pow(zooming ? 0.9f : 1.2f, amt);
         CLAMP(zoom_amt, 0.25f, 1.0f);
 }
 
@@ -922,7 +927,7 @@ int world_collide(struct box box, int wet)
 }
 
 //return 0 iff we couldn't actually move
-int move_player(int velx, int vely, int velz)
+int move_player(struct player *p, int velx, int vely, int velz)
 {
         int last_was_x = 0;
         int last_was_z = 0;
@@ -932,12 +937,12 @@ int move_player(int velx, int vely, int velz)
         if (!velx && !vely && !velz)
                 return 1;
 
-        if (world_collide(player[0].pos, 0))
+        if (world_collide(p->pos, 0))
                 already_stuck = 1;
 
         while (velx || vely || velz)
         {
-                struct box testpos = player[0].pos;
+                struct box testpos = p->pos;
                 int amt;
 
                 if ((!velx && !velz) || ((last_was_x || last_was_z) && vely))
@@ -983,7 +988,7 @@ int move_player(int velx, int vely, int velz)
                         continue;
                 }
 
-                player[0].pos = testpos;
+                p->pos = testpos;
                 moved = 1;
         }
 
@@ -1090,17 +1095,17 @@ void draw_stuff()
 
         // compute view matrix
         float eye0, eye1, eye2;
-        eye0 = player[0].pos.x + PLYR_W / 2;
-        eye1 = player[0].pos.y + EYEDOWN * (player[0].sneaking ? 2 : 1);
-        eye2 = player[0].pos.z + PLYR_W / 2;
+        eye0 = camplayer.pos.x + PLYR_W / 2;
+        eye1 = camplayer.pos.y + EYEDOWN * (camplayer.sneaking ? 2 : 1);
+        eye2 = camplayer.pos.z + PLYR_W / 2;
         float f0, f1, f2;
-        f0 = cos(player[0].pitch) * sin(player[0].yaw);
-        f1 = sin(player[0].pitch);
-        f2 = cos(player[0].pitch) * cos(player[0].yaw);
+        f0 = cos(camplayer.pitch) * sin(camplayer.yaw);
+        f1 = sin(camplayer.pitch);
+        f2 = cos(camplayer.pitch) * cos(camplayer.yaw);
         float wing0, wing1, wing2;
-        wing0 = -cos(player[0].yaw);
+        wing0 = -cos(camplayer.yaw);
         wing1 = 0;
-        wing2 = sin(player[0].yaw);
+        wing2 = sin(camplayer.yaw);
         float up0, up1, up2;
         up0 = f1*wing2 - f2*wing1;
         up1 = f2*wing0 - f0*wing2;
@@ -1161,8 +1166,8 @@ void draw_stuff()
 
         // determine which chunks to send to gl
         TIMER(rings)
-        int x0 = ((int)player[0].pos.x - BS2 * CHUNKW) / (BS * CHUNKW);
-        int z0 = ((int)player[0].pos.z - BS2 * CHUNKD) / (BS * CHUNKD);
+        int x0 = ((int)camplayer.pos.x - BS2 * CHUNKW) / (BS * CHUNKW);
+        int z0 = ((int)camplayer.pos.z - BS2 * CHUNKD) / (BS * CHUNKD);
         CLAMP(x0, 0, VAOW - 2);
         CLAMP(z0, 0, VAOD - 2);
         int x1 = x0 + 1;
