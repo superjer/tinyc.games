@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 long long int perlin_calls = 0;
+long long int perlin_calls_7 = 0;
 
 static float fade(float t) { return t * t * t * (t * (t * 6 - 15) + 10); }
 
@@ -44,7 +45,6 @@ void init_perlin() {
 }
 
 float improved_perlin_noise(float x, float y, float z, float scale) {
-   perlin_calls++;
    x /= scale;
    y /= scale;
    z /= scale;
@@ -60,7 +60,8 @@ float improved_perlin_noise(float x, float y, float z, float scale) {
    int A = p[X  ]+Y, AA = p[A]+Z, AB = p[A+1]+Z,      // HASH COORDINATES OF
        B = p[X+1]+Y, BA = p[B]+Z, BB = p[B+1]+Z;      // THE 8 CUBE CORNERS,
 
-   return lerp(w, lerp(v, lerp(u, grad(p[AA  ], x  , y  , z   ),  // AND ADD
+   float r =
+          lerp(w, lerp(v, lerp(u, grad(p[AA  ], x  , y  , z   ),  // AND ADD
                                   grad(p[BA  ], x-1, y  , z   )), // BLENDED
                           lerp(u, grad(p[AB  ], x  , y-1, z   ),  // RESULTS
                                   grad(p[BB  ], x-1, y-1, z   ))),// FROM  8
@@ -68,4 +69,7 @@ float improved_perlin_noise(float x, float y, float z, float scale) {
                                   grad(p[BA+1], x-1, y  , z-1 )), // OF CUBE
                           lerp(u, grad(p[AB+1], x  , y-1, z-1 ),
                                   grad(p[BB+1], x-1, y-1, z-1 ))));
+   if (r >= 0.7f) perlin_calls_7++;
+   perlin_calls++;
+   return r;
 }
