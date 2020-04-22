@@ -568,10 +568,10 @@ void create_hmap()
 
 void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 {
-        CLAMP(xlo, 0, TILESW);
-        CLAMP(xhi, 0, TILESW);
-        CLAMP(zlo, 0, TILESD);
-        CLAMP(zhi, 0, TILESD);
+        CLAMP(xlo, 0, TILESW-1);
+        CLAMP(xhi, 0, TILESW-1);
+        CLAMP(zlo, 0, TILESD-1);
+        CLAMP(zhi, 0, TILESD-1);
 
         static char column_already_generated[TILESW][TILESD];
 
