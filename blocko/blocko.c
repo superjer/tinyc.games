@@ -300,7 +300,7 @@ void worker()
         }
 } }
 
-//the entry point and main game loop
+//one thread for worker (chunk generator) and one for main loop (phys + renderer)
 int main()
 {
         #pragma omp parallel sections
@@ -320,8 +320,7 @@ int main()
 //initial setup to get the window and rendering going
 void setup()
 {
-        //srand(time(NULL));
-        srand(5747);
+        srand(time(NULL));
         init_perlin();
 
         SDL_Init(SDL_INIT_VIDEO);
@@ -1389,11 +1388,34 @@ void draw_stuff()
         };
         size_t fresh_len = 4;
 
+        TIMER(find_ungenerated)
         #pragma omp critical
-        if (just_generated.x >= 0) {
-                fresh[fresh_len++] = just_generated;
-                just_generated.x = -1;
+        {
+                if (just_generated.x >= 0) {
+                        fresh[fresh_len++] = just_generated;
+                        just_generated.x = -1;
+                }
+
+                // find "nearest" ungenerated chunk
+                int best_dist = 99999999;
+                if (to_generate.x < 0) // worker is ready
+                {
+                        for (int myx = 0; myx < VAOW; myx++) for (int myz = 0; myz < VAOD; myz++)
+                        {
+                                if (!already_generated[myx][myz])
+                                {
+                                        int dist_sq = (myx - x1) * (myx - x1) + (myz - z1) * (myz - z1);
+                                        if (dist_sq < best_dist)
+                                        {
+                                                best_dist = dist_sq;
+                                                to_generate.x = myx;
+                                                to_generate.z = myz;
+                                        }
+                                }
+                        }
+                }
         }
+        TIMER()
 
         qsort(fresh, fresh_len, sizeof(struct qitem), sorter);
 
@@ -1483,8 +1505,6 @@ void draw_stuff()
                 #pragma omp critical
                 if (!already_generated[myx][myz])
                 {
-                        if (to_generate.x < 0) // worker is ready
-                                to_generate = fresh[my];
                         ungenerated = 1;
                 }
 

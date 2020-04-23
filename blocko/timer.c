@@ -20,7 +20,7 @@
 }
 
 #define NAMES \
-        X(gen_chunk), \
+        X(find_ungenerated), \
         X(create_hmap), \
         X(update_world), \
         X(update_player), \
