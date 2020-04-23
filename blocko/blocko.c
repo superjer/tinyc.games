@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <time.h>
 #include <math.h>
 #define GL3_PROTOTYPES 1
@@ -113,7 +114,7 @@ unsigned char tiles[TILESD][TILESH][TILESW];
 unsigned char sunlight[TILESD+1][TILESH+1][TILESW+1];
 unsigned char gndheight[TILESD][TILESW];
 float cornlight[TILESD+2][TILESH+2][TILESW+2];
-char already_generated[VAOW][VAOD];
+volatile char already_generated[VAOW][VAOD];
 
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
@@ -152,6 +153,7 @@ struct player {
 struct player camplayer;
 struct point lerped_pos;
 
+//globals
 int frame = 0;
 int pframe = 0;
 int noisy = 0;
@@ -167,6 +169,8 @@ float zoom_amt = 1.f;
 float fast = 1.f;
 int regulated = 1;
 int vsync = 1;
+volatile struct qitem to_generate = {-1, -1, -1};
+volatile struct qitem just_generated = {-1, -1, -1};
 
 SDL_Event event;
 SDL_Window *win;
@@ -215,62 +219,101 @@ MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
                         type, severity, message );
 }
 
+void main_loop()
+{ for (;;) {
+        while (SDL_PollEvent(&event)) switch (event.type)
+        {
+                case SDL_QUIT:            exit(0);
+                case SDL_KEYDOWN:         key_move(1);       break;
+                case SDL_KEYUP:           key_move(0);       break;
+                case SDL_MOUSEMOTION:     mouse_move();      break;
+                case SDL_MOUSEBUTTONDOWN: mouse_button(1);   break;
+                case SDL_MOUSEBUTTONUP:   mouse_button(0);   break;
+                case SDL_WINDOWEVENT:
+                        switch (event.window.event)
+                        {
+                                case SDL_WINDOWEVENT_SIZE_CHANGED:
+                                        resize();
+                                        break;
+                        }
+                        break;
+        }
+
+        float interval = 1000.f / 60.f;
+        static float accumulated_elapsed = 0.f;
+        static int last_ticks = 0;
+        int ticks = SDL_GetTicks();
+        accumulated_elapsed += ticks - last_ticks;
+        last_ticks = ticks;
+        CLAMP(accumulated_elapsed, 0, interval * 3 - 1);
+
+        if (!regulated) accumulated_elapsed = interval;
+
+        while (accumulated_elapsed >= interval)
+        {
+                TIMECALL(update_player, (&player[0], 1));
+                TIMECALL(update_world, ());
+                pframe++;
+                accumulated_elapsed -= interval;
+        }
+
+        camplayer = player[0];
+
+        if (regulated)
+        {
+                TIMECALL(update_player, (&camplayer, 0));
+        }
+
+        lerp_camera(accumulated_elapsed / interval, &player[0], &camplayer);
+        TIMECALL(step_sunlight, ());
+        draw_stuff();
+        debrief();
+        frame++;
+} }
+
+void worker()
+{ for(;;) {
+        SDL_Delay(1);
+        int x, z;
+
+        #pragma omp critical
+        {
+                x = to_generate.x;
+                z = to_generate.z;
+        }
+
+        if (x >= 0)
+        {
+                int xlo = x * CHUNKW;
+                int zlo = z * CHUNKD;
+                int xhi = xlo + CHUNKW;
+                int zhi = zlo + CHUNKD;
+
+                gen_chunk(xlo-1, xhi+1, zlo-1, zhi+1);
+
+                #pragma omp critical
+                {
+                        already_generated[to_generate.x][to_generate.z] = 1;
+                        just_generated = to_generate;
+                        to_generate.x = -1;
+                }
+        }
+} }
+
 //the entry point and main game loop
 int main()
 {
-        setup();
-        new_game();
-
-        for (;;)
+        #pragma omp parallel sections
         {
-                while (SDL_PollEvent(&event)) switch (event.type)
+                #pragma omp section
+                worker();
+
+                #pragma omp section
                 {
-                        case SDL_QUIT:            exit(0);
-                        case SDL_KEYDOWN:         key_move(1);       break;
-                        case SDL_KEYUP:           key_move(0);       break;
-                        case SDL_MOUSEMOTION:     mouse_move();      break;
-                        case SDL_MOUSEBUTTONDOWN: mouse_button(1);   break;
-                        case SDL_MOUSEBUTTONUP:   mouse_button(0);   break;
-                        case SDL_WINDOWEVENT:
-                                switch (event.window.event)
-                                {
-                                        case SDL_WINDOWEVENT_SIZE_CHANGED:
-                                                resize();
-                                                break;
-                                }
-                                break;
+                        setup();
+                        new_game();
+                        main_loop();
                 }
-
-                float interval = 1000.f / 60.f;
-                static float accumulated_elapsed = 0.f;
-                static int last_ticks = 0;
-                int ticks = SDL_GetTicks();
-                accumulated_elapsed += ticks - last_ticks;
-                last_ticks = ticks;
-                CLAMP(accumulated_elapsed, 0, interval * 3 - 1);
-
-                if (!regulated) accumulated_elapsed = interval;
-
-                while (accumulated_elapsed >= interval)
-                {
-                        TIMECALL(update_player, (&player[0], 1));
-                        TIMECALL(update_world, ());
-                        pframe++;
-                        accumulated_elapsed -= interval;
-                }
-
-                camplayer = player[0];
-
-                if (regulated)
-                {
-                        TIMECALL(update_player, (&camplayer, 0));
-                }
-
-                lerp_camera(accumulated_elapsed / interval, &player[0], &camplayer);
-                TIMECALL(step_sunlight, ());
-                draw_stuff();
-                debrief();
-                frame++;
         }
 }
 
@@ -329,6 +372,7 @@ void setup()
                 "res/leaves_gold.png",// 17
                 ""
         };
+
         for (int f = 0; files[f][0]; f++)
         {
                 texels = stbi_load(files[f], &x, &y, &n, 0);
@@ -498,7 +542,6 @@ void move_to_ground(float *inout, int x, int y, int z)
         *inout = gndheight[z][x] * BS - PLYR_H - 1;
 }
 
-//start a new game
 void new_game()
 {
         memset(player, 0, sizeof player);
@@ -1344,8 +1387,15 @@ void draw_stuff()
                 {x1, (x1d * x1d + z0d * z0d), z0},
                 {x1, (x1d * x1d + z1d * z1d), z1}
         };
-        qsort(fresh, 4, sizeof(struct qitem), sorter);
         size_t fresh_len = 4;
+
+        #pragma omp critical
+        if (just_generated.x >= 0) {
+                fresh[fresh_len++] = just_generated;
+                just_generated.x = -1;
+        }
+
+        qsort(fresh, fresh_len, sizeof(struct qitem), sorter);
 
         // position within each ring that we're at this frame
 	static struct qitem ringpos[VAOW + VAOD] = {0};
@@ -1417,29 +1467,34 @@ void draw_stuff()
                 polys += vbo_len[myvbo];
         }
 
-        // build and render fresh chunks (while the stales are rendering!)
+        // package, ship and render fresh chunks (while the stales are rendering!)
         TIMER(buildvbo);
         for (size_t my = 0; my < fresh_len; my++)
         {
                 int myx = fresh[my].x;
                 int myz = fresh[my].z;
                 int myvbo = myx * VAOD + myz;
+                int xlo = myx * CHUNKW;
+                int xhi = xlo + CHUNKW;
+                int zlo = myz * CHUNKD;
+                int zhi = zlo + CHUNKD;
+                int ungenerated = 0;
+
+                #pragma omp critical
+                if (!already_generated[myx][myz])
+                {
+                        if (to_generate.x < 0) // worker is ready
+                                to_generate = fresh[my];
+                        ungenerated = 1;
+                }
+
+                if (ungenerated)
+                        continue; // don't bother with ungenerated chunks
 
                 glBindVertexArray(vao[myvbo]);
                 glBindBuffer(GL_ARRAY_BUFFER, vbo[myvbo]);
                 v = vbuf; // reset vertex buffer pointer
                 w = wbuf; // same for water buffer
-
-                int xlo = myx * CHUNKW;
-                int xhi = xlo + CHUNKW;
-                int zlo = myz * CHUNKD;
-                int zhi = zlo + CHUNKD;
-
-                if (!already_generated[myx][myz])
-                {
-                        TIMECALL(gen_chunk, (xlo-1, xhi+1, zlo-1, zhi+1));
-                        already_generated[myx][myz] = 1;
-                }
 
                 TIMECALL(recalc_corner_lighting, (xlo, xhi, zlo, zhi));
                 TIMER(buildvbo);
@@ -1551,8 +1606,6 @@ void debrief()
                         printf("player pos X=%0.0f Y=%0.0f Z=%0.0f\n", player[0].pos.x, player[0].pos.y, player[0].pos.z);
                         printf("player block X=%0.0f Y=%0.0f Z=%0.0f\n", player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS);
                         timer_print();
-                        printf("perlin calls %lld\n", perlin_calls);
-                        printf("perlin calls gte.7 %lld\n", perlin_calls_7);
                 }
                 last_ticks = ticks;
                 last_frame = frame;
