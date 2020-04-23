@@ -163,12 +163,9 @@ uniform vec4 eye;                                                               
                                                                                 \n\
 void main(void)                                                                 \n\
 {                                                                               \n\
-    color = mix(                                                                \n\
-            texture(tarray, vec3(uv, tex)) * vec4(illum, illum, illum, alpha),  \n\
-            vec4(0.31, 0.91, 1.01, alpha),                                      \n\
-            fog                                                                 \n\
-    );                                                                          \n\
-    if (color.a < 0.00001) discard;                                             \n\
+    vec4 c = texture(tarray, vec3(uv, tex)) * vec4(illum, illum, illum, alpha); \n\
+    if (c.a < 0.01) discard;                                                    \n\
+    color = mix(c, vec4(0.31, 0.91, 1.01, alpha), fog);                         \n\
 }                                                                               \n\
 ";
 

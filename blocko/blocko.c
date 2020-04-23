@@ -278,7 +278,7 @@ int main()
 void setup()
 {
         //srand(time(NULL));
-        srand(9875);
+        srand(5747);
         init_perlin();
 
         SDL_Init(SDL_INIT_VIDEO);
@@ -640,6 +640,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
         static char column_already_generated[TILESW][TILESD];
 
+        #pragma omp parallel for
         for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
         {
                 if (column_already_generated[x][z])
@@ -742,6 +743,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         }
 
         // correcting pass over middle
+        #pragma omp parallel for
         for (int x = xlo+1; x < xhi-1; x++) for (int z = zlo-1; z < zhi+1; z++) for (int y = 100; y < TILESH-2; y++)
         {
                 if (tiles[z][y][x] == WATR)
@@ -757,7 +759,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
         // trees?
         float p191 = improved_perlin_noise(zlo, 0, xlo, 191);
-        if (p191 > 0.2f) while (rand() % 20 < 14)
+        if (p191 > 0.2f) while (rand() % 20 < 18)
         {
                 char leaves = rand() % 2 ? RLEF : YLEF;
                 float radius = (float)(rand()%300) * 0.01f + 1.0f;
@@ -775,7 +777,9 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         for (; yy >= y - 3 - (rand() % 6); yy--)
                                 tiles[z][yy][x] = WOOD;
 
-                        for (int i = x-3; i <= x+3; i++) for (int j = yy-3; j <= yy+3; j++) for (int k = z-3; k <= z+3; k++)
+                        int ymax = yy + 4 - rand() % 3;
+
+                        for (int i = x-3; i <= x+3; i++) for (int j = yy-3; j <= ymax; j++) for (int k = z-3; k <= z+3; k++)
                         {
                                 float dist = (i-x) * (i-x) + (j-yy) * (j-yy) + (k-z) * (k-z);
                                 if (tiles[k][j][i] == OPEN && dist < radius * radius)
