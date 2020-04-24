@@ -142,6 +142,8 @@ struct player {
         float yaw;
         float pitch;
         int wet;
+        int cooldownf;
+        int runningf;
         int goingf;
         int goingb;
         int goingl;
@@ -175,7 +177,7 @@ int screenh = H;
 int zooming = 0;
 float zoom_amt = 1.f;
 float fast = 1.f;
-int regulated = 1;
+int regulated = 0;
 int vsync = 1;
 volatile struct qitem to_generate = {-1, -1, -1};
 volatile struct qitem just_generated = {-1, -1, -1};
@@ -281,7 +283,7 @@ void main_loop()
         frame++;
 } }
 
-void worker()
+void chunk_builder()
 { for(;;) {
         SDL_Delay(1);
         int x, z;
@@ -299,9 +301,7 @@ void worker()
                 int xhi = xlo + CHUNKW;
                 int zhi = zlo + CHUNKD;
 
-                long long int t = SDL_GetTicks();
                 gen_chunk(xlo-1, xhi+1, zlo-1, zhi+1);
-                //fprintf(stderr, "Generated in %0.3f\n", (SDL_GetTicks() - t) / 1000.f);
 
                 #pragma omp critical
                 {
@@ -312,13 +312,13 @@ void worker()
         }
 } }
 
-//one thread for worker (chunk generator) and one for main loop (phys + renderer)
+//one thread for worker (chunk builder) and one for main loop (phys + renderer)
 int main()
 {
         #pragma omp parallel sections
         {
                 #pragma omp section
-                worker();
+                chunk_builder();
 
                 #pragma omp section
                 {
@@ -455,7 +455,9 @@ void key_move(int down)
         switch (event.key.keysym.sym)
         {
                 // continuous movement stuff
-                case SDLK_w:      player[0].goingf   = down; break;
+                case SDLK_w:      player[0].goingf = down;
+                        if (down) player[0].cooldownf += 10; // detect double tap
+                        break;
                 case SDLK_s:      player[0].goingb   = down; break;
                 case SDLK_a:      player[0].goingl   = down; break;
                 case SDLK_d:      player[0].goingr   = down; break;
@@ -569,12 +571,19 @@ void new_game()
         player[0].yaw = 3.1415926535 * 0.23;
         player[0].grav = GRAV_ZERO;
         TIMECALL(create_hmap, ());
+
+        // tell worker thread build first chunk
+        to_generate.x = (STARTPX / BS) / CHUNKW;
+        to_generate.z = (STARTPZ / BS) / CHUNKD;
+        while (just_generated.x < 0)
+                ; // wait
+
         recalc_gndheight(STARTPX/BS, STARTPZ/BS);
         move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
 }
 
-int hmap[TILESW][TILESD];
-int hmap2[TILESW][TILESD];
+float hmap[TILESW][TILESD];
+float hmap2[TILESW][TILESD];
 
 void gen_hmap(int x0, int x2, int z0, int z2)
 {
@@ -1047,6 +1056,11 @@ void update_player(struct player *p, int real)
                 p->cooldown = 10;
         }
 
+        // double tap forward to run
+        if (p->cooldownf > 10) p->runningf = 1;
+        if (p->cooldownf > 0) p->cooldownf--;
+        if (!p->goingf) p->runningf = 0;
+
         if (p->goingf && !p->goingb) { p->fvel++; }
         else if (p->fvel > 0)        { p->fvel--; }
 
@@ -1061,9 +1075,9 @@ void update_player(struct player *p, int real)
 
         //limit speed
         float totalvel = sqrt(p->fvel * p->fvel + p->rvel * p->rvel);
-        float limit = p->running  ? PLYR_SPD_R :
-                      p->sneaking ? PLYR_SPD_S :
-                                    PLYR_SPD;
+        float limit = (p->running || p->runningf)  ? PLYR_SPD_R :
+                      p->sneaking                  ? PLYR_SPD_S :
+                                                     PLYR_SPD;
         limit *= fast;
         if (totalvel > limit)
         {
@@ -1647,6 +1661,5 @@ void debrief()
                 last_ticks = ticks;
                 last_frame = frame;
                 polys = 0;
-                fprintf(stderr,"%f\n", open_simplex_noise3(osn_context,rand() % 100,rand() % 100,rand() % 101));
         }
 }
