@@ -179,6 +179,7 @@ float zoom_amt = 1.f;
 float fast = 1.f;
 int regulated = 0;
 int vsync = 1;
+int antialiasing = 1;
 volatile struct qitem just_generated[VAOW*VAOD];
 volatile size_t just_gen_len;
 
@@ -361,6 +362,8 @@ void setup()
         cornlight = malloc((TILESD+2) * (TILESH+2) * (TILESW+2) * sizeof *cornlight);
 
         SDL_Init(SDL_INIT_VIDEO);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
         win = SDL_CreateWindow("Blocko", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                 W, H, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
         if (!win) exit(fprintf(stderr, "%s\n", SDL_GetError()));
@@ -540,7 +543,14 @@ void key_move(int down)
                         {
                                 vsync = !vsync;
                                 SDL_GL_SetSwapInterval(vsync);
-                                fprintf(stderr, "%s\n", vsync ? "vsync" : " no vsync");
+                                fprintf(stderr, "%s\n", vsync ? "vsync" : "no vsync");
+                        }
+                        break;
+                case SDLK_SLASH: // toggle antialiasing
+                        if (down)
+                        {
+                                antialiasing = !antialiasing;
+                                fprintf(stderr, "%s\n", antialiasing ? "antialiasing" : "no antialiasing");
                         }
                         break;
                 case SDLK_m: // check GPU memory usage
@@ -648,20 +658,20 @@ void gen_hmap(int x0, int x2, int z0, int z2)
         w = w ? w : 1;
         d = d ? d : 1;
 
-        int r = w > 2 ? 1 : 0;
+        float r = w > 2 ? 1.f : 0.f;
 
         // edges middles
         if (!hmap[x0][z1])
-                hmap[x0][z1] = (hmap[x0][z0] + hmap[x0][z2]) / 2 + r * ((rand() % d) - d / 2);
+                hmap[x0][z1] = (hmap[x0][z0] + hmap[x0][z2]) / 2.f + r * ((rand() % d) - d / 2.f);
         if (!hmap[x2][z1])
-                hmap[x2][z1] = (hmap[x2][z0] + hmap[x2][z2]) / 2 + r * ((rand() % d) - d / 2);
+                hmap[x2][z1] = (hmap[x2][z0] + hmap[x2][z2]) / 2.f + r * ((rand() % d) - d / 2.f);
         if (!hmap[x1][z0])
-                hmap[x1][z0] = (hmap[x0][z0] + hmap[x2][z0]) / 2 + r * ((rand() % d) - d / 2);
+                hmap[x1][z0] = (hmap[x0][z0] + hmap[x2][z0]) / 2.f + r * ((rand() % d) - d / 2.f);
         if (!hmap[x1][z2])
-                hmap[x1][z2] = (hmap[x0][z2] + hmap[x2][z2]) / 2 + r * ((rand() % d) - d / 2);
+                hmap[x1][z2] = (hmap[x0][z2] + hmap[x2][z2]) / 2.f + r * ((rand() % d) - d / 2.f);
 
         // middle middle
-        hmap[x1][z1] = (hmap[x0][z1] + hmap[x2][z1] + hmap[x1][z0] + hmap[x1][z2]) / 4 + r * ((rand() % (d * 2)) - d);
+        hmap[x1][z1] = (hmap[x0][z1] + hmap[x2][z1] + hmap[x1][z0] + hmap[x1][z2]) / 4.f + r * ((rand() % (d * 2)) - d);
 
         // recurse if there are any unfilled spots
         if(x1 - x0 > 1 || x2 - x1 > 1 || z1 - z0 > 1 || z2 - z1 > 1)
@@ -1430,6 +1440,7 @@ void draw_stuff()
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
         glEnable(GL_BLEND);
+        if (antialiasing) glEnable(GL_MULTISAMPLE); else glDisable(GL_MULTISAMPLE);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthFunc(GL_LEQUAL);
 
