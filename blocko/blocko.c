@@ -40,8 +40,8 @@ struct osn_context *osn_context;
 #define CHUNKD 16                  // ^
 #define CHUNKW2 (CHUNKW/2)
 #define CHUNKD2 (CHUNKD/2)
-#define VAOW 64                    // how many VAOs wide
-#define VAOD 64                    // how many VAOs deep
+#define VAOW 128                   // how many VAOs wide
+#define VAOD 128                   // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
 #define TILESW (CHUNKW*VAOW)       // total level width, height
 #define TILESH 160                 // ^
@@ -404,6 +404,7 @@ void setup()
                 "res/hard.png",       // 13
                 "res/wood_side.png",  // 14
                 "res/granite.png",    // 15
+                // transparent:
                 "res/leaves_red.png", // 16
                 "res/leaves_gold.png",// 17
                 ""
@@ -412,18 +413,30 @@ void setup()
         for (int f = 0; files[f][0]; f++)
         {
                 texels = stbi_load(files[f], &x, &y, &n, 0);
-                mode = n == 4 ? GL_RGBA : GL_RGB;
+                mode = (n == 4) ? GL_RGBA : GL_RGB;
+                if (mode == GL_RGBA)
+                        for (int i = 0; i < x * y; i++) // remove transparency
+                                texels[i*n + 3] = 0xff;
                 if (f == 0)
-                        glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RGBA8, x, y, 256);
+                        glTexStorage3D(GL_TEXTURE_2D_ARRAY, 4, GL_RGBA8, x, y, 256);
                 glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, f, x, y, 1, mode, GL_UNSIGNED_BYTE, texels);
                 stbi_image_free(texels);
         }
 
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+
+        for (int f = 16; files[f][0]; f++) // reload transparent textures now that mipmaps are generated
+        {
+                texels = stbi_load(files[f], &x, &y, &n, 0);
+                mode = (n == 4) ? GL_RGBA : GL_RGB;
+                glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, f, x, y, 1, mode, GL_UNSIGNED_BYTE, texels);
+                stbi_image_free(texels);
+        }
+
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 1);
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
         load_shaders();
 
