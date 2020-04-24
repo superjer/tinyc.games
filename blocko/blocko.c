@@ -1,4 +1,4 @@
-// Blocko -- http://tinyc.games -- (c) 2018 Jer Wilson
+// Blocko -- http://tinyc.games -- (c) 2020 Jer Wilson
 //
 // Blocko is a barebones 3D platformer using OpenGL via GLEW.
 //
@@ -27,7 +27,11 @@
 
 #include "./timer.c"
 #include "./shader.c"
-#include "./perlin.c"
+#include "../_osn/open-simplex-noise.c"
+
+struct osn_context *osn_context;
+
+#define noise(x,y,z,scale) open_simplex_noise3(osn_context,(float)(x+0.5)/(scale),(float)(y+0.5)/(scale),(float)(z+0.5)/(scale))
 
 #define SCALE 3                    // x magnification
 #define W 1920                     // window width, height
@@ -36,8 +40,8 @@
 #define CHUNKD 16                  // ^
 #define CHUNKW2 (CHUNKW/2)
 #define CHUNKD2 (CHUNKD/2)
-#define VAOW 64                    // how many VAOs wide
-#define VAOD 64                    // how many VAOs deep
+#define VAOW 48                    // how many VAOs wide
+#define VAOD 48                    // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
 #define TILESW (CHUNKW*VAOW)       // total level width, height
 #define TILESH 160                 // ^
@@ -110,11 +114,15 @@ int gravity[] = { -20, -17, -14, -12, -10, -8, -6, -5, -4, -3,
                     9,  10,  10,  11,  12, 12, 13, 14, 15, 16,
                    17,  18,  19,  20,  21, 22, 23, 24, 25, 26};
 
-unsigned char tiles[TILESD][TILESH][TILESW];
-unsigned char sunlight[TILESD+1][TILESH+1][TILESW+1];
+unsigned char *tiles;
+unsigned char *sunlight;
 unsigned char gndheight[TILESD][TILESW];
-float cornlight[TILESD+2][TILESH+2][TILESW+2];
+float *cornlight;
 volatile char already_generated[VAOW][VAOD];
+
+#define T_(z,y,x) tiles[(z) * TILESH * TILESW + (y) * TILESW + (x)]
+#define SUN_(z,y,x) sunlight[(z) * (TILESH+1) * (TILESW+1) + (y) * (TILESW+1) + (x)]
+#define CORN_(z,y,x) cornlight[(z) * (TILESH+2) * (TILESW+2) + (y) * (TILESW+2) + (x)]
 
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
@@ -209,6 +217,8 @@ int world_collide(struct box plyr, int wet);
 void draw_stuff();
 void debrief();
 
+float lerp(float t, float a, float b) { return a - t * (b - a); }
+
 void GLAPIENTRY
 MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
                 GLsizei length, const GLchar* message, const void* userParam)
@@ -289,7 +299,9 @@ void worker()
                 int xhi = xlo + CHUNKW;
                 int zhi = zlo + CHUNKD;
 
+                long long int t = SDL_GetTicks();
                 gen_chunk(xlo-1, xhi+1, zlo-1, zhi+1);
+                //fprintf(stderr, "Generated in %0.3f\n", (SDL_GetTicks() - t) / 1000.f);
 
                 #pragma omp critical
                 {
@@ -321,7 +333,11 @@ int main()
 void setup()
 {
         srand(time(NULL));
-        init_perlin();
+        open_simplex_noise(time(NULL), &osn_context);
+
+        tiles = malloc(TILESD * TILESH * TILESW * sizeof *tiles);
+        sunlight = malloc((TILESD+1) * (TILESH+1) * (TILESW+1) * sizeof *sunlight);
+        cornlight = malloc((TILESD+2) * (TILESH+2) * (TILESW+2) * sizeof *cornlight);
 
         SDL_Init(SDL_INIT_VIDEO);
         win = SDL_CreateWindow("Blocko", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
@@ -473,8 +489,8 @@ void key_move(int down)
                 case SDLK_h: // delete all ore hints
                         if (down)
                                 for (int x = 0; x < TILESW-1; x++) for (int z = 0; z < TILESD-1; z++) for (int y = 0; y < TILESH-1; y++)
-                                        if (tiles[z][y][x] == OREH)
-                                                tiles[z][y][x] = OPEN;
+                                        if (T_(z, y, x) == OREH)
+                                                T_(z, y, x) = OPEN;
                         break;
                 case SDLK_r: // toggle phys step regulation
                         if (down)
@@ -604,7 +620,7 @@ void smooth_hmap()
 {
         for (int x = 0; x < TILESW; x++) for (int z = 0; z < TILESD; z++)
         {
-                float p365 = improved_perlin_noise(x, 0, -z, 365);
+                float p365 = noise(x, 0, -z, 365);
                 int radius = p365 < 0.0f ? 3 :
                              p365 < 0.2f ? 2 : 1;
                 int x0 = x - radius;
@@ -623,11 +639,11 @@ void smooth_hmap()
                 }
                 int res = sum / n;
 
-                float p800 = improved_perlin_noise(x, 0, z, 800);
-                float p777 = improved_perlin_noise(z, 0, x, 777);
-                float p301 = improved_perlin_noise(x, 0, z, 301);
-                float p204 = improved_perlin_noise(x, 0, z, 204);
-                float p33 = improved_perlin_noise(x, 0, z, 32 * (1.1 + p301));
+                float p800 = noise(x, 0, z, 800);
+                float p777 = noise(z, 0, x, 777);
+                float p301 = noise(x, 0, z, 301);
+                float p204 = noise(x, 0, z, 204);
+                float p33 = noise(x, 0, z, 32 * (1.1 + p301));
                 float swoosh = p33 > 0.3 ? (10 - 30 * (p33 - 0.3)) : 0;
 
                 float times = (p204 * 20.f) + 30.f;
@@ -689,13 +705,13 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         continue;
                 column_already_generated[x][z] = 1;
 
-                float p1080 = improved_perlin_noise(x, 0, -z, 1080);
-                float p530 = improved_perlin_noise(z, 0, x, 530);
-                float p630 = improved_perlin_noise(-z, 0, x, 629);
-                float p200 = improved_perlin_noise(x, 0, z, 200);
-                float p80 = improved_perlin_noise(x, 0, z, 80);
-                float p15 = improved_perlin_noise(z, 0, -x, 15);
-                //float p5 = improved_perlin_noise(-x, 0, z, 5);
+                float p1080 = noise(x, 0, -z, 1080);
+                float p530 = noise(z, 0, x, 530);
+                float p630 = noise(-z, 0, x, 629);
+                float p200 = noise(x, 0, z, 200);
+                float p80 = noise(x, 0, z, 80);
+                float p15 = noise(z, 0, -x, 15);
+                //float p5 = noise(-x, 0, z, 5);
 
                 if (p200 > 0.2f)
                 {
@@ -714,17 +730,17 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
                 for (int y = 0; y < TILESH; y++)
                 {
-                        if (y == TILESH - 1) { tiles[z][y][x] = HARD; continue; }
+                        if (y == TILESH - 1) { T_(z, y, x) = HARD; continue; }
 
-                        float p300 = improved_perlin_noise(x, y, z, 300);
-                        float p32 = improved_perlin_noise(x, y*mode, z, 16 + 16 * (1.1 + p300));
+                        float p300 = noise(x, y, z, 300);
+                        float p32 = noise(x, y*mode, z, 16 + 16 * (1.1 + p300));
                         float plat = p32 > 0.3 ? (10 - 30 * (p32 * p32 * p32 - 0.3)) : 0;
 
-                        float p90 = improved_perlin_noise(x, y, z, 90);
-                        float p91 = improved_perlin_noise(x+1000, y+1000, z+1000, 91);
-                        float p42 = improved_perlin_noise(x, y*(p300 + 1), z, 42);
-                        float p9  = improved_perlin_noise(x, y*0.05, z, 9);
-                        float p2  = improved_perlin_noise(-z, y, x, 2);
+                        float p90 = noise(x, y, z, 90);
+                        float p91 = noise(x+1000, y+1000, z+1000, 91);
+                        float p42 = noise(x, y*(p300 + 1), z, 42);
+                        float p9  = noise(x, y*0.05, z, 9);
+                        float p2  = noise(-z, y, x, 2);
 
                         if (p300 + fabsf(p80) * 0.25 + p15 * 0.125 < -0.5) { plat = -plat; }
                         else if (p300 < 0.5) { plat = 0; }
@@ -741,7 +757,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                                 if (!slicey_bit || rand() % 20 == 0)
                                 {
                                         int type = (y > 100 && hmap2[x][z] > 99) ? WATR : OPEN; //only allow water below low heightmap
-                                        tiles[z][y][x] = type;
+                                        T_(z, y, x) = type;
                                         solid_depth = 0;
                                         slicey_bit = 0;
                                         goto out;
@@ -755,32 +771,32 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         }
 
                         solid_depth++;
-                        float p16 = improved_perlin_noise(x, y, z, 16);
+                        float p16 = noise(x, y, z, 16);
                         int slv = 76 + p530 * 20;
                         int dlv = 86 + p630 * 20;
                         int ore  =  p2 > 0.4f ? ORE : OREH;
                         int ston = p42 > 0.4f && p9 < -0.3f ? ore : STON;
 
-                        if      (slicey_bit)          tiles[z][y][x] = p9 > 0.4f ? HARD : SAND;
-                        else if (solid_depth > 14 + 5 * p9) tiles[z][y][x] = GRAN;
-                        else if (y < slv - 5 * p16)   tiles[z][y][x] = ston;
-                        else if (y < dlv - 5 * p16)   tiles[z][y][x] = p80 > (-solid_depth * 0.1f) ? DIRT : OPEN; // erosion
-                        else if (y < 100 - 5 * p16)   tiles[z][y][x] = solid_depth == 1 ? GRAS : DIRT;
-                        else if (y < 120          )   tiles[z][y][x] = solid_depth < 4 + 5 * p9 ? SAND : ston;
-                        else                          tiles[z][y][x] = HARD;
+                        if      (slicey_bit)          T_(z, y, x) = p9 > 0.4f ? HARD : SAND;
+                        else if (solid_depth > 14 + 5 * p9) T_(z, y, x) = GRAN;
+                        else if (y < slv - 5 * p16)   T_(z, y, x) = ston;
+                        else if (y < dlv - 5 * p16)   T_(z, y, x) = p80 > (-solid_depth * 0.1f) ? DIRT : OPEN; // erosion
+                        else if (y < 100 - 5 * p16)   T_(z, y, x) = solid_depth == 1 ? GRAS : DIRT;
+                        else if (y < 120          )   T_(z, y, x) = solid_depth < 4 + 5 * p9 ? SAND : ston;
+                        else                          T_(z, y, x) = HARD;
 
                         out:
-                        if (tiles[z][y][x] == WATR)
+                        if (T_(z, y, x) == WATR)
                         {
                                 if (light_level) light_level--;
                                 if (light_level) light_level--;
                         }
-                        else if (tiles[z][y][x] < OPEN)
+                        else if (T_(z, y, x) < OPEN)
                         {
                                 light_level = 0;
                         }
 
-                        sunlight[z][y][x] = light_level;
+                        SUN_(z, y, x) = light_level;
                 }
         }
 
@@ -788,19 +804,19 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         #pragma omp parallel for
         for (int x = xlo+1; x < xhi-1; x++) for (int z = zlo-1; z < zhi+1; z++) for (int y = 100; y < TILESH-2; y++)
         {
-                if (tiles[z][y][x] == WATR)
+                if (T_(z, y, x) == WATR)
                 {
-                        if (tiles[z-1][y  ][x  ] == OPEN ||
-                            tiles[z+1][y  ][x  ] == OPEN ||
-                            tiles[z  ][y  ][x-1] == OPEN ||
-                            tiles[z  ][y  ][x+1] == OPEN ||
-                            tiles[z  ][y+1][x  ] == OPEN)
-                                tiles[z][y][x] = WOOD;
+                        if (T_(z-1, y  , x  ) == OPEN ||
+                            T_(z+1, y  , x  ) == OPEN ||
+                            T_(z  , y  , x-1) == OPEN ||
+                            T_(z  , y  , x+1) == OPEN ||
+                            T_(z  , y+1, x  ) == OPEN)
+                                T_(z, y, x) = WOOD;
                 }
         }
 
         // trees?
-        float p191 = improved_perlin_noise(zlo, 0, xlo, 191);
+        float p191 = noise(zlo, 0, xlo, 191);
         if (p191 > 0.2f) while (rand() % 20 < 18)
         {
                 char leaves = rand() % 2 ? RLEF : YLEF;
@@ -809,23 +825,23 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 int z = zlo + CHUNKD/2 + 5 - (rand() % 11);
                 for (int y = 10; y < TILESH-2; y++)
                 {
-                        if (tiles[z][y][x] == OPEN)
+                        if (T_(z, y, x) == OPEN)
                                 continue;
 
-                        if (tiles[z][y][x] != GRAS && tiles[z][y][x] != DIRT)
+                        if (T_(z, y, x) != GRAS && T_(z, y, x) != DIRT)
                                 break;
 
                         int yy = y;
                         for (; yy >= y - 3 - (rand() % 6); yy--)
-                                tiles[z][yy][x] = WOOD;
+                                T_(z, yy, x) = WOOD;
 
                         int ymax = yy + 4 - rand() % 3;
 
                         for (int i = x-3; i <= x+3; i++) for (int j = yy-3; j <= ymax; j++) for (int k = z-3; k <= z+3; k++)
                         {
                                 float dist = (i-x) * (i-x) + (j-yy) * (j-yy) + (k-z) * (k-z);
-                                if (tiles[k][j][i] == OPEN && dist < radius * radius)
-                                        tiles[k][j][i] = leaves;
+                                if (T_(k, j, i) == OPEN && dist < radius * radius)
+                                        T_(k, j, i) = leaves;
                         }
 
                         break;
@@ -838,22 +854,22 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
         if (incoming_light == 0)
                 return;
 
-        if (tiles[z][y][x] == WATR)
+        if (T_(z, y, x) == WATR)
                 incoming_light--; // water blocks more light
 
-        if (tiles[z][y][x] == RLEF || tiles[z][y][x] == YLEF)
+        if (T_(z, y, x) == RLEF || T_(z, y, x) == YLEF)
         {
                 incoming_light--; // leaves block more light
                 if (incoming_light) incoming_light--;
         }
 
-        if (sunlight[z][y][x] >= incoming_light)
+        if (SUN_(z, y, x) >= incoming_light)
                 return; // already brighter
 
-        if (tiles[z][y][x] < OPEN)
+        if (T_(z, y, x) < OPEN)
                 return; // no lighting for solid blocks
 
-        sunlight[z][y][x] = incoming_light;
+        SUN_(z, y, x) = incoming_light;
 
         if (sq_next_len >= SUNQLEN)
                 return; // out of room in sun queue
@@ -877,23 +893,23 @@ void recalc_gndheight(int x, int z)
         int y;
         for (y = 0; y < TILESH; y++)
         {
-                if (tiles[z][y][x] != OPEN)
+                if (T_(z, y, x) != OPEN)
                 {
                         gndheight[z][x] = y;
                         if (y)
                         {
-                                sunlight[z][y-1][x] = 0; // prevent short out:
+                                SUN_(z, y-1, x) = 0; // prevent short out:
                                 sun_enqueue(x, y-1, z, SUNQLEN, 15);
                         }
                         break;
                 }
-                sunlight[z][y][x] = 15; // light pure sky
+                SUN_(z, y, x) = 15; // light pure sky
         }
 
         // continue darkening
         for (; y < TILESH; y++)
         {
-                sunlight[z][y][x] = 0;
+                SUN_(z, y, x) = 0;
         }
 }
 
@@ -910,7 +926,7 @@ void step_sunlight()
                 int x = sunq_curr[i].x;
                 int y = sunq_curr[i].y;
                 int z = sunq_curr[i].z;
-                char pass_on = sunlight[z][y][x];
+                char pass_on = SUN_(z, y, x);
                 if (pass_on) pass_on--; else continue;
                 if (x           ) sun_enqueue(x-1, y  , z  , i+1, pass_on);
                 if (y           ) sun_enqueue(x  , y-1, z  , i+1, pass_on);
@@ -929,9 +945,10 @@ void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
                 int x_ = (x == 0) ? 0 : x - 1;
                 int y_ = (y == 0) ? 0 : y - 1;
                 int z_ = (z == 0) ? 0 : z - 1;
-                cornlight[z][y][x] = 0.008f * (
-                                sunlight[z_][y_][x_] + sunlight[z_][y_][x ] + sunlight[z_][y ][x_] + sunlight[z_][y ][x ] +
-                                sunlight[z ][y_][x_] + sunlight[z ][y_][x ] + sunlight[z ][y ][x_] + sunlight[z ][y ][x ]);
+
+                CORN_(z, y, x) = 0.008f * (
+                                SUN_(z_, y_, x_) + SUN_(z_, y_, x ) + SUN_(z_, y , x_) + SUN_(z_, y , x ) +
+                                SUN_(z , y_, x_) + SUN_(z , y_, x ) + SUN_(z , y , x_) + SUN_(z , y , x ));
         }
 }
 
@@ -944,23 +961,23 @@ void update_world()
 
                 for (y = 1; y < TILESH - 1; y++) {
                         if (0) ;
-                        else if (tiles[z][y][x] == GRG1) tiles[z][y][x] = GRG2;
-                        else if (tiles[z][y][x] == GRG2) tiles[z][y][x] = GRAS;
-                        else if (tiles[z][y][x] == DIRT) {
-                                if (tiles[z  ][y-1][x  ] == OPEN && (
-                                    (tiles[z+1][y  ][x  ] | 1) == GRAS ||
-                                    (tiles[z-1][y  ][x  ] | 1) == GRAS ||
-                                    (tiles[z  ][y  ][x+1] | 1) == GRAS ||
-                                    (tiles[z  ][y  ][x-1] | 1) == GRAS ||
-                                    (tiles[z+1][y+1][x  ] | 1) == GRAS ||
-                                    (tiles[z-1][y+1][x  ] | 1) == GRAS ||
-                                    (tiles[z  ][y+1][x+1] | 1) == GRAS ||
-                                    (tiles[z  ][y+1][x-1] | 1) == GRAS ||
-                                    (tiles[z+1][y-1][x  ] | 1) == GRAS ||
-                                    (tiles[z-1][y-1][x  ] | 1) == GRAS ||
-                                    (tiles[z  ][y-1][x+1] | 1) == GRAS ||
-                                    (tiles[z  ][y-1][x-1] | 1) == GRAS) ) {
-                                        tiles[z][y][x] = GRG1;
+                        else if (T_(z, y, x) == GRG1) T_(z, y, x) = GRG2;
+                        else if (T_(z, y, x) == GRG2) T_(z, y, x) = GRAS;
+                        else if (T_(z, y, x) == DIRT) {
+                                if (T_(z  , y-1, x  ) == OPEN && (
+                                    (T_(z+1, y  , x  ) | 1) == GRAS ||
+                                    (T_(z-1, y  , x  ) | 1) == GRAS ||
+                                    (T_(z  , y  , x+1) | 1) == GRAS ||
+                                    (T_(z  , y  , x-1) | 1) == GRAS ||
+                                    (T_(z+1, y+1, x  ) | 1) == GRAS ||
+                                    (T_(z-1, y+1, x  ) | 1) == GRAS ||
+                                    (T_(z  , y+1, x+1) | 1) == GRAS ||
+                                    (T_(z  , y+1, x-1) | 1) == GRAS ||
+                                    (T_(z+1, y-1, x  ) | 1) == GRAS ||
+                                    (T_(z-1, y-1, x  ) | 1) == GRAS ||
+                                    (T_(z  , y-1, x+1) | 1) == GRAS ||
+                                    (T_(z  , y-1, x-1) | 1) == GRAS) ) {
+                                        T_(z, y, x) = GRG1;
                                 }
                                 break;
                         }
@@ -972,7 +989,7 @@ void update_world()
 
 void personal_light(int x, int y, int z)
 {
-        sunlight[z][y][x] = 0;
+        SUN_(z, y, x) = 0;
 }
 
 void lerp_camera(float t, struct player *a, struct player *b)
@@ -1011,22 +1028,22 @@ void update_player(struct player *p, int real)
                 int x = target_x;
                 int y = target_y;
                 int z = target_z;
-                tiles[z][y][x] = OPEN;
+                T_(z, y, x) = OPEN;
                 recalc_gndheight(x, z);
                 unsigned char max = 0;
-                if (sunlight[z-1][y  ][x  ] > max) max = sunlight[z-1][y  ][x  ];
-                if (sunlight[z+1][y  ][x  ] > max) max = sunlight[z+1][y  ][x  ];
-                if (sunlight[z  ][y-1][x  ] > max) max = sunlight[z  ][y-1][x  ];
-                if (sunlight[z  ][y+1][x  ] > max) max = sunlight[z  ][y+1][x  ];
-                if (sunlight[z  ][y  ][x-1] > max) max = sunlight[z  ][y  ][x-1];
-                if (sunlight[z  ][y  ][x+1] > max) max = sunlight[z  ][y  ][x+1];
+                if (SUN_(z-1, y  , x  ) > max) max = SUN_(z-1, y  , x  );
+                if (SUN_(z+1, y  , x  ) > max) max = SUN_(z+1, y  , x  );
+                if (SUN_(z  , y-1, x  ) > max) max = SUN_(z  , y-1, x  );
+                if (SUN_(z  , y+1, x  ) > max) max = SUN_(z  , y+1, x  );
+                if (SUN_(z  , y  , x-1) > max) max = SUN_(z  , y  , x-1);
+                if (SUN_(z  , y  , x+1) > max) max = SUN_(z  , y  , x+1);
                 sun_enqueue(place_x, place_y, place_z, 0, max ? max - 1 : 0);
                 p->cooldown = 5;
         }
 
         if (real && p->building && !p->cooldown && place_x >= 0) {
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
-                        tiles[place_z][place_y][place_x] = HARD;
+                        T_(place_z, place_y, place_x) = HARD;
                 p->cooldown = 10;
         }
 
@@ -1210,10 +1227,10 @@ int block_collide(int bx, int by, int bz, struct box box, int wet)
         if (!legit_tile(bx, by, bz))
                 return 0;
 
-        if (wet && tiles[bz][by][bx] == WATR)
+        if (wet && T_(bz, by, bx) == WATR)
                 return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS, BS});
 
-        if (!wet && tiles[bz][by][bx] <= LASTSOLID)
+        if (!wet && T_(bz, by, bx) <= LASTSOLID)
                 return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS, BS});
 
         return 0;
@@ -1248,7 +1265,7 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
                 if (x < 0 || y < 0 || z < 0 || x >= TILESW || y >= TILESH || z >= TILESD)
                         goto bad;
 
-                if (tiles[z][y][x] != OPEN)
+                if (T_(z, y, x) != OPEN)
                         break;
 
                 if (i == 6)
@@ -1525,37 +1542,37 @@ void draw_stuff()
 
                         if (w >= w_limit) w -= 10; // just overwrite water if we run out of space
 
-                        if (tiles[z][y][x] == OPEN) continue;
+                        if (T_(z, y, x) == OPEN) continue;
 
                         //lighting
-                        float usw = cornlight[z  ][y  ][x  ];
-                        float use = cornlight[z  ][y  ][x+1];
-                        float unw = cornlight[z+1][y  ][x  ];
-                        float une = cornlight[z+1][y  ][x+1];
-                        float dsw = cornlight[z  ][y+1][x  ];
-                        float dse = cornlight[z  ][y+1][x+1];
-                        float dnw = cornlight[z+1][y+1][x  ];
-                        float dne = cornlight[z+1][y+1][x+1];
-                        int t = tiles[z][y][x];
+                        float usw = CORN_(z  , y  , x  );
+                        float use = CORN_(z  , y  , x+1);
+                        float unw = CORN_(z+1, y  , x  );
+                        float une = CORN_(z+1, y  , x+1);
+                        float dsw = CORN_(z  , y+1, x  );
+                        float dse = CORN_(z  , y+1, x+1);
+                        float dnw = CORN_(z+1, y+1, x  );
+                        float dne = CORN_(z+1, y+1, x+1);
+                        int t = T_(z, y, x);
                         if (t == GRAS)
                         {
-                                if (y == 0        || tiles[z  ][y-1][x  ] >= OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une, 1 };
-                                if (z == 0        || tiles[z-1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
-                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, unw, une, dnw, dne, 1 };
-                                if (x == 0        || tiles[z  ][y  ][x-1] >= OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
-                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] >= OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, une, use, dne, dse, 1 };
-                                if (y <  TILESH-1 && tiles[z  ][y+1][x  ] >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
+                                if (y == 0        || T_(z  , y-1, x  ) >= OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une, 1 };
+                                if (z == 0        || T_(z-1, y  , x  ) >= OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
+                                if (z == TILESD-1 || T_(z+1, y  , x  ) >= OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, unw, une, dnw, dne, 1 };
+                                if (x == 0        || T_(z  , y  , x-1) >= OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
+                                if (x == TILESW-1 || T_(z  , y  , x+1) >= OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, une, use, dne, dse, 1 };
+                                if (y <  TILESH-1 && T_(z  , y+1, x  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
                         }
                         else if (t == DIRT || t == GRG1 || t == GRG2)
                         {
                                 int u = (t == DIRT) ? 2 :
                                         (t == GRG1) ? 3 : 4;
-                                if (y == 0        || tiles[z  ][y-1][x  ] >= OPEN) *v++ = (struct vbufv){ u,    UP, x, y, z, usw, use, unw, une, 1 };
-                                if (z == 0        || tiles[z-1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
-                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, unw, une, dnw, dne, 1 };
-                                if (x == 0        || tiles[z  ][y  ][x-1] >= OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
-                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] >= OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse, 1 };
-                                if (y <  TILESH-1 && tiles[z  ][y+1][x  ] >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
+                                if (y == 0        || T_(z  , y-1, x  ) >= OPEN) *v++ = (struct vbufv){ u,    UP, x, y, z, usw, use, unw, une, 1 };
+                                if (z == 0        || T_(z-1, y  , x  ) >= OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
+                                if (z == TILESD-1 || T_(z+1, y  , x  ) >= OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, unw, une, dnw, dne, 1 };
+                                if (x == 0        || T_(z  , y  , x-1) >= OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
+                                if (x == TILESW-1 || T_(z  , y  , x+1) >= OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse, 1 };
+                                if (y <  TILESH-1 && T_(z  , y+1, x  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
                         }
                         else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN ||
                                  t == RLEF || t == YLEF)
@@ -1570,16 +1587,16 @@ void draw_stuff()
                                         (t == RLEF) ? 16 :
                                         (t == YLEF) ? 17 :
                                                        0 ;
-                                if (y == 0        || tiles[z  ][y-1][x  ] >= OPEN) *v++ = (struct vbufv){ f,    UP, x, y, z, usw, use, unw, une, 1 };
-                                if (z == 0        || tiles[z-1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ f, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
-                                if (z == TILESD-1 || tiles[z+1][y  ][x  ] >= OPEN) *v++ = (struct vbufv){ f, NORTH, x, y, z, unw, une, dnw, dne, 1 };
-                                if (x == 0        || tiles[z  ][y  ][x-1] >= OPEN) *v++ = (struct vbufv){ f,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
-                                if (x == TILESW-1 || tiles[z  ][y  ][x+1] >= OPEN) *v++ = (struct vbufv){ f,  EAST, x, y, z, une, use, dne, dse, 1 };
-                                if (y <  TILESH-1 && tiles[z  ][y+1][x  ] >= OPEN) *v++ = (struct vbufv){ f,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
+                                if (y == 0        || T_(z  , y-1, x  ) >= OPEN) *v++ = (struct vbufv){ f,    UP, x, y, z, usw, use, unw, une, 1 };
+                                if (z == 0        || T_(z-1, y  , x  ) >= OPEN) *v++ = (struct vbufv){ f, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
+                                if (z == TILESD-1 || T_(z+1, y  , x  ) >= OPEN) *v++ = (struct vbufv){ f, NORTH, x, y, z, unw, une, dnw, dne, 1 };
+                                if (x == 0        || T_(z  , y  , x-1) >= OPEN) *v++ = (struct vbufv){ f,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
+                                if (x == TILESW-1 || T_(z  , y  , x+1) >= OPEN) *v++ = (struct vbufv){ f,  EAST, x, y, z, une, use, dne, dse, 1 };
+                                if (y <  TILESH-1 && T_(z  , y+1, x  ) >= OPEN) *v++ = (struct vbufv){ f,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
                         }
                         else if (t == WATR)
                         {
-                                if (y == 0        || tiles[z  ][y-1][x  ] == OPEN)
+                                if (y == 0        || T_(z  , y-1, x  ) == OPEN)
                                 {
                                         int f = 7 + (pframe / 10 + (x ^ z)) % 4;
                                         *w++ = (struct vbufv){ f,    UP, x, y+0.06f, z, usw, use, unw, une, 0.5f };
@@ -1630,5 +1647,6 @@ void debrief()
                 last_ticks = ticks;
                 last_frame = frame;
                 polys = 0;
+                fprintf(stderr,"%f\n", open_simplex_noise3(osn_context,rand() % 100,rand() % 100,rand() % 101));
         }
 }

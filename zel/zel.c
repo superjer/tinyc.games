@@ -1,4 +1,4 @@
-// Zel -- http://tinyc.games -- (c) 2016 Jer Wilson
+// Zel -- http://tinyc.games -- (c) 2020 Jer Wilson
 //
 // Zel is a "tiny" adventure game with lots of content. I'll admit it's pushing
 // the boundaries of what a "tiny" game should be.
