@@ -40,8 +40,8 @@ struct osn_context *osn_context;
 #define CHUNKD 16                  // ^
 #define CHUNKW2 (CHUNKW/2)
 #define CHUNKD2 (CHUNKD/2)
-#define VAOW 48                    // how many VAOs wide
-#define VAOD 48                    // how many VAOs deep
+#define VAOW 64                    // how many VAOs wide
+#define VAOD 64                    // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
 #define TILESW (CHUNKW*VAOW)       // total level width, height
 #define TILESH 160                 // ^
@@ -179,8 +179,8 @@ float zoom_amt = 1.f;
 float fast = 1.f;
 int regulated = 0;
 int vsync = 1;
-volatile struct qitem to_generate = {-1, -1, -1};
-volatile struct qitem just_generated = {-1, -1, -1};
+volatile struct qitem just_generated[VAOW*VAOD];
+volatile size_t just_gen_len;
 
 SDL_Event event;
 SDL_Window *win;
@@ -199,6 +199,7 @@ struct vbufv *w = wbuf;
 //prototypes
 void setup();
 void resize();
+void init_player();
 void new_game();
 void create_hmap();
 void gen_chunk();
@@ -283,32 +284,48 @@ void main_loop()
         frame++;
 } }
 
+// on its own thread, loops forever building chunks when needed
 void chunk_builder()
 { for(;;) {
-        SDL_Delay(1);
-        int x, z;
+        int best_x, best_z;
+        int px = (player[0].pos.x / BS + CHUNKW2) / CHUNKW;
+        int pz = (player[0].pos.z / BS + CHUNKD2) / CHUNKD;
+        CLAMP(px, 0, VAOW-1);
+        CLAMP(pz, 0, VAOD-1);
+
+        // find nearest ungenerated chunk
+        int best_dist = 99999999;
+        for (int x = 0; x < VAOW; x++) for (int z = 0; z < VAOD; z++)
+        {
+                if (already_generated[x][z]) continue;
+
+                int dist_sq = (x - px) * (x - px) + (z - pz) * (z - pz);
+                if (dist_sq < best_dist)
+                {
+                        best_dist = dist_sq;
+                        best_x = x;
+                        best_z = z;
+                }
+        }
+
+        if (best_dist == 99999999)
+        {
+                SDL_Delay(1);
+                continue;
+        }
+
+        int xlo = best_x * CHUNKW;
+        int zlo = best_z * CHUNKD;
+        int xhi = xlo + CHUNKW;
+        int zhi = zlo + CHUNKD;
+        gen_chunk(xlo-1, xhi+1, zlo-1, zhi+1);
+        already_generated[best_x][best_z] = 1;
 
         #pragma omp critical
         {
-                x = to_generate.x;
-                z = to_generate.z;
-        }
-
-        if (x >= 0)
-        {
-                int xlo = x * CHUNKW;
-                int zlo = z * CHUNKD;
-                int xhi = xlo + CHUNKW;
-                int zhi = zlo + CHUNKD;
-
-                gen_chunk(xlo-1, xhi+1, zlo-1, zhi+1);
-
-                #pragma omp critical
-                {
-                        already_generated[to_generate.x][to_generate.z] = 1;
-                        just_generated = to_generate;
-                        to_generate.x = -1;
-                }
+                just_generated[just_gen_len].x = best_x;
+                just_generated[just_gen_len].z = best_z;
+                just_gen_len++;
         }
 } }
 
@@ -318,7 +335,11 @@ int main()
         #pragma omp parallel sections
         {
                 #pragma omp section
-                chunk_builder();
+                {
+                        init_player();
+                        create_hmap();
+                        chunk_builder();
+                }
 
                 #pragma omp section
                 {
@@ -355,8 +376,8 @@ void setup()
         #endif
 
         // enable debug output
-        glEnable              ( GL_DEBUG_OUTPUT );
-        glDebugMessageCallback( MessageCallback, 0 );
+        glEnable(GL_DEBUG_OUTPUT);
+        glDebugMessageCallback(MessageCallback, 0);
 
         // load all the textures
         glActiveTexture(GL_TEXTURE0);
@@ -509,6 +530,19 @@ void key_move(int down)
                                 fprintf(stderr, "%s\n", vsync ? "vsync" : " no vsync");
                         }
                         break;
+                case SDLK_m: // check GPU memory usage
+                        if (down)
+                        {
+                                GLint total_kb = 0;
+                                GLint avail_kb = 0;
+                                glGetIntegerv(0x9048, &total_kb);
+                                glGetIntegerv(0x9049, &avail_kb);
+                                printf("GPU Memory %0.0f M used of %0.0f M (%0.1f%% free)\n",
+                                                (float)(total_kb - avail_kb) / 1000.f,
+                                                (float)(total_kb)            / 1000.f,
+                                                ((float)avail_kb / total_kb) * 100.f);
+                        }
+                        break;
                 case SDLK_F3: // show FPS and timings etc.
                         if (!down) noisy = !noisy;
                         break;
@@ -559,7 +593,7 @@ void move_to_ground(float *inout, int x, int y, int z)
         *inout = gndheight[z][x] * BS - PLYR_H - 1;
 }
 
-void new_game()
+void init_player()
 {
         memset(player, 0, sizeof player);
         player[0].pos.x = STARTPX;
@@ -570,13 +604,14 @@ void new_game()
         player[0].pos.d = PLYR_W;
         player[0].yaw = 3.1415926535 * 0.23;
         player[0].grav = GRAV_ZERO;
-        TIMECALL(create_hmap, ());
+}
 
-        // tell worker thread build first chunk
-        to_generate.x = (STARTPX / BS) / CHUNKW;
-        to_generate.z = (STARTPZ / BS) / CHUNKD;
-        while (just_generated.x < 0)
-                ; // wait
+void new_game()
+{
+        while(just_gen_len < 1)
+                ; // wait for worker thread build first chunk
+
+        printf("Chunk generated, ready to start game\n");
 
         recalc_gndheight(STARTPX/BS, STARTPZ/BS);
         move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
@@ -1012,8 +1047,8 @@ void update_player(struct player *p, int real)
 {
         if (real && p->pos.y > TILESH*BS + 6000) // fell too far
         {
-                new_game();
-                return;
+                init_player();
+                move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
         }
 
         if (p->jumping && p->wet)
@@ -1411,7 +1446,7 @@ void draw_stuff()
         int z1d = ((z1 * BS * CHUNKD + BS * CHUNKD2) - eye2);
 
         // initialize with ring0 chunks
-        struct qitem fresh[104] = { // chunkx, distance sq, chunkz
+        struct qitem fresh[VAOW*VAOD] = { // chunkx, distance sq, chunkz
                 {x0, (x0d * x0d + z0d * z0d), z0},
                 {x0, (x0d * x0d + z1d * z1d), z1},
                 {x1, (x1d * x1d + z0d * z0d), z0},
@@ -1419,36 +1454,16 @@ void draw_stuff()
         };
         size_t fresh_len = 4;
 
-        TIMER(find_ungenerated)
+        qsort(fresh, fresh_len, sizeof(struct qitem), sorter);
+
         #pragma omp critical
         {
-                if (just_generated.x >= 0) {
-                        fresh[fresh_len++] = just_generated;
-                        just_generated.x = -1;
-                }
-
-                // find "nearest" ungenerated chunk
-                int best_dist = 99999999;
-                if (to_generate.x < 0) // worker is ready
-                {
-                        for (int myx = 0; myx < VAOW; myx++) for (int myz = 0; myz < VAOD; myz++)
-                        {
-                                if (!already_generated[myx][myz])
-                                {
-                                        int dist_sq = (myx - x1) * (myx - x1) + (myz - z1) * (myz - z1);
-                                        if (dist_sq < best_dist)
-                                        {
-                                                best_dist = dist_sq;
-                                                to_generate.x = myx;
-                                                to_generate.z = myz;
-                                        }
-                                }
-                        }
-                }
+                memcpy(fresh + fresh_len,
+                                (struct qitem *)just_generated,
+                                just_gen_len * sizeof *just_generated);
+                fresh_len += just_gen_len;
+                just_gen_len = 0;
         }
-        TIMER()
-
-        qsort(fresh, fresh_len, sizeof(struct qitem), sorter);
 
         // position within each ring that we're at this frame
 	static struct qitem ringpos[VAOW + VAOD] = {0};
