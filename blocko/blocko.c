@@ -40,8 +40,8 @@ struct osn_context *osn_context;
 #define CHUNKD 16                  // ^
 #define CHUNKW2 (CHUNKW/2)
 #define CHUNKD2 (CHUNKD/2)
-#define VAOW 128                   // how many VAOs wide
-#define VAOD 128                   // how many VAOs deep
+#define VAOW 64                    // how many VAOs wide
+#define VAOD 64                    // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
 #define TILESW (CHUNKW*VAOW)       // total level width, height
 #define TILESH 160                 // ^
@@ -221,7 +221,7 @@ int world_collide(struct box plyr, int wet);
 void draw_stuff();
 void debrief();
 
-float lerp(float t, float a, float b) { return a - t * (b - a); }
+float lerp(float t, float a, float b) { return a + t * (b - a); }
 
 void GLAPIENTRY
 MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
