@@ -99,6 +99,9 @@ struct osn_context *osn_context;
 #define SUNQLEN 1000
 
 #define CLAMP(v, l, u) { if (v < l) v = l; else if (v > u) v = u; }
+#define ICLAMP(v, l, u) ((v < l) ? l : (v > u) ? u : v)
+#define MAX(a, b) (a > b ? a : b)
+#define MIN(a, b) (a < b ? a : b)
 
 struct vbufv { // vertex buffer vertex
         float tex;
@@ -167,6 +170,7 @@ struct point lerped_pos;
 int frame = 0;
 int pframe = 0;
 int noisy = 0;
+int show_fresh_updates = 1;
 int polys = 0;
 
 int mouselook = 1;
@@ -179,7 +183,7 @@ float zoom_amt = 1.f;
 float fast = 1.f;
 int regulated = 0;
 int vsync = 1;
-int antialiasing = 1;
+int antialiasing = 0;
 volatile struct qitem just_generated[VAOW*VAOD];
 volatile size_t just_gen_len;
 
@@ -205,8 +209,9 @@ void new_game();
 void create_hmap();
 void gen_chunk();
 void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light);
-void recalc_gndheight(int x, int z);
-void step_sunlight();
+void recalc_gndheight(int x, int y, int z);
+void remove_light_source(int px, int py, int pz);
+int step_sunlight();
 void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi);
 void key_move(int down);
 void mouse_move();
@@ -569,6 +574,9 @@ void key_move(int down)
                 case SDLK_F3: // show FPS and timings etc.
                         if (!down) noisy = !noisy;
                         break;
+                case SDLK_F4: // show FPS and timings etc.
+                        if (!down) show_fresh_updates = !show_fresh_updates;
+                        break;
         }
 }
 
@@ -636,7 +644,7 @@ void new_game()
 
         printf("Chunk generated, ready to start game\n");
 
-        recalc_gndheight(STARTPX/BS, STARTPZ/BS);
+        recalc_gndheight(STARTPX/BS, -1, STARTPZ/BS);
         move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
 }
 
@@ -955,7 +963,8 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
         sq_next_len++;
 }
 
-void recalc_gndheight(int x, int z)
+// find highest block and relight from sun, remove light if iny is valid
+void recalc_gndheight(int x, int iny, int z)
 {
         int y;
         for (y = 0; y < TILESH; y++)
@@ -963,11 +972,15 @@ void recalc_gndheight(int x, int z)
                 if (T_(z, y, x) != OPEN)
                 {
                         gndheight[z][x] = y;
+                        if (iny >= 0)
+                                remove_light_source(x, iny, z);
+
                         if (y)
                         {
                                 SUN_(z, y-1, x) = 0; // prevent short out:
                                 sun_enqueue(x, y-1, z, SUNQLEN, 15);
                         }
+
                         break;
                 }
                 SUN_(z, y, x) = 15; // light pure sky
@@ -980,7 +993,7 @@ void recalc_gndheight(int x, int z)
         }
 }
 
-void step_sunlight()
+int step_sunlight()
 {
         // swap the queues
         sunq_curr = sunq_next;
@@ -1003,6 +1016,7 @@ void step_sunlight()
                 if (z < TILESD-1) sun_enqueue(x  , y  , z+1, i+1, pass_on);
         }
 
+        return sq_curr_len;
 }
 
 void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
@@ -1050,13 +1064,34 @@ void update_world()
                         }
                 }
 
-                if (rand() % 10 == 0) recalc_gndheight(x, z);
+                if (rand() % 10 == 0) recalc_gndheight(x, -1, z);
         }
 }
 
-void personal_light(int x, int y, int z)
+void remove_light_source(int px, int py, int pz)
 {
-        SUN_(z, y, x) = 0;
+        unsigned char old = SUN_(pz, py, px);
+
+        int xlo = ICLAMP(px - old, 0, TILESW-1);
+        int xhi = ICLAMP(px + old, 0, TILESW-1);
+        int ylo = ICLAMP(py - old, 0, TILESH-1);
+        int yhi = ICLAMP(py + old, 0, TILESH-1);
+        int zlo = ICLAMP(pz - old, 0, TILESD-1);
+        int zhi = ICLAMP(pz + old, 0, TILESD-1);
+
+        int count = 0;
+
+        for (int x = xlo; x <= xhi; x++) for (int z = zlo; z <= zhi; z++)
+        {
+                //for (int y = MAX(ylo, gndheight[z][x]); y <= yhi; y++)
+                for (int y = ylo; y <= yhi; y++)
+                {
+                        int remove_light = ICLAMP(old - abs(px - x) - abs(py - y) - abs(pz - z), 0, 15);
+                        int new = SUN_(z, y, x) - remove_light;
+                        SUN_(z, y, x) = ICLAMP(new, 0, 15);
+                        count++;
+                }
+        }
 }
 
 void lerp_camera(float t, struct player *a, struct player *b)
@@ -1096,7 +1131,7 @@ void update_player(struct player *p, int real)
                 int y = target_y;
                 int z = target_z;
                 T_(z, y, x) = OPEN;
-                recalc_gndheight(x, z);
+                recalc_gndheight(x, -1, z);
                 unsigned char max = 0;
                 if (SUN_(z-1, y  , x  ) > max) max = SUN_(z-1, y  , x  );
                 if (SUN_(z+1, y  , x  ) > max) max = SUN_(z+1, y  , x  );
@@ -1110,7 +1145,14 @@ void update_player(struct player *p, int real)
 
         if (real && p->building && !p->cooldown && place_x >= 0) {
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
+                {
                         T_(place_z, place_y, place_x) = HARD;
+                        recalc_gndheight(place_x, place_y, place_z);
+                        TIMER(step_sunlight_building);
+                        while(step_sunlight())
+                                ;
+                        TIMER();
+                }
                 p->cooldown = 10;
         }
 
@@ -1181,8 +1223,10 @@ void update_player(struct player *p, int real)
         if (p->ground)
                 p->grav = GRAV_ZERO;
 
+        /*
         if (real && place_x >= 0)
-                personal_light(place_x, place_y, place_z);
+                remove_light_source(place_x, place_y, place_z);
+        */
 
         //zooming
         if (real)
@@ -1351,8 +1395,8 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
         return;
 
         bad:
-        target_x = target_y = target_z = 0;
-        place_x = place_y = place_z = 0;
+        target_x = target_y = target_z = -1;
+        place_x = place_y = place_z = -1;
 }
 
 int sorter(const void * _a, const void * _b)
@@ -1536,7 +1580,8 @@ void draw_stuff()
         for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
         {
                 // skip chunks we will draw fresh this frame
-                for (size_t k = 0; k < 4; k++)
+                size_t limit = show_fresh_updates ? 4 : fresh_len;
+                for (size_t k = 0; k < limit; k++)
                         if (fresh[k].x == i && fresh[k].z == j)
                                 goto skip;
 

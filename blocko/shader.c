@@ -65,52 +65,50 @@ uniform float BS;                                                               
                                                                                 \n\
 void main(void) // geometry                                                     \n\
 {                                                                               \n\
-    float BQ = BS + 0.01f; // overdraw the edges a bit                          \n\
-    float Q = -0.01f;                                                           \n\
     float sidel = 0.0f;                                                         \n\
     vec4 a, b, c, d;                                                            \n\
     mat4 mvp = proj * view * model;                                             \n\
     switch(int(orient_vs[0])) {                                                 \n\
         case 1: // UP                                                           \n\
-            a = mvp * vec4( Q, 0, Q,0);                                         \n\
-            b = mvp * vec4(BQ, 0, Q,0);                                         \n\
-            c = mvp * vec4( Q, 0,BQ,0);                                         \n\
-            d = mvp * vec4(BQ, 0,BQ,0);                                         \n\
+            a = mvp * vec4( 0, 0, 0,0);                                         \n\
+            b = mvp * vec4(BS, 0, 0,0);                                         \n\
+            c = mvp * vec4( 0, 0,BS,0);                                         \n\
+            d = mvp * vec4(BS, 0,BS,0);                                         \n\
             sidel = 1.0f;                                                       \n\
             break;                                                              \n\
         case 2: // EAST                                                         \n\
-            a = mvp * vec4(BS, Q,BQ,0);                                         \n\
-            b = mvp * vec4(BS, Q, Q,0);                                         \n\
-            c = mvp * vec4(BS,BQ,BQ,0);                                         \n\
-            d = mvp * vec4(BS,BQ, Q,0);                                         \n\
+            a = mvp * vec4(BS, 0,BS,0);                                         \n\
+            b = mvp * vec4(BS, 0, 0,0);                                         \n\
+            c = mvp * vec4(BS,BS,BS,0);                                         \n\
+            d = mvp * vec4(BS,BS, 0,0);                                         \n\
             sidel = 0.9f;                                                       \n\
             break;                                                              \n\
         case 3: // NORTH                                                        \n\
-            a = mvp * vec4( Q, Q,BS,0);                                         \n\
-            b = mvp * vec4(BQ, Q,BS,0);                                         \n\
-            c = mvp * vec4( Q,BQ,BS,0);                                         \n\
-            d = mvp * vec4(BQ,BQ,BS,0);                                         \n\
+            a = mvp * vec4( 0, 0,BS,0);                                         \n\
+            b = mvp * vec4(BS, 0,BS,0);                                         \n\
+            c = mvp * vec4( 0,BS,BS,0);                                         \n\
+            d = mvp * vec4(BS,BS,BS,0);                                         \n\
             sidel = 0.8f;                                                       \n\
             break;                                                              \n\
         case 4: // WEST                                                         \n\
-            a = mvp * vec4( 0, Q, Q,0);                                         \n\
-            b = mvp * vec4( 0, Q,BQ,0);                                         \n\
-            c = mvp * vec4( 0,BQ, Q,0);                                         \n\
-            d = mvp * vec4( 0,BQ,BQ,0);                                         \n\
+            a = mvp * vec4( 0, 0, 0,0);                                         \n\
+            b = mvp * vec4( 0, 0,BS,0);                                         \n\
+            c = mvp * vec4( 0,BS, 0,0);                                         \n\
+            d = mvp * vec4( 0,BS,BS,0);                                         \n\
             sidel = 0.9f;                                                       \n\
             break;                                                              \n\
         case 5: // SOUTH                                                        \n\
-            a = mvp * vec4(BQ, Q, 0,0);                                         \n\
-            b = mvp * vec4( Q, Q, 0,0);                                         \n\
-            c = mvp * vec4(BQ,BQ, 0,0);                                         \n\
-            d = mvp * vec4( Q,BQ, 0,0);                                         \n\
+            a = mvp * vec4(BS, 0, 0,0);                                         \n\
+            b = mvp * vec4( 0, 0, 0,0);                                         \n\
+            c = mvp * vec4(BS,BS, 0,0);                                         \n\
+            d = mvp * vec4( 0,BS, 0,0);                                         \n\
             sidel = 0.8f;                                                       \n\
             break;                                                              \n\
         case 6: // DOWN                                                         \n\
-            a = mvp * vec4(BQ,BS, Q,0);                                         \n\
-            b = mvp * vec4( Q,BS, Q,0);                                         \n\
-            c = mvp * vec4(BQ,BS,BQ,0);                                         \n\
-            d = mvp * vec4( Q,BS,BQ,0);                                         \n\
+            a = mvp * vec4(BS,BS, 0,0);                                         \n\
+            b = mvp * vec4( 0,BS, 0,0);                                         \n\
+            c = mvp * vec4(BS,BS,BS,0);                                         \n\
+            d = mvp * vec4( 0,BS,BS,0);                                         \n\
             sidel = 0.6f;                                                       \n\
             break;                                                              \n\
     }                                                                           \n\
