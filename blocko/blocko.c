@@ -87,8 +87,8 @@ struct osn_context *osn_context;
 
 #define BARR 64
 
-#define LASTSOLID BARR // everything less than or eq here is solid
-#define OPEN 75        // invisible open, walkable space
+#define LASTSOLID (BARR+1) // everything less than here is solid
+#define OPEN 75            // empty space
 #define WATR 76
 
 #define RLEF 81
@@ -96,12 +96,15 @@ struct osn_context *osn_context;
 
 
 #define VERTEX_BUFLEN 100000
-#define SUNQLEN 1000
+#define SUNQLEN 10000
 
 #define CLAMP(v, l, u) { if (v < l) v = l; else if (v > u) v = u; }
 #define ICLAMP(v, l, u) ((v < l) ? l : (v > u) ? u : v)
-#define MAX(a, b) (a > b ? a : b)
-#define MIN(a, b) (a < b ? a : b)
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
+#define true 1
+#define false 0
 
 struct vbufv { // vertex buffer vertex
         float tex;
@@ -126,6 +129,10 @@ volatile char already_generated[VAOW][VAOD];
 #define T_(z,y,x) tiles[(z) * TILESH * TILESW + (y) * TILESW + (x)]
 #define SUN_(z,y,x) sunlight[(z) * (TILESH+1) * (TILESW+1) + (y) * (TILESW+1) + (x)]
 #define CORN_(z,y,x) cornlight[(z) * (TILESH+2) * (TILESW+2) + (y) * (TILESW+2) + (x)]
+
+// helper macros
+#define IS_OPAQUE(z,y,x) (tiles[(z) * TILESH * TILESW + (y) * TILESW + (x)] < LASTSOLID)
+#define IS_SOLID(z,y,x) (tiles[(z) * TILESH * TILESW + (y) * TILESW + (x)] < LASTSOLID)
 
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
@@ -169,21 +176,21 @@ struct point lerped_pos;
 //globals
 int frame = 0;
 int pframe = 0;
-int noisy = 0;
-int show_fresh_updates = 1;
+int noisy = false;
+int show_fresh_updates = false;
 int polys = 0;
 
-int mouselook = 1;
+int mouselook = true;
 int target_x, target_y, target_z;
 int place_x, place_y, place_z;
 int screenw = W;
 int screenh = H;
-int zooming = 0;
+int zooming = false;
 float zoom_amt = 1.f;
 float fast = 1.f;
-int regulated = 0;
-int vsync = 1;
-int antialiasing = 0;
+int regulated = false;
+int vsync = true;
+int antialiasing = false;
 volatile struct qitem just_generated[VAOW*VAOD];
 volatile size_t just_gen_len;
 
@@ -209,8 +216,8 @@ void new_game();
 void create_hmap();
 void gen_chunk();
 void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light);
-void recalc_gndheight(int x, int y, int z);
-void remove_light_source(int px, int py, int pz);
+void recalc_gndheight(int x, int z);
+void remove_sunlight(int px, int py, int pz);
 int step_sunlight();
 void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi);
 void key_move(int down);
@@ -325,7 +332,7 @@ void chunk_builder()
         int xhi = xlo + CHUNKW;
         int zhi = zlo + CHUNKD;
         gen_chunk(xlo-1, xhi+1, zlo-1, zhi+1);
-        already_generated[best_x][best_z] = 1;
+        already_generated[best_x][best_z] = true;
 
         #pragma omp critical
         {
@@ -415,6 +422,22 @@ void setup()
                 // transparent:
                 "res/leaves_red.png", // 16
                 "res/leaves_gold.png",// 17
+                "res/0.png",          // 18
+                "res/1.png",
+                "res/2.png",
+                "res/3.png",
+                "res/4.png",
+                "res/5.png",
+                "res/6.png",
+                "res/7.png",
+                "res/8.png",
+                "res/9.png",
+                "res/A.png",
+                "res/B.png",
+                "res/C.png",
+                "res/D.png",
+                "res/E.png",
+                "res/F.png",
                 ""
         };
 
@@ -422,7 +445,7 @@ void setup()
         {
                 texels = stbi_load(files[f], &x, &y, &n, 0);
                 mode = (n == 4) ? GL_RGBA : GL_RGB;
-                if (mode == GL_RGBA)
+                if (mode == GL_RGBA && f <= 17)
                         for (int i = 0; i < x * y; i++) // remove transparency
                                 texels[i*n + 3] = 0xff;
                 if (f == 0)
@@ -433,7 +456,7 @@ void setup()
 
         glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
 
-        for (int f = 16; files[f][0]; f++) // reload transparent textures now that mipmaps are generated
+        for (int f = 16; f <= 17; f++) // reload transparent textures now that mipmaps are generated
         {
                 texels = stbi_load(files[f], &x, &y, &n, 0);
                 mode = (n == 4) ? GL_RGBA : GL_RGB;
@@ -490,6 +513,59 @@ void jump(int down)
                 player[0].jumping = JUMP_BUFFER_FRAMES;
 }
 
+int test_area_x;
+int test_area_y;
+int test_area_z;
+
+int in_test_area(int x, int y, int z)
+{
+        return (x >= test_area_x && x < test_area_x + 20 &&
+                y == test_area_y &&
+                z >= test_area_z && z < test_area_z + 20);
+
+}
+
+void build_test_area()
+{
+        int tx = test_area_x = ICLAMP(player[0].pos.x / BS - 10, 0, TILESW-20);
+        int ty = test_area_y = ICLAMP(player[0].pos.y / BS +  1, 0, TILESH-20);
+        int tz = test_area_z = ICLAMP(player[0].pos.z / BS - 10, 0, TILESD-20);
+
+        printf("Building test area @ %d %d %d\n", tx, ty, tz);
+
+        for (int x = tx; x < tx+20; x++) for (int z = tz; z < tz+20; z++) for (int y = 0; y < ty+20; y++)
+        {
+                int on_edge = (x == tx || x == tx+19 || z == tz || z == tz+19);
+                if (y == ty - 5)
+                {
+                        if (on_edge)
+                        {
+                                T_(z, y, x) = OPEN;
+                                SUN_(z, y, x) = 15;
+                        }
+                        else
+                        {
+                                T_(z, y, x) = GRAN;
+                                SUN_(z, y, x) = 0;
+                        }
+                }
+                else if (y < ty + 1)
+                {
+                        T_(z, y, x) = OPEN;
+                        SUN_(z, y, x) = 0;
+                        if (on_edge)
+                                sun_enqueue(x, y, z, 0, 15);
+                }
+                else
+                {
+                        T_(z, y, x) = GRAN;
+                        SUN_(z, y, x) = 0;
+                }
+
+        }
+
+}
+
 void key_move(int down)
 {
         if (event.key.repeat) return;
@@ -515,7 +591,7 @@ void key_move(int down)
                 // menu stuff
                 case SDLK_ESCAPE:
                         SDL_SetRelativeMouseMode(SDL_FALSE);
-                        mouselook = 0;
+                        mouselook = false;
                         break;
 
                 // debug stuff
@@ -571,6 +647,9 @@ void key_move(int down)
                                                 ((float)avail_kb / total_kb) * 100.f);
                         }
                         break;
+                case SDLK_t: // build lighting testing area
+                        if (down) build_test_area();
+                        break;
                 case SDLK_F3: // show FPS and timings etc.
                         if (!down) noisy = !noisy;
                         break;
@@ -602,7 +681,7 @@ void mouse_button(int down)
                 if (down)
                 {
                         SDL_SetRelativeMouseMode(SDL_TRUE);
-                        mouselook = 1;
+                        mouselook = true;
                 }
         }
         else if (event.button.button == SDL_BUTTON_LEFT)
@@ -644,7 +723,7 @@ void new_game()
 
         printf("Chunk generated, ready to start game\n");
 
-        recalc_gndheight(STARTPX/BS, -1, STARTPZ/BS);
+        recalc_gndheight(STARTPX/BS, STARTPZ/BS);
         move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
 }
 
@@ -778,7 +857,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         {
                 if (column_already_generated[x][z])
                         continue;
-                column_already_generated[x][z] = 1;
+                column_already_generated[x][z] = true;
 
                 float p1080 = noise(x, 0, -z, 1080);
                 float p530 = noise(z, 0, x, 530);
@@ -798,8 +877,8 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 }
 
                 int solid_depth = 0;
-                int slicey_bit = 0;
-                int plateau_bit = 0;
+                int slicey_bit = false;
+                int plateau_bit = false;
                 int mode = p1080 > 0 ? 1 : 10;
                 unsigned char light_level = 15;
 
@@ -823,7 +902,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         int cave = (p90 < -0.24 || p91 < -0.24) && (p42 > 0.5 && p9 < 0.4);
 
                         if (y > hmap2[x][z] - ((p80 + 1) * 20) && p90 > 0.4 && p91 > 0.4 && p42 > 0.01 && p42 < 0.09 && p300 > 0.3)
-                                slicey_bit = 1;
+                                slicey_bit = true;
 
                         int platted = y < hmap2[x][z] + plat * (mode * 0.125f + 0.875f);
 
@@ -834,15 +913,15 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                                         int type = (y > 100 && hmap2[x][z] > 99) ? WATR : OPEN; //only allow water below low heightmap
                                         T_(z, y, x) = type;
                                         solid_depth = 0;
-                                        slicey_bit = 0;
+                                        slicey_bit = false;
                                         goto out;
                                 }
                         }
                         else
                         {
                                 if (mode == 10 && plat && !cave && y < hmap2[x][z])
-                                        plateau_bit = 1;
-                                slicey_bit = 0;
+                                        plateau_bit = true;
+                                slicey_bit = false;
                         }
 
                         solid_depth++;
@@ -963,8 +1042,8 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
         sq_next_len++;
 }
 
-// find highest block and relight from sun, remove light if iny is valid
-void recalc_gndheight(int x, int iny, int z)
+// find highest block and relight from sun
+void recalc_gndheight(int x, int z)
 {
         int y;
         for (y = 0; y < TILESH; y++)
@@ -972,8 +1051,6 @@ void recalc_gndheight(int x, int iny, int z)
                 if (T_(z, y, x) != OPEN)
                 {
                         gndheight[z][x] = y;
-                        if (iny >= 0)
-                                remove_light_source(x, iny, z);
 
                         if (y)
                         {
@@ -1009,10 +1086,12 @@ int step_sunlight()
                 char pass_on = SUN_(z, y, x);
                 if (pass_on) pass_on--; else continue;
                 if (x           ) sun_enqueue(x-1, y  , z  , i+1, pass_on);
-                if (y           ) sun_enqueue(x  , y-1, z  , i+1, pass_on);
-                if (z           ) sun_enqueue(x  , y  , z-1, i+1, pass_on);
                 if (x < TILESW-1) sun_enqueue(x+1, y  , z  , i+1, pass_on);
+                /*
+                if (y           ) sun_enqueue(x  , y-1, z  , i+1, pass_on);
                 if (y < TILESH-1) sun_enqueue(x  , y+1, z  , i+1, pass_on);
+                */
+                if (z           ) sun_enqueue(x  , y  , z-1, i+1, pass_on);
                 if (z < TILESD-1) sun_enqueue(x  , y  , z+1, i+1, pass_on);
         }
 
@@ -1064,34 +1143,97 @@ void update_world()
                         }
                 }
 
-                if (rand() % 10 == 0) recalc_gndheight(x, -1, z);
+                //if (rand() % 10 == 0) recalc_gndheight(x, -1, z);
         }
 }
 
-void remove_light_source(int px, int py, int pz)
+// remove direct or indirect sunlight
+// before calling, set opacity, but not light value
+void remove_sunlight(int px, int py, int pz)
 {
-        unsigned char old = SUN_(pz, py, px);
-
-        int xlo = ICLAMP(px - old, 0, TILESW-1);
-        int xhi = ICLAMP(px + old, 0, TILESW-1);
-        int ylo = ICLAMP(py - old, 0, TILESH-1);
-        int yhi = ICLAMP(py + old, 0, TILESH-1);
-        int zlo = ICLAMP(pz - old, 0, TILESD-1);
-        int zhi = ICLAMP(pz + old, 0, TILESD-1);
-
-        int count = 0;
-
-        for (int x = xlo; x <= xhi; x++) for (int z = zlo; z <= zhi; z++)
+        // FIXME: remove when confident
+        static int recursions = 0;
+        if (++recursions > 1000000)
         {
-                //for (int y = MAX(ylo, gndheight[z][x]); y <= yhi; y++)
-                for (int y = ylo; y <= yhi; y++)
+                fprintf(stderr, "1 million remove_sunlight() recursions\n");
+                return;
+        }
+
+        int my_light = SUN_(pz, py, px);
+        int im_opaque = IS_OPAQUE(pz, py, px);
+
+        if (my_light < 1) return;
+
+        struct qitem check_list[6];
+        struct qitem recur_list[6];
+        int check_len = 0;
+        int recur_len = 0;
+
+        // FIXME: remove this when gndheight is already correct
+        for (int y = 0; y < TILESH-1; y++)
+                if (IS_OPAQUE(pz, y, px))
                 {
-                        int remove_light = ICLAMP(old - abs(px - x) - abs(py - y) - abs(pz - z), 0, 15);
-                        int new = SUN_(z, y, x) - remove_light;
-                        SUN_(z, y, x) = ICLAMP(new, 0, 15);
-                        count++;
+                        gndheight[pz][px] = y;
+                        break;
+                }
+
+        // i am in direct sunlight, no need to remove light
+        if (gndheight[pz][px] > py)
+                return;
+
+        int incoming_light = 0;
+        int future_light = 0;
+
+        // find valid neighbors to check
+        if (px > 0       ) check_list[check_len++] = (struct qitem){px-1, py  , pz  };
+        if (px < TILESW-1) check_list[check_len++] = (struct qitem){px+1, py  , pz  };
+//        if (py > 0       ) check_list[check_len++] = (struct qitem){px  , py-1, pz  };
+//        if (py < TILESH-1) check_list[check_len++] = (struct qitem){px  , py+1, pz  };
+        if (pz > 0       ) check_list[check_len++] = (struct qitem){px  , py  , pz-1};
+        if (pz < TILESD-1) check_list[check_len++] = (struct qitem){px  , py  , pz+1};
+
+        for (int i = 0; i < check_len; i++)
+        {
+                int x = check_list[i].x;
+                int y = check_list[i].y;
+                int z = check_list[i].z;
+
+                // no need to update my opaque neighbors
+                if (IS_OPAQUE(z, y, x)) continue;
+
+                // i am lit by a neighbor block as much or more than before
+                // so... there is no more light to remove in this branch
+                if (SUN_(z, y, x) > my_light && !im_opaque) return;
+
+                // i am [now] being lit by this neighbor
+                if (SUN_(z, y, x) == my_light && !im_opaque)
+                        incoming_light = MAX(incoming_light, SUN_(z, y, x) - 1);
+
+                // keep track of brightest neighboring light for queueing later
+                if (SUN_(z, y, x) > future_light && !im_opaque)
+                        future_light = SUN_(z, y, x);
+
+                // i could be the light source for this neighbor, need to recurse
+                if (SUN_(z, y, x) < my_light)
+                {
+                        recur_list[recur_len++] = (struct qitem){x, y, z};
                 }
         }
+
+        if (incoming_light >= my_light)
+                fprintf(stderr, "INCOMING LIGHT > MY LIGHT when darkening\n");
+
+        SUN_(pz, py, px) = incoming_light;
+
+        // re-lighting may be needed here
+        if (future_light)
+                sun_enqueue(px, py, pz, 0, future_light - 1);
+
+        // i had no light to give anyway
+        if (my_light < 2) return;
+
+        for (int i = 0; i < recur_len; i++)
+                remove_sunlight(recur_list[i].x, recur_list[i].y, recur_list[i].z);
 }
 
 void lerp_camera(float t, struct player *a, struct player *b)
@@ -1119,7 +1261,7 @@ void update_player(struct player *p, int real)
                 if (p->ground)
                 {
                         p->grav = GRAV_JUMP;
-                        p->jumping = 0;
+                        p->jumping = false;
                 }
         }
 
@@ -1131,15 +1273,17 @@ void update_player(struct player *p, int real)
                 int y = target_y;
                 int z = target_z;
                 T_(z, y, x) = OPEN;
-                recalc_gndheight(x, -1, z);
+                //if (y == gndheight[z][x]) recalc_gndheight(x, z);
                 unsigned char max = 0;
-                if (SUN_(z-1, y  , x  ) > max) max = SUN_(z-1, y  , x  );
-                if (SUN_(z+1, y  , x  ) > max) max = SUN_(z+1, y  , x  );
-                if (SUN_(z  , y-1, x  ) > max) max = SUN_(z  , y-1, x  );
-                if (SUN_(z  , y+1, x  ) > max) max = SUN_(z  , y+1, x  );
-                if (SUN_(z  , y  , x-1) > max) max = SUN_(z  , y  , x-1);
-                if (SUN_(z  , y  , x+1) > max) max = SUN_(z  , y  , x+1);
-                sun_enqueue(place_x, place_y, place_z, 0, max ? max - 1 : 0);
+                if (x > 0        && SUN_(z  , y  , x-1) > max) max = SUN_(z  , y  , x-1);
+                if (x < TILESW-1 && SUN_(z  , y  , x+1) > max) max = SUN_(z  , y  , x+1);
+                /*
+                if (y > 0        && SUN_(z  , y-1, x  ) > max) max = SUN_(z  , y-1, x  );
+                if (y < TILESH-1 && SUN_(z  , y+1, x  ) > max) max = SUN_(z  , y+1, x  );
+                */
+                if (z > 0        && SUN_(z-1, y  , x  ) > max) max = SUN_(z-1, y  , x  );
+                if (z < TILESD-1 && SUN_(z+1, y  , x  ) > max) max = SUN_(z+1, y  , x  );
+                sun_enqueue(target_x, target_y, target_z, 0, max ? max - 1 : 0);
                 p->cooldown = 5;
         }
 
@@ -1147,19 +1291,16 @@ void update_player(struct player *p, int real)
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
                 {
                         T_(place_z, place_y, place_x) = HARD;
-                        recalc_gndheight(place_x, place_y, place_z);
-                        TIMER(step_sunlight_building);
-                        while(step_sunlight())
-                                ;
-                        TIMER();
+                        //recalc_gndheight(x, -1, z);
+                        remove_sunlight(place_x, place_y, place_z);
                 }
                 p->cooldown = 10;
         }
 
         // double tap forward to run
-        if (p->cooldownf > 10) p->runningf = 1;
+        if (p->cooldownf > 10) p->runningf = true;
         if (p->cooldownf > 0) p->cooldownf--;
-        if (!p->goingf) p->runningf = 0;
+        if (!p->goingf) p->runningf = false;
 
         if (p->goingf && !p->goingb) { p->fvel++; }
         else if (p->fvel > 0)        { p->fvel--; }
@@ -1223,11 +1364,6 @@ void update_player(struct player *p, int real)
         if (p->ground)
                 p->grav = GRAV_ZERO;
 
-        /*
-        if (real && place_x >= 0)
-                remove_light_source(place_x, place_y, place_z);
-        */
-
         //zooming
         if (real)
         {
@@ -1255,16 +1391,16 @@ int world_collide(struct box box, int wet)
 //return 0 iff we couldn't actually move
 int move_player(struct player *p, int velx, int vely, int velz)
 {
-        int last_was_x = 0;
-        int last_was_z = 0;
-        int already_stuck = 0;
-        int moved = 0;
+        int last_was_x = false;
+        int last_was_z = false;
+        int already_stuck = false;
+        int moved = false;
 
         if (!velx && !vely && !velz)
                 return 1;
 
         if (world_collide(p->pos, 0))
-                already_stuck = 1;
+                already_stuck = true;
 
         while (velx || vely || velz)
         {
@@ -1276,32 +1412,32 @@ int move_player(struct player *p, int velx, int vely, int velz)
                         amt = vely > 0 ? 1 : -1;
                         testpos.y += amt;
                         vely -= amt;
-                        last_was_x = 0;
-                        last_was_z = 0;
+                        last_was_x = false;
+                        last_was_z = false;
                 }
                 else if (!velz || (last_was_z && velx))
                 {
                         amt = velx > 0 ? 1 : -1;
                         testpos.x += amt;
                         velx -= amt;
-                        last_was_z = 0;
-                        last_was_x = 1;
+                        last_was_z = false;
+                        last_was_x = true;
                 }
                 else
                 {
                         amt = velz > 0 ? 1 : -1;
                         testpos.z += amt;
                         velz -= amt;
-                        last_was_x = 0;
-                        last_was_z = 1;
+                        last_was_x = false;
+                        last_was_z = true;
                 }
 
-                int would_be_stuck = 0;
+                int would_be_stuck = false;
 
                 if (world_collide(testpos, 0))
-                        would_be_stuck = 1;
+                        would_be_stuck = true;
                 else
-                        already_stuck = 0;
+                        already_stuck = false;
 
                 if (would_be_stuck && !already_stuck)
                 {
@@ -1315,7 +1451,7 @@ int move_player(struct player *p, int velx, int vely, int velz)
                 }
 
                 p->pos = testpos;
-                moved = 1;
+                moved = true;
         }
 
         return moved;
@@ -1580,7 +1716,7 @@ void draw_stuff()
         for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
         {
                 // skip chunks we will draw fresh this frame
-                size_t limit = show_fresh_updates ? 4 : fresh_len;
+                size_t limit = show_fresh_updates ? fresh_len : 4;
                 for (size_t k = 0; k < limit; k++)
                         if (fresh[k].x == i && fresh[k].z == j)
                                 goto skip;
@@ -1615,12 +1751,12 @@ void draw_stuff()
                 int xhi = xlo + CHUNKW;
                 int zlo = myz * CHUNKD;
                 int zhi = zlo + CHUNKD;
-                int ungenerated = 0;
+                int ungenerated = false;
 
                 #pragma omp critical
                 if (!already_generated[myx][myz])
                 {
-                        ungenerated = 1;
+                        ungenerated = true;
                 }
 
                 if (ungenerated)
@@ -1640,7 +1776,7 @@ void draw_stuff()
 
                         if (w >= w_limit) w -= 10; // just overwrite water if we run out of space
 
-                        if (T_(z, y, x) == OPEN) continue;
+                        if (T_(z, y, x) == OPEN && !in_test_area(x, y, z)) continue;
 
                         //lighting
                         float usw = CORN_(z  , y  , x  );
@@ -1700,6 +1836,14 @@ void draw_stuff()
                                         *w++ = (struct vbufv){ f,    UP, x, y+0.06f, z, usw, use, unw, une, 0.5f };
                                         *w++ = (struct vbufv){ f,  DOWN, x, y-0.94f, z, dse, dsw, dne, dnw, 0.5f };
                                 }
+                        }
+
+                        if (in_test_area(x, y, z))
+                        {
+                                int f = SUN_(z, y, x) + 18;
+                                int ty = IS_OPAQUE(z, y, x) ? y - 1 : y;
+                                *w++ = (struct vbufv){ f,    UP, x, ty+0.9f, z, usw, use, unw, une, 0.5f };
+                                *w++ = (struct vbufv){ f,  DOWN, x, ty-0.1f, z, dse, dsw, dne, dnw, 0.5f };
                         }
                 }
 
