@@ -331,7 +331,15 @@ void chunk_builder()
         int zlo = best_z * CHUNKD;
         int xhi = xlo + CHUNKW;
         int zhi = zlo + CHUNKD;
+
+        static int nr_chunks_generated = 0;
+        static int chunk_gen_ticks = 0;
+        int ticks_before = SDL_GetTicks();
         gen_chunk(xlo-1, xhi+1, zlo-1, zhi+1);
+        nr_chunks_generated++;
+        chunk_gen_ticks += SDL_GetTicks() - ticks_before;
+        fprintf(stderr, "Time per chunk gen: %0.3f\n", (float)chunk_gen_ticks / nr_chunks_generated / 1000.f);
+
         already_generated[best_x][best_z] = true;
 
         #pragma omp critical
