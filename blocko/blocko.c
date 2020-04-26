@@ -126,13 +126,13 @@ unsigned char gndheight[TILESD][TILESW];
 float *cornlight;
 volatile char already_generated[VAOW][VAOD];
 
-#define T_(z,y,x) tiles[(z) * TILESH * TILESW + (y) * TILESW + (x)]
-#define SUN_(z,y,x) sunlight[(z) * (TILESH+1) * (TILESW+1) + (y) * (TILESW+1) + (x)]
-#define CORN_(z,y,x) cornlight[(z) * (TILESH+2) * (TILESW+2) + (y) * (TILESW+2) + (x)]
+#define T_(x,y,z) tiles[(z) * TILESH * TILESW + (x) * TILESH + (y)]
+#define SUN_(x,y,z) sunlight[(z) * (TILESH+1) * (TILESW+1) + (x) * (TILESH+1) + (y)]
+#define CORN_(x,y,z) cornlight[(z) * (TILESH+2) * (TILESW+2) + (x) * (TILESH+2) + (y)]
 
 // helper macros
-#define IS_OPAQUE(z,y,x) (tiles[(z) * TILESH * TILESW + (y) * TILESW + (x)] < LASTSOLID)
-#define IS_SOLID(z,y,x) (tiles[(z) * TILESH * TILESW + (y) * TILESW + (x)] < LASTSOLID)
+#define IS_OPAQUE(x,y,z) (tiles[(z) * TILESH * TILESW + (x) * TILESH + (y)] < LASTSOLID)
+#define IS_SOLID(x,y,z) (tiles[(z) * TILESH * TILESW + (x) * TILESH + (y)] < LASTSOLID)
 
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
@@ -540,26 +540,26 @@ void build_test_area()
                 {
                         if (on_edge)
                         {
-                                T_(z, y, x) = OPEN;
-                                SUN_(z, y, x) = 15;
+                                T_(x, y, z) = OPEN;
+                                SUN_(x, y, z) = 15;
                         }
                         else
                         {
-                                T_(z, y, x) = GRAN;
-                                SUN_(z, y, x) = 0;
+                                T_(x, y, z) = GRAN;
+                                SUN_(x, y, z) = 0;
                         }
                 }
                 else if (y < ty + 1)
                 {
-                        T_(z, y, x) = OPEN;
-                        SUN_(z, y, x) = 0;
+                        T_(x, y, z) = OPEN;
+                        SUN_(x, y, z) = 0;
                         if (on_edge)
                                 sun_enqueue(x, y, z, 0, 15);
                 }
                 else
                 {
-                        T_(z, y, x) = GRAN;
-                        SUN_(z, y, x) = 0;
+                        T_(x, y, z) = GRAN;
+                        SUN_(x, y, z) = 0;
                 }
 
         }
@@ -609,8 +609,8 @@ void key_move(int down)
                 case SDLK_h: // delete all ore hints
                         if (down)
                                 for (int x = 0; x < TILESW-1; x++) for (int z = 0; z < TILESD-1; z++) for (int y = 0; y < TILESH-1; y++)
-                                        if (T_(z, y, x) == OREH)
-                                                T_(z, y, x) = OPEN;
+                                        if (T_(x, y, z) == OREH)
+                                                T_(x, y, z) = OPEN;
                         break;
                 case SDLK_r: // toggle phys step regulation
                         if (down)
@@ -884,7 +884,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
                 for (int y = 0; y < TILESH; y++)
                 {
-                        if (y == TILESH - 1) { T_(z, y, x) = HARD; continue; }
+                        if (y == TILESH - 1) { T_(x, y, z) = HARD; continue; }
 
                         float p300 = noise(x, y, z, 300);
                         float p32 = noise(x, y*mode, z, 16 + 16 * (1.1 + p300));
@@ -911,7 +911,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                                 if (!slicey_bit || rand() % 20 == 0)
                                 {
                                         int type = (y > 100 && hmap2[x][z] > 99) ? WATR : OPEN; //only allow water below low heightmap
-                                        T_(z, y, x) = type;
+                                        T_(x, y, z) = type;
                                         solid_depth = 0;
                                         slicey_bit = false;
                                         goto out;
@@ -931,26 +931,26 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         int ore  =  p2 > 0.4f ? ORE : OREH;
                         int ston = p42 > 0.4f && p9 < -0.3f ? ore : STON;
 
-                        if      (slicey_bit)          T_(z, y, x) = p9 > 0.4f ? HARD : SAND;
-                        else if (solid_depth > 14 + 5 * p9) T_(z, y, x) = GRAN;
-                        else if (y < slv - 5 * p16)   T_(z, y, x) = ston;
-                        else if (y < dlv - 5 * p16)   T_(z, y, x) = p80 > (-solid_depth * 0.1f) ? DIRT : OPEN; // erosion
-                        else if (y < 100 - 5 * p16)   T_(z, y, x) = solid_depth == 1 ? GRAS : DIRT;
-                        else if (y < 120          )   T_(z, y, x) = solid_depth < 4 + 5 * p9 ? SAND : ston;
-                        else                          T_(z, y, x) = HARD;
+                        if      (slicey_bit)          T_(x, y, z) = p9 > 0.4f ? HARD : SAND;
+                        else if (solid_depth > 14 + 5 * p9) T_(x, y, z) = GRAN;
+                        else if (y < slv - 5 * p16)   T_(x, y, z) = ston;
+                        else if (y < dlv - 5 * p16)   T_(x, y, z) = p80 > (-solid_depth * 0.1f) ? DIRT : OPEN; // erosion
+                        else if (y < 100 - 5 * p16)   T_(x, y, z) = solid_depth == 1 ? GRAS : DIRT;
+                        else if (y < 120          )   T_(x, y, z) = solid_depth < 4 + 5 * p9 ? SAND : ston;
+                        else                          T_(x, y, z) = HARD;
 
                         out:
-                        if (T_(z, y, x) == WATR)
+                        if (T_(x, y, z) == WATR)
                         {
                                 if (light_level) light_level--;
                                 if (light_level) light_level--;
                         }
-                        else if (T_(z, y, x) < OPEN)
+                        else if (T_(x, y, z) < OPEN)
                         {
                                 light_level = 0;
                         }
 
-                        SUN_(z, y, x) = light_level;
+                        SUN_(x, y, z) = light_level;
                 }
         }
 
@@ -958,14 +958,14 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         #pragma omp parallel for
         for (int x = xlo+1; x < xhi-1; x++) for (int z = zlo-1; z < zhi+1; z++) for (int y = 100; y < TILESH-2; y++)
         {
-                if (T_(z, y, x) == WATR)
+                if (T_(x, y, z) == WATR)
                 {
-                        if (T_(z-1, y  , x  ) == OPEN ||
-                            T_(z+1, y  , x  ) == OPEN ||
-                            T_(z  , y  , x-1) == OPEN ||
-                            T_(z  , y  , x+1) == OPEN ||
-                            T_(z  , y+1, x  ) == OPEN)
-                                T_(z, y, x) = WOOD;
+                        if (T_(x  , y  , z-1) == OPEN ||
+                            T_(x  , y  , z+1) == OPEN ||
+                            T_(x-1, y  , z  ) == OPEN ||
+                            T_(x+1, y  , z  ) == OPEN ||
+                            T_(x  , y+1, z  ) == OPEN)
+                                T_(x, y, z) = WOOD;
                 }
         }
 
@@ -979,23 +979,23 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 int z = zlo + CHUNKD/2 + 5 - (rand() % 11);
                 for (int y = 10; y < TILESH-2; y++)
                 {
-                        if (T_(z, y, x) == OPEN)
+                        if (T_(x, y, z) == OPEN)
                                 continue;
 
-                        if (T_(z, y, x) != GRAS && T_(z, y, x) != DIRT)
+                        if (T_(x, y, z) != GRAS && T_(x, y, z) != DIRT)
                                 break;
 
                         int yy = y;
                         for (; yy >= y - 3 - (rand() % 6); yy--)
-                                T_(z, yy, x) = WOOD;
+                                T_(x, yy, z) = WOOD;
 
                         int ymax = yy + 4 - rand() % 3;
 
                         for (int i = x-3; i <= x+3; i++) for (int j = yy-3; j <= ymax; j++) for (int k = z-3; k <= z+3; k++)
                         {
                                 float dist = (i-x) * (i-x) + (j-yy) * (j-yy) + (k-z) * (k-z);
-                                if (T_(k, j, i) == OPEN && dist < radius * radius)
-                                        T_(k, j, i) = leaves;
+                                if (T_(i, j, k) == OPEN && dist < radius * radius)
+                                        T_(i, j, k) = leaves;
                         }
 
                         break;
@@ -1008,22 +1008,22 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
         if (incoming_light == 0)
                 return;
 
-        if (T_(z, y, x) == WATR)
+        if (T_(x, y, z) == WATR)
                 incoming_light--; // water blocks more light
 
-        if (T_(z, y, x) == RLEF || T_(z, y, x) == YLEF)
+        if (T_(x, y, z) == RLEF || T_(x, y, z) == YLEF)
         {
                 incoming_light--; // leaves block more light
                 if (incoming_light) incoming_light--;
         }
 
-        if (SUN_(z, y, x) >= incoming_light)
+        if (SUN_(x, y, z) >= incoming_light)
                 return; // already brighter
 
-        if (T_(z, y, x) < OPEN)
+        if (T_(x, y, z) < OPEN)
                 return; // no lighting for solid blocks
 
-        SUN_(z, y, x) = incoming_light;
+        SUN_(x, y, z) = incoming_light;
 
         if (sq_next_len >= SUNQLEN)
                 return; // out of room in sun queue
@@ -1048,25 +1048,25 @@ void recalc_gndheight(int x, int z)
         int y;
         for (y = 0; y < TILESH; y++)
         {
-                if (T_(z, y, x) != OPEN)
+                if (T_(x, y, z) != OPEN)
                 {
                         gndheight[z][x] = y;
 
                         if (y)
                         {
-                                SUN_(z, y-1, x) = 0; // prevent short out:
+                                SUN_(x, y-1, z) = 0; // prevent short out:
                                 sun_enqueue(x, y-1, z, SUNQLEN, 15);
                         }
 
                         break;
                 }
-                SUN_(z, y, x) = 15; // light pure sky
+                SUN_(x, y, z) = 15; // light pure sky
         }
 
         // continue darkening
         for (; y < TILESH; y++)
         {
-                SUN_(z, y, x) = 0;
+                SUN_(x, y, z) = 0;
         }
 }
 
@@ -1083,7 +1083,7 @@ int step_sunlight()
                 int x = sunq_curr[i].x;
                 int y = sunq_curr[i].y;
                 int z = sunq_curr[i].z;
-                char pass_on = SUN_(z, y, x);
+                char pass_on = SUN_(x, y, z);
                 if (pass_on) pass_on--; else continue;
                 if (x           ) sun_enqueue(x-1, y  , z  , i+1, pass_on);
                 if (x < TILESW-1) sun_enqueue(x+1, y  , z  , i+1, pass_on);
@@ -1106,9 +1106,9 @@ void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
                 int y_ = (y == 0) ? 0 : y - 1;
                 int z_ = (z == 0) ? 0 : z - 1;
 
-                CORN_(z, y, x) = 0.008f * (
-                                SUN_(z_, y_, x_) + SUN_(z_, y_, x ) + SUN_(z_, y , x_) + SUN_(z_, y , x ) +
-                                SUN_(z , y_, x_) + SUN_(z , y_, x ) + SUN_(z , y , x_) + SUN_(z , y , x ));
+                CORN_(x, y, z) = 0.008f * (
+                                SUN_(x_, y_, z_) + SUN_(x , y_, z_) + SUN_(x_, y , z_) + SUN_(x , y , z_) +
+                                SUN_(x_, y_, z ) + SUN_(x , y_, z ) + SUN_(x_, y , z ) + SUN_(x , y , z ));
         }
 }
 
@@ -1121,23 +1121,23 @@ void update_world()
 
                 for (y = 1; y < TILESH - 1; y++) {
                         if (0) ;
-                        else if (T_(z, y, x) == GRG1) T_(z, y, x) = GRG2;
-                        else if (T_(z, y, x) == GRG2) T_(z, y, x) = GRAS;
-                        else if (T_(z, y, x) == DIRT) {
-                                if (T_(z  , y-1, x  ) == OPEN && (
-                                    (T_(z+1, y  , x  ) | 1) == GRAS ||
-                                    (T_(z-1, y  , x  ) | 1) == GRAS ||
-                                    (T_(z  , y  , x+1) | 1) == GRAS ||
-                                    (T_(z  , y  , x-1) | 1) == GRAS ||
-                                    (T_(z+1, y+1, x  ) | 1) == GRAS ||
-                                    (T_(z-1, y+1, x  ) | 1) == GRAS ||
-                                    (T_(z  , y+1, x+1) | 1) == GRAS ||
-                                    (T_(z  , y+1, x-1) | 1) == GRAS ||
-                                    (T_(z+1, y-1, x  ) | 1) == GRAS ||
-                                    (T_(z-1, y-1, x  ) | 1) == GRAS ||
-                                    (T_(z  , y-1, x+1) | 1) == GRAS ||
-                                    (T_(z  , y-1, x-1) | 1) == GRAS) ) {
-                                        T_(z, y, x) = GRG1;
+                        else if (T_(x, y, z) == GRG1) T_(x, y, z) = GRG2;
+                        else if (T_(x, y, z) == GRG2) T_(x, y, z) = GRAS;
+                        else if (T_(x, y, z) == DIRT) {
+                                if (T_(x  , y-1, z  ) == OPEN && (
+                                    (T_(x  , y  , z+1) | 1) == GRAS ||
+                                    (T_(x  , y  , z-1) | 1) == GRAS ||
+                                    (T_(x+1, y  , z  ) | 1) == GRAS ||
+                                    (T_(x-1, y  , z  ) | 1) == GRAS ||
+                                    (T_(x  , y+1, z+1) | 1) == GRAS ||
+                                    (T_(x  , y+1, z-1) | 1) == GRAS ||
+                                    (T_(x+1, y+1, z  ) | 1) == GRAS ||
+                                    (T_(x-1, y+1, z  ) | 1) == GRAS ||
+                                    (T_(x  , y-1, z+1) | 1) == GRAS ||
+                                    (T_(x  , y-1, z-1) | 1) == GRAS ||
+                                    (T_(x+1, y-1, z  ) | 1) == GRAS ||
+                                    (T_(x-1, y-1, z  ) | 1) == GRAS) ) {
+                                        T_(x, y, z) = GRG1;
                                 }
                                 break;
                         }
@@ -1159,8 +1159,8 @@ void remove_sunlight(int px, int py, int pz)
                 return;
         }
 
-        int my_light = SUN_(pz, py, px);
-        int im_opaque = IS_OPAQUE(pz, py, px);
+        int my_light = SUN_(px, py, pz);
+        int im_opaque = IS_OPAQUE(px, py, pz);
 
         if (my_light < 1) return;
 
@@ -1171,7 +1171,7 @@ void remove_sunlight(int px, int py, int pz)
 
         // FIXME: remove this when gndheight is already correct
         for (int y = 0; y < TILESH-1; y++)
-                if (IS_OPAQUE(pz, y, px))
+                if (IS_OPAQUE(px, y, pz))
                 {
                         gndheight[pz][px] = y;
                         break;
@@ -1199,22 +1199,22 @@ void remove_sunlight(int px, int py, int pz)
                 int z = check_list[i].z;
 
                 // no need to update my opaque neighbors
-                if (IS_OPAQUE(z, y, x)) continue;
+                if (IS_OPAQUE(x, y, z)) continue;
 
                 // i am lit by a neighbor block as much or more than before
                 // so... there is no more light to remove in this branch
-                if (SUN_(z, y, x) > my_light && !im_opaque) return;
+                if (SUN_(x, y, z) > my_light && !im_opaque) return;
 
                 // i am [now] being lit by this neighbor
-                if (SUN_(z, y, x) == my_light && !im_opaque)
-                        incoming_light = MAX(incoming_light, SUN_(z, y, x) - 1);
+                if (SUN_(x, y, z) == my_light && !im_opaque)
+                        incoming_light = MAX(incoming_light, SUN_(x, y, z) - 1);
 
                 // keep track of brightest neighboring light for queueing later
-                if (SUN_(z, y, x) > future_light && !im_opaque)
-                        future_light = SUN_(z, y, x);
+                if (SUN_(x, y, z) > future_light && !im_opaque)
+                        future_light = SUN_(x, y, z);
 
                 // i could be the light source for this neighbor, need to recurse
-                if (SUN_(z, y, x) < my_light)
+                if (SUN_(x, y, z) < my_light)
                 {
                         recur_list[recur_len++] = (struct qitem){x, y, z};
                 }
@@ -1223,7 +1223,7 @@ void remove_sunlight(int px, int py, int pz)
         if (incoming_light >= my_light)
                 fprintf(stderr, "INCOMING LIGHT > MY LIGHT when darkening\n");
 
-        SUN_(pz, py, px) = incoming_light;
+        SUN_(px, py, pz) = incoming_light;
 
         // re-lighting may be needed here
         if (future_light)
@@ -1272,17 +1272,17 @@ void update_player(struct player *p, int real)
                 int x = target_x;
                 int y = target_y;
                 int z = target_z;
-                T_(z, y, x) = OPEN;
+                T_(x, y, z) = OPEN;
                 //if (y == gndheight[z][x]) recalc_gndheight(x, z);
                 unsigned char max = 0;
-                if (x > 0        && SUN_(z  , y  , x-1) > max) max = SUN_(z  , y  , x-1);
-                if (x < TILESW-1 && SUN_(z  , y  , x+1) > max) max = SUN_(z  , y  , x+1);
+                if (x > 0        && SUN_(x-1, y  , z  ) > max) max = SUN_(x-1, y  , z  );
+                if (x < TILESW-1 && SUN_(x+1, y  , z  ) > max) max = SUN_(x+1, y  , z  );
                 /*
-                if (y > 0        && SUN_(z  , y-1, x  ) > max) max = SUN_(z  , y-1, x  );
-                if (y < TILESH-1 && SUN_(z  , y+1, x  ) > max) max = SUN_(z  , y+1, x  );
+                if (y > 0        && SUN_(x  , y-1, z  ) > max) max = SUN_(x  , y-1, z  );
+                if (y < TILESH-1 && SUN_(x  , y+1, z  ) > max) max = SUN_(x  , y+1, z  );
                 */
-                if (z > 0        && SUN_(z-1, y  , x  ) > max) max = SUN_(z-1, y  , x  );
-                if (z < TILESD-1 && SUN_(z+1, y  , x  ) > max) max = SUN_(z+1, y  , x  );
+                if (z > 0        && SUN_(x  , y  , z-1) > max) max = SUN_(x  , y  , z-1);
+                if (z < TILESD-1 && SUN_(x  , y  , z+1) > max) max = SUN_(x  , y  , z+1);
                 sun_enqueue(target_x, target_y, target_z, 0, max ? max - 1 : 0);
                 p->cooldown = 5;
         }
@@ -1290,7 +1290,7 @@ void update_player(struct player *p, int real)
         if (real && p->building && !p->cooldown && place_x >= 0) {
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
                 {
-                        T_(place_z, place_y, place_x) = HARD;
+                        T_(place_x, place_y, place_z) = HARD;
                         //recalc_gndheight(x, -1, z);
                         remove_sunlight(place_x, place_y, place_z);
                 }
@@ -1479,10 +1479,10 @@ int block_collide(int bx, int by, int bz, struct box box, int wet)
         if (!legit_tile(bx, by, bz))
                 return 0;
 
-        if (wet && T_(bz, by, bx) == WATR)
+        if (wet && T_(bx, by, bz) == WATR)
                 return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS, BS});
 
-        if (!wet && T_(bz, by, bx) <= LASTSOLID)
+        if (!wet && T_(bx, by, bz) <= LASTSOLID)
                 return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS, BS});
 
         return 0;
@@ -1517,7 +1517,7 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
                 if (x < 0 || y < 0 || z < 0 || x >= TILESW || y >= TILESH || z >= TILESD)
                         goto bad;
 
-                if (T_(z, y, x) != OPEN)
+                if (T_(x, y, z) != OPEN)
                         break;
 
                 if (i == 6)
@@ -1776,37 +1776,37 @@ void draw_stuff()
 
                         if (w >= w_limit) w -= 10; // just overwrite water if we run out of space
 
-                        if (T_(z, y, x) == OPEN && !in_test_area(x, y, z)) continue;
+                        if (T_(x, y, z) == OPEN && !in_test_area(x, y, z)) continue;
 
                         //lighting
-                        float usw = CORN_(z  , y  , x  );
-                        float use = CORN_(z  , y  , x+1);
-                        float unw = CORN_(z+1, y  , x  );
-                        float une = CORN_(z+1, y  , x+1);
-                        float dsw = CORN_(z  , y+1, x  );
-                        float dse = CORN_(z  , y+1, x+1);
-                        float dnw = CORN_(z+1, y+1, x  );
-                        float dne = CORN_(z+1, y+1, x+1);
-                        int t = T_(z, y, x);
+                        float usw = CORN_(x  , y  , z  );
+                        float use = CORN_(x+1, y  , z  );
+                        float unw = CORN_(x  , y  , z+1);
+                        float une = CORN_(x+1, y  , z+1);
+                        float dsw = CORN_(x  , y+1, z  );
+                        float dse = CORN_(x+1, y+1, z  );
+                        float dnw = CORN_(x  , y+1, z+1);
+                        float dne = CORN_(x+1, y+1, z+1);
+                        int t = T_(x, y, z);
                         if (t == GRAS)
                         {
-                                if (y == 0        || T_(z  , y-1, x  ) >= OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une, 1 };
-                                if (z == 0        || T_(z-1, y  , x  ) >= OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
-                                if (z == TILESD-1 || T_(z+1, y  , x  ) >= OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, unw, une, dnw, dne, 1 };
-                                if (x == 0        || T_(z  , y  , x-1) >= OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
-                                if (x == TILESW-1 || T_(z  , y  , x+1) >= OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, une, use, dne, dse, 1 };
-                                if (y <  TILESH-1 && T_(z  , y+1, x  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
+                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une, 1 };
+                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
+                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, unw, une, dnw, dne, 1 };
+                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
+                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, une, use, dne, dse, 1 };
+                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
                         }
                         else if (t == DIRT || t == GRG1 || t == GRG2)
                         {
                                 int u = (t == DIRT) ? 2 :
                                         (t == GRG1) ? 3 : 4;
-                                if (y == 0        || T_(z  , y-1, x  ) >= OPEN) *v++ = (struct vbufv){ u,    UP, x, y, z, usw, use, unw, une, 1 };
-                                if (z == 0        || T_(z-1, y  , x  ) >= OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
-                                if (z == TILESD-1 || T_(z+1, y  , x  ) >= OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, unw, une, dnw, dne, 1 };
-                                if (x == 0        || T_(z  , y  , x-1) >= OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
-                                if (x == TILESW-1 || T_(z  , y  , x+1) >= OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse, 1 };
-                                if (y <  TILESH-1 && T_(z  , y+1, x  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
+                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ u,    UP, x, y, z, usw, use, unw, une, 1 };
+                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
+                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, unw, une, dnw, dne, 1 };
+                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
+                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse, 1 };
+                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
                         }
                         else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN ||
                                  t == RLEF || t == YLEF)
@@ -1821,16 +1821,16 @@ void draw_stuff()
                                         (t == RLEF) ? 16 :
                                         (t == YLEF) ? 17 :
                                                        0 ;
-                                if (y == 0        || T_(z  , y-1, x  ) >= OPEN) *v++ = (struct vbufv){ f,    UP, x, y, z, usw, use, unw, une, 1 };
-                                if (z == 0        || T_(z-1, y  , x  ) >= OPEN) *v++ = (struct vbufv){ f, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
-                                if (z == TILESD-1 || T_(z+1, y  , x  ) >= OPEN) *v++ = (struct vbufv){ f, NORTH, x, y, z, unw, une, dnw, dne, 1 };
-                                if (x == 0        || T_(z  , y  , x-1) >= OPEN) *v++ = (struct vbufv){ f,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
-                                if (x == TILESW-1 || T_(z  , y  , x+1) >= OPEN) *v++ = (struct vbufv){ f,  EAST, x, y, z, une, use, dne, dse, 1 };
-                                if (y <  TILESH-1 && T_(z  , y+1, x  ) >= OPEN) *v++ = (struct vbufv){ f,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
+                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ f,    UP, x, y, z, usw, use, unw, une, 1 };
+                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ f, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
+                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ f, NORTH, x, y, z, unw, une, dnw, dne, 1 };
+                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ f,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
+                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ f,  EAST, x, y, z, une, use, dne, dse, 1 };
+                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ f,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
                         }
                         else if (t == WATR)
                         {
-                                if (y == 0        || T_(z  , y-1, x  ) == OPEN)
+                                if (y == 0        || T_(x  , y-1, z  ) == OPEN)
                                 {
                                         int f = 7 + (pframe / 10 + (x ^ z)) % 4;
                                         *w++ = (struct vbufv){ f,    UP, x, y+0.06f, z, usw, use, unw, une, 0.5f };
@@ -1840,8 +1840,8 @@ void draw_stuff()
 
                         if (in_test_area(x, y, z))
                         {
-                                int f = SUN_(z, y, x) + 18;
-                                int ty = IS_OPAQUE(z, y, x) ? y - 1 : y;
+                                int f = SUN_(x, y, z) + 18;
+                                int ty = IS_OPAQUE(x, y, z) ? y - 1 : y;
                                 *w++ = (struct vbufv){ f,    UP, x, ty+0.9f, z, usw, use, unw, une, 0.5f };
                                 *w++ = (struct vbufv){ f,  DOWN, x, ty-0.1f, z, dse, dsw, dne, dnw, 0.5f };
                         }
