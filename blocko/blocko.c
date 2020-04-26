@@ -6,6 +6,7 @@
 // The run-windows.bat script will try hard to find the SDK files it needs,
 // otherwise it will tell you what to do.
 
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -96,7 +97,7 @@ struct osn_context *osn_context;
 
 
 #define VERTEX_BUFLEN 100000
-#define SUNQLEN 10000
+#define SUNQLEN 100000
 
 #define CLAMP(v, l, u) { if (v < l) v = l; else if (v > u) v = u; }
 #define ICLAMP(v, l, u) ((v < l) ? l : (v > u) ? u : v)
@@ -347,7 +348,7 @@ void chunk_builder()
 
         if (show_time_per_chunk)
         {
-                fprintf(stderr, "Time per chunk gen: %0.3f\n", (float)chunk_gen_ticks / nr_chunks_generated / 1000.f);
+                fprintf(stderr, "Seconds per chunk gen: %0.5f\n", (float)chunk_gen_ticks / nr_chunks_generated / 1000.f);
                 show_time_per_chunk = false;
         }
 
@@ -364,6 +365,8 @@ void chunk_builder()
 //one thread for worker (chunk builder) and one for main loop (phys + renderer)
 int main()
 {
+        omp_set_nested(1);
+
         #pragma omp parallel sections
         {
                 #pragma omp section
@@ -532,29 +535,30 @@ void jump(int down)
                 player[0].jumping = JUMP_BUFFER_FRAMES;
 }
 
+#define TEST_AREA_SZ 32
 int test_area_x;
 int test_area_y;
 int test_area_z;
 
 int in_test_area(int x, int y, int z)
 {
-        return (x >= test_area_x && x < test_area_x + 20 &&
+        return (x >= test_area_x && x < test_area_x + TEST_AREA_SZ &&
                 y == test_area_y &&
-                z >= test_area_z && z < test_area_z + 20);
+                z >= test_area_z && z < test_area_z + TEST_AREA_SZ);
 
 }
 
 void build_test_area()
 {
-        int tx = test_area_x = ICLAMP(player[0].pos.x / BS - 10, 0, TILESW-20);
-        int ty = test_area_y = ICLAMP(player[0].pos.y / BS +  1, 0, TILESH-20);
-        int tz = test_area_z = ICLAMP(player[0].pos.z / BS - 10, 0, TILESD-20);
+        int tx = test_area_x = ICLAMP(player[0].pos.x / BS - TEST_AREA_SZ/2, 0, TILESW - TEST_AREA_SZ);
+        int ty = test_area_y = ICLAMP(player[0].pos.y / BS + 1             , 0, TILESH - 10          );
+        int tz = test_area_z = ICLAMP(player[0].pos.z / BS - TEST_AREA_SZ/2, 0, TILESD - TEST_AREA_SZ);
 
         printf("Building test area @ %d %d %d\n", tx, ty, tz);
 
-        for (int x = tx; x < tx+20; x++) for (int z = tz; z < tz+20; z++) for (int y = 0; y < ty+20; y++)
+        for (int x = tx; x < tx+TEST_AREA_SZ; x++) for (int z = tz; z < tz+TEST_AREA_SZ; z++) for (int y = 0; y < ty+20; y++)
         {
-                int on_edge = (x == tx || x == tx+19 || z == tz || z == tz+19);
+                int on_edge = (x == tx || x == tx+TEST_AREA_SZ-1 || z == tz || z == tz+TEST_AREA_SZ-1);
                 if (y == ty - 5) // ceiling
                 {
                         if (on_edge)
@@ -881,6 +885,9 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         #pragma omp parallel for
         for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
         {
+                if (x == xlo && z == zlo)
+                        printf("I'm thread #%d out of %d threads\n", omp_get_thread_num(), omp_get_num_threads());
+
                 if (column_already_generated[x][z])
                         continue;
                 column_already_generated[x][z] = true;
@@ -1193,12 +1200,12 @@ void remove_sunlight(int px, int py, int pz)
         for (int y = 0; y < TILESH-1; y++)
                 if (IS_OPAQUE(px, y, pz))
                 {
-                        gndheight[px][pz] = y;
+                        set_gndheight(px, y, pz);
                         break;
                 }
 
         // i am in direct sunlight, no need to remove light
-        if (gndheight[px][pz] > py)
+        if (ABOVE_GROUND(px, py, pz))
                 return;
 
         int incoming_light = 0;
@@ -1207,8 +1214,11 @@ void remove_sunlight(int px, int py, int pz)
         // find valid neighbors to check
         if (px > 0       ) check_list[check_len++] = (struct qitem){px-1, py  , pz  };
         if (px < TILESW-1) check_list[check_len++] = (struct qitem){px+1, py  , pz  };
-//        if (py > 0       ) check_list[check_len++] = (struct qitem){px  , py-1, pz  };
-//        if (py < TILESH-1) check_list[check_len++] = (struct qitem){px  , py+1, pz  };
+        /*
+        if (py > 0       ) check_list[check_len++] = (struct qitem){px  , py-1, pz  };
+        // never spread sunlight value 15 upward:
+        if (py < TILESH-1 && SUN_(px,py+1,pz) != 15) check_list[check_len++] = (struct qitem){px  , py+1, pz  };
+        */
         if (pz > 0       ) check_list[check_len++] = (struct qitem){px  , py  , pz-1};
         if (pz < TILESD-1) check_list[check_len++] = (struct qitem){px  , py  , pz+1};
 
@@ -1331,7 +1341,11 @@ void update_player(struct player *p, int real)
                         if (ABOVE_GROUND(place_x, place_y, place_z))
                                 set_gndheight(place_x, place_y, place_z);
 
-                        remove_sunlight(place_x, place_y, place_z);
+                        int y = place_y;
+                        do {
+                                remove_sunlight(place_x, y, place_z);
+                                y++;
+                        } while (y < TILESH-1 && !IS_OPAQUE(place_x, y, place_z));
                 }
                 p->cooldown = 10;
         }
@@ -1881,8 +1895,8 @@ void draw_stuff()
                         {
                                 int f = SUN_(x, y, z) + 18;
                                 int ty = IS_OPAQUE(x, y, z) ? y - 1 : y;
-                                *w++ = (struct vbufv){ f,    UP, x, ty+0.9f, z, usw, use, unw, une, 0.5f };
-                                *w++ = (struct vbufv){ f,  DOWN, x, ty-0.1f, z, dse, dsw, dne, dnw, 0.5f };
+                                *w++ = (struct vbufv){ f,    UP, x, ty+0.9f, z, 1.f, 1.f, 1.f, 1.f, 1.f };
+                                *w++ = (struct vbufv){ f,  DOWN, x, ty-0.1f, z, 1.f, 1.f, 1.f, 1.f, 1.f };
                         }
                 }
 
