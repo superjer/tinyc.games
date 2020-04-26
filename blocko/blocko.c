@@ -122,7 +122,7 @@ int gravity[] = { -20, -17, -14, -12, -10, -8, -6, -5, -4, -3,
 
 unsigned char *tiles;
 unsigned char *sunlight;
-unsigned char gndheight[TILESD][TILESW];
+unsigned char gndheight[TILESW][TILESD];
 float *cornlight;
 volatile char already_generated[VAOW][VAOD];
 
@@ -133,6 +133,9 @@ volatile char already_generated[VAOW][VAOD];
 // helper macros
 #define IS_OPAQUE(x,y,z) (tiles[(z) * TILESH * TILESW + (x) * TILESH + (y)] < LASTSOLID)
 #define IS_SOLID(x,y,z) (tiles[(z) * TILESH * TILESW + (x) * TILESH + (y)] < LASTSOLID)
+#define ABOVE_GROUND(x,y,z) (gndheight[x][z] >  y)
+#define AT_GROUND(x,y,z)    (gndheight[x][z] == y)
+#define BELOW_GROUND(x,y,z) (gndheight[x][z] <  y)
 
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
@@ -178,7 +181,9 @@ int frame = 0;
 int pframe = 0;
 int noisy = false;
 int show_fresh_updates = false;
+int show_time_per_chunk = false;
 int polys = 0;
+int sunq_outta_room = 0;
 
 int mouselook = true;
 int target_x, target_y, target_z;
@@ -216,6 +221,7 @@ void new_game();
 void create_hmap();
 void gen_chunk();
 void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light);
+void set_gndheight(int x, int y, int z);
 void recalc_gndheight(int x, int z);
 void remove_sunlight(int px, int py, int pz);
 int step_sunlight();
@@ -338,7 +344,12 @@ void chunk_builder()
         gen_chunk(xlo-1, xhi+1, zlo-1, zhi+1);
         nr_chunks_generated++;
         chunk_gen_ticks += SDL_GetTicks() - ticks_before;
-        fprintf(stderr, "Time per chunk gen: %0.3f\n", (float)chunk_gen_ticks / nr_chunks_generated / 1000.f);
+
+        if (show_time_per_chunk)
+        {
+                fprintf(stderr, "Time per chunk gen: %0.3f\n", (float)chunk_gen_ticks / nr_chunks_generated / 1000.f);
+                show_time_per_chunk = false;
+        }
 
         already_generated[best_x][best_z] = true;
 
@@ -544,7 +555,7 @@ void build_test_area()
         for (int x = tx; x < tx+20; x++) for (int z = tz; z < tz+20; z++) for (int y = 0; y < ty+20; y++)
         {
                 int on_edge = (x == tx || x == tx+19 || z == tz || z == tz+19);
-                if (y == ty - 5)
+                if (y == ty - 5) // ceiling
                 {
                         if (on_edge)
                         {
@@ -555,16 +566,20 @@ void build_test_area()
                         {
                                 T_(x, y, z) = GRAN;
                                 SUN_(x, y, z) = 0;
+                                set_gndheight(x, y, z);
                         }
                 }
-                else if (y < ty + 1)
+                else if (y < ty + 1) // space inside
                 {
                         T_(x, y, z) = OPEN;
                         SUN_(x, y, z) = 0;
                         if (on_edge)
+                        {
+                                set_gndheight(x, y, z);
                                 sun_enqueue(x, y, z, 0, 15);
+                        }
                 }
-                else
+                else // floor
                 {
                         T_(x, y, z) = GRAN;
                         SUN_(x, y, z) = 0;
@@ -658,6 +673,9 @@ void key_move(int down)
                 case SDLK_t: // build lighting testing area
                         if (down) build_test_area();
                         break;
+                case SDLK_c: // chunk gen stats
+                        if (down) show_time_per_chunk = true;
+                        break;
                 case SDLK_F3: // show FPS and timings etc.
                         if (!down) noisy = !noisy;
                         break;
@@ -708,7 +726,7 @@ void mouse_button(int down)
 
 void move_to_ground(float *inout, int x, int y, int z)
 {
-        *inout = gndheight[z][x] * BS - PLYR_H - 1;
+        *inout = gndheight[x][z] * BS - PLYR_H - 1;
 }
 
 void init_player()
@@ -729,7 +747,7 @@ void new_game()
         while(just_gen_len < 1)
                 ; // wait for worker thread build first chunk
 
-        printf("Chunk generated, ready to start game\n");
+        printf("1st chunk generated, ready to start game\n");
 
         recalc_gndheight(STARTPX/BS, STARTPZ/BS);
         move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
@@ -1009,6 +1027,10 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         break;
                 }
         }
+
+        // FIXME: speed boost by calculating this as we generate, above?
+        for (int x = xlo+1; x < xhi-1; x++) for (int z = zlo-1; z < zhi+1; z++)
+                recalc_gndheight(x, z);
 }
 
 void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
@@ -1034,7 +1056,10 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
         SUN_(x, y, z) = incoming_light;
 
         if (sq_next_len >= SUNQLEN)
+        {
+                sunq_outta_room++;
                 return; // out of room in sun queue
+        }
 
         for (size_t i = base; i < sq_curr_len; i++)
                 if (sunq_curr[i].x == x && sunq_curr[i].y == y && sunq_curr[i].z == z)
@@ -1051,31 +1076,20 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
 }
 
 // find highest block and relight from sun
+void set_gndheight(int x, int y, int z)
+{
+        gndheight[x][z] = y;
+}
+
 void recalc_gndheight(int x, int z)
 {
         int y;
-        for (y = 0; y < TILESH; y++)
+        for (y = 0; y < TILESH-1; y++)
         {
                 if (T_(x, y, z) != OPEN)
-                {
-                        gndheight[z][x] = y;
-
-                        if (y)
-                        {
-                                SUN_(x, y-1, z) = 0; // prevent short out:
-                                sun_enqueue(x, y-1, z, SUNQLEN, 15);
-                        }
-
                         break;
-                }
-                SUN_(x, y, z) = 15; // light pure sky
         }
-
-        // continue darkening
-        for (; y < TILESH; y++)
-        {
-                SUN_(x, y, z) = 0;
-        }
+        set_gndheight(x, y, z);
 }
 
 int step_sunlight()
@@ -1150,8 +1164,6 @@ void update_world()
                                 break;
                         }
                 }
-
-                //if (rand() % 10 == 0) recalc_gndheight(x, -1, z);
         }
 }
 
@@ -1181,12 +1193,12 @@ void remove_sunlight(int px, int py, int pz)
         for (int y = 0; y < TILESH-1; y++)
                 if (IS_OPAQUE(px, y, pz))
                 {
-                        gndheight[pz][px] = y;
+                        gndheight[px][pz] = y;
                         break;
                 }
 
         // i am in direct sunlight, no need to remove light
-        if (gndheight[pz][px] > py)
+        if (gndheight[px][pz] > py)
                 return;
 
         int incoming_light = 0;
@@ -1280,18 +1292,34 @@ void update_player(struct player *p, int real)
                 int x = target_x;
                 int y = target_y;
                 int z = target_z;
-                T_(x, y, z) = OPEN;
-                //if (y == gndheight[z][x]) recalc_gndheight(x, z);
                 unsigned char max = 0;
-                if (x > 0        && SUN_(x-1, y  , z  ) > max) max = SUN_(x-1, y  , z  );
-                if (x < TILESW-1 && SUN_(x+1, y  , z  ) > max) max = SUN_(x+1, y  , z  );
-                /*
-                if (y > 0        && SUN_(x  , y-1, z  ) > max) max = SUN_(x  , y-1, z  );
-                if (y < TILESH-1 && SUN_(x  , y+1, z  ) > max) max = SUN_(x  , y+1, z  );
-                */
-                if (z > 0        && SUN_(x  , y  , z-1) > max) max = SUN_(x  , y  , z-1);
-                if (z < TILESD-1 && SUN_(x  , y  , z+1) > max) max = SUN_(x  , y  , z+1);
-                sun_enqueue(target_x, target_y, target_z, 0, max ? max - 1 : 0);
+                T_(x, y, z) = OPEN;
+
+                // gndheight needs to change if we broke the ground
+                if (AT_GROUND(x, y, z))
+                        recalc_gndheight(x, z);
+
+                if (ABOVE_GROUND(x, y, z))
+                {
+                        while (y <= TILESH-1)
+                        {
+                                sun_enqueue(x, y, z, 0, 15);
+                                y++;
+                                if (!ABOVE_GROUND(x, y, z)) break;
+                        }
+                }
+                else
+                {
+                        if (x > 0        && SUN_(x-1, y  , z  ) > max) max = SUN_(x-1, y  , z  );
+                        if (x < TILESW-1 && SUN_(x+1, y  , z  ) > max) max = SUN_(x+1, y  , z  );
+                        /*
+                        if (y > 0        && SUN_(x  , y-1, z  ) > max) max = SUN_(x  , y-1, z  );
+                        if (y < TILESH-1 && SUN_(x  , y+1, z  ) > max) max = SUN_(x  , y+1, z  );
+                        */
+                        if (z > 0        && SUN_(x  , y  , z-1) > max) max = SUN_(x  , y  , z-1);
+                        if (z < TILESD-1 && SUN_(x  , y  , z+1) > max) max = SUN_(x  , y  , z+1);
+                        sun_enqueue(x, y, z, 0, max ? max - 1 : 0);
+                }
                 p->cooldown = 5;
         }
 
@@ -1299,7 +1327,10 @@ void update_player(struct player *p, int real)
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
                 {
                         T_(place_x, place_y, place_z) = HARD;
-                        //recalc_gndheight(x, -1, z);
+
+                        if (ABOVE_GROUND(place_x, place_y, place_z))
+                                set_gndheight(place_x, place_y, place_z);
+
                         remove_sunlight(place_x, place_y, place_z);
                 }
                 p->cooldown = 10;
@@ -1897,5 +1928,11 @@ void debrief()
                 last_ticks = ticks;
                 last_frame = frame;
                 polys = 0;
+        }
+
+        if (sunq_outta_room)
+        {
+                fprintf(stderr, "Out of room in the sun queue (error %d times)\n", sunq_outta_room);
+                sunq_outta_room = 0;
         }
 }
