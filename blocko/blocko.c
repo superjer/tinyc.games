@@ -719,7 +719,7 @@ void key_move(int down)
                         if (down) show_time_per_chunk = true;
                         break;
                 case SDLK_o: // openmp stats
-                        if (down) printf("Number of Chunk Gen threads: %d\n", omp_threads);
+                        if (down) printf("Number of OMP chunk gen threads: %d\n", omp_threads);
                         break;
                 case SDLK_F3: // show FPS and timings etc.
                         if (!down) noisy = !noisy;
@@ -1259,10 +1259,8 @@ int step_sunlight()
                 if (pass_on) pass_on--; else continue;
                 if (x           ) sun_enqueue(x-1, y  , z  , i+1, pass_on);
                 if (x < TILESW-1) sun_enqueue(x+1, y  , z  , i+1, pass_on);
-                /*
                 if (y           ) sun_enqueue(x  , y-1, z  , i+1, pass_on);
                 if (y < TILESH-1) sun_enqueue(x  , y+1, z  , i+1, pass_on);
-                */
                 if (z           ) sun_enqueue(x  , y  , z-1, i+1, pass_on);
                 if (z < TILESD-1) sun_enqueue(x  , y  , z+1, i+1, pass_on);
         }
@@ -1358,11 +1356,9 @@ void remove_sunlight(int px, int py, int pz)
         // find valid neighbors to check
         if (px > 0       ) check_list[check_len++] = QITEM(px-1, py  , pz  );
         if (px < TILESW-1) check_list[check_len++] = QITEM(px+1, py  , pz  );
-        /*
         if (py > 0       ) check_list[check_len++] = QITEM(px  , py-1, pz  );
         // never spread sunlight value 15 upward:
         if (py < TILESH-1 && SUN_(px,py+1,pz) != 15) check_list[check_len++] = QITEM(px  , py+1, pz  );
-        */
         if (pz < TILESD-1) check_list[check_len++] = QITEM(px  , py  , pz+1);
         if (pz > 0       ) check_list[check_len++] = QITEM(px  , py  , pz-1);
 
@@ -1466,10 +1462,8 @@ void update_player(struct player *p, int real)
                 {
                         if (x > 0        && SUN_(x-1, y  , z  ) > max) max = SUN_(x-1, y  , z  );
                         if (x < TILESW-1 && SUN_(x+1, y  , z  ) > max) max = SUN_(x+1, y  , z  );
-                        /*
                         if (y > 0        && SUN_(x  , y-1, z  ) > max) max = SUN_(x  , y-1, z  );
                         if (y < TILESH-1 && SUN_(x  , y+1, z  ) > max) max = SUN_(x  , y+1, z  );
-                        */
                         if (z > 0        && SUN_(x  , y  , z-1) > max) max = SUN_(x  , y  , z-1);
                         if (z < TILESD-1 && SUN_(x  , y  , z+1) > max) max = SUN_(x  , y  , z+1);
                         sun_enqueue(x, y, z, 0, max ? max - 1 : 0);
