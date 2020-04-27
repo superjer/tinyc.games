@@ -523,7 +523,9 @@ void setup()
                 // transparent:
                 "res/leaves_red.png", // 16
                 "res/leaves_gold.png",// 17
-                "res/0.png",          // 18
+                "res/mushlite.png",   // 18
+                #define PNG0 19
+                "res/0.png",          // 19
                 "res/1.png",
                 "res/2.png",
                 "res/3.png",
@@ -1643,7 +1645,14 @@ void update_player(struct player *p, int real)
                 int y = target_y;
                 int z = target_z;
                 unsigned char max = 0;
+                int broken = T_(x, y, z);
                 T_(x, y, z) = OPEN;
+
+                if (broken == LITE)
+                {
+                        remove_glolight(x, y, z);
+                        goto out;
+                }
 
                 // gndheight needs to change if we broke the ground
                 if (AT_GROUND(x, y, z))
@@ -1678,6 +1687,7 @@ void update_player(struct player *p, int real)
                 if (z < TILESD-1 && GLO_(x  , y  , z+1) > max) max = GLO_(x  , y  , z+1);
                 glo_enqueue(x, y, z, 0, max ? max - 1 : 0);
 
+                out:
                 p->cooldown = 5;
         }
 
@@ -2273,10 +2283,17 @@ void draw_stuff()
                                         *w++ = (struct vbufv){ f,  DOWN, x, y-0.94f, z, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f };
                                 }
                         }
+                        else if (t == LITE)
+                        {
+                                *w++ = (struct vbufv){ 18, SOUTH, x     , y, z+0.5f, use, usw, dse, dsw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                *w++ = (struct vbufv){ 18, NORTH, x     , y, z-0.5f, unw, une, dnw, dne, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                *w++ = (struct vbufv){ 18,  WEST, x+0.5f, y, z     , usw, unw, dsw, dnw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                *w++ = (struct vbufv){ 18,  EAST, x-0.5f, y, z     , une, use, dne, dse, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                        }
 
                         if (show_light_values && in_test_area(x, y, z))
                         {
-                                int f = GLO_(x, y, z) + 18;
+                                int f = GLO_(x, y, z) + PNG0;
                                 int ty = y;
                                 float lit = 1.f;
                                 if (IS_OPAQUE(x, y, z))
