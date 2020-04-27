@@ -143,9 +143,24 @@ volatile char already_generated[VAOW][VAOD];
 #define DIST(dx, dy, dz) (sqrt(DIST_SQ(dx, dy, dz)))
 
 // dumb rand -- for simple deterministic rand
-unsigned int dumbseed = 0;
-unsigned int dumb() { return (dumbseed = (1103515245 * dumbseed + 12345) % 2147483648); }
-unsigned int sdumb(int s) { dumbseed = (unsigned int)s; return dumb(); }
+unsigned int dumb_rand(int *seed) { return (*seed = (1103515245 * *seed + 12345) % 2147483648); }
+// helpers for dumb rand, must have local var called seed for all of these
+#define RAND (abs(dumb_rand(&seed)))
+// random float in the range 0-1
+#define RAND01 ((double)RAND / 2147483648.0)
+// random int in the range lo to hi
+#define RANDI(lo,hi) ((RAND % (1 + (hi) - (lo))) + (lo))
+// random float in the range lo to hi
+#define RANDF(lo,hi) (RAND01 * ((hi) - (lo)) + (lo))
+// random true/false, true pct percent of the time
+#define RANDP(pct) (RAND01 * 100.0 <= (double)(pct))
+// randomly true or false 50/50
+#define RANDBOOL (RAND % 2 == 0)
+// helpers for deterministically setting seed from several values, plus world_seed
+#define SEED1(a)       (world_seed ^ (a << 4))
+#define SEED2(a,b)     (world_seed ^ (a << 4) ^ (b << 8))
+#define SEED3(a,b,c)   (world_seed ^ (a << 4) ^ (b << 8) ^ (c << 12))
+#define SEED4(a,b,c,d) (world_seed ^ (a << 4) ^ (b << 8) ^ (c << 12) ^ (d << 16))
 
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
@@ -191,7 +206,7 @@ struct point lerped_pos;
 //globals
 int frame = 0;
 int pframe = 0;
-int world_seed = 0;
+int world_seed = 160659;
 int noisy = false;
 int show_fresh_updates = false;
 int show_time_per_chunk = false;
@@ -401,13 +416,11 @@ int main()
 //initial setup to get the window and rendering going
 void setup()
 {
-        world_seed = 2020;
-        srand(world_seed);
-        open_simplex_noise(time(NULL), &osn_context);
+        open_simplex_noise(world_seed, &osn_context);
 
-        tiles = malloc(TILESD * TILESH * TILESW * sizeof *tiles);
-        sunlight = malloc((TILESD+1) * (TILESH+1) * (TILESW+1) * sizeof *sunlight);
-        cornlight = malloc((TILESD+2) * (TILESH+2) * (TILESW+2) * sizeof *cornlight);
+        tiles = calloc(TILESD * TILESH * TILESW, sizeof *tiles);
+        sunlight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *sunlight);
+        cornlight = calloc((TILESD+2) * (TILESH+2) * (TILESW+2), sizeof *cornlight);
 
         SDL_Init(SDL_INIT_VIDEO);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
@@ -779,11 +792,13 @@ float hmap2[TILESW][TILESD];
 
 void gen_hmap(int x0, int x2, int z0, int z2)
 {
+        int seed = SEED4(x0, x2, z0, z2);
+
         // pick corners if they aren't set
-        if (hmap[x0][z0] == 0) hmap[x0][z0] = 64 + rand() % 64;
-        if (hmap[x0][z2] == 0) hmap[x0][z2] = 64 + rand() % 64;
-        if (hmap[x2][z0] == 0) hmap[x2][z0] = 64 + rand() % 64;
-        if (hmap[x2][z2] == 0) hmap[x2][z2] = 64 + rand() % 64;
+        if (hmap[x0][z0] == 0) hmap[x0][z0] = RANDI(64, 127);
+        if (hmap[x0][z2] == 0) hmap[x0][z2] = RANDI(64, 127);
+        if (hmap[x2][z0] == 0) hmap[x2][z0] = RANDI(64, 127);
+        if (hmap[x2][z2] == 0) hmap[x2][z2] = RANDI(64, 127);
 
         int x1 = (x0 + x2) / 2;
         int z1 = (z0 + z2) / 2;
@@ -791,21 +806,21 @@ void gen_hmap(int x0, int x2, int z0, int z2)
         int d = (z2 - z0) / 4;
         w = w ? w : 1;
         d = d ? d : 1;
-
+        float d2 = d / 2.f;
         float r = w > 2 ? 1.f : 0.f;
 
         // edges middles
         if (!hmap[x0][z1])
-                hmap[x0][z1] = (hmap[x0][z0] + hmap[x0][z2]) / 2.f + r * ((rand() % d) - d / 2.f);
+                hmap[x0][z1] = (hmap[x0][z0] + hmap[x0][z2]) / 2.f + r * RANDF(-d2, d2);
         if (!hmap[x2][z1])
-                hmap[x2][z1] = (hmap[x2][z0] + hmap[x2][z2]) / 2.f + r * ((rand() % d) - d / 2.f);
+                hmap[x2][z1] = (hmap[x2][z0] + hmap[x2][z2]) / 2.f + r * RANDF(-d2, d2);
         if (!hmap[x1][z0])
-                hmap[x1][z0] = (hmap[x0][z0] + hmap[x2][z0]) / 2.f + r * ((rand() % d) - d / 2.f);
+                hmap[x1][z0] = (hmap[x0][z0] + hmap[x2][z0]) / 2.f + r * RANDF(-d2, d2);
         if (!hmap[x1][z2])
-                hmap[x1][z2] = (hmap[x0][z2] + hmap[x2][z2]) / 2.f + r * ((rand() % d) - d / 2.f);
+                hmap[x1][z2] = (hmap[x0][z2] + hmap[x2][z2]) / 2.f + r * RANDF(-d2, d2);
 
         // middle middle
-        hmap[x1][z1] = (hmap[x0][z1] + hmap[x2][z1] + hmap[x1][z0] + hmap[x1][z2]) / 4.f + r * ((rand() % (d * 2)) - d);
+        hmap[x1][z1] = (hmap[x0][z1] + hmap[x2][z1] + hmap[x1][z0] + hmap[x1][z2]) / 4.f + r * RANDF(-d, d);
 
         // recurse if there are any unfilled spots
         if(x1 - x0 > 1 || x2 - x1 > 1 || z1 - z0 > 1 || z2 - z1 > 1)
@@ -930,7 +945,6 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 int slicey_bit = false;
                 int plateau_bit = false;
                 int mode = p1080 > 0 ? 1 : 10;
-                unsigned char light_level = 15;
 
                 for (int y = 0; y < TILESH; y++)
                 {
@@ -958,7 +972,8 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
                         if ((cave || platted) && !plateau_bit)
                         {
-                                if (!slicey_bit || rand() % 20 == 0)
+                                int seed = SEED2(x, z);
+                                if (!slicey_bit || RANDP(5))
                                 {
                                         int type = (y > 100 && hmap2[x][z] > 99) ? WATR : OPEN; //only allow water below low heightmap
                                         T_(x, y, z) = type;
@@ -989,18 +1004,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         else if (y < 120          )   T_(x, y, z) = solid_depth < 4 + 5 * p9 ? SAND : ston;
                         else                          T_(x, y, z) = HARD;
 
-                        out:
-                        if (T_(x, y, z) == WATR)
-                        {
-                                if (light_level) light_level--;
-                                if (light_level) light_level--;
-                        }
-                        else if (T_(x, y, z) < OPEN)
-                        {
-                                light_level = 0;
-                        }
-
-                        SUN_(x, y, z) = light_level;
+                        out: ;
                 }
         }
 
@@ -1011,30 +1015,21 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         // lower bound         /
         int rxlo = (int)((xlo+1) / REGW) * REGW;
         int rzlo = (int)((zlo+1) / REGD) * REGD;
-        sdumb((rxlo + (rzlo << 8)) ^ world_seed);
+        int seed = SEED2(rxlo, rzlo);
         // find region center
         int rxcenter = rxlo + REGW/2;
         int rzcenter = rzlo + REGD/2;
-        struct point PC = (struct point){rxcenter, TILESH - 1 - dumb()%25, rzcenter};
+        struct point PC = (struct point){rxcenter, TILESH - RANDI(1, 25), rzcenter};
         struct point P0;
         struct point P1;
         struct point P2;
         struct point P3 = PC;
-        int nr_caves = dumb() % 100;
-
-        static int once = true;
-        if (once)
-        {
-                printf("rxlo rzlo %d %d\n", rxlo, rzlo);
-                printf("region center %d %d\n", rxcenter, rzcenter);
-                printf("PC %f %f %f\n", PC.x, PC.y, PC.z);
-                once = false;
-        }
+        int nr_caves = RANDI(0, 100);
 
         // cave system stretchiness
-        int sx = 20 + (dumb()%50) * 2;
-        int sy = 20 + (dumb()%50) * 2;
-        int sz = 20 + (dumb()%50) * 2;
+        int sx = RANDI(10, 60);
+        int sy = RANDI(10, 60);
+        int sz = RANDI(10, 60);
 
         #define MAX_CAVE_POINTS 10000
         #define QCAVE(x,y,z,radius_sq) ((struct qcave){x, y, z, radius_sq})
@@ -1044,10 +1039,10 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         for (int i = 0; i < nr_caves; i++)
         {
                 // random walk from center of region, or end of last curve
-                P0 = (dumb() % 3 == 0) ? PC : P3;
-                P1 = (struct point){P0.x + dumb()%sx - sx/2, P0.y + dumb()%sy - sy/2, P0.z + dumb()%sz - sz/2};
-                P2 = (struct point){P1.x + dumb()%sx - sx/2, P1.y + dumb()%sy - sy/2, P1.z + dumb()%sz - sz/2};
-                P3 = (struct point){P2.x + dumb()%sx - sx/2, P2.y + dumb()%sy - sy/2, P2.z + dumb()%sz - sz/2};
+                P0 = RANDP(33) ? PC : P3;
+                P1 = (struct point){P0.x + RANDI(-sx, sx), P0.y + RANDI(-sy, sy), P0.z + RANDI(-sz, sz)};
+                P2 = (struct point){P1.x + RANDI(-sx, sx), P1.y + RANDI(-sy, sy), P1.z + RANDI(-sz, sz)};
+                P3 = (struct point){P2.x + RANDI(-sx, sx), P2.y + RANDI(-sy, sy), P2.z + RANDI(-sz, sz)};
 
                 float root_radius = 0.f, delta = 0.f;
 
@@ -1055,10 +1050,10 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 {
                         if (cave_p_len >= MAX_CAVE_POINTS) break;
 
-                        if (root_radius == 0.f || dumb() % 500 == 0)
+                        if (root_radius == 0.f || RANDP(0.002f))
                         {
-                                root_radius = (float)(dumb() % 50) / 50.f;
-                                delta = (float)(dumb() % 100) / 50000.f - 0.001f;
+                                root_radius = RAND01;
+                                delta = RANDF(-0.001f, 0.001f);
                         }
 
                         root_radius += delta;
@@ -1088,20 +1083,6 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         }
                 }
 
-        // outline regions
-        for (int i = 0; i <= REGW; i++) for (int j = 0; j <= REGD; j++)
-        {
-                int x = rxlo + i;
-                int z = rzlo + j;
-                if (x < xlo || x > xhi || z < zlo || z > zhi) continue;
-                int block = OPEN;
-                if (x == rxlo+1) block = GRAN;
-                if (z == rzlo+1) block = SAND;
-                if (x == rxlo+REGW-2) block = HARD;
-                if (z == rzlo+REGD-2) block = STON;
-                T_(x, 0, z) = T_(x, 1, z) = T_(x, 2, z) = T_(x, 3, z) = block;
-        }
-
         // correcting pass over middle, contain floating water
         #pragma omp parallel for
         for (int x = xlo+1; x < xhi-1; x++) for (int z = zlo-1; z < zhi+1; z++) for (int y = 100; y < TILESH-2; y++)
@@ -1119,12 +1100,13 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
         // trees?
         float p191 = noise(zlo, 0, xlo, 191);
-        if (p191 > 0.2f) while (rand() % 20 < 18)
+        seed = SEED2(xlo, zlo);
+        if (p191 > 0.2f) while (RANDP(95))
         {
-                char leaves = rand() % 2 ? RLEF : YLEF;
-                float radius = (float)(rand()%300) * 0.01f + 1.0f;
-                int x = xlo + CHUNKW/2 + 5 - (rand() % 11);
-                int z = zlo + CHUNKD/2 + 5 - (rand() % 11);
+                char leaves = RANDBOOL ? RLEF : YLEF;
+                float radius = RANDF(1.f, 4.f);
+                int x = xlo + CHUNKW/2 + RANDI(-5, 5);
+                int z = zlo + CHUNKD/2 + RANDI(-5, 5);
                 for (int y = 10; y < TILESH-2; y++)
                 {
                         if (T_(x, y, z) == OPEN)
@@ -1134,10 +1116,10 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                                 break;
 
                         int yy = y;
-                        for (; yy >= y - 3 - (rand() % 6); yy--)
+                        for (; yy >= y - RANDI(3, 8); yy--)
                                 T_(x, yy, z) = WOOD;
 
-                        int ymax = yy + 4 - rand() % 3;
+                        int ymax = yy + RANDI(2, 4);
 
                         for (int i = x-3; i <= x+3; i++) for (int j = yy-3; j <= ymax; j++) for (int k = z-3; k <= z+3; k++)
                         {
@@ -1150,9 +1132,40 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 }
         }
 
-        // FIXME: speed boost by calculating this as we generate, above?
+        // cleanup gndheight and set initial lighting
+        #pragma omp parallel for
         for (int x = xlo+1; x < xhi-1; x++) for (int z = zlo-1; z < zhi+1; z++)
-                recalc_gndheight(x, z);
+        {
+                int above_ground = true;
+                int light_level = 15;
+                int wet = false;
+
+                for (int y = 0; y < TILESH-1; y++)
+                {
+                        if (above_ground && IS_OPAQUE(x, y, z))
+                        {
+                                set_gndheight(x, y, z);
+                                above_ground = false;
+                                light_level = 0;
+                                if (y) sun_enqueue(x, y-1, z, 0, light_level);
+                        }
+
+                        if (wet && T_(x, y, z) == OPEN)
+                                T_(x, y, z) = WATR;
+
+                        if (wet && IS_SOLID(x, y, z))
+                                wet = false;
+
+                        if (T_(x, y, z) == WATR)
+                        {
+                                wet = true;
+                                if (light_level) light_level--;
+                                if (light_level) light_level--;
+                        }
+
+                        SUN_(x, y, z) = light_level;
+                }
+        }
 }
 
 void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
@@ -1259,9 +1272,10 @@ void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
 void update_world()
 {
         int i, x, y, z;
+        int seed = SEED1(pframe);
         for (i = 0; i < 500; i++) {
-                x = 1 + rand() % (TILESW - 2);
-                z = 1 + rand() % (TILESD - 2);
+                x = RANDI(1, TILESW - 2);
+                z = RANDI(1, TILESD - 2);
 
                 for (y = 1; y < TILESH - 1; y++) {
                         if (0) ;
