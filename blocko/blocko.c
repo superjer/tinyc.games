@@ -138,6 +138,15 @@ volatile char already_generated[VAOW][VAOD];
 #define AT_GROUND(x,y,z)    (gndheight[x][z] == y)
 #define BELOW_GROUND(x,y,z) (gndheight[x][z] <  y)
 
+#define QITEM(x,y,z) ((struct qitem){x, y, z})
+#define DIST_SQ(dx, dy, dz) ((dx)*(dx) + (dy)*(dy) + (dz)*(dz))
+#define DIST(dx, dy, dz) (sqrt(DIST_SQ(dx, dy, dz)))
+
+// dumb rand -- for simple deterministic rand
+unsigned int dumbseed = 0;
+unsigned int dumb() { return (dumbseed = (1103515245 * dumbseed + 12345) % 2147483648); }
+unsigned int sdumb(int s) { dumbseed = (unsigned int)s; return dumb(); }
+
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
 struct qchunk { int x, y, z, sqdist; };
@@ -149,6 +158,8 @@ struct qitem *sunq_curr = sunq0_;
 struct qitem *sunq_next = sunq1_;
 size_t sq_curr_len;
 size_t sq_next_len;
+
+struct qcave { int x, y, z; int radius_sq; };
 
 struct player {
         struct box pos;
@@ -180,11 +191,13 @@ struct point lerped_pos;
 //globals
 int frame = 0;
 int pframe = 0;
+int world_seed = 0;
 int noisy = false;
 int show_fresh_updates = false;
 int show_time_per_chunk = false;
 int polys = 0;
 int sunq_outta_room = 0;
+int omp_threads = 0;
 
 int mouselook = true;
 int target_x, target_y, target_z;
@@ -365,7 +378,7 @@ void chunk_builder()
 //one thread for worker (chunk builder) and one for main loop (phys + renderer)
 int main()
 {
-        omp_set_nested(1);
+        omp_set_nested(1); // needed or omp won't parallelize chunk gen
 
         #pragma omp parallel sections
         {
@@ -388,7 +401,8 @@ int main()
 //initial setup to get the window and rendering going
 void setup()
 {
-        srand(time(NULL));
+        world_seed = 2020;
+        srand(world_seed);
         open_simplex_noise(time(NULL), &osn_context);
 
         tiles = malloc(TILESD * TILESH * TILESW * sizeof *tiles);
@@ -680,6 +694,9 @@ void key_move(int down)
                 case SDLK_c: // chunk gen stats
                         if (down) show_time_per_chunk = true;
                         break;
+                case SDLK_o: // openmp stats
+                        if (down) printf("Number of Chunk Gen threads: %d\n", omp_threads);
+                        break;
                 case SDLK_F3: // show FPS and timings etc.
                         if (!down) noisy = !noisy;
                         break;
@@ -886,7 +903,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
         {
                 if (x == xlo && z == zlo)
-                        printf("I'm thread #%d out of %d threads\n", omp_get_thread_num(), omp_get_num_threads());
+                        omp_threads = omp_get_num_threads();
 
                 if (column_already_generated[x][z])
                         continue;
@@ -987,7 +1004,105 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 }
         }
 
-        // correcting pass over middle
+        // find nearby bezier curvy caves
+        #define REGW (CHUNKW*16)
+        #define REGD (CHUNKD*16)
+        // find region          ,-- have to add 1 bc we're overdrawing chunks
+        // lower bound         /
+        int rxlo = (int)((xlo+1) / REGW) * REGW;
+        int rzlo = (int)((zlo+1) / REGD) * REGD;
+        sdumb((rxlo + (rzlo << 8)) ^ world_seed);
+        // find region center
+        int rxcenter = rxlo + REGW/2;
+        int rzcenter = rzlo + REGD/2;
+        struct point PC = (struct point){rxcenter, TILESH - 1 - dumb()%25, rzcenter};
+        struct point P0;
+        struct point P1;
+        struct point P2;
+        struct point P3 = PC;
+        int nr_caves = dumb() % 100;
+
+        static int once = true;
+        if (once)
+        {
+                printf("rxlo rzlo %d %d\n", rxlo, rzlo);
+                printf("region center %d %d\n", rxcenter, rzcenter);
+                printf("PC %f %f %f\n", PC.x, PC.y, PC.z);
+                once = false;
+        }
+
+        // cave system stretchiness
+        int sx = 20 + (dumb()%50) * 2;
+        int sy = 20 + (dumb()%50) * 2;
+        int sz = 20 + (dumb()%50) * 2;
+
+        #define MAX_CAVE_POINTS 10000
+        #define QCAVE(x,y,z,radius_sq) ((struct qcave){x, y, z, radius_sq})
+        struct qcave cave_points[MAX_CAVE_POINTS];
+        int cave_p_len = 0;
+
+        for (int i = 0; i < nr_caves; i++)
+        {
+                // random walk from center of region, or end of last curve
+                P0 = (dumb() % 3 == 0) ? PC : P3;
+                P1 = (struct point){P0.x + dumb()%sx - sx/2, P0.y + dumb()%sy - sy/2, P0.z + dumb()%sz - sz/2};
+                P2 = (struct point){P1.x + dumb()%sx - sx/2, P1.y + dumb()%sy - sy/2, P1.z + dumb()%sz - sz/2};
+                P3 = (struct point){P2.x + dumb()%sx - sx/2, P2.y + dumb()%sy - sy/2, P2.z + dumb()%sz - sz/2};
+
+                float root_radius = 0.f, delta = 0.f;
+
+                for (float t = 0.f; t <= 1.f; t += 0.001f)
+                {
+                        if (cave_p_len >= MAX_CAVE_POINTS) break;
+
+                        if (root_radius == 0.f || dumb() % 500 == 0)
+                        {
+                                root_radius = (float)(dumb() % 50) / 50.f;
+                                delta = (float)(dumb() % 100) / 50000.f - 0.001f;
+                        }
+
+                        root_radius += delta;
+                        float radius_sq = root_radius * root_radius * root_radius * root_radius * 50.f;
+                        CLAMP(radius_sq, 1.f, 50.f);
+
+                        float s = 1.f - t;
+                        int x = (int)(s*s*s*P0.x + 3.f*t*s*s*P1.x + 3.f*t*t*s*P2.x + t*t*t*P3.x);
+                        int y = (int)(s*s*s*P0.y + 3.f*t*s*s*P1.y + 3.f*t*t*s*P2.y + t*t*t*P3.y);
+                        int z = (int)(s*s*s*P0.z + 3.f*t*s*s*P1.z + 3.f*t*t*s*P2.z + t*t*t*P3.z);
+                        // TODO: don't store duplicate cave points?
+                        if (x >= xlo && x <= xhi && y >= 0 && y <= TILESD - 1 && z >= zlo && z <= zhi)
+                                cave_points[cave_p_len++] = QCAVE(x, y, z, radius_sq);
+                }
+        }
+
+        // carve caves
+        #pragma omp parallel for
+        for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH-2; y++)
+                for (int i = 0; i < cave_p_len; i++)
+                {
+                        int dist_sq = DIST_SQ(cave_points[i].x - x, cave_points[i].y - y, cave_points[i].z - z);
+                        if (dist_sq <= cave_points[i].radius_sq)
+                        {
+                                T_(x, y, z) = OPEN;
+                                break;
+                        }
+                }
+
+        // outline regions
+        for (int i = 0; i <= REGW; i++) for (int j = 0; j <= REGD; j++)
+        {
+                int x = rxlo + i;
+                int z = rzlo + j;
+                if (x < xlo || x > xhi || z < zlo || z > zhi) continue;
+                int block = OPEN;
+                if (x == rxlo+1) block = GRAN;
+                if (z == rzlo+1) block = SAND;
+                if (x == rxlo+REGW-2) block = HARD;
+                if (z == rzlo+REGD-2) block = STON;
+                T_(x, 0, z) = T_(x, 1, z) = T_(x, 2, z) = T_(x, 3, z) = block;
+        }
+
+        // correcting pass over middle, contain floating water
         #pragma omp parallel for
         for (int x = xlo+1; x < xhi-1; x++) for (int z = zlo-1; z < zhi+1; z++) for (int y = 100; y < TILESH-2; y++)
         {
@@ -1212,15 +1327,15 @@ void remove_sunlight(int px, int py, int pz)
         int future_light = 0;
 
         // find valid neighbors to check
-        if (px > 0       ) check_list[check_len++] = (struct qitem){px-1, py  , pz  };
-        if (px < TILESW-1) check_list[check_len++] = (struct qitem){px+1, py  , pz  };
+        if (px > 0       ) check_list[check_len++] = QITEM(px-1, py  , pz  );
+        if (px < TILESW-1) check_list[check_len++] = QITEM(px+1, py  , pz  );
         /*
-        if (py > 0       ) check_list[check_len++] = (struct qitem){px  , py-1, pz  };
+        if (py > 0       ) check_list[check_len++] = QITEM(px  , py-1, pz  );
         // never spread sunlight value 15 upward:
-        if (py < TILESH-1 && SUN_(px,py+1,pz) != 15) check_list[check_len++] = (struct qitem){px  , py+1, pz  };
+        if (py < TILESH-1 && SUN_(px,py+1,pz) != 15) check_list[check_len++] = QITEM(px  , py+1, pz  );
         */
-        if (pz > 0       ) check_list[check_len++] = (struct qitem){px  , py  , pz-1};
-        if (pz < TILESD-1) check_list[check_len++] = (struct qitem){px  , py  , pz+1};
+        if (pz < TILESD-1) check_list[check_len++] = QITEM(px  , py  , pz+1);
+        if (pz > 0       ) check_list[check_len++] = QITEM(px  , py  , pz-1);
 
         for (int i = 0; i < check_len; i++)
         {
@@ -1246,7 +1361,7 @@ void remove_sunlight(int px, int py, int pz)
                 // i could be the light source for this neighbor, need to recurse
                 if (SUN_(x, y, z) < my_light)
                 {
-                        recur_list[recur_len++] = (struct qitem){x, y, z};
+                        recur_list[recur_len++] = QITEM(x, y, z);
                 }
         }
 
