@@ -61,7 +61,7 @@ out float illum;                                                                
 out float glow;                                                                 \n\
 out float alpha;                                                                \n\
 out vec2 uv;                                                                    \n\
-out float fog;                                                                  \n\
+out float eyedist;                                                              \n\
                                                                                 \n\
 uniform mat4 model;                                                             \n\
 uniform mat4 view;                                                              \n\
@@ -120,43 +120,30 @@ void main(void) // geometry                                                     
                                                                                 \n\
     tex = tex_vs[0];                                                            \n\
     alpha = alpha_vs[0];                                                        \n\
-                                                                                \n\
-    vec4 eye = vec4(0, 0, 0, 1);                                                \n\
-    float dist = distance(eye, gl_in[0].gl_Position);                           \n\
-    if (dist >= 100000) fog = 1;                                                \n\
-    else if (dist <=  10000) fog = 0;                                           \n\
-    else fog = 1 - (100000 - dist) / (100000 - 10000);                          \n\
+    eyedist = length(gl_in[0].gl_Position);                                     \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + a;                                     \n\
     uv = vec2(1,0);                                                             \n\
     illum = (0.1 + illum_vs[0].x) * sidel;                                      \n\
     glow = (0.1 + glow_vs[0].x) * sidel;                                        \n\
-    dist = length(gl_Position);                                                 \n\
-    if (dist <= 1000) { illum = min(1, illum + 0.1-dist/9999); }                \n\
     EmitVertex();                                                               \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + b;                                     \n\
     uv = vec2(0,0);                                                             \n\
     illum = (0.1 + illum_vs[0].y) * sidel;                                      \n\
     glow = (0.1 + glow_vs[0].y) * sidel;                                        \n\
-    dist = length(gl_Position);                                                 \n\
-    if (dist <= 1000) { illum = min(1, illum + 0.1-dist/9999); }                \n\
     EmitVertex();                                                               \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + c;                                     \n\
     uv = vec2(1,1);                                                             \n\
     illum = (0.1 + illum_vs[0].z) * sidel;                                      \n\
     glow = (0.1 + glow_vs[0].z) * sidel;                                        \n\
-    dist = length(gl_Position);                                                 \n\
-    if (dist <= 1000) { illum = min(1, illum + 0.1-dist/9999); }                \n\
     EmitVertex();                                                               \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + d;                                     \n\
     uv = vec2(0,1);                                                             \n\
     illum = (0.1 + illum_vs[0].w) * sidel;                                      \n\
     glow = (0.1 + glow_vs[0].w) * sidel;                                        \n\
-    dist = length(gl_Position);                                                 \n\
-    if (dist <= 1000) { illum = min(1, illum + 0.1-dist/9999); }                \n\
     EmitVertex();                                                               \n\
                                                                                 \n\
     EndPrimitive();                                                             \n\
@@ -172,7 +159,7 @@ in float illum;                                                                 
 in float glow;                                                                  \n\
 in float alpha;                                                                 \n\
 in vec2 uv;                                                                     \n\
-in float fog;                                                                   \n\
+in float eyedist;                                                               \n\
                                                                                 \n\
 uniform sampler2DArray tarray;                                                  \n\
 uniform vec3 day_color;                                                         \n\
@@ -181,9 +168,13 @@ uniform vec3 fog_color;                                                         
                                                                                 \n\
 void main(void)                                                                 \n\
 {                                                                               \n\
-    vec3 sky = illum * day_color;                                               \n\
-    vec3 glo = glow * glo_color;                                                \n\
-    vec4 combined = vec4(max(sky.r, glo.r), max(sky.g, glo.g), max(sky.b, glo.b), alpha); \n\
+    float fog = smoothstep(10000, 100000, eyedist);                             \n\
+    float il = illum + 0.1 * smoothstep(1000, 0, eyedist);                      \n\
+                                                                                \n\
+    vec3 sky = vec3(il * day_color);                                            \n\
+    vec3 glo = vec3(glow * glo_color);                                          \n\
+    vec3 unsky = vec3(1 - sky.r, 1 - sky.g, 1 - sky.b);                         \n\
+    vec4 combined = vec4(sky + glo * unsky, alpha);                             \n\
     vec4 c = texture(tarray, vec3(uv, tex)) * combined;                         \n\
     if (c.a < 0.01) discard;                                                    \n\
     color = mix(c, vec4(fog_color, 1), fog);                                    \n\
