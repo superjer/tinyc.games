@@ -123,23 +123,31 @@ void main(void) // geometry                                                     
     else fog = 1 - (100000 - dist) / (100000 - 10000);                          \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + a;                                     \n\
-    illum = (0.1 + illum_vs[0].x) * sidel;                                      \n\
     uv = vec2(1,0);                                                             \n\
+    illum = (0.1 + illum_vs[0].x) * sidel;                                      \n\
+    dist = length(gl_Position);                                                 \n\
+    if (dist <= 1000) { illum = min(1, illum + 0.1-dist/9999); }                \n\
     EmitVertex();                                                               \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + b;                                     \n\
     uv = vec2(0,0);                                                             \n\
     illum = (0.1 + illum_vs[0].y) * sidel;                                      \n\
+    dist = length(gl_Position);                                                 \n\
+    if (dist <= 1000) { illum = min(1, illum + 0.1-dist/9999); }                \n\
     EmitVertex();                                                               \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + c;                                     \n\
     uv = vec2(1,1);                                                             \n\
     illum = (0.1 + illum_vs[0].z) * sidel;                                      \n\
+    dist = length(gl_Position);                                                 \n\
+    if (dist <= 1000) { illum = min(1, illum + 0.1-dist/9999); }                \n\
     EmitVertex();                                                               \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + d;                                     \n\
     uv = vec2(0,1);                                                             \n\
     illum = (0.1 + illum_vs[0].w) * sidel;                                      \n\
+    dist = length(gl_Position);                                                 \n\
+    if (dist <= 1000) { illum = min(1, illum + 0.1-dist/9999); }                \n\
     EmitVertex();                                                               \n\
                                                                                 \n\
     EndPrimitive();                                                             \n\
@@ -157,13 +165,15 @@ in vec2 uv;                                                                     
 in float fog;                                                                   \n\
                                                                                 \n\
 uniform sampler2DArray tarray;                                                  \n\
-uniform vec4 eye;                                                               \n\
+uniform vec3 day_color;                                                         \n\
+uniform vec3 fog_color;                                                         \n\
                                                                                 \n\
 void main(void)                                                                 \n\
 {                                                                               \n\
-    vec4 c = texture(tarray, vec3(uv, tex)) * vec4(illum, illum, illum, alpha); \n\
+    vec4 sky = vec4(illum * day_color, alpha);                                  \n\
+    vec4 c = texture(tarray, vec3(uv, tex)) * sky;                              \n\
     if (c.a < 0.01) discard;                                                    \n\
-    color = mix(c, vec4(0.31, 0.91, 1.01, alpha), fog);                         \n\
+    color = mix(c, vec4(fog_color, 1), fog);                                    \n\
 }                                                                               \n\
 ";
 

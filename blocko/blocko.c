@@ -107,6 +107,27 @@ struct osn_context *osn_context;
 #define true 1
 #define false 0
 
+#define DAY_R 1.f
+#define DAY_G 1.f
+#define DAY_B 1.f
+#define NIGHT_R 0.32f
+#define NIGHT_G 0.28f
+#define NIGHT_B 0.41f
+#define DUSK_R 0.8f
+#define DUSK_G 0.5f
+#define DUSK_B 0.4f
+#define FOG_DAY_R 0.3f
+#define FOG_DAY_G 0.9f
+#define FOG_DAY_B 1.0f
+#define FOG_DUSK_R 0.61f
+#define FOG_DUSK_G 0.35f
+#define FOG_DUSK_B 0.31f
+#define FOG_NIGHT_R 0.02f
+#define FOG_NIGHT_G 0.01f
+#define FOG_NIGHT_B 0.06f
+
+float fog_r, fog_g, fog_b;
+
 struct vbufv { // vertex buffer vertex
         float tex;
         float orient;
@@ -219,6 +240,8 @@ int show_light_values = false;
 int polys = 0;
 int sunq_outta_room = 0;
 int omp_threads = 0;
+int night_mode = 0;
+float night_amt = 0.f;
 
 int mouselook = true;
 int target_x, target_y, target_z;
@@ -705,6 +728,9 @@ void key_move(int down)
                         break;
                 case SDLK_t: // build lighting testing area
                         if (down) build_test_area();
+                        break;
+                case SDLK_n: // night mode on/off
+                        if (down) night_mode = !night_mode;
                         break;
                 case SDLK_l: // show light values whereever
                         if (down && place_x >= 0)
@@ -1314,6 +1340,9 @@ void update_world()
                         }
                 }
         }
+
+        night_amt += night_mode ? 0.01f : -0.01f;
+        CLAMP(night_amt, 0.f, 1.f);
 }
 
 // remove direct or indirect sunlight
@@ -1738,7 +1767,21 @@ int sorter(const void * _a, const void * _b)
 void draw_stuff()
 {
         glViewport(0, 0, screenw, screenh);
-        glClearColor(0.3, 0.9, 1.0, 1.0);
+
+        printf("%f\n", night_amt);
+        if (night_amt > 0.5f)
+        {
+                fog_r = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_R, FOG_NIGHT_R);
+                fog_g = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_G, FOG_NIGHT_G);
+                fog_b = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_B, FOG_NIGHT_B);
+        }
+        else
+        {
+                fog_r = lerp(2.f*night_amt, FOG_DAY_R, FOG_DUSK_R);
+                fog_g = lerp(2.f*night_amt, FOG_DAY_G, FOG_DUSK_G);
+                fog_b = lerp(2.f*night_amt, FOG_DAY_B, FOG_DUSK_B);
+        }
+        glClearColor(fog_r, fog_g, fog_b, 1.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // compute proj matrix
@@ -1795,9 +1838,6 @@ void draw_stuff()
                  0,  0,  0, 1
         };
 
-        //glUniform4f(glGetUniformLocation(prog_id, "eye"), eye0, eye1, eye2, 1);
-        glUniform4f(glGetUniformLocation(prog_id, "eye"), 0, 0, 0, 1);
-
         // find where we are pointing at
         rayshot(eye0, eye1, eye2, f0, f1, f2);
 
@@ -1825,6 +1865,14 @@ void draw_stuff()
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, modelM);
 
         glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
+
+        {
+                float r = lerp(night_amt, DAY_R, NIGHT_R);
+                float g = lerp(night_amt, DAY_G, NIGHT_G);
+                float b = lerp(night_amt, DAY_B, NIGHT_B);
+                glUniform3f(glGetUniformLocation(prog_id, "day_color"), r, g, b);
+                glUniform3f(glGetUniformLocation(prog_id, "fog_color"), fog_r, fog_g, fog_b);
+        }
 
         // determine which chunks to send to gl
         TIMER(rings)
