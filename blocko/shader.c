@@ -19,11 +19,13 @@ layout (location = 0) in float tex_in;                                          
 layout (location = 1) in float orient_in;                                       \n\
 layout (location = 2) in vec3 pos_in;                                           \n\
 layout (location = 3) in vec4 illum_in;                                         \n\
-layout (location = 4) in float alpha_in;                                        \n\
+layout (location = 4) in vec4 glow_in;                                          \n\
+layout (location = 5) in float alpha_in;                                        \n\
                                                                                 \n\
 out float tex_vs;                                                               \n\
 out float orient_vs;                                                            \n\
 out vec4 illum_vs;                                                              \n\
+out vec4 glow_vs;                                                               \n\
 out float alpha_vs;                                                             \n\
                                                                                 \n\
 uniform mat4 model;                                                             \n\
@@ -38,6 +40,7 @@ void main(void)                                                                 
     tex_vs = tex_in;                                                            \n\
     orient_vs = orient_in;                                                      \n\
     illum_vs = illum_in;                                                        \n\
+    glow_vs = glow_in;                                                          \n\
     alpha_vs = alpha_in;                                                        \n\
 }                                                                               \n\
 ";
@@ -50,10 +53,12 @@ layout (triangle_strip, max_vertices = 4) out;                                  
 in float tex_vs[];                                                              \n\
 in float orient_vs[];                                                           \n\
 in vec4 illum_vs[];                                                             \n\
+in vec4 glow_vs[];                                                              \n\
 in float alpha_vs[];                                                            \n\
                                                                                 \n\
 out float tex;                                                                  \n\
 out float illum;                                                                \n\
+out float glow;                                                                 \n\
 out float alpha;                                                                \n\
 out vec2 uv;                                                                    \n\
 out float fog;                                                                  \n\
@@ -125,6 +130,7 @@ void main(void) // geometry                                                     
     gl_Position = gl_in[0].gl_Position + a;                                     \n\
     uv = vec2(1,0);                                                             \n\
     illum = (0.1 + illum_vs[0].x) * sidel;                                      \n\
+    glow = (0.1 + glow_vs[0].x) * sidel;                                        \n\
     dist = length(gl_Position);                                                 \n\
     if (dist <= 1000) { illum = min(1, illum + 0.1-dist/9999); }                \n\
     EmitVertex();                                                               \n\
@@ -132,6 +138,7 @@ void main(void) // geometry                                                     
     gl_Position = gl_in[0].gl_Position + b;                                     \n\
     uv = vec2(0,0);                                                             \n\
     illum = (0.1 + illum_vs[0].y) * sidel;                                      \n\
+    glow = (0.1 + glow_vs[0].y) * sidel;                                        \n\
     dist = length(gl_Position);                                                 \n\
     if (dist <= 1000) { illum = min(1, illum + 0.1-dist/9999); }                \n\
     EmitVertex();                                                               \n\
@@ -139,6 +146,7 @@ void main(void) // geometry                                                     
     gl_Position = gl_in[0].gl_Position + c;                                     \n\
     uv = vec2(1,1);                                                             \n\
     illum = (0.1 + illum_vs[0].z) * sidel;                                      \n\
+    glow = (0.1 + glow_vs[0].z) * sidel;                                        \n\
     dist = length(gl_Position);                                                 \n\
     if (dist <= 1000) { illum = min(1, illum + 0.1-dist/9999); }                \n\
     EmitVertex();                                                               \n\
@@ -146,6 +154,7 @@ void main(void) // geometry                                                     
     gl_Position = gl_in[0].gl_Position + d;                                     \n\
     uv = vec2(0,1);                                                             \n\
     illum = (0.1 + illum_vs[0].w) * sidel;                                      \n\
+    glow = (0.1 + glow_vs[0].w) * sidel;                                        \n\
     dist = length(gl_Position);                                                 \n\
     if (dist <= 1000) { illum = min(1, illum + 0.1-dist/9999); }                \n\
     EmitVertex();                                                               \n\
@@ -160,18 +169,22 @@ out vec4 color;                                                                 
                                                                                 \n\
 in float tex;                                                                   \n\
 in float illum;                                                                 \n\
+in float glow;                                                                  \n\
 in float alpha;                                                                 \n\
 in vec2 uv;                                                                     \n\
 in float fog;                                                                   \n\
                                                                                 \n\
 uniform sampler2DArray tarray;                                                  \n\
 uniform vec3 day_color;                                                         \n\
+uniform vec3 glo_color;                                                         \n\
 uniform vec3 fog_color;                                                         \n\
                                                                                 \n\
 void main(void)                                                                 \n\
 {                                                                               \n\
-    vec4 sky = vec4(illum * day_color, alpha);                                  \n\
-    vec4 c = texture(tarray, vec3(uv, tex)) * sky;                              \n\
+    vec3 sky = illum * day_color;                                               \n\
+    vec3 glo = glow * glo_color;                                                \n\
+    vec4 combined = vec4(max(sky.r, glo.r), max(sky.g, glo.g), max(sky.b, glo.b), alpha); \n\
+    vec4 c = texture(tarray, vec3(uv, tex)) * combined;                         \n\
     if (c.a < 0.01) discard;                                                    \n\
     color = mix(c, vec4(fog_color, 1), fog);                                    \n\
 }                                                                               \n\

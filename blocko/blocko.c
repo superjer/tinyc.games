@@ -91,6 +91,7 @@ struct osn_context *osn_context;
 #define LASTSOLID (BARR+1) // everything less than here is solid
 #define OPEN 75            // empty space
 #define WATR 76
+#define LITE 77
 
 #define RLEF 81
 #define YLEF 82
@@ -98,6 +99,7 @@ struct osn_context *osn_context;
 
 #define VERTEX_BUFLEN 100000
 #define SUNQLEN 100000
+#define GLOQLEN 100000
 
 #define CLAMP(v, l, u) { if (v < l) v = l; else if (v > u) v = u; }
 #define ICLAMP(v, l, u) ((v < l) ? l : (v > u) ? u : v)
@@ -133,6 +135,7 @@ struct vbufv { // vertex buffer vertex
         float orient;
         float x, y, z;
         float illum0, illum1, illum2, illum3;
+        float glow0, glow1, glow2, glow3;
         float alpha;
 };
 
@@ -144,13 +147,17 @@ int gravity[] = { -20, -17, -14, -12, -10, -8, -6, -5, -4, -3,
 
 unsigned char *tiles;
 unsigned char *sunlight;
+unsigned char *glolight;
 unsigned char gndheight[TILESW][TILESD];
 float *cornlight;
+float *kornlight;
 volatile char already_generated[VAOW][VAOD];
 
 #define T_(x,y,z) tiles[(z) * TILESH * TILESW + (x) * TILESH + (y)]
 #define SUN_(x,y,z) sunlight[(z) * (TILESH+1) * (TILESW+1) + (x) * (TILESH+1) + (y)]
+#define GLO_(x,y,z) glolight[(z) * (TILESH+1) * (TILESW+1) + (x) * (TILESH+1) + (y)]
 #define CORN_(x,y,z) cornlight[(z) * (TILESH+2) * (TILESW+2) + (x) * (TILESH+2) + (y)]
+#define KORN_(x,y,z) kornlight[(z) * (TILESH+2) * (TILESW+2) + (x) * (TILESH+2) + (y)]
 
 // helper macros
 #define IS_OPAQUE(x,y,z) (tiles[(z) * TILESH * TILESW + (x) * TILESH + (y)] < LASTSOLID)
@@ -191,14 +198,21 @@ int test_area_z;
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
 struct qchunk { int x, y, z, sqdist; };
-
 struct qitem { int x, y, z; };
+
 struct qitem sunq0_[SUNQLEN+1];
 struct qitem sunq1_[SUNQLEN+1];
 struct qitem *sunq_curr = sunq0_;
 struct qitem *sunq_next = sunq1_;
 size_t sq_curr_len;
 size_t sq_next_len;
+
+struct qitem gloq0_[GLOQLEN+1];
+struct qitem gloq1_[GLOQLEN+1];
+struct qitem *gloq_curr = gloq0_;
+struct qitem *gloq_next = gloq1_;
+size_t gq_curr_len;
+size_t gq_next_len;
 
 struct qcave { int x, y, z; int radius_sq; };
 
@@ -219,6 +233,7 @@ struct player {
         int running;
         int breaking;
         int building;
+        int lighting;
         int cooldown;
         int fvel;
         int rvel;
@@ -239,6 +254,7 @@ int show_time_per_chunk = false;
 int show_light_values = false;
 int polys = 0;
 int sunq_outta_room = 0;
+int gloq_outta_room = 0;
 int omp_threads = 0;
 int night_mode = 0;
 float night_amt = 0.f;
@@ -279,11 +295,15 @@ void new_game();
 void create_hmap();
 void gen_chunk();
 void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light);
+void glo_enqueue(int x, int y, int z, int base, unsigned char incoming_light);
 void set_gndheight(int x, int y, int z);
 void recalc_gndheight(int x, int z);
 void remove_sunlight(int px, int py, int pz);
+void remove_glolight(int px, int py, int pz);
 int step_sunlight();
+int step_glolight();
 void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi);
+void recalc_korner_lighting(int xlo, int xhi, int zlo, int zhi);
 void key_move(int down);
 void mouse_move();
 void mouse_button(int down);
@@ -356,6 +376,7 @@ void main_loop()
 
         lerp_camera(accumulated_elapsed / interval, &player[0], &camplayer);
         TIMECALL(step_sunlight, ());
+        TIMECALL(step_glolight, ());
         draw_stuff();
         debrief();
         frame++;
@@ -449,7 +470,9 @@ void setup()
 
         tiles = calloc(TILESD * TILESH * TILESW, sizeof *tiles);
         sunlight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *sunlight);
+        glolight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *glolight);
         cornlight = calloc((TILESD+2) * (TILESH+2) * (TILESW+2), sizeof *cornlight);
+        kornlight = calloc((TILESD+2) * (TILESH+2) * (TILESW+2), sizeof *kornlight);
 
         SDL_Init(SDL_INIT_VIDEO);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
@@ -567,9 +590,12 @@ void setup()
                 // illum
                 glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->illum0);
                 glEnableVertexAttribArray(3);
-                // alpha
-                glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->alpha);
+                // glow
+                glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->glow0);
                 glEnableVertexAttribArray(4);
+                // alpha
+                glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->alpha);
+                glEnableVertexAttribArray(5);
         }
 
         glUseProgram(prog_id);
@@ -665,6 +691,10 @@ void key_move(int down)
                 // instantaneous movement
                 case SDLK_SPACE:
                         jump(down);
+                        break;
+
+                case SDLK_e:
+                        player[0].lighting = down;
                         break;
 
                 // menu stuff
@@ -1251,6 +1281,48 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
         sq_next_len++;
 }
 
+void glo_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
+{
+        if (incoming_light == 0)
+                return;
+
+        if (T_(x, y, z) == WATR)
+                incoming_light--; // water blocks more light
+
+        if (T_(x, y, z) == RLEF || T_(x, y, z) == YLEF)
+        {
+                incoming_light--; // leaves block more light
+                if (incoming_light) incoming_light--;
+        }
+
+        if (GLO_(x, y, z) >= incoming_light)
+                return; // already brighter
+
+        if (T_(x, y, z) < OPEN)
+                return; // no lighting for solid blocks
+
+        GLO_(x, y, z) = incoming_light;
+
+        if (gq_next_len >= GLOQLEN)
+        {
+                gloq_outta_room++;
+                return; // out of room in sun queue
+        }
+
+        for (size_t i = base; i < gq_curr_len; i++)
+                if (gloq_curr[i].x == x && gloq_curr[i].y == y && gloq_curr[i].z == z)
+                        return; // already queued in current queue
+
+        for (size_t i = 0; i < gq_next_len; i++)
+                if (gloq_next[i].x == x && gloq_next[i].y == y && gloq_next[i].z == z)
+                        return; // already queued in next queue
+
+        gloq_next[gq_next_len].x = x;
+        gloq_next[gq_next_len].y = y;
+        gloq_next[gq_next_len].z = z;
+        gq_next_len++;
+}
+
 // find highest block and relight from sun
 void set_gndheight(int x, int y, int z)
 {
@@ -1294,6 +1366,32 @@ int step_sunlight()
         return sq_curr_len;
 }
 
+int step_glolight()
+{
+        // swap the queues
+        gloq_curr = gloq_next;
+        gq_curr_len = gq_next_len;
+        gq_next_len = 0;
+        gloq_next = (gloq_curr == gloq0_) ? gloq1_ : gloq0_;
+
+        for (size_t i = 0; i < gq_curr_len; i++)
+        {
+                int x = gloq_curr[i].x;
+                int y = gloq_curr[i].y;
+                int z = gloq_curr[i].z;
+                char pass_on = GLO_(x, y, z);
+                if (pass_on) pass_on--; else continue;
+                if (x           ) glo_enqueue(x-1, y  , z  , i+1, pass_on);
+                if (x < TILESW-1) glo_enqueue(x+1, y  , z  , i+1, pass_on);
+                if (y           ) glo_enqueue(x  , y-1, z  , i+1, pass_on);
+                if (y < TILESH-1) glo_enqueue(x  , y+1, z  , i+1, pass_on);
+                if (z           ) glo_enqueue(x  , y  , z-1, i+1, pass_on);
+                if (z < TILESD-1) glo_enqueue(x  , y  , z+1, i+1, pass_on);
+        }
+
+        return gq_curr_len;
+}
+
 void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
 {
         for (int z = zlo; z <= zhi; z++) for (int y = 0; y <= TILESH; y++) for (int x = xlo; x <= xhi; x++)
@@ -1305,6 +1403,9 @@ void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
                 CORN_(x, y, z) = 0.008f * (
                                 SUN_(x_, y_, z_) + SUN_(x , y_, z_) + SUN_(x_, y , z_) + SUN_(x , y , z_) +
                                 SUN_(x_, y_, z ) + SUN_(x , y_, z ) + SUN_(x_, y , z ) + SUN_(x , y , z ));
+                KORN_(x, y, z) = 0.008f * (
+                                GLO_(x_, y_, z_) + GLO_(x , y_, z_) + GLO_(x_, y , z_) + GLO_(x , y , z_) +
+                                GLO_(x_, y_, z ) + GLO_(x , y_, z ) + GLO_(x_, y , z ) + GLO_(x , y , z ));
         }
 }
 
@@ -1388,8 +1489,8 @@ void remove_sunlight(int px, int py, int pz)
         if (py > 0       ) check_list[check_len++] = QITEM(px  , py-1, pz  );
         // never spread sunlight value 15 upward:
         if (py < TILESH-1 && SUN_(px,py+1,pz) != 15) check_list[check_len++] = QITEM(px  , py+1, pz  );
-        if (pz < TILESD-1) check_list[check_len++] = QITEM(px  , py  , pz+1);
         if (pz > 0       ) check_list[check_len++] = QITEM(px  , py  , pz-1);
+        if (pz < TILESD-1) check_list[check_len++] = QITEM(px  , py  , pz+1);
 
         for (int i = 0; i < check_len; i++)
         {
@@ -1414,9 +1515,7 @@ void remove_sunlight(int px, int py, int pz)
 
                 // i could be the light source for this neighbor, need to recurse
                 if (SUN_(x, y, z) < my_light)
-                {
                         recur_list[recur_len++] = QITEM(x, y, z);
-                }
         }
 
         if (incoming_light >= my_light)
@@ -1433,6 +1532,78 @@ void remove_sunlight(int px, int py, int pz)
 
         for (int i = 0; i < recur_len; i++)
                 remove_sunlight(recur_list[i].x, recur_list[i].y, recur_list[i].z);
+}
+
+void remove_glolight(int px, int py, int pz)
+{
+        // FIXME: remove when confident
+        static int recursions = 0;
+        if (++recursions > 1000000)
+        {
+                fprintf(stderr, "1 million remove_glolight() recursions\n");
+                return;
+        }
+
+        int my_light = GLO_(px, py, pz);
+        int im_opaque = IS_OPAQUE(px, py, pz);
+
+        if (my_light < 1) return;
+
+        struct qitem check_list[6];
+        struct qitem recur_list[6];
+        int check_len = 0;
+        int recur_len = 0;
+        int incoming_light = 0;
+        int future_light = 0;
+
+        // find valid neighbors to check
+        if (px > 0       ) check_list[check_len++] = QITEM(px-1, py  , pz  );
+        if (px < TILESW-1) check_list[check_len++] = QITEM(px+1, py  , pz  );
+        if (py > 0       ) check_list[check_len++] = QITEM(px  , py-1, pz  );
+        if (py < TILESH-1) check_list[check_len++] = QITEM(px  , py+1, pz  );
+        if (pz > 0       ) check_list[check_len++] = QITEM(px  , py  , pz-1);
+        if (pz < TILESD-1) check_list[check_len++] = QITEM(px  , py  , pz+1);
+
+        for (int i = 0; i < check_len; i++)
+        {
+                int x = check_list[i].x;
+                int y = check_list[i].y;
+                int z = check_list[i].z;
+
+                // no need to update my opaque neighbors
+                if (IS_OPAQUE(x, y, z)) continue;
+
+                // i am lit by a neighbor block as much or more than before
+                // so... there is no more light to remove in this branch
+                if (GLO_(x, y, z) > my_light && !im_opaque) return;
+
+                // i am [now] being lit by this neighbor
+                if (GLO_(x, y, z) == my_light && !im_opaque)
+                        incoming_light = MAX(incoming_light, GLO_(x, y, z) - 1);
+
+                // keep track of brightest neighboring light for queueing later
+                if (GLO_(x, y, z) > future_light && !im_opaque)
+                        future_light = GLO_(x, y, z);
+
+                // i could be the light source for this neighbor, need to recurse
+                if (GLO_(x, y, z) < my_light)
+                        recur_list[recur_len++] = QITEM(x, y, z);
+        }
+
+        if (incoming_light >= my_light)
+                fprintf(stderr, "GLO: INCOMING LIGHT > MY LIGHT when darkening\n");
+
+        GLO_(px, py, pz) = incoming_light;
+
+        // re-lighting may be needed here
+        if (future_light)
+                glo_enqueue(px, py, pz, 0, future_light - 1);
+
+        // i had no light to give anyway
+        if (my_light < 2) return;
+
+        for (int i = 0; i < recur_len; i++)
+                remove_glolight(recur_list[i].x, recur_list[i].y, recur_list[i].z);
 }
 
 void lerp_camera(float t, struct player *a, struct player *b)
@@ -1497,6 +1668,16 @@ void update_player(struct player *p, int real)
                         if (z < TILESD-1 && SUN_(x  , y  , z+1) > max) max = SUN_(x  , y  , z+1);
                         sun_enqueue(x, y, z, 0, max ? max - 1 : 0);
                 }
+
+                max = 0;
+                if (x > 0        && GLO_(x-1, y  , z  ) > max) max = GLO_(x-1, y  , z  );
+                if (x < TILESW-1 && GLO_(x+1, y  , z  ) > max) max = GLO_(x+1, y  , z  );
+                if (y > 0        && GLO_(x  , y-1, z  ) > max) max = GLO_(x  , y-1, z  );
+                if (y < TILESH-1 && GLO_(x  , y+1, z  ) > max) max = GLO_(x  , y+1, z  );
+                if (z > 0        && GLO_(x  , y  , z-1) > max) max = GLO_(x  , y  , z-1);
+                if (z < TILESD-1 && GLO_(x  , y  , z+1) > max) max = GLO_(x  , y  , z+1);
+                glo_enqueue(x, y, z, 0, max ? max - 1 : 0);
+
                 p->cooldown = 5;
         }
 
@@ -1509,11 +1690,18 @@ void update_player(struct player *p, int real)
                                 set_gndheight(place_x, place_y, place_z);
 
                         int y = place_y;
+                        remove_glolight(place_x, y, place_z);
                         do {
                                 remove_sunlight(place_x, y, place_z);
                                 y++;
                         } while (y < TILESH-1 && !IS_OPAQUE(place_x, y, place_z));
                 }
+                p->cooldown = 10;
+        }
+
+        if (real && p->lighting && !p->cooldown && place_x >= 0) {
+                T_(place_x, place_y, place_z) = LITE;
+                glo_enqueue(place_x, place_y, place_z, 0, 15);
                 p->cooldown = 10;
         }
 
@@ -1768,7 +1956,6 @@ void draw_stuff()
 {
         glViewport(0, 0, screenw, screenh);
 
-        printf("%f\n", night_amt);
         if (night_amt > 0.5f)
         {
                 fog_r = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_R, FOG_NIGHT_R);
@@ -1871,6 +2058,7 @@ void draw_stuff()
                 float g = lerp(night_amt, DAY_G, NIGHT_G);
                 float b = lerp(night_amt, DAY_B, NIGHT_B);
                 glUniform3f(glGetUniformLocation(prog_id, "day_color"), r, g, b);
+                glUniform3f(glGetUniformLocation(prog_id, "glo_color"), 0.92f, 0.83f, 0.69f);
                 glUniform3f(glGetUniformLocation(prog_id, "fog_color"), fog_r, fog_g, fog_b);
         }
 
@@ -2027,26 +2215,34 @@ void draw_stuff()
                         float dse = CORN_(x+1, y+1, z  );
                         float dnw = CORN_(x  , y+1, z+1);
                         float dne = CORN_(x+1, y+1, z+1);
+                        float USW = KORN_(x  , y  , z  );
+                        float USE = KORN_(x+1, y  , z  );
+                        float UNW = KORN_(x  , y  , z+1);
+                        float UNE = KORN_(x+1, y  , z+1);
+                        float DSW = KORN_(x  , y+1, z  );
+                        float DSE = KORN_(x+1, y+1, z  );
+                        float DNW = KORN_(x  , y+1, z+1);
+                        float DNE = KORN_(x+1, y+1, z+1);
                         int t = T_(x, y, z);
                         if (t == GRAS)
                         {
-                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une, 1 };
-                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
-                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, unw, une, dnw, dne, 1 };
-                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
-                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, une, use, dne, dse, 1 };
-                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
+                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                         }
                         else if (t == DIRT || t == GRG1 || t == GRG2)
                         {
                                 int u = (t == DIRT) ? 2 :
                                         (t == GRG1) ? 3 : 4;
-                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ u,    UP, x, y, z, usw, use, unw, une, 1 };
-                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
-                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, unw, une, dnw, dne, 1 };
-                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
-                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse, 1 };
-                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
+                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ u,    UP, x, y, z, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                         }
                         else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN ||
                                  t == RLEF || t == YLEF)
@@ -2061,35 +2257,35 @@ void draw_stuff()
                                         (t == RLEF) ? 16 :
                                         (t == YLEF) ? 17 :
                                                        0 ;
-                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ f,    UP, x, y, z, usw, use, unw, une, 1 };
-                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ f, SOUTH, x, y, z, use, usw, dse, dsw, 1 };
-                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ f, NORTH, x, y, z, unw, une, dnw, dne, 1 };
-                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ f,  WEST, x, y, z, usw, unw, dsw, dnw, 1 };
-                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ f,  EAST, x, y, z, une, use, dne, dse, 1 };
-                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ f,  DOWN, x, y, z, dse, dsw, dne, dnw, 1 };
+                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ f,    UP, x, y, z, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ f, SOUTH, x, y, z, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ f, NORTH, x, y, z, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ f,  WEST, x, y, z, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ f,  EAST, x, y, z, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ f,  DOWN, x, y, z, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                         }
                         else if (t == WATR)
                         {
                                 if (y == 0        || T_(x  , y-1, z  ) == OPEN)
                                 {
                                         int f = 7 + (pframe / 10 + (x ^ z)) % 4;
-                                        *w++ = (struct vbufv){ f,    UP, x, y+0.06f, z, usw, use, unw, une, 0.5f };
-                                        *w++ = (struct vbufv){ f,  DOWN, x, y-0.94f, z, dse, dsw, dne, dnw, 0.5f };
+                                        *w++ = (struct vbufv){ f,    UP, x, y+0.06f, z, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f };
+                                        *w++ = (struct vbufv){ f,  DOWN, x, y-0.94f, z, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f };
                                 }
                         }
 
                         if (show_light_values && in_test_area(x, y, z))
                         {
-                                int f = SUN_(x, y, z) + 18;
+                                int f = GLO_(x, y, z) + 18;
                                 int ty = y;
-                                float bright = 1.f;
+                                float lit = 1.f;
                                 if (IS_OPAQUE(x, y, z))
                                 {
                                         ty = y - 1;
-                                        bright = 0.1f;
+                                        lit = 0.1f;
                                 }
-                                *w++ = (struct vbufv){ f,    UP, x, ty+0.9f, z, bright, bright, bright, bright, 1.f };
-                                *w++ = (struct vbufv){ f,  DOWN, x, ty-0.1f, z, bright, bright, bright, bright, 1.f };
+                                *w++ = (struct vbufv){ f,    UP, x, ty+0.9f, z, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
+                                *w++ = (struct vbufv){ f,  DOWN, x, ty-0.1f, z, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
                         }
                 }
 
@@ -2141,5 +2337,11 @@ void debrief()
         {
                 fprintf(stderr, "Out of room in the sun queue (error %d times)\n", sunq_outta_room);
                 sunq_outta_room = 0;
+        }
+
+        if (gloq_outta_room)
+        {
+                fprintf(stderr, "Out of room in the sun queue (error %d times)\n", gloq_outta_room);
+                gloq_outta_room = 0;
         }
 }

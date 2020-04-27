@@ -25,6 +25,8 @@
         X(update_player), \
         X(step_sunlight), \
         X(step_sunlight_building), \
+        X(step_glolight), \
+        X(step_glolight_building), \
         X(recalc_corner_lighting), \
         X(rings), \
         X(drawstale), \
