@@ -162,6 +162,11 @@ unsigned int dumb_rand(int *seed) { return (*seed = (1103515245 * *seed + 12345)
 #define SEED3(a,b,c)   (world_seed ^ (a << 4) ^ (b << 8) ^ (c << 12))
 #define SEED4(a,b,c,d) (world_seed ^ (a << 4) ^ (b << 8) ^ (c << 12) ^ (d << 16))
 
+#define TEST_AREA_SZ 32
+int test_area_x = -1;
+int test_area_y;
+int test_area_z;
+
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
 struct qchunk { int x, y, z, sqdist; };
@@ -210,6 +215,7 @@ int world_seed = 160659;
 int noisy = false;
 int show_fresh_updates = false;
 int show_time_per_chunk = false;
+int show_light_values = false;
 int polys = 0;
 int sunq_outta_room = 0;
 int omp_threads = 0;
@@ -562,13 +568,10 @@ void jump(int down)
                 player[0].jumping = JUMP_BUFFER_FRAMES;
 }
 
-#define TEST_AREA_SZ 32
-int test_area_x;
-int test_area_y;
-int test_area_z;
-
 int in_test_area(int x, int y, int z)
 {
+        if (test_area_x == -1) return false;
+
         return (x >= test_area_x && x < test_area_x + TEST_AREA_SZ &&
                 y == test_area_y &&
                 z >= test_area_z && z < test_area_z + TEST_AREA_SZ);
@@ -581,7 +584,7 @@ void build_test_area()
         int ty = test_area_y = ICLAMP(player[0].pos.y / BS + 1             , 0, TILESH - 10          );
         int tz = test_area_z = ICLAMP(player[0].pos.z / BS - TEST_AREA_SZ/2, 0, TILESD - TEST_AREA_SZ);
 
-        printf("Building test area @ %d %d %d\n", tx, ty, tz);
+        show_light_values = true;
 
         for (int x = tx; x < tx+TEST_AREA_SZ; x++) for (int z = tz; z < tz+TEST_AREA_SZ; z++) for (int y = 0; y < ty+20; y++)
         {
@@ -617,7 +620,6 @@ void build_test_area()
                 }
 
         }
-
 }
 
 void key_move(int down)
@@ -703,6 +705,15 @@ void key_move(int down)
                         break;
                 case SDLK_t: // build lighting testing area
                         if (down) build_test_area();
+                        break;
+                case SDLK_l: // show light values whereever
+                        if (down && place_x >= 0)
+                        {
+                                show_light_values = true;
+                                test_area_x = place_x - TEST_AREA_SZ / 2;
+                                test_area_y = place_y;
+                                test_area_z = place_z - TEST_AREA_SZ / 2;
+                        }
                         break;
                 case SDLK_c: // chunk gen stats
                         if (down) show_time_per_chunk = true;
@@ -1146,8 +1157,12 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         {
                                 set_gndheight(x, y, z);
                                 above_ground = false;
+                                if (y)
+                                {
+                                        SUN_(x, y-1, z) = 0;
+                                        sun_enqueue(x, y-1, z, 0, light_level);
+                                }
                                 light_level = 0;
-                                if (y) sun_enqueue(x, y-1, z, 0, light_level);
                         }
 
                         if (wet && T_(x, y, z) == OPEN)
@@ -1958,7 +1973,8 @@ void draw_stuff()
 
                         if (w >= w_limit) w -= 10; // just overwrite water if we run out of space
 
-                        if (T_(x, y, z) == OPEN && !in_test_area(x, y, z)) continue;
+                        if (T_(x, y, z) == OPEN && (!show_light_values || !in_test_area(x, y, z)))
+                                continue;
 
                         //lighting
                         float usw = CORN_(x  , y  , z  );
@@ -2020,12 +2036,18 @@ void draw_stuff()
                                 }
                         }
 
-                        if (in_test_area(x, y, z))
+                        if (show_light_values && in_test_area(x, y, z))
                         {
                                 int f = SUN_(x, y, z) + 18;
-                                int ty = IS_OPAQUE(x, y, z) ? y - 1 : y;
-                                *w++ = (struct vbufv){ f,    UP, x, ty+0.9f, z, 1.f, 1.f, 1.f, 1.f, 1.f };
-                                *w++ = (struct vbufv){ f,  DOWN, x, ty-0.1f, z, 1.f, 1.f, 1.f, 1.f, 1.f };
+                                int ty = y;
+                                float bright = 1.f;
+                                if (IS_OPAQUE(x, y, z))
+                                {
+                                        ty = y - 1;
+                                        bright = 0.1f;
+                                }
+                                *w++ = (struct vbufv){ f,    UP, x, ty+0.9f, z, bright, bright, bright, bright, 1.f };
+                                *w++ = (struct vbufv){ f,  DOWN, x, ty-0.1f, z, bright, bright, bright, bright, 1.f };
                         }
                 }
 
