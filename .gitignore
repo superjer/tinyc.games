@@ -2,6 +2,7 @@ blocko/blocko
 blocko/o1
 blocko/o2
 blocko/o3
+blocko/*.dll
 flappy/flappy
 maker/maker
 tet/tet

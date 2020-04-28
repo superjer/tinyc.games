@@ -6,10 +6,15 @@
 // The run-windows.bat script will try hard to find the SDK files it needs,
 // otherwise it will tell you what to do.
 
+#ifdef UNIX
+        #include <unistd.h>
+#else
+	#define main WinMain
+#endif
+
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
 #include <math.h>
 #define GL3_PROTOTYPES 1
@@ -239,8 +244,9 @@ struct player {
         int rvel;
         int grav;
         int ground;
-} player[NR_PLAYERS];
+};
 
+struct player player[NR_PLAYERS];
 struct player camplayer;
 struct point lerped_pos;
 
@@ -288,7 +294,8 @@ struct vbufv *w_limit = wbuf + VERTEX_BUFLEN;
 struct vbufv *w = wbuf;
 
 //prototypes
-void setup();
+void startup();
+void glsetup();
 void resize();
 void init_player();
 void new_game();
@@ -444,6 +451,7 @@ void chunk_builder()
 int main()
 {
         omp_set_nested(1); // needed or omp won't parallelize chunk gen
+        startup();
 
         #pragma omp parallel sections
         {
@@ -456,15 +464,14 @@ int main()
 
                 #pragma omp section
                 {
-                        setup();
+                        glsetup();
                         new_game();
                         main_loop();
                 }
         }
 }
 
-//initial setup to get the window and rendering going
-void setup()
+void startup()
 {
         open_simplex_noise(world_seed, &osn_context);
 
@@ -473,7 +480,11 @@ void setup()
         glolight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *glolight);
         cornlight = calloc((TILESD+2) * (TILESH+2) * (TILESW+2), sizeof *cornlight);
         kornlight = calloc((TILESD+2) * (TILESH+2) * (TILESW+2), sizeof *kornlight);
+}
 
+//initial setup to get the window and rendering going
+void glsetup()
+{
         SDL_Init(SDL_INIT_VIDEO);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
@@ -983,8 +994,10 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
         static char column_already_generated[TILESW][TILESD];
 
+        int x;
+
         #pragma omp parallel for
-        for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
+        for (x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
         {
                 if (x == xlo && z == zlo)
                         omp_threads = omp_get_num_threads();
@@ -1141,7 +1154,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
         // carve caves
         #pragma omp parallel for
-        for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH-2; y++)
+        for (x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH-2; y++)
                 for (int i = 0; i < cave_p_len; i++)
                 {
                         int dist_sq = DIST_SQ(cave_points[i].x - x, cave_points[i].y - y, cave_points[i].z - z);
@@ -1154,7 +1167,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
         // correcting pass over middle, contain floating water
         #pragma omp parallel for
-        for (int x = xlo+1; x < xhi-1; x++) for (int z = zlo-1; z < zhi+1; z++) for (int y = 100; y < TILESH-2; y++)
+        for (x = xlo+1; x < xhi-1; x++) for (int z = zlo+1; z < zhi-1; z++) for (int y = 100; y < TILESH-2; y++)
         {
                 if (T_(x, y, z) == WATR)
                 {
@@ -1203,7 +1216,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
         // cleanup gndheight and set initial lighting
         #pragma omp parallel for
-        for (int x = xlo+1; x < xhi-1; x++) for (int z = zlo-1; z < zhi+1; z++)
+        for (x = xlo+1; x < xhi-1; x++) for (int z = zlo+1; z < zhi-1; z++)
         {
                 int above_ground = true;
                 int light_level = 15;
