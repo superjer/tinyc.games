@@ -6,10 +6,8 @@
 // The run-windows.bat script will try hard to find the SDK files it needs,
 // otherwise it will tell you what to do.
 
-#ifdef UNIX
+#ifndef _WIN32
         #include <unistd.h>
-#else
-	#define main WinMain
 #endif
 
 #include <omp.h>
@@ -448,7 +446,11 @@ void chunk_builder()
 } }
 
 //one thread for worker (chunk builder) and one for main loop (phys + renderer)
+#ifdef _WIN32
+int WinMain()
+#else
 int main()
+#endif
 {
         omp_set_nested(1); // needed or omp won't parallelize chunk gen
         startup();

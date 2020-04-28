@@ -8,4 +8,6 @@ maker/maker
 tet/tet
 valet/valet
 zel/zel
-*.xcf
+Debug
+x64
+.vs
