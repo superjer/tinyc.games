@@ -6,7 +6,7 @@
 // The run-windows.bat script will try hard to find the SDK files it needs,
 // otherwise it will tell you what to do.
 
-#include <omp.h>
+//#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -14,7 +14,7 @@
 #define GL3_PROTOTYPES 1
 
 #ifdef __APPLE__
-#include <gl.h>
+#include <OpenGL/gl3.h>
 #else
 #include <GL/glew.h>
 #endif
@@ -320,6 +320,7 @@ void debrief();
 
 float lerp(float t, float a, float b) { return a + t * (b - a); }
 
+#ifndef __APPLE__
 void GLAPIENTRY
 MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
                 GLsizei length, const GLchar* message, const void* userParam)
@@ -329,6 +330,7 @@ MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
                         ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
                         type, severity, message );
 }
+#endif
 
 void main_loop()
 { for (;;) {
@@ -448,23 +450,23 @@ int WinMain()
 int main()
 #endif
 {
-        omp_set_nested(1); // needed or omp won't parallelize chunk gen
+        //omp_set_nested(1); // needed or omp won't parallelize chunk gen
         startup();
 
         #pragma omp parallel sections
         {
                 #pragma omp section
                 {
-                        init_player();
-                        create_hmap();
-                        chunk_builder();
+                        glsetup();
+                        new_game();
+                        main_loop();
                 }
 
                 #pragma omp section
                 {
-                        glsetup();
-                        new_game();
-                        main_loop();
+                        init_player();
+                        create_hmap();
+                        chunk_builder();
                 }
         }
 }
@@ -489,10 +491,12 @@ void glsetup()
         win = SDL_CreateWindow("Blocko", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                 W, H, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
         if (!win) exit(fprintf(stderr, "%s\n", SDL_GetError()));
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         ctx = SDL_GL_CreateContext(win);
         if (!ctx) exit(fprintf(stderr, "Could not create GL context\n"));
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         SDL_GL_SetSwapInterval(vsync);
         #ifndef __APPLE__
@@ -501,8 +505,10 @@ void glsetup()
         #endif
 
         // enable debug output
-        glEnable(GL_DEBUG_OUTPUT);
-        glDebugMessageCallback(MessageCallback, 0);
+	#ifndef __APPLE__
+		glEnable(GL_DEBUG_OUTPUT);
+		glDebugMessageCallback(MessageCallback, 0);
+	#endif
 
         // load all the textures
         glActiveTexture(GL_TEXTURE0);
@@ -997,8 +1003,8 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         #pragma omp parallel for
         for (x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
         {
-                if (x == xlo && z == zlo)
-                        omp_threads = omp_get_num_threads();
+                //if (x == xlo && z == zlo)
+               //       omp_threads = omp_get_num_threads();
 
                 if (column_already_generated[x][z])
                         continue;
