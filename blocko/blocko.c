@@ -6,10 +6,6 @@
 // The run-windows.bat script will try hard to find the SDK files it needs,
 // otherwise it will tell you what to do.
 
-#ifndef _WIN32
-        #include <unistd.h>
-#endif
-
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
