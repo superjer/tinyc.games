@@ -1,5 +1,5 @@
 #ifdef __APPLE__
-#include <gl.h>
+#include <OpenGL/gl3.h>
 #else
 #include <GL/glew.h>
 #endif
@@ -180,6 +180,8 @@ void main(void)                                                                 
     color = mix(c, vec4(fog_color, 1), fog);                                    \n\
 }                                                                               \n\
 ";
+
+        printf("GLSL version on this system is %s\n", (char *)glGetString(GL_SHADING_LANGUAGE_VERSION));
 
 	unsigned int vertex, fragment, geometry;
 	// vertex

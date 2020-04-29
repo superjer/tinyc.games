@@ -24,7 +24,7 @@ For Blocko, see blocko/README.md. For everything else:
 2. Open a game folder and run run-mac.sh
 
 ### Linux
-1. Install tcc, SDL2-dev, and GLEW-dev. Eg. for Debian/Ubuntu:
+1. Install tcc, libSDL2 with TTF support, and libGLEW. E.g. for Debian/Ubuntu/Mint:
 
     sudo apt install tcc libsdl2-dev libsdl2-ttf-dev libglew-dev
 
