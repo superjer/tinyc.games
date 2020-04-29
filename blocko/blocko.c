@@ -25,8 +25,9 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "../_stb/stb_image.h"
 
-#include "./timer.c"
-#include "./shader.c"
+#include "timer.c"
+#include "shader.c"
+#include "matrix.c"
 #include "../_osn/open-simplex-noise.c"
 
 struct osn_context *osn_context;
@@ -258,6 +259,7 @@ int gloq_outta_room = 0;
 int omp_threads = 0;
 int night_mode = 0;
 float night_amt = 0.f;
+int lock_culling;
 
 int mouselook = true;
 int target_x, target_y, target_z;
@@ -791,10 +793,13 @@ void key_move(int down)
                 case SDLK_o: // openmp stats
                         if (down) printf("Number of OMP chunk gen threads: %d\n", omp_threads);
                         break;
+                case SDLK_F1: // stop updating frustum culling
+                        if (down) lock_culling = !lock_culling;
+                        break;
                 case SDLK_F3: // show FPS and timings etc.
                         if (!down) noisy = !noisy;
                         break;
-                case SDLK_F4: // show FPS and timings etc.
+                case SDLK_F4: // show which chunks are being sent to gl
                         if (!down) show_fresh_updates = !show_fresh_updates;
                         break;
         }
@@ -2059,6 +2064,10 @@ void draw_stuff()
 
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, viewM);
 
+        static float pvM[16];
+        if (!lock_culling)
+                mat4_multiply(pvM, frustM, viewM);
+
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
         glEnable(GL_BLEND);
@@ -2177,6 +2186,16 @@ void draw_stuff()
                 int xd = ((i * BS * CHUNKW + BS * CHUNKW2) - eye0);
                 int zd = ((j * BS * CHUNKW + BS * CHUNKW2) - eye2);
                 stale[stale_len].y = (xd * xd + zd * zd);
+
+                // skip chunks we can't see anyways
+                float v[4];
+                mat4_f3_multiply(v, pvM, i*BS*CHUNKW + CHUNKW2, 100*BS, j*BS*CHUNKD + CHUNKD2);
+                v[0] /= v[3];
+                v[1] /= v[3];
+                v[2] /= v[3];
+                if (fabsf(v[0]) > 1.f || fabsf(v[1]) > 1.f || v[2] < 0.f || v[2] > 1.f)
+                        goto skip;
+
                 stale_len++;
 
                 skip: ;
