@@ -254,7 +254,7 @@ int noisy = false;
 int show_fresh_updates = false;
 int show_time_per_chunk = false;
 int show_light_values = false;
-int show_help = true;
+int help_layer = 1;
 int polys = 0;
 int sunq_outta_room = 0;
 int gloq_outta_room = 0;
@@ -737,11 +737,11 @@ void key_move(int down)
                         break;
                 case SDLK_h: // show help
                         if (down)
-                                show_help = (show_help == 1) ? 0 : 1;
+                                help_layer = (help_layer == 1) ? 0 : 1;
                         break;
                 case SDLK_g: // show help
                         if (down)
-                                show_help = (show_help == 2) ? 0 : 2;
+                                help_layer = (help_layer == 2) ? 0 : 2;
                         break;
                 case SDLK_r: // toggle phys step regulation
                         if (down)
@@ -763,19 +763,6 @@ void key_move(int down)
                         {
                                 antialiasing = !antialiasing;
                                 fprintf(stderr, "%s\n", antialiasing ? "antialiasing" : "no antialiasing");
-                        }
-                        break;
-                case SDLK_m: // check GPU memory usage
-                        if (down)
-                        {
-                                GLint total_kb = 0;
-                                GLint avail_kb = 0;
-                                glGetIntegerv(0x9048, &total_kb);
-                                glGetIntegerv(0x9049, &avail_kb);
-                                printf("GPU Memory %0.0f M used of %0.0f M (%0.1f%% free)\n",
-                                                (float)(total_kb - avail_kb) / 1000.f,
-                                                (float)(total_kb)            / 1000.f,
-                                                ((float)avail_kb / total_kb) * 100.f);
                         }
                         break;
                 case SDLK_t: // build lighting testing area
@@ -2372,16 +2359,25 @@ void debrief()
 {
         static unsigned last_ticks = 0;
         static unsigned last_frame = 0;
+        static GLint total_kb = 0;
+        static GLint avail_kb = 0;
         unsigned ticks = SDL_GetTicks();
         static char buf[8000];
         char *p = buf;
-
 
         if (ticks - last_ticks >= 1000) {
                 float elapsed = ((float)ticks - last_ticks);
                 float frames = frame - last_frame;
 
-                p += sprintf(p, "%d omp, %0.2f chunk/s\n", omp_threads, (float)nr_chunks_generated / (chunk_gen_ticks / 1000.f));
+                p += sprintf(p, "vmem %0.0fM used of %0.0fM (%0.0f%% free)\n",
+                                (float)(total_kb - avail_kb) / 1000.f,
+                                (float)(total_kb)            / 1000.f,
+                                ((float)avail_kb / total_kb) * 100.f);
+
+                p += sprintf(p, "%d omp, %0.2f chunk/s\n",
+                                omp_threads,
+                                (float)nr_chunks_generated / (chunk_gen_ticks / 1000.f));
+
                 p += sprintf(p, "%.3fM poly/s\n", 1000.f * (float)polys / elapsed / 1000000.f);
                 p += sprintf(p, "%.1f fps\n", 1000.f * frames / elapsed );
 
@@ -2393,6 +2389,8 @@ void debrief()
                         p += sprintf(p, "Out of room in the sun queue (%d times)\n", gloq_outta_room);
                 gloq_outta_room = 0;
 
+                glGetIntegerv(0x9048, &total_kb);
+                glGetIntegerv(0x9049, &avail_kb);
                 last_ticks = ticks;
                 last_frame = frame;
                 polys = 0;
@@ -2403,40 +2401,41 @@ void debrief()
         if (noisy)
         {
                 char xyzbuf[100];
-                sprintf(xyzbuf, "X=%0.0f Y=%0.0f Z=%0.0f\n", player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS);
+                sprintf(xyzbuf, "X=%0.0f Y=%0.0f Z=%0.0f %svsync %sreg %smsaa %sfast %slockculling",
+                                player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS,
+                                vsync ? "" : "no",
+                                regulated ? "" : "no",
+                                antialiasing ? "" : "no",
+                                fast > 1 ? "" : "no",
+                                lock_culling ? "" : "no");
 
                 font_begin(screenw, screenh);
                 font_add_text(buf, 0, 0);
                 font_add_text(xyzbuf, 0, 0.955f * screenh);
-                font_end();
+                font_end(1, 1, 1);
         }
 
-        if (show_help)
+        if (help_layer == 1)
         {
-                char *help[] = {"","\
-WASD:      Move\n\
-LShift:    Sneak\n\
-LCtrl/WW:  Run\n\
-Space/MB4: Jump\n\
-LMB:       Break\n\
-RMB:       Build\n\
-E:         Light\n\
-Z:         Zoom\n\
-H:         Hide this help text\n\
-Press G for more","\
-Q:       Teleport upward\n\
-F:       Fast mode\n\
-N:       Night\n\
-T:       Light test box\n\
-L:       Light values\n\
-/:       Vsync\n\
-R:       Fixed interval\n\
-F1:      Lock culling\n\
-F3:      FPS, timings, position\n\
-F4:      Show fresh updates"};
-
+                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nE          \nZ   \nH                  \nPress G for more";
+                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nPlace Light\nZoom\nHide this help text";
                 font_begin(screenw, screenh);
-                font_add_text(help[show_help], screenw/4.f, screenh/4.f);
-                font_end();
+                font_add_text(h1,            0, screenh/4.f);
+                font_end(1, 0.5, 1);
+                font_begin(screenw, screenh);
+                font_add_text(h2, screenw/10.f, screenh/4.f);
+                font_end(1, 1, 1);
+        }
+
+        if (help_layer == 2)
+        {
+                char *g1 = "Q              \nF        \nN    \nT             \nL           \nV    \nR             \n/   \nF1          \nF3                    \nF4 ";
+                char *g2 = "Teleport upward\nFast mode\nNight\nLight test box\nLight values\nVsync\nFixed interval\nMSAA\nLock culling\nFPS, timings, position\nShow fresh updates";
+                font_begin(screenw, screenh);
+                font_add_text(g1,            0, screenh/4.f);
+                font_end(0.5, 1, 1);
+                font_begin(screenw, screenh);
+                font_add_text(g2, screenw/20.f, screenh/4.f);
+                font_end(1, 1, 1);
         }
 }

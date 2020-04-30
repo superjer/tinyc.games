@@ -295,7 +295,7 @@ void font_add_text(char *s, int inx, int iny)
         }
 }
 
-void font_end()
+void font_end(float r, float g, float b)
 {
         int n = (font_buf_p - font_buf);
 
@@ -333,6 +333,6 @@ void font_end()
         glDrawArrays(GL_TRIANGLES, 0, n);
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glUniform3f(glGetUniformLocation(font_prog_id, "incolor"), 1, 1, 1);
+        glUniform3f(glGetUniformLocation(font_prog_id, "incolor"), r, g, b);
         glDrawArrays(GL_TRIANGLES, 0, n);
 }
