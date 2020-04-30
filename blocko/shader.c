@@ -9,11 +9,31 @@
 
 unsigned int prog_id;
 
-static void check_compile_errors(GLuint shader, char type);
+int check_shader_errors(GLuint shader, char *name)
+{
+        GLint success;
+        GLchar log[1024];
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+        if (success) return 0;
+        glGetShaderInfoLog(shader, 1024, NULL, log);
+        fprintf(stderr, "ERROR in %s shader program: %s\n", name, log);
+        return 1;
+}
+
+int check_program_errors(GLuint shader, char *name)
+{
+        GLint success;
+        GLchar log[1024];
+        glGetProgramiv(shader, GL_LINK_STATUS, &success);
+        if (success) return 0;
+        glGetProgramInfoLog(shader, 1024, NULL, log);
+        fprintf(stderr, "ERROR in %s shader: %s\n", name, log);
+        return 1;
+}
 
 void load_shaders()
 {
-	const char *vertex_code = "\
+        const char *vertex_code = "\
 #version 330 core                                                               \n\
 layout (location = 0) in float tex_in;                                          \n\
 layout (location = 1) in float orient_in;                                       \n\
@@ -45,7 +65,7 @@ void main(void)                                                                 
 }                                                                               \n\
 ";
 
-	const char *geometry_code = "\
+        const char *geometry_code = "\
 #version 330 core                                                               \n\
 layout (points) in;                                                             \n\
 layout (triangle_strip, max_vertices = 4) out;                                  \n\
@@ -150,7 +170,7 @@ void main(void) // geometry                                                     
 }                                                                               \n\
 ";
 
-	const char *fragment_code = "\
+        const char *fragment_code = "\
 #version 330 core                                                               \n\
 out vec4 color;                                                                 \n\
                                                                                 \n\
@@ -183,56 +203,30 @@ void main(void)                                                                 
 
         printf("GLSL version on this system is %s\n", (char *)glGetString(GL_SHADING_LANGUAGE_VERSION));
 
-	unsigned int vertex, fragment, geometry;
-	// vertex
-	vertex = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(vertex, 1, (const char *const *)&vertex_code, NULL);
-	glCompileShader(vertex);
-	check_compile_errors(vertex, 'V');
-	// geometry
-	geometry = glCreateShader(GL_GEOMETRY_SHADER);
-	glShaderSource(geometry, 1, (const char *const *)&geometry_code, NULL);
-	glCompileShader(geometry);
-	check_compile_errors(geometry, 'G');
-	// fragment
-	fragment = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(fragment, 1, (const char *const *)&fragment_code, NULL);
-	glCompileShader(fragment);
-	check_compile_errors(fragment, 'F');
-	// program
-	prog_id = glCreateProgram();
-	glAttachShader(prog_id, vertex);
-	glAttachShader(prog_id, geometry);
-	glAttachShader(prog_id, fragment);
-	glLinkProgram(prog_id);
-	check_compile_errors(prog_id, 'P');
-	glDeleteShader(vertex);
-	glDeleteShader(geometry);
-	glDeleteShader(fragment);
-}
+        unsigned int vertex, fragment, geometry;
 
-void check_compile_errors(GLuint shader, char type)
-{
-	GLint success;
-	GLchar log[1024];
-	if (type != 'P')
-	{
-		glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-		if (!success)
-		{
-			glGetShaderInfoLog(shader, 1024, NULL, log);
-			fprintf(stderr, "ERROR type %c\n%s\n", type, log);
-                        exit(-1);
-		}
-	}
-	else
-	{
-		glGetProgramiv(shader, GL_LINK_STATUS, &success);
-		if (!success)
-		{
-			glGetProgramInfoLog(shader, 1024, NULL, log);
-			fprintf(stderr, "ERROR type %c\n%s\n", type, log);
-                        exit(-1);
-		}
-	}
+        vertex = glCreateShader(GL_VERTEX_SHADER);
+        glShaderSource(vertex, 1, (const char *const *)&vertex_code, NULL);
+        glCompileShader(vertex);
+        check_shader_errors(vertex, "main vertex");
+
+        geometry = glCreateShader(GL_GEOMETRY_SHADER);
+        glShaderSource(geometry, 1, (const char *const *)&geometry_code, NULL);
+        glCompileShader(geometry);
+        check_shader_errors(geometry, "main geometry");
+
+        fragment = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(fragment, 1, (const char *const *)&fragment_code, NULL);
+        glCompileShader(fragment);
+        check_shader_errors(fragment, "main fragment");
+
+        prog_id = glCreateProgram();
+        glAttachShader(prog_id, vertex);
+        glAttachShader(prog_id, geometry);
+        glAttachShader(prog_id, fragment);
+        glLinkProgram(prog_id);
+        check_program_errors(prog_id, "main");
+        glDeleteShader(vertex);
+        glDeleteShader(geometry);
+        glDeleteShader(fragment);
 }

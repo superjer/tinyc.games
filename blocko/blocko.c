@@ -26,10 +26,11 @@
 #include "../_stb/stb_image.h"
 
 #include "timer.c"
-#include "shader.c"
 #include "matrix.c"
-#include "../_osn/open-simplex-noise.c"
+#include "shader.c"
+#include "font.c"
 
+#include "../_osn/open-simplex-noise.c"
 struct osn_context *osn_context;
 
 #define noise(x,y,z,scale) open_simplex_noise3(osn_context,(float)(x+0.5)/(scale),(float)(y+0.5)/(scale),(float)(z+0.5)/(scale))
@@ -253,6 +254,7 @@ int noisy = false;
 int show_fresh_updates = false;
 int show_time_per_chunk = false;
 int show_light_values = false;
+int show_help = true;
 int polys = 0;
 int sunq_outta_room = 0;
 int gloq_outta_room = 0;
@@ -275,9 +277,14 @@ int antialiasing = false;
 volatile struct qitem just_generated[VAOW*VAOD];
 volatile size_t just_gen_len;
 
+int nr_chunks_generated = 0;
+int chunk_gen_ticks = 0;
+
 SDL_Event event;
 SDL_Window *win;
 SDL_GLContext ctx;
+
+GLuint material_tex_id;
 
 unsigned int vbo[VAOS], vao[VAOS];
 size_t vbo_len[VAOS];
@@ -383,7 +390,6 @@ void main_loop()
         TIMECALL(step_sunlight, ());
         TIMECALL(step_glolight, ());
         draw_stuff();
-        debrief();
         frame++;
 } }
 
@@ -422,8 +428,6 @@ void chunk_builder()
         int xhi = xlo + CHUNKW;
         int zhi = zlo + CHUNKD;
 
-        static int nr_chunks_generated = 0;
-        static int chunk_gen_ticks = 0;
         int ticks_before = SDL_GetTicks();
         gen_chunk(xlo-1, xhi+1, zlo-1, zhi+1);
         nr_chunks_generated++;
@@ -502,6 +506,8 @@ void glsetup()
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         SDL_GL_SetSwapInterval(vsync);
 
+        SDL_SetRelativeMouseMode(SDL_TRUE);
+
         #ifndef __APPLE__
         glewExperimental = GL_TRUE;
         glewInit();
@@ -509,12 +515,12 @@ void glsetup()
         glDebugMessageCallback(MessageCallback, 0);
 	#endif
 
-        // load all the textures
-        glActiveTexture(GL_TEXTURE0);
+        // doesn't do anything?
+        //glActiveTexture(GL_TEXTURE0);
+
         int x, y, n, mode;
-        GLuint texid = 0;
-        glGenTextures(1, &texid);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, texid);
+        glGenTextures(1, &material_tex_id);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, material_tex_id);
 
         unsigned char *texels;
         char *files[] = {
@@ -614,9 +620,7 @@ void glsetup()
                 glEnableVertexAttribArray(5);
         }
 
-        glUseProgram(prog_id);
-        glUniform1i(glGetUniformLocation(prog_id, "tarray"), 0);
-        SDL_SetRelativeMouseMode(SDL_TRUE);
+        font_init();
 }
 
 void resize()
@@ -731,11 +735,13 @@ void key_move(int down)
                         if (down)
                                 fast = (fast == 1.f) ? 8.f : 1.f;
                         break;
-                case SDLK_h: // delete all ore hints
+                case SDLK_h: // show help
                         if (down)
-                                for (int x = 0; x < TILESW-1; x++) for (int z = 0; z < TILESD-1; z++) for (int y = 0; y < TILESH-1; y++)
-                                        if (T_(x, y, z) == OREH)
-                                                T_(x, y, z) = OPEN;
+                                show_help = (show_help == 1) ? 0 : 1;
+                        break;
+                case SDLK_g: // show help
+                        if (down)
+                                show_help = (show_help == 2) ? 0 : 2;
                         break;
                 case SDLK_r: // toggle phys step regulation
                         if (down)
@@ -786,12 +792,6 @@ void key_move(int down)
                                 test_area_y = place_y;
                                 test_area_z = place_z - TEST_AREA_SZ / 2;
                         }
-                        break;
-                case SDLK_c: // chunk gen stats
-                        if (down) show_time_per_chunk = true;
-                        break;
-                case SDLK_o: // openmp stats
-                        if (down) printf("Number of OMP chunk gen threads: %d\n", omp_threads);
                         break;
                 case SDLK_F1: // stop updating frustum culling
                         if (down) lock_culling = !lock_culling;
@@ -2000,6 +2000,11 @@ void draw_stuff()
         glClearColor(fog_r, fog_g, fog_b, 1.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        glUseProgram(prog_id);
+
+        // load texture cube (this doesn't technically do anything)
+        glUniform1i(glGetUniformLocation(prog_id, "tarray"), 0);
+
         // compute proj matrix
         float near = 8.f;
         float far = 99999.f;
@@ -2356,6 +2361,8 @@ void draw_stuff()
                 }
         }
 
+        debrief();
+
         TIMER(swapwindow);
         SDL_GL_SwapWindow(win);
         TIMER();
@@ -2366,32 +2373,70 @@ void debrief()
         static unsigned last_ticks = 0;
         static unsigned last_frame = 0;
         unsigned ticks = SDL_GetTicks();
+        static char buf[8000];
+        char *p = buf;
+
 
         if (ticks - last_ticks >= 1000) {
-                if (noisy) {
-                        float elapsed = ((float)ticks - last_ticks);
-                        float frames = frame - last_frame;
-                        printf("%.1f FPS\n", 1000.f * frames / elapsed );
-                        printf("%.1f polys/sec\n", 1000.f * (float)polys / elapsed);
-                        printf("%.1f polys/frame\n", (float)polys / frames);
-                        printf("player pos X=%0.0f Y=%0.0f Z=%0.0f\n", player[0].pos.x, player[0].pos.y, player[0].pos.z);
-                        printf("player block X=%0.0f Y=%0.0f Z=%0.0f\n", player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS);
-                        timer_print();
-                }
+                float elapsed = ((float)ticks - last_ticks);
+                float frames = frame - last_frame;
+
+                p += sprintf(p, "%d omp, %0.2f chunk/s\n", omp_threads, (float)nr_chunks_generated / (chunk_gen_ticks / 1000.f));
+                p += sprintf(p, "%.3fM poly/s\n", 1000.f * (float)polys / elapsed / 1000000.f);
+                p += sprintf(p, "%.1f fps\n", 1000.f * frames / elapsed );
+
+                if (sunq_outta_room)
+                        p += sprintf(p, "Out of room in the sun queue (%d times)\n", sunq_outta_room);
+                sunq_outta_room = 0;
+
+                if (gloq_outta_room)
+                        p += sprintf(p, "Out of room in the sun queue (%d times)\n", gloq_outta_room);
+                gloq_outta_room = 0;
+
                 last_ticks = ticks;
                 last_frame = frame;
                 polys = 0;
+
+                timer_print();
         }
 
-        if (sunq_outta_room)
+        if (noisy)
         {
-                fprintf(stderr, "Out of room in the sun queue (error %d times)\n", sunq_outta_room);
-                sunq_outta_room = 0;
+                char xyzbuf[100];
+                sprintf(xyzbuf, "X=%0.0f Y=%0.0f Z=%0.0f\n", player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS);
+
+                font_begin(screenw, screenh);
+                font_add_text(buf, 0, 0);
+                font_add_text(xyzbuf, 0, 0.955f * screenh);
+                font_end();
         }
 
-        if (gloq_outta_room)
+        if (show_help)
         {
-                fprintf(stderr, "Out of room in the sun queue (error %d times)\n", gloq_outta_room);
-                gloq_outta_room = 0;
+                char *help[] = {"","\
+WASD:      Move\n\
+LShift:    Sneak\n\
+LCtrl/WW:  Run\n\
+Space/MB4: Jump\n\
+LMB:       Break\n\
+RMB:       Build\n\
+E:         Light\n\
+Z:         Zoom\n\
+H:         Hide this help text\n\
+Press G for more","\
+Q:       Teleport upward\n\
+F:       Fast mode\n\
+N:       Night\n\
+T:       Light test box\n\
+L:       Light values\n\
+/:       Vsync\n\
+R:       Fixed interval\n\
+F1:      Lock culling\n\
+F3:      FPS, timings, position\n\
+F4:      Show fresh updates"};
+
+                font_begin(screenw, screenh);
+                font_add_text(help[show_help], screenw/4.f, screenh/4.f);
+                font_end();
         }
 }
