@@ -4,134 +4,141 @@
 !_TAG_PROGRAM_NAME	Exuberant Ctags	//
 !_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
 !_TAG_PROGRAM_VERSION	5.9~svn20110310	//
-ABOVE_GROUND	blocko.c	166;"	d	file:
-AT_GROUND	blocko.c	167;"	d	file:
-BARR	blocko.c	90;"	d	file:
-BELOW_GROUND	blocko.c	168;"	d	file:
-BS	blocko.c	51;"	d	file:
-BS2	blocko.c	52;"	d	file:
-CHUNKD	blocko.c	42;"	d	file:
-CHUNKD2	blocko.c	44;"	d	file:
-CHUNKW	blocko.c	41;"	d	file:
-CHUNKW2	blocko.c	43;"	d	file:
-CLAMP	blocko.c	105;"	d	file:
-CORN_	blocko.c	160;"	d	file:
-DAY_B	blocko.c	115;"	d	file:
-DAY_G	blocko.c	114;"	d	file:
-DAY_R	blocko.c	113;"	d	file:
-DIRT	blocko.c	83;"	d	file:
-DIST	blocko.c	172;"	d	file:
-DIST_SQ	blocko.c	171;"	d	file:
-DOWN	blocko.c	74;"	d	file:
-DUSK_B	blocko.c	121;"	d	file:
-DUSK_G	blocko.c	120;"	d	file:
-DUSK_R	blocko.c	119;"	d	file:
-EAST	blocko.c	70;"	d	file:
-EYEDOWN	blocko.c	58;"	d	file:
-FOG_DAY_B	blocko.c	124;"	d	file:
-FOG_DAY_G	blocko.c	123;"	d	file:
-FOG_DAY_R	blocko.c	122;"	d	file:
-FOG_DUSK_B	blocko.c	127;"	d	file:
-FOG_DUSK_G	blocko.c	126;"	d	file:
-FOG_DUSK_R	blocko.c	125;"	d	file:
-FOG_NIGHT_B	blocko.c	130;"	d	file:
-FOG_NIGHT_G	blocko.c	129;"	d	file:
-FOG_NIGHT_R	blocko.c	128;"	d	file:
+ABOVE_GROUND	blocko.c	167;"	d	file:
+AT_GROUND	blocko.c	168;"	d	file:
+B2C	blocko.c	179;"	d	file:
+B2P	blocko.c	175;"	d	file:
+BARR	blocko.c	91;"	d	file:
+BELOW_GROUND	blocko.c	169;"	d	file:
+BS	blocko.c	52;"	d	file:
+BS2	blocko.c	53;"	d	file:
+C2B	blocko.c	177;"	d	file:
+C2P	blocko.c	178;"	d	file:
+CHUNKD	blocko.c	43;"	d	file:
+CHUNKD2	blocko.c	45;"	d	file:
+CHUNKW	blocko.c	42;"	d	file:
+CHUNKW2	blocko.c	44;"	d	file:
+CLAMP	blocko.c	106;"	d	file:
+CORN_	blocko.c	161;"	d	file:
+DAY_B	blocko.c	116;"	d	file:
+DAY_G	blocko.c	115;"	d	file:
+DAY_R	blocko.c	114;"	d	file:
+DIRT	blocko.c	84;"	d	file:
+DIST	blocko.c	173;"	d	file:
+DIST_SQ	blocko.c	172;"	d	file:
+DOWN	blocko.c	75;"	d	file:
+DUSK_B	blocko.c	122;"	d	file:
+DUSK_G	blocko.c	121;"	d	file:
+DUSK_R	blocko.c	120;"	d	file:
+EAST	blocko.c	71;"	d	file:
+EYEDOWN	blocko.c	59;"	d	file:
+FOG_DAY_B	blocko.c	125;"	d	file:
+FOG_DAY_G	blocko.c	124;"	d	file:
+FOG_DAY_R	blocko.c	123;"	d	file:
+FOG_DUSK_B	blocko.c	128;"	d	file:
+FOG_DUSK_G	blocko.c	127;"	d	file:
+FOG_DUSK_R	blocko.c	126;"	d	file:
+FOG_NIGHT_B	blocko.c	131;"	d	file:
+FOG_NIGHT_G	blocko.c	130;"	d	file:
+FOG_NIGHT_R	blocko.c	129;"	d	file:
 FONT_BUFLEN	font.c	13;"	d	file:
 FONT_CH_H	font.c	10;"	d	file:
 FONT_CH_W	font.c	9;"	d	file:
 FONT_LINES	font.c	12;"	d	file:
 FONT_PITCH	font.c	11;"	d	file:
 GL3_PROTOTYPES	blocko.c	14;"	d	file:
-GLOQLEN	blocko.c	103;"	d	file:
-GLO_	blocko.c	159;"	d	file:
-GRAN	blocko.c	80;"	d	file:
-GRAS	blocko.c	88;"	d	file:
-GRAV_FLOAT	blocko.c	65;"	d	file:
-GRAV_JUMP	blocko.c	64;"	d	file:
-GRAV_MAX	blocko.c	67;"	d	file:
-GRAV_ZERO	blocko.c	66;"	d	file:
-GRG1	blocko.c	86;"	d	file:
-GRG2	blocko.c	87;"	d	file:
-H	blocko.c	40;"	d	file:
-HARD	blocko.c	79;"	d	file:
-ICLAMP	blocko.c	106;"	d	file:
-IS_OPAQUE	blocko.c	164;"	d	file:
-IS_SOLID	blocko.c	165;"	d	file:
-JUMP_BUFFER_FRAMES	blocko.c	63;"	d	file:
-KORN_	blocko.c	161;"	d	file:
-LASTSOLID	blocko.c	92;"	d	file:
-LITE	blocko.c	95;"	d	file:
-MAX	blocko.c	107;"	d	file:
-MAX_CAVE_POINTS	blocko.c	1109;"	d	file:
-MIN	blocko.c	108;"	d	file:
+GLOQLEN	blocko.c	104;"	d	file:
+GLO_	blocko.c	160;"	d	file:
+GRAN	blocko.c	81;"	d	file:
+GRAS	blocko.c	89;"	d	file:
+GRAV_FLOAT	blocko.c	66;"	d	file:
+GRAV_JUMP	blocko.c	65;"	d	file:
+GRAV_MAX	blocko.c	68;"	d	file:
+GRAV_ZERO	blocko.c	67;"	d	file:
+GRG1	blocko.c	87;"	d	file:
+GRG2	blocko.c	88;"	d	file:
+H	blocko.c	41;"	d	file:
+HARD	blocko.c	80;"	d	file:
+ICLAMP	blocko.c	107;"	d	file:
+IS_OPAQUE	blocko.c	165;"	d	file:
+IS_SOLID	blocko.c	166;"	d	file:
+JUMP_BUFFER_FRAMES	blocko.c	64;"	d	file:
+KORN_	blocko.c	162;"	d	file:
+LASTSOLID	blocko.c	93;"	d	file:
+LITE	blocko.c	96;"	d	file:
+MAX	blocko.c	108;"	d	file:
+MAX_CAVE_POINTS	blocko.c	1128;"	d	file:
+MIN	blocko.c	109;"	d	file:
 MessageCallback	blocko.c	/^MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,$/;"	f
 NAMES	timer.c	/^        NAMES$/;"	e	enum:timernames	file:
 NAMES	timer.c	22;"	d	file:
 NAMES	timer.c	52;"	d	file:
-NIGHT_B	blocko.c	118;"	d	file:
-NIGHT_G	blocko.c	117;"	d	file:
-NIGHT_R	blocko.c	116;"	d	file:
-NORTH	blocko.c	71;"	d	file:
-NR_PLAYERS	blocko.c	62;"	d	file:
-OPEN	blocko.c	93;"	d	file:
-ORE	blocko.c	77;"	d	file:
-OREH	blocko.c	78;"	d	file:
-PLYR_H	blocko.c	54;"	d	file:
-PLYR_SPD	blocko.c	55;"	d	file:
-PLYR_SPD_R	blocko.c	56;"	d	file:
-PLYR_SPD_S	blocko.c	57;"	d	file:
-PLYR_W	blocko.c	53;"	d	file:
-PNG0	blocko.c	547;"	d	file:
-QCAVE	blocko.c	1110;"	d	file:
-QITEM	blocko.c	170;"	d	file:
-RAND	blocko.c	177;"	d	file:
-RAND01	blocko.c	179;"	d	file:
-RANDBOOL	blocko.c	187;"	d	file:
-RANDF	blocko.c	183;"	d	file:
-RANDI	blocko.c	181;"	d	file:
-RANDP	blocko.c	185;"	d	file:
-REGD	blocko.c	1088;"	d	file:
-REGW	blocko.c	1087;"	d	file:
-RLEF	blocko.c	97;"	d	file:
-SAND	blocko.c	82;"	d	file:
-SCALE	blocko.c	38;"	d	file:
+NIGHT_B	blocko.c	119;"	d	file:
+NIGHT_G	blocko.c	118;"	d	file:
+NIGHT_R	blocko.c	117;"	d	file:
+NORTH	blocko.c	72;"	d	file:
+NR_PLAYERS	blocko.c	63;"	d	file:
+OPEN	blocko.c	94;"	d	file:
+ORE	blocko.c	78;"	d	file:
+OREH	blocko.c	79;"	d	file:
+P2B	blocko.c	176;"	d	file:
+P2C	blocko.c	180;"	d	file:
+PLYR_H	blocko.c	55;"	d	file:
+PLYR_SPD	blocko.c	56;"	d	file:
+PLYR_SPD_R	blocko.c	57;"	d	file:
+PLYR_SPD_S	blocko.c	58;"	d	file:
+PLYR_W	blocko.c	54;"	d	file:
+PNG0	blocko.c	557;"	d	file:
+QCAVE	blocko.c	1129;"	d	file:
+QITEM	blocko.c	171;"	d	file:
+RAND	blocko.c	185;"	d	file:
+RAND01	blocko.c	187;"	d	file:
+RANDBOOL	blocko.c	195;"	d	file:
+RANDF	blocko.c	191;"	d	file:
+RANDI	blocko.c	189;"	d	file:
+RANDP	blocko.c	193;"	d	file:
+REGD	blocko.c	1107;"	d	file:
+REGW	blocko.c	1106;"	d	file:
+RLEF	blocko.c	98;"	d	file:
+SAND	blocko.c	83;"	d	file:
+SCALE	blocko.c	39;"	d	file:
 SDL_DISABLE_IMMINTRIN_H	blocko.c	22;"	d	file:
-SEED1	blocko.c	189;"	d	file:
-SEED2	blocko.c	190;"	d	file:
-SEED3	blocko.c	191;"	d	file:
-SEED4	blocko.c	192;"	d	file:
-SOUTH	blocko.c	73;"	d	file:
-STARTPX	blocko.c	59;"	d	file:
-STARTPY	blocko.c	60;"	d	file:
-STARTPZ	blocko.c	61;"	d	file:
+SEED1	blocko.c	197;"	d	file:
+SEED2	blocko.c	198;"	d	file:
+SEED3	blocko.c	199;"	d	file:
+SEED4	blocko.c	200;"	d	file:
+SOUTH	blocko.c	74;"	d	file:
+STARTPX	blocko.c	60;"	d	file:
+STARTPY	blocko.c	61;"	d	file:
+STARTPZ	blocko.c	62;"	d	file:
 STBI_NO_SIMD	blocko.c	24;"	d	file:
 STB_IMAGE_IMPLEMENTATION	blocko.c	25;"	d	file:
-STON	blocko.c	76;"	d	file:
-SUNQLEN	blocko.c	102;"	d	file:
-SUN_	blocko.c	158;"	d	file:
-TEST_AREA_SZ	blocko.c	194;"	d	file:
-TILESD	blocko.c	50;"	d	file:
-TILESH	blocko.c	49;"	d	file:
-TILESW	blocko.c	48;"	d	file:
+STON	blocko.c	77;"	d	file:
+SUNQLEN	blocko.c	103;"	d	file:
+SUN_	blocko.c	159;"	d	file:
+TEST_AREA_SZ	blocko.c	202;"	d	file:
+TILESD	blocko.c	51;"	d	file:
+TILESH	blocko.c	50;"	d	file:
+TILESW	blocko.c	49;"	d	file:
 TIMECALL	timer.c	11;"	d	file:
 TIMER	timer.c	3;"	d	file:
-T_	blocko.c	157;"	d	file:
-UP	blocko.c	69;"	d	file:
-VAOD	blocko.c	46;"	d	file:
-VAOS	blocko.c	47;"	d	file:
-VAOW	blocko.c	45;"	d	file:
-VERTEX_BUFLEN	blocko.c	101;"	d	file:
-W	blocko.c	39;"	d	file:
-WATR	blocko.c	94;"	d	file:
-WEST	blocko.c	72;"	d	file:
-WOOD	blocko.c	84;"	d	file:
+T_	blocko.c	158;"	d	file:
+UP	blocko.c	70;"	d	file:
+VAOD	blocko.c	47;"	d	file:
+VAOS	blocko.c	48;"	d	file:
+VAOW	blocko.c	46;"	d	file:
+VERTEX_BUFLEN	blocko.c	102;"	d	file:
+W	blocko.c	40;"	d	file:
+WATR	blocko.c	95;"	d	file:
+WEST	blocko.c	73;"	d	file:
+WOOD	blocko.c	85;"	d	file:
 WinMain	blocko.c	/^int WinMain()$/;"	f
 X	timer.c	39;"	d	file:
 X	timer.c	41;"	d	file:
 X	timer.c	46;"	d	file:
 X	timer.c	48;"	d	file:
-YLEF	blocko.c	98;"	d	file:
+YLEF	blocko.c	99;"	d	file:
+alert	blocko.c	/^char alert[800]; \/\/ only for debugging$/;"	v
 alpha	blocko.c	/^        float alpha;$/;"	m	struct:vbufv	file:
 already_generated	blocko.c	/^volatile char already_generated[VAOW][VAOD];$/;"	v
 antialiasing	blocko.c	/^int antialiasing = false;$/;"	v
@@ -156,12 +163,12 @@ debrief	blocko.c	/^void debrief()$/;"	f
 draw_stuff	blocko.c	/^void draw_stuff()$/;"	f
 dumb_rand	blocko.c	/^unsigned int dumb_rand(int *seed) { return (*seed = (1103515245 * *seed + 12345) % 2147483648); }$/;"	f
 event	blocko.c	/^SDL_Event event;$/;"	v
-false	blocko.c	111;"	d	file:
+false	blocko.c	112;"	d	file:
 fast	blocko.c	/^float fast = 1.f;$/;"	v
 fog_b	blocko.c	/^float fog_r, fog_g, fog_b;$/;"	v
 fog_g	blocko.c	/^float fog_r, fog_g, fog_b;$/;"	v
 fog_r	blocko.c	/^float fog_r, fog_g, fog_b;$/;"	v
-font_add_text	font.c	/^void font_add_text(char *s, int inx, int iny)$/;"	f
+font_add_text	font.c	/^void font_add_text(char *s, int inx, int iny, float scale)$/;"	f
 font_begin	font.c	/^void font_begin(int w, int h)$/;"	f
 font_buf	font.c	/^float font_buf[FONT_BUFLEN + 100];$/;"	v
 font_buf_limit	font.c	/^float *font_buf_limit = font_buf + FONT_BUFLEN;$/;"	v
@@ -176,6 +183,7 @@ font_tex_id	font.c	/^GLuint font_tex_id;$/;"	v
 font_vao	font.c	/^GLuint font_vbo, font_vao;$/;"	v
 font_vbo	font.c	/^GLuint font_vbo, font_vao;$/;"	v
 frame	blocko.c	/^int frame = 0;$/;"	v
+frustum_culling	blocko.c	/^int frustum_culling = true;$/;"	v
 fvel	blocko.c	/^        int fvel;$/;"	m	struct:player	file:
 gen_chunk	blocko.c	/^void gen_chunk(int xlo, int xhi, int zlo, int zhi)$/;"	f
 gen_hmap	blocko.c	/^void gen_hmap(int x0, int x2, int z0, int z2)$/;"	f
@@ -223,7 +231,7 @@ lerp_camera	blocko.c	/^void lerp_camera(float t, struct player *a, struct player
 lerped_pos	blocko.c	/^struct point lerped_pos;$/;"	v	typeref:struct:point
 lighting	blocko.c	/^        int lighting;$/;"	m	struct:player	file:
 load_shaders	shader.c	/^void load_shaders()$/;"	f
-lock_culling	blocko.c	/^int lock_culling;$/;"	v
+lock_culling	blocko.c	/^int lock_culling = false;$/;"	v
 main_loop	blocko.c	/^void main_loop()$/;"	f
 mat4_f3_multiply	matrix.c	/^void mat4_f3_multiply(float *result, float *m, float x, float y, float z)$/;"	f
 mat4_multiply	matrix.c	/^void mat4_multiply(float *result, float *a, float *b)$/;"	f
@@ -236,8 +244,8 @@ move_player	blocko.c	/^int move_player(struct player *p, int velx, int vely, int
 move_to_ground	blocko.c	/^void move_to_ground(float *inout, int x, int y, int z)$/;"	f
 new_game	blocko.c	/^void new_game()$/;"	f
 night_amt	blocko.c	/^float night_amt = 0.f;$/;"	v
-night_mode	blocko.c	/^int night_mode = 0;$/;"	v
-noise	blocko.c	36;"	d	file:
+night_mode	blocko.c	/^int night_mode = false;$/;"	v
+noise	blocko.c	37;"	d	file:
 noisy	blocko.c	/^int noisy = false;$/;"	v
 nr_chunks_generated	blocko.c	/^int nr_chunks_generated = 0;$/;"	v
 omp_threads	blocko.c	/^int omp_threads = 0;$/;"	v
@@ -283,7 +291,12 @@ sqdist	blocko.c	/^struct qchunk { int x, y, z, sqdist; };$/;"	m	struct:qchunk	fi
 startup	blocko.c	/^void startup()$/;"	f
 step_glolight	blocko.c	/^int step_glolight()$/;"	f
 step_sunlight	blocko.c	/^int step_sunlight()$/;"	f
+sun_draw	sky.c	/^void sun_draw(float *proj, float *view, float time_of_day)$/;"	f
 sun_enqueue	blocko.c	/^void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)$/;"	f
+sun_init	sky.c	/^void sun_init()$/;"	f
+sun_prog_id	sky.c	/^unsigned int sun_prog_id;$/;"	v
+sun_vao	sky.c	/^GLuint sun_vbo, sun_vao;$/;"	v
+sun_vbo	sky.c	/^GLuint sun_vbo, sun_vao;$/;"	v
 sunlight	blocko.c	/^unsigned char *sunlight;$/;"	v
 sunq0_	blocko.c	/^struct qitem sunq0_[SUNQLEN+1];$/;"	v	typeref:struct:qitem
 sunq1_	blocko.c	/^struct qitem sunq1_[SUNQLEN+1];$/;"	v	typeref:struct:qitem
@@ -300,12 +313,12 @@ tex	blocko.c	/^        float tex;$/;"	m	struct:vbufv	file:
 tiles	blocko.c	/^unsigned char *tiles;$/;"	v
 timer_	timer.c	/^        timer_$/;"	e	enum:timernames	file:
 timer_curr_id	timer.c	/^int timer_curr_id = timer_;$/;"	v
-timer_print	timer.c	/^void timer_print()$/;"	f
+timer_print	timer.c	/^void timer_print(char *buf)$/;"	f
 timer_then	timer.c	/^long long int timer_then = 0;$/;"	v
 timer_times	timer.c	/^long long int timer_times[timer_ + 1] = { 0 };$/;"	v
 timernames	timer.c	/^enum timernames {$/;"	g	file:
 timernamesprint	timer.c	/^char timernamesprint[][80] = {$/;"	v
-true	blocko.c	110;"	d	file:
+true	blocko.c	111;"	d	file:
 update_player	blocko.c	/^void update_player(struct player *p, int real)$/;"	f
 update_world	blocko.c	/^void update_world()$/;"	f
 v	blocko.c	/^struct vbufv *v = vbuf;$/;"	v	typeref:struct:vbufv

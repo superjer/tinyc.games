@@ -29,6 +29,7 @@
 #include "matrix.c"
 #include "shader.c"
 #include "font.c"
+#include "sky.c"
 
 #include "../_osn/open-simplex-noise.c"
 struct osn_context *osn_context;
@@ -630,6 +631,7 @@ void glsetup()
         }
 
         font_init();
+        sun_init();
 }
 
 void resize()
@@ -1467,7 +1469,7 @@ void update_world()
                 }
         }
 
-        night_amt += night_mode ? 0.01f : -0.01f;
+        night_amt += night_mode ? 0.001f : -0.001f;
         CLAMP(night_amt, 0.f, 1.f);
 }
 
@@ -1988,6 +1990,7 @@ int sorter(const void * _a, const void * _b)
 void draw_stuff()
 {
         glViewport(0, 0, screenw, screenh);
+        if (antialiasing) glEnable(GL_MULTISAMPLE); else glDisable(GL_MULTISAMPLE);
 
         if (night_amt > 0.5f)
         {
@@ -2004,11 +2007,6 @@ void draw_stuff()
         glClearColor(fog_r, fog_g, fog_b, 1.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(prog_id);
-
-        // load texture cube (this doesn't technically do anything)
-        glUniform1i(glGetUniformLocation(prog_id, "tarray"), 0);
-
         // compute proj matrix
         float near = 8.f;
         float far = 99999.f;
@@ -2020,7 +2018,6 @@ void draw_stuff()
                           0,           0,       -(far + near) / (far - near), -1,
                           0,           0, -(2.f * far * near) / (far - near),  0
         };
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, frustM);
 
         // compute view matrix
         float eye0, eye1, eye2;
@@ -2063,36 +2060,42 @@ void draw_stuff()
                  0,  0,  0, 1
         };
 
+        sun_draw(frustM, viewM, night_amt);
+
         // find where we are pointing at
         rayshot(eye0, eye1, eye2, f0, f1, f2);
 
         // translate by hand
-        viewM[12] = (viewM[0] * -eye0) + (viewM[4] * -eye1) + (viewM[ 8] * -eye2);
-        viewM[13] = (viewM[1] * -eye0) + (viewM[5] * -eye1) + (viewM[ 9] * -eye2);
-        viewM[14] = (viewM[2] * -eye0) + (viewM[6] * -eye1) + (viewM[10] * -eye2);
-
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, viewM);
+        float translated_viewM[16];
+        memcpy(translated_viewM, viewM, sizeof viewM);
+        translated_viewM[12] = (viewM[0] * -eye0) + (viewM[4] * -eye1) + (viewM[ 8] * -eye2);
+        translated_viewM[13] = (viewM[1] * -eye0) + (viewM[5] * -eye1) + (viewM[ 9] * -eye2);
+        translated_viewM[14] = (viewM[2] * -eye0) + (viewM[6] * -eye1) + (viewM[10] * -eye2);
 
         static float pvM[16];
         if (!lock_culling)
-                mat4_multiply(pvM, frustM, viewM);
+                mat4_multiply(pvM, frustM, translated_viewM);
 
-        glEnable(GL_DEPTH_TEST);
-        glEnable(GL_CULL_FACE);
         glEnable(GL_BLEND);
-        if (antialiasing) glEnable(GL_MULTISAMPLE); else glDisable(GL_MULTISAMPLE);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LEQUAL);
+        glDepthMask(GL_TRUE);
+        glEnable(GL_CULL_FACE);
 
         // identity for model view for world drawing
         float modelM[] = {
                 1, 0, 0, 0,
                 0, 1, 0, 0,
                 0, 0, 1, 0,
-                0, 0, 0, 1
+                0, 0, 0, 1,
         };
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, modelM);
 
+        glUseProgram(prog_id);
+        glUniform1i(glGetUniformLocation(prog_id, "tarray"), 0);
+        glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, frustM);
+        glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, translated_viewM);
+        glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, modelM);
         glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
 
         {
