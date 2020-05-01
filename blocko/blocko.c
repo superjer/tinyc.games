@@ -171,6 +171,13 @@ volatile char already_generated[VAOW][VAOD];
 #define DIST_SQ(dx, dy, dz) ((dx)*(dx) + (dy)*(dy) + (dz)*(dz))
 #define DIST(dx, dy, dz) (sqrt(DIST_SQ(dx, dy, dz)))
 
+#define B2P(b) (b*BS)
+#define P2B(p) (p/BS)
+#define C2B(c) (c*CHUNKW)
+#define C2P(c) (c*BS*CHUNKW)
+#define B2C(b) (b/CHUNKW)
+#define P2C(p) ((p/CHUNKW)/BS)
+
 // dumb rand -- for simple deterministic rand
 unsigned int dumb_rand(int *seed) { return (*seed = (1103515245 * *seed + 12345) % 2147483648); }
 // helpers for dumb rand, must have local var called seed for all of these
@@ -259,9 +266,11 @@ int polys = 0;
 int sunq_outta_room = 0;
 int gloq_outta_room = 0;
 int omp_threads = 0;
-int night_mode = 0;
+int night_mode = false;
 float night_amt = 0.f;
-int lock_culling;
+int lock_culling = false;
+int frustum_culling = true;
+char alert[800]; // only for debugging
 
 int mouselook = true;
 int target_x, target_y, target_z;
@@ -780,7 +789,10 @@ void key_move(int down)
                                 test_area_z = place_z - TEST_AREA_SZ / 2;
                         }
                         break;
-                case SDLK_F1: // stop updating frustum culling
+                case SDLK_F1: // do frustum culling
+                        if (down) frustum_culling = !frustum_culling;
+                        break;
+                case SDLK_F2: // stop updating frustum culling
                         if (down) lock_culling = !lock_culling;
                         break;
                 case SDLK_F3: // show FPS and timings etc.
@@ -789,6 +801,11 @@ void key_move(int down)
                 case SDLK_F4: // show which chunks are being sent to gl
                         if (!down) show_fresh_updates = !show_fresh_updates;
                         break;
+                case SDLK_F5: // delete test chunk
+                        if (!down) for(int x=0;x<CHUNKW;x++) for(int y=0;y<TILESH;y++) for(int z=0;z<CHUNKD;z++)
+                        {
+                                T_(C2B(32) + x, y, C2B(32) + z) = OPEN;
+                        }
         }
 }
 
@@ -2176,17 +2193,42 @@ void draw_stuff()
                 stale[stale_len].x = i;
                 stale[stale_len].z = j;
                 int xd = ((i * BS * CHUNKW + BS * CHUNKW2) - eye0);
-                int zd = ((j * BS * CHUNKW + BS * CHUNKW2) - eye2);
+                int zd = ((j * BS * CHUNKD + BS * CHUNKD2) - eye2);
                 stale[stale_len].y = (xd * xd + zd * zd);
 
                 // skip chunks we can't see anyways
-                float v[4];
-                mat4_f3_multiply(v, pvM, i*BS*CHUNKW + CHUNKW2, 100*BS, j*BS*CHUNKD + CHUNKD2);
-                v[0] /= v[3];
-                v[1] /= v[3];
-                v[2] /= v[3];
-                if (fabsf(v[0]) > 1.f || fabsf(v[1]) > 1.f || v[2] < 0.f || v[2] > 1.f)
-                        goto skip;
+                if (frustum_culling)
+                {
+                        int x_too_lo = 0;
+                        int x_too_hi = 0;
+                        int y_too_lo = 0;
+                        int y_too_hi = 0;
+                        int z_too_lo = 0;
+                        int z_too_hi = 0;
+                        int w_too_lo = 0;
+
+                        for (int x = 0; x <= 1; x++) for (int z = 0; z <= 1; z++) for (int y = 0; y <= 1; y++)
+                        {
+                                float v[4];
+                                mat4_f3_multiply(v, pvM,
+                                                i*BS*CHUNKW + x*BS*CHUNKW,
+                                                          0 + y*BS*TILESH,
+                                                j*BS*CHUNKD + z*BS*CHUNKD);
+                                if (v[0] < -v[3]) x_too_lo++;
+                                if (v[0] >  v[3]) x_too_hi++;
+                                if (v[1] < -v[3]) y_too_lo++;
+                                if (v[1] >  v[3]) y_too_hi++;
+                                if (v[2] < -v[3]) z_too_lo++;
+                                if (v[2] >  v[3]) z_too_hi++;
+                                if (v[3] <   0.f) w_too_lo++;
+                        }
+
+                        if (x_too_lo == 8 || x_too_hi == 8 ||
+                            y_too_lo == 8 || y_too_hi == 8 ||
+                            z_too_lo == 8 || z_too_hi == 8 ||
+                            w_too_lo == 8)
+                                goto skip;
+                }
 
                 stale_len++;
 
@@ -2402,13 +2444,14 @@ void debrief()
         if (noisy)
         {
                 char xyzbuf[100];
-                sprintf(xyzbuf, "X=%0.0f Y=%0.0f Z=%0.0f %svsync %sreg %smsaa %sfast %slockculling",
+                sprintf(xyzbuf, "X=%0.0f Y=%0.0f Z=%0.0f %svsync %sreg %smsaa %sfast %scull %slock",
                                 player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS,
-                                vsync        ? "" : "no",
-                                regulated    ? "" : "no",
-                                antialiasing ? "" : "no",
-                                fast > 1     ? "" : "no",
-                                lock_culling ? "" : "no");
+                                vsync           ? "" : "no",
+                                regulated       ? "" : "no",
+                                antialiasing    ? "" : "no",
+                                fast > 1        ? "" : "no",
+                                frustum_culling ? "" : "no",
+                                lock_culling    ? "" : "no");
 
                 font_begin(screenw, screenh);
                 font_add_text(buf, 0, 0, 0);
@@ -2434,13 +2477,21 @@ void debrief()
 
         if (help_layer == 2)
         {
-                char *g1 = "Q              \nF        \nN    \nT             \nL           \nV    \nR             \n/   \nF1          \nF3                    \nF4 ";
-                char *g2 = "Teleport upward\nFast mode\nNight\nLight test box\nLight values\nVsync\nFixed interval\nMSAA\nLock culling\nFPS, timings, position\nShow fresh updates";
+                char *g1 = "Q              \nF        \nN    \nT             \nL           \nV    \nR             \n/   \nF1     \nF2          \nF3                    \nF4 ";
+                char *g2 = "Teleport upward\nFast mode\nNight\nLight test box\nLight values\nVsync\nFixed interval\nMSAA\nCulling\nLock culling\nFPS, timings, position\nShow fresh updates";
                 font_begin(screenw, screenh);
                 font_add_text(g1, screenw/100.f, screenh/4.f, 0);
                 font_end(0.5, 1, 1);
                 font_begin(screenw, screenh);
                 font_add_text(g2, screenw/20.f, screenh/4.f, 0);
                 font_end(1, 1, 1);
+        }
+
+        // for debugging only
+        if (alert[0])
+        {
+                font_begin(screenw, screenh);
+                font_add_text(alert, screenw/2.f, screenh/2.f, 0);
+                font_end(1, 0.5, 0);
         }
 }
