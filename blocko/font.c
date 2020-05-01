@@ -239,11 +239,13 @@ void font_begin(int w, int h)
         font_buf_p = font_buf;
 }
 
-void font_add_text(char *s, int inx, int iny)
+void font_add_text(char *s, int inx, int iny, float scale)
 {
         int x = inx;
         int y = iny;
-        float scale = roundf((font_screenw < font_screenh ? font_screenw : font_screenh) / 250.f);
+
+        if (!scale)
+                scale = roundf((font_screenw < font_screenh ? font_screenw : font_screenh) / 250.f);
 
         for (; *s && font_buf_p < font_buf_limit; s++)
         {
