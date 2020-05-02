@@ -304,7 +304,9 @@ void font_end(float r, float g, float b)
         };
         glUniformMatrix4fv(glGetUniformLocation(font_prog_id, "proj"), 1, GL_FALSE, ortho);
 
+        glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, font_tex_id);
+        glUniform1i(glGetUniformLocation(font_prog_id, "tex"), 2);
 
         glBindVertexArray(font_vao);
         glBindBuffer(GL_ARRAY_BUFFER, font_vbo);

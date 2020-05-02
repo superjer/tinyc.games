@@ -253,6 +253,7 @@ struct player {
 struct player player[NR_PLAYERS];
 struct player camplayer;
 struct point lerped_pos;
+struct point sun_pos;
 
 //globals
 int frame = 0;
@@ -271,6 +272,7 @@ int night_mode = false;
 float night_amt = 0.f;
 int lock_culling = false;
 int frustum_culling = true;
+int pause = false;
 char alert[800]; // only for debugging
 
 int mouselook = true;
@@ -284,6 +286,7 @@ float fast = 1.f;
 int regulated = true;
 int vsync = false;
 int antialiasing = false;
+int shadow_mapping = true;
 volatile struct qitem just_generated[VAOW*VAOD];
 volatile size_t just_gen_len;
 
@@ -295,6 +298,8 @@ SDL_Window *win;
 SDL_GLContext ctx;
 
 GLuint material_tex_id;
+GLuint shadow_tex_id;
+GLuint shadow_fbo;
 
 unsigned int vbo[VAOS], vao[VAOS];
 size_t vbo_len[VAOS];
@@ -525,9 +530,6 @@ void glsetup()
         glDebugMessageCallback(MessageCallback, 0);
 	#endif
 
-        // doesn't do anything?
-        //glActiveTexture(GL_TEXTURE0);
-
         int x, y, n, mode;
         glGenTextures(1, &material_tex_id);
         glBindTexture(GL_TEXTURE_2D_ARRAY, material_tex_id);
@@ -629,6 +631,23 @@ void glsetup()
                 glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->alpha);
                 glEnableVertexAttribArray(5);
         }
+
+        // create shadow map texture
+        #define SHADOW_SZ 4096
+        glGenFramebuffers(1, &shadow_fbo);
+        glGenTextures(1, &shadow_tex_id);
+        glBindTexture(GL_TEXTURE_2D, shadow_tex_id);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SZ, SHADOW_SZ,
+                        0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // TODO: nearest?
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadow_tex_id, 0);
+        glDrawBuffer(GL_NONE);
+        glReadBuffer(GL_NONE);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0); // <- even need this?
 
         TIMECALL(font_init, ());
         sun_init();
@@ -791,6 +810,9 @@ void key_move(int down)
                                 test_area_z = place_z - TEST_AREA_SZ / 2;
                         }
                         break;
+                case SDLK_p: // do frustum culling
+                        if (down) pause = !pause;
+                        break;
                 case SDLK_F1: // do frustum culling
                         if (down) frustum_culling = !frustum_culling;
                         break;
@@ -864,7 +886,7 @@ void init_player()
         player[0].pos.w = PLYR_W;
         player[0].pos.h = PLYR_H;
         player[0].pos.d = PLYR_W;
-        player[0].yaw = 3.1415926535 * 0.23;
+        player[0].yaw = 3.1415926535 * 0.5f;
         player[0].grav = GRAV_ZERO;
 }
 
@@ -1469,8 +1491,11 @@ void update_world()
                 }
         }
 
-        night_amt += night_mode ? 0.001f : -0.001f;
-        CLAMP(night_amt, 0.f, 1.f);
+        if (!pause)
+        {
+                night_amt += night_mode ? 0.001f : -0.001f;
+                CLAMP(night_amt, 0.f, 1.f);
+        }
 }
 
 // remove direct or indirect sunlight
@@ -1989,8 +2014,86 @@ int sorter(const void * _a, const void * _b)
 //draw everything in the game on the screen
 void draw_stuff()
 {
-        glViewport(0, 0, screenw, screenh);
-        if (antialiasing) glEnable(GL_MULTISAMPLE); else glDisable(GL_MULTISAMPLE);
+        float identityM[] = {
+                1, 0, 0, 0,
+                0, 1, 0, 0,
+                0, 0, 1, 0,
+                0, 0, 0, 1,
+        };
+
+        float shadow_space[16];
+
+        glDisable(GL_MULTISAMPLE);
+
+        // make shadow map
+        if (shadow_mapping)
+        {
+                glViewport(0, 0, SHADOW_SZ, SHADOW_SZ);
+                glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo);
+                glClear(GL_DEPTH_BUFFER_BIT);
+
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                glEnable(GL_DEPTH_TEST);
+                glDepthFunc(GL_LEQUAL);
+                glDepthMask(GL_TRUE);
+                glDisable(GL_CULL_FACE);
+                glEnable(GL_POLYGON_OFFSET_FILL);
+                glPolygonOffset(2.f, 4.f);
+
+                //render shadows here
+                glUseProgram(shadow_prog_id);
+                float snear = 8.f;
+                float sfar = 99999.f;
+                float x = 1.f / (20000 / 2.f);
+                float y = -1.f / (20000 / 2.f);
+                float z = -1.f / ((sfar - snear) / 2.f);
+                float tz = -(sfar + snear) / (sfar - snear);
+                float orthoM[] = {
+                        x, 0, 0,  0,
+                        0, y, 0,  0,
+                        0, 0, z,  0,
+                        0, 0, tz, 1,
+                };
+
+                float viewM[16];
+                float f[3];
+                float pitch = (0.5 - night_amt) * 3.1415926535;
+                float yaw = 3.1415926535 * -0.485f;
+                sun_pos.x = camplayer.pos.x + 300.f * BS * sinf(-yaw) * cosf(pitch);
+                sun_pos.y = 100.f * BS - 300.f * BS * sinf(pitch);
+                sun_pos.z = camplayer.pos.z + 300.f * BS * cosf(-yaw) * cosf(pitch);
+                sprintf(alert, "sun%0.3f player%0.3f sunpos %0.0f %0.0f %0.0f", pitch, camplayer.pitch, sun_pos.x/BS, sun_pos.y/BS, sun_pos.z/BS);
+                lookit(viewM, f, sun_pos.x, sun_pos.y, sun_pos.z, pitch, yaw);
+                translate(viewM, -sun_pos.x, -sun_pos.y, -sun_pos.z);
+                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "proj"), 1, GL_FALSE, orthoM);
+                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "view"), 1, GL_FALSE, viewM);
+                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "model"), 1, GL_FALSE, identityM);
+                glUniform1i(glGetUniformLocation(shadow_prog_id, "tarray"), 0);
+                glUniform1f(glGetUniformLocation(shadow_prog_id, "BS"), BS);
+
+                float biasM[] = {
+                        0.5,   0,   0, 1,
+                          0, 0.5,   0, 1,
+                          0,   0, 0.5, 1,
+                        0.5, 0.5, 0.5, 1,
+                };
+                float tmpM[16];
+                mat4_multiply(tmpM, orthoM, viewM);
+                mat4_multiply(shadow_space, biasM, tmpM);
+
+                int shadow_poly = 0;
+                for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
+                {
+                        int myvbo = i * VAOD + j;
+                        if (vbo_len[myvbo] < 1) continue;
+                        glBindVertexArray(vao[myvbo]);
+                        glDrawArrays(GL_POINTS, 0, vbo_len[myvbo]);
+                        shadow_poly += vbo_len[myvbo];
+                }
+
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
 
         if (night_amt > 0.5f)
         {
@@ -2004,15 +2107,20 @@ void draw_stuff()
                 fog_g = lerp(2.f*night_amt, FOG_DAY_G, FOG_DUSK_G);
                 fog_b = lerp(2.f*night_amt, FOG_DAY_B, FOG_DUSK_B);
         }
+
+        glViewport(0, 0, screenw, screenh);
         glClearColor(fog_r, fog_g, fog_b, 1.f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        if (antialiasing)
+                glEnable(GL_MULTISAMPLE);
 
         // compute proj matrix
         float near = 8.f;
         float far = 99999.f;
         float frustw = 4.5f * zoom_amt * screenw / screenh;
         float frusth = 4.5f * zoom_amt;
-        float frustM[] = {
+        float projM[] = {
                 near/frustw,           0,                                  0,  0,
                           0, near/frusth,                                  0,  0,
                           0,           0,       -(far + near) / (far - near), -1,
@@ -2020,61 +2128,26 @@ void draw_stuff()
         };
 
         // compute view matrix
-        float eye0, eye1, eye2;
-        eye0 = lerped_pos.x + PLYR_W / 2;
-        eye1 = lerped_pos.y + EYEDOWN * (camplayer.sneaking ? 2 : 1);
-        eye2 = lerped_pos.z + PLYR_W / 2;
-        float f0, f1, f2;
-        f0 = cos(camplayer.pitch) * sin(camplayer.yaw);
-        f1 = sin(camplayer.pitch);
-        f2 = cos(camplayer.pitch) * cos(camplayer.yaw);
-        float wing0, wing1, wing2;
-        wing0 = -cos(camplayer.yaw);
-        wing1 = 0;
-        wing2 = sin(camplayer.yaw);
-        float up0, up1, up2;
-        up0 = f1*wing2 - f2*wing1;
-        up1 = f2*wing0 - f0*wing2;
-        up2 = f0*wing1 - f1*wing0;
-        float upm = sqrt(up0*up0 + up1*up1 + up2*up2);
-        up0 /= upm;
-        up1 /= upm;
-        up2 /= upm;
-        float s0, s1, s2;
-        s0 = f1*up2 - f2*up1;
-        s1 = f2*up0 - f0*up2;
-        s2 = f0*up1 - f1*up0;
-        float sm = sqrt(s0*s0 + s1*s1 + s2*s2);
-        float zz0, zz1, zz2;
-        zz0 = s0/sm;
-        zz1 = s1/sm;
-        zz2 = s2/sm;
-        float u0, u1, u2;
-        u0 = zz1*f2 - zz2*f1;
-        u1 = zz2*f0 - zz0*f2;
-        u2 = zz0*f1 - zz1*f0;
-        float viewM[] = {
-                s0, u0,-f0, 0,
-                s1, u1,-f1, 0,
-                s2, u2,-f2, 0,
-                 0,  0,  0, 1
-        };
+        float eye0 = lerped_pos.x + PLYR_W / 2;
+        float eye1 = lerped_pos.y + EYEDOWN * (camplayer.sneaking ? 2 : 1);
+        float eye2 = lerped_pos.z + PLYR_W / 2;
+        float f[3];
+        float viewM[16];
+        lookit(viewM, f, eye0, eye1, eye2, camplayer.pitch, camplayer.yaw);
 
-        sun_draw(frustM, viewM, night_amt);
+        sun_draw(projM, viewM, night_amt, shadow_tex_id);
 
         // find where we are pointing at
-        rayshot(eye0, eye1, eye2, f0, f1, f2);
+        rayshot(eye0, eye1, eye2, f[0], f[1], f[2]);
 
         // translate by hand
         float translated_viewM[16];
         memcpy(translated_viewM, viewM, sizeof viewM);
-        translated_viewM[12] = (viewM[0] * -eye0) + (viewM[4] * -eye1) + (viewM[ 8] * -eye2);
-        translated_viewM[13] = (viewM[1] * -eye0) + (viewM[5] * -eye1) + (viewM[ 9] * -eye2);
-        translated_viewM[14] = (viewM[2] * -eye0) + (viewM[6] * -eye1) + (viewM[10] * -eye2);
+        translate(translated_viewM, -eye0, -eye1, -eye2);
 
         static float pvM[16];
         if (!lock_culling)
-                mat4_multiply(pvM, frustM, translated_viewM);
+                mat4_multiply(pvM, projM, translated_viewM);
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -2083,20 +2156,24 @@ void draw_stuff()
         glDepthMask(GL_TRUE);
         glEnable(GL_CULL_FACE);
 
-        // identity for model view for world drawing
-        float modelM[] = {
-                1, 0, 0, 0,
-                0, 1, 0, 0,
-                0, 0, 1, 0,
-                0, 0, 0, 1,
-        };
-
         glUseProgram(prog_id);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, material_tex_id);
         glUniform1i(glGetUniformLocation(prog_id, "tarray"), 0);
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, frustM);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, shadow_tex_id);
+        glUniform1i(glGetUniformLocation(prog_id, "shadow_map"), 1);
+
+        glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, projM);
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, translated_viewM);
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, modelM);
+        glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, identityM);
+        glUniformMatrix4fv(glGetUniformLocation(prog_id, "shadow_space"), 1, GL_FALSE, shadow_space);
+
         glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
+        glUniform3f(glGetUniformLocation(prog_id, "light_pos"), sun_pos.x, sun_pos.y, sun_pos.z);
+        glUniform3f(glGetUniformLocation(prog_id, "view_pos"), eye0, eye1, eye2);
 
         {
                 float r = lerp(night_amt, DAY_R, NIGHT_R);

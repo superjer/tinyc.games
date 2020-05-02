@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <math.h>
+#include <memory.h>
 
 // Our unfortunate matrix storage:
 //
@@ -44,4 +46,51 @@ void mat4_print(float *a)
         printf("%4.4f %4.4f %4.4f %4.4f\n", a[ 1], a[ 5], a[ 9], a[13]);
         printf("%4.4f %4.4f %4.4f %4.4f\n", a[ 2], a[ 6], a[10], a[14]);
         printf("%4.4f %4.4f %4.4f %4.4f\n", a[ 3], a[ 7], a[11], a[15]);
+}
+
+void lookit(float *out_matrix, float *f, float eye0, float eye1, float eye2,
+                float pitch, float yaw)
+{
+        f[0] = cosf(pitch) * sinf(yaw);
+        f[1] = sinf(pitch);
+        f[2] = cosf(pitch) * cosf(yaw);
+        float wing0, wing1, wing2;
+        wing0 = -cosf(yaw);
+        wing1 = 0;
+        wing2 = sinf(yaw);
+        float up0, up1, up2;
+        up0 = f[1]*wing2 - f[2]*wing1;
+        up1 = f[2]*wing0 - f[0]*wing2;
+        up2 = f[0]*wing1 - f[1]*wing0;
+        float upm = sqrtf(up0*up0 + up1*up1 + up2*up2);
+        up0 /= upm;
+        up1 /= upm;
+        up2 /= upm;
+        float s0, s1, s2;
+        s0 = f[1]*up2 - f[2]*up1;
+        s1 = f[2]*up0 - f[0]*up2;
+        s2 = f[0]*up1 - f[1]*up0;
+        float sm = sqrtf(s0*s0 + s1*s1 + s2*s2);
+        float zz0, zz1, zz2;
+        zz0 = s0/sm;
+        zz1 = s1/sm;
+        zz2 = s2/sm;
+        float u0, u1, u2;
+        u0 = zz1*f[2] - zz2*f[1];
+        u1 = zz2*f[0] - zz0*f[2];
+        u2 = zz0*f[1] - zz1*f[0];
+        float buf[] = {
+                s0, u0,-f[0], 0,
+                s1, u1,-f[1], 0,
+                s2, u2,-f[2], 0,
+                 0,  0,    0, 1
+        };
+        memcpy(out_matrix, buf, sizeof buf);
+}
+
+void translate(float *mat, float x, float y, float z)
+{
+        mat[12] = (mat[0] * x) + (mat[4] * y) + (mat[ 8] * z);
+        mat[13] = (mat[1] * x) + (mat[5] * y) + (mat[ 9] * z);
+        mat[14] = (mat[2] * x) + (mat[6] * y) + (mat[10] * z);
 }

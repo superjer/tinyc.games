@@ -19,6 +19,9 @@ void sun_init()
         const char *vertex_code = "\
 #version 330 core                                                               \n\
 layout (location = 0) in vec3 pos;                                              \n\
+layout (location = 1) in vec2 uv;                                               \n\
+                                                                                \n\
+out vec2 uv_v;                                                                  \n\
                                                                                 \n\
 uniform mat4 proj;                                                              \n\
 uniform mat4 view;                                                              \n\
@@ -27,16 +30,22 @@ uniform mat4 model;                                                             
 void main()                                                                     \n\
 {                                                                               \n\
     gl_Position = proj * view * model * vec4(pos, 1);                           \n\
+    uv_v = uv;                                                                  \n\
 }                                                                               \n\
 ";
 
         const char *fragment_code = "\
 #version 330 core                                                               \n\
+in vec2 uv_v;                                                                   \n\
+                                                                                \n\
 out vec4 color;                                                                 \n\
+                                                                                \n\
+uniform sampler2D tex;                                                          \n\
                                                                                 \n\
 void main()                                                                     \n\
 {                                                                               \n\
-    color = vec4(1);                                                            \n\
+    //color = vec4(1);                                                          \n\
+    color = vec4(vec3(texture(tex, uv_v).r), 1);                                \n\
 }                                                                               \n\
 ";
 
@@ -59,20 +68,29 @@ void main()                                                                     
         glDeleteShader(vertex);
         glDeleteShader(fragment);
 
-        fprintf(stderr, "sun_prog_id = %d\n", sun_prog_id);
+        float sun_buf[] = {
+                -1000, -10000, -1000, 1, 0, // A
+                 1000, -10000, -1000, 1, 1, // B
+                -1000, -10000,  1000, 0, 0, // D
+                 1000, -10000,  1000, 0, 1, // C
+        };
 
         glGenVertexArrays(1, &sun_vao);
         glGenBuffers(1, &sun_vbo);
+        glBindVertexArray(sun_vao);
+        glBindBuffer(GL_ARRAY_BUFFER, sun_vbo);
+
+        glBufferData(GL_ARRAY_BUFFER, sizeof sun_buf, sun_buf, GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
+        glEnableVertexAttribArray(0);
+
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
 }
 
-void sun_draw(float *proj, float *view, float time_of_day)
+void sun_draw(float *proj, float *view, float time_of_day, unsigned int texid)
 {
-        float sun_buf[] = {
-                -1000, -10000, -1000,
-                 1000, -10000, -1000,
-                -1000, -10000,  1000,
-                 1000, -10000,  1000,
-        };
         float a = time_of_day * 3.14159f;
         float model[] = {
                  cosf(a), sinf(a), 0, 0,
@@ -92,12 +110,10 @@ void sun_draw(float *proj, float *view, float time_of_day)
         glUniformMatrix4fv(glGetUniformLocation(sun_prog_id, "view"), 1, GL_FALSE, view);
         glUniformMatrix4fv(glGetUniformLocation(sun_prog_id, "model"), 1, GL_FALSE, model);
 
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, texid);
+        glUniform1i(glGetUniformLocation(sun_prog_id, "tex"), 1);
+
         glBindVertexArray(sun_vao);
-        glBindBuffer(GL_ARRAY_BUFFER, sun_vbo);
-        glBufferData(GL_ARRAY_BUFFER, sizeof sun_buf, sun_buf, GL_STATIC_DRAW);
-
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), 0);
-        glEnableVertexAttribArray(0);
-
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
