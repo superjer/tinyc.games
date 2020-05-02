@@ -13,6 +13,7 @@ extern int check_program_errors(unsigned int, char *);
 
 unsigned int sun_prog_id;
 GLuint sun_vbo, sun_vao;
+extern int show_shadow_map;
 
 void sun_init()
 {
@@ -45,7 +46,7 @@ uniform sampler2D tex;                                                          
 void main()                                                                     \n\
 {                                                                               \n\
     //color = vec4(1);                                                          \n\
-    color = vec4(vec3(texture(tex, uv_v).r), 1);                                \n\
+    color = vec4(vec3(1 - texture(tex, uv_v).r), 1);                            \n\
 }                                                                               \n\
 ";
 
@@ -112,7 +113,7 @@ void sun_draw(float *proj, float *view, float time_of_day, unsigned int texid)
 
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, texid);
-        glUniform1i(glGetUniformLocation(sun_prog_id, "tex"), 1);
+        glUniform1i(glGetUniformLocation(sun_prog_id, "tex"), show_shadow_map ? 1 : 3);
 
         glBindVertexArray(sun_vao);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);

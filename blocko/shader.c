@@ -50,7 +50,7 @@ out float orient_vs;                                                            
 out vec4 illum_vs;                                                              \n\
 out vec4 glow_vs;                                                               \n\
 out float alpha_vs;                                                             \n\
-out vec3 world_pos_vs;                                                          \n\
+out vec4 world_pos_vs;                                                          \n\
                                                                                 \n\
 uniform mat4 model;                                                             \n\
 uniform mat4 view;                                                              \n\
@@ -61,12 +61,12 @@ void main(void)                                                                 
 {                                                                               \n\
     vec3 pos = BS * pos_in;                                                     \n\
     gl_Position = proj * view * model * vec4(pos, 1);                           \n\
+    world_pos_vs = model * vec4(pos, 1);                                        \n\
     tex_vs = tex_in;                                                            \n\
     orient_vs = orient_in;                                                      \n\
     illum_vs = illum_in;                                                        \n\
     glow_vs = glow_in;                                                          \n\
     alpha_vs = alpha_in;                                                        \n\
-    world_pos_vs = vec3(model * vec4(pos, 1));                                  \n\
 }                                                                               \n\
 ";
 
@@ -80,7 +80,7 @@ in float orient_vs[];                                                           
 in vec4 illum_vs[];                                                             \n\
 in vec4 glow_vs[];                                                              \n\
 in float alpha_vs[];                                                            \n\
-in vec3 world_pos_vs[];                                                         \n\
+in vec4 world_pos_vs[];                                                         \n\
                                                                                 \n\
 out float tex;                                                                  \n\
 out float illum;                                                                \n\
@@ -89,7 +89,7 @@ out float alpha;                                                                
 out vec2 uv;                                                                    \n\
 out float eyedist;                                                              \n\
 out vec4 shadow_pos;                                                            \n\
-out vec3 world_pos;                                                             \n\
+out vec4 world_pos;                                                             \n\
 out vec3 normal;                                                                \n\
                                                                                 \n\
 uniform mat4 model;                                                             \n\
@@ -159,32 +159,32 @@ void main(void) // geometry                                                     
     eyedist = length(gl_in[0].gl_Position);                                     \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + mvp * a;                               \n\
-    world_pos = world_pos_vs[0] + a.xyz;                                        \n\
-    shadow_pos = shadow_space * vec4(world_pos, 1);                             \n\
+    world_pos = world_pos_vs[0] + model * a;                                    \n\
+    shadow_pos = shadow_space * world_pos;                                      \n\
     uv = vec2(1,0);                                                             \n\
     illum = (0.1 + illum_vs[0].x) * sidel;                                      \n\
     glow = (0.1 + glow_vs[0].x) * sidel;                                        \n\
     EmitVertex();                                                               \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + mvp * b;                               \n\
-    world_pos = world_pos_vs[0] + b.xyz;                                        \n\
-    shadow_pos = shadow_space * vec4(world_pos, 1);                             \n\
+    world_pos = world_pos_vs[0] + model * b;                                    \n\
+    shadow_pos = shadow_space * world_pos;                                      \n\
     uv = vec2(0,0);                                                             \n\
     illum = (0.1 + illum_vs[0].y) * sidel;                                      \n\
     glow = (0.1 + glow_vs[0].y) * sidel;                                        \n\
     EmitVertex();                                                               \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + mvp * c;                               \n\
-    world_pos = world_pos_vs[0] + c.xyz;                                        \n\
-    shadow_pos = shadow_space * vec4(world_pos, 1);                             \n\
+    world_pos = world_pos_vs[0] + model * c;                                    \n\
+    shadow_pos = shadow_space * world_pos;                                      \n\
     uv = vec2(1,1);                                                             \n\
     illum = (0.1 + illum_vs[0].z) * sidel;                                      \n\
     glow = (0.1 + glow_vs[0].z) * sidel;                                        \n\
     EmitVertex();                                                               \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + mvp * d;                               \n\
-    world_pos = world_pos_vs[0] + d.xyz;                                        \n\
-    shadow_pos = shadow_space * vec4(world_pos, 1);                             \n\
+    world_pos = world_pos_vs[0] + model * d;                                    \n\
+    shadow_pos = shadow_space * world_pos;                                      \n\
     uv = vec2(0,1);                                                             \n\
     illum = (0.1 + illum_vs[0].w) * sidel;                                      \n\
     glow = (0.1 + glow_vs[0].w) * sidel;                                        \n\
@@ -205,7 +205,7 @@ in float alpha;                                                                 
 in vec2 uv;                                                                     \n\
 in float eyedist;                                                               \n\
 in vec4 shadow_pos;                                                             \n\
-in vec3 world_pos;                                                              \n\
+in vec4 world_pos;                                                              \n\
 in vec3 normal;                                                                 \n\
                                                                                 \n\
 uniform sampler2DArray tarray;                                                  \n\
@@ -218,10 +218,10 @@ uniform vec3 view_pos;                                                          
                                                                                 \n\
 float get_shadow(vec4 v)                                                        \n\
 {                                                                               \n\
-    vec3 p = v.xyz;// / v.w;                                                       \n\
+    vec3 p = v.xyz;// / v.w;                                                    \n\
     p = p * 0.5 + 0.5;                                                          \n\
     float closest = texture(shadow_map, v.xy).r;                                \n\
-    return v.z >= closest ? 1 : 0;                                               \n\
+    return v.z >= closest ? 0 : 1;                                              \n\
 }                                                                               \n\
                                                                                 \n\
 void main(void)                                                                 \n\
@@ -229,19 +229,16 @@ void main(void)                                                                 
     float fog = smoothstep(10000, 100000, eyedist);                             \n\
     float il = illum + 0.1 * smoothstep(1000, 0, eyedist);                      \n\
                                                                                 \n\
-    vec3 light_dir = normalize(light_pos - world_pos);                          \n\
+    vec3 light_dir = normalize(light_pos - world_pos.xyz);                      \n\
     float diff = max(dot(light_dir, normal), 0.0);                              \n\
-    float diffuse = diff * 1; //day_color                                       \n\
-    vec3 view_dir = normalize(view_pos - world_pos);                            \n\
+    vec3 view_dir = normalize(view_pos - world_pos.xyz);                        \n\
     vec3 halfway_dir = normalize(light_dir + view_dir);                         \n\
     float spec = pow(max(dot(normal, halfway_dir), 0), 16);                     \n\
-    spec *= 1; //day_color                                                      \n\
                                                                                 \n\
-    float shadow = get_shadow(shadow_pos);                                      \n\
+    //float unshadow = textureProj(shadow_map, shadow_pos);                     \n\
+    float unshadow = get_shadow(shadow_pos);                                    \n\
                                                                                 \n\
-    vec3 sky = vec3(il * 0.3 + (1 - shadow) * (diffuse + spec)) * day_color;               \n\
-    //vec3 sky = (1 - shadow) * day_color;                                      \n\
-                                                                                \n\
+    vec3 sky = vec3(il * 0.3 + unshadow * (diff + spec)) * day_color;           \n\
     vec3 glo = vec3(glow * glo_color);                                          \n\
     vec3 unsky = vec3(1 - sky.r, 1 - sky.g, 1 - sky.b);                         \n\
     vec4 combined = vec4(sky + glo * unsky, alpha);                             \n\
@@ -296,64 +293,62 @@ void main(void) // geometry                                                     
     mat4 mvp = proj * view * model;                                             \n\
     switch(int(orient_vs[0])) {                                                 \n\
         case 1: // UP                                                           \n\
-            a = mvp * vec4( 0, 0, 0,0);                                         \n\
-            b = mvp * vec4(BS, 0, 0,0);                                         \n\
-            c = mvp * vec4( 0, 0,BS,0);                                         \n\
-            d = mvp * vec4(BS, 0,BS,0);                                         \n\
+            b = vec4(BS, 0, 0,0);                                               \n\
+            a = vec4( 0, 0, 0,0);                                               \n\
+            c = vec4( 0, 0,BS,0);                                               \n\
+            d = vec4(BS, 0,BS,0);                                               \n\
             break;                                                              \n\
         case 2: // EAST                                                         \n\
-            a = mvp * vec4(BS, 0,BS,0);                                         \n\
-            b = mvp * vec4(BS, 0, 0,0);                                         \n\
-            c = mvp * vec4(BS,BS,BS,0);                                         \n\
-            d = mvp * vec4(BS,BS, 0,0);                                         \n\
+            a = vec4(BS, 0,BS,0);                                               \n\
+            b = vec4(BS, 0, 0,0);                                               \n\
+            c = vec4(BS,BS,BS,0);                                               \n\
+            d = vec4(BS,BS, 0,0);                                               \n\
             break;                                                              \n\
         case 3: // NORTH                                                        \n\
-            a = mvp * vec4( 0, 0,BS,0);                                         \n\
-            b = mvp * vec4(BS, 0,BS,0);                                         \n\
-            c = mvp * vec4( 0,BS,BS,0);                                         \n\
-            d = mvp * vec4(BS,BS,BS,0);                                         \n\
+            a = vec4( 0, 0,BS,0);                                               \n\
+            b = vec4(BS, 0,BS,0);                                               \n\
+            c = vec4( 0,BS,BS,0);                                               \n\
+            d = vec4(BS,BS,BS,0);                                               \n\
             break;                                                              \n\
         case 4: // WEST                                                         \n\
-            a = mvp * vec4( 0, 0, 0,0);                                         \n\
-            b = mvp * vec4( 0, 0,BS,0);                                         \n\
-            c = mvp * vec4( 0,BS, 0,0);                                         \n\
-            d = mvp * vec4( 0,BS,BS,0);                                         \n\
+            a = vec4( 0, 0, 0,0);                                               \n\
+            b = vec4( 0, 0,BS,0);                                               \n\
+            c = vec4( 0,BS, 0,0);                                               \n\
+            d = vec4( 0,BS,BS,0);                                               \n\
             break;                                                              \n\
         case 5: // SOUTH                                                        \n\
-            a = mvp * vec4(BS, 0, 0,0);                                         \n\
-            b = mvp * vec4( 0, 0, 0,0);                                         \n\
-            c = mvp * vec4(BS,BS, 0,0);                                         \n\
-            d = mvp * vec4( 0,BS, 0,0);                                         \n\
+            a = vec4(BS, 0, 0,0);                                               \n\
+            b = vec4( 0, 0, 0,0);                                               \n\
+            c = vec4(BS,BS, 0,0);                                               \n\
+            d = vec4( 0,BS, 0,0);                                               \n\
             break;                                                              \n\
         case 6: // DOWN                                                         \n\
-            a = mvp * vec4(BS,BS, 0,0);                                         \n\
-            b = mvp * vec4( 0,BS, 0,0);                                         \n\
-            c = mvp * vec4(BS,BS,BS,0);                                         \n\
-            d = mvp * vec4( 0,BS,BS,0);                                         \n\
+            a = vec4(BS,BS, 0,0);                                               \n\
+            b = vec4( 0,BS, 0,0);                                               \n\
+            c = vec4(BS,BS,BS,0);                                               \n\
+            d = vec4( 0,BS,BS,0);                                               \n\
             break;                                                              \n\
     }                                                                           \n\
                                                                                 \n\
-    gl_Position = gl_in[0].gl_Position + a;                                     \n\
+    gl_Position = gl_in[0].gl_Position + mvp * a;                               \n\
     EmitVertex();                                                               \n\
-                                                                                \n\
-    gl_Position = gl_in[0].gl_Position + b;                                     \n\
+    gl_Position = gl_in[0].gl_Position + mvp * b;                               \n\
     EmitVertex();                                                               \n\
-                                                                                \n\
-    gl_Position = gl_in[0].gl_Position + c;                                     \n\
+    gl_Position = gl_in[0].gl_Position + mvp * c;                               \n\
     EmitVertex();                                                               \n\
-                                                                                \n\
-    gl_Position = gl_in[0].gl_Position + d;                                     \n\
+    gl_Position = gl_in[0].gl_Position + mvp * d;                               \n\
     EmitVertex();                                                               \n\
-                                                                                \n\
     EndPrimitive();                                                             \n\
 }                                                                               \n\
 ";
 
         const char *shadow_fragment_code= "\
 #version 330 core                                                               \n\
+out vec4 color;                                                                 \n\
                                                                                 \n\
 void main(void)                                                                 \n\
 {                                                                               \n\
+    color = vec4(1.0);                                                          \n\
 }                                                                               \n\
 ";
 

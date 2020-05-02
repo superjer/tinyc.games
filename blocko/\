@@ -270,10 +270,10 @@ int sunq_outta_room = 0;
 int gloq_outta_room = 0;
 int omp_threads = 0;
 int night_mode = true;
-float night_amt = 0.3f;
+float night_amt = 0.f;
 int lock_culling = false;
 int frustum_culling = true;
-float sun_speed = 0.00005f;
+float sun_speed = 0.005f;
 char alert[800]; // only for debugging
 
 int mouselook = true;
@@ -635,27 +635,26 @@ void glsetup()
         }
 
         // create shadow map texture
-        #define SHADOW_SZ 1024
+        #define SHADOW_SZ 8192
         glGenTextures(1, &shadow_tex_id);
         glBindTexture(GL_TEXTURE_2D, shadow_tex_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SZ, SHADOW_SZ,
-                        0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, SHADOW_SZ, SHADOW_SZ,
+                        0, GL_DEPTH_COMPONENT32, GL_FLOAT, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        /*
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_GEQUAL);
-        */
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glBindTexture(GL_TEXTURE_2D, 0);
 
         glGenFramebuffers(1, &shadow_fbo);
         glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadow_tex_id, 0);
+        glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_tex_id, 0);
         glDrawBuffer(GL_NONE);
         glReadBuffer(GL_NONE);
+
         glBindFramebuffer(GL_FRAMEBUFFER, 0); // <- even need this?
+        glBindTexture(GL_TEXTURE_2D, 0);
 
         TIMECALL(font_init, ());
         sun_init();
@@ -2028,24 +2027,6 @@ int sorter(const void * _a, const void * _b)
                (a->y <  b->y) ?  1 : -1;
 }
 
-int is_framebuffer_incomplete()
-{
-        int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-        switch (status)
-        {
-                case GL_FRAMEBUFFER_COMPLETE:
-                        return 0;
-                case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
-                        printf("framebuffer status: %d incomplete attachment\n", status); return 1;
-                case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
-                        printf("framebuffer status: %d missing attachment\n", status); return 1;
-                case GL_FRAMEBUFFER_UNSUPPORTED:
-                        printf("framebuffer status: %d unsupported\n", status); return 1;
-                default:
-                        printf("framebuffer status: %d (unknown)\n", status); return 1;
-        }
-}
-
 //draw everything in the game on the screen
 void draw_stuff()
 {
@@ -2064,9 +2045,21 @@ void draw_stuff()
         if (shadow_mapping)
         {
                 glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo);
-                if (is_framebuffer_incomplete()) goto egg;
-
                 glViewport(0, 0, SHADOW_SZ, SHADOW_SZ);
+                int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+                switch (status)
+                {
+                        case GL_FRAMEBUFFER_COMPLETE:
+                                printf("framebuffer status: %d complete\n", status); break;
+                        case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+                                printf("framebuffer status: %d incomplete attachment\n", status); break;
+                        case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+                                printf("framebuffer status: %d missing attachment\n", status); break;
+                        case GL_FRAMEBUFFER_UNSUPPORTED:
+                                printf("framebuffer status: %d unsupported\n", status); break;
+                        default:
+                                printf("framebuffer status: %d (unknown)\n", status); break;
+                }
                 glClear(GL_DEPTH_BUFFER_BIT);
 
                 glEnable(GL_BLEND);
@@ -2127,6 +2120,7 @@ void draw_stuff()
                         glDrawArrays(GL_POINTS, 0, vbo_len[myvbo]);
                         shadow_poly += vbo_len[myvbo];
                 }
+
         }
         egg:
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
