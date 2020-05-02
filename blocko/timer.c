@@ -33,7 +33,8 @@
         X(buildvbo), \
         X(glBufferData), \
         X(glDrawArrays), \
-        X(swapwindow),
+        X(swapwindow), \
+        X(font_init),
 
 enum timernames {
         #define X(x) timer_ ## x
@@ -68,7 +69,7 @@ void timer_print(char *buf)
         {
                 float secs = (float)timer_times[i] / 1000.f;
                 float pct = 100.f * (float)timer_times[i] / sum;
-                if (pct >= 0.5f)
+                if (pct >= 0.5f || secs >= 0.1f)
                         p += sprintf(p, "%6.1f  %2.0f%%  %s\n", secs, pct, timernamesprint[i]);
         }
 }

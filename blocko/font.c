@@ -5,6 +5,7 @@
 #endif
 
 #include <math.h>
+#include <stdio.h>
 
 #define FONT_CH_W 8
 #define FONT_CH_H 12
@@ -26,148 +27,91 @@ float font_buf[FONT_BUFLEN + 100];
 float *font_buf_limit = font_buf + FONT_BUFLEN;
 float *font_buf_p = font_buf;
 
-int font_spacing[256] = { 6,3,5,7,7,6,7,3,5,5,6,7,3,6,3,6,
+int font_spacing[256] = { 6,3,7,7,7,6,7,3,5,5,6,7,3,6,3,6,
                           6,6,6,6,6,6,6,6,6,6,3,3,5,6,5,7,
                           7,6,6,6,6,6,6,6,6,5,6,6,6,7,7,6,
                           6,6,6,6,7,6,7,7,7,7,6,5,6,5,7,7,
                           4,6,6,6,6,6,5,6,6,4,5,6,4,7,6,6,
-                          6,6,5,6,5,6,7,7,7,6,6,5,3,5,6,6,
-                          6,7,9,0,0,0,0,0,0,0,0,0,0,0,0,0,
-                          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-                          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-                          0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 };
+                          6,6,5,6,5,6,6,7,6,6,6,5,3,5,6,6 };
+
+char font_kerning[(256 - ' ') * 256];
 
 void font_init()
 {
-        char font_data[] =
-"                                                                                                                                "
-"                                                                                                                                "
-"         O       O O               O                     O         O     O                                                  O   "
-"         O       O O      O O     OOO             OO     O        O       O                O                                O   "
-"         O               OOOOO   O O             O               O         O      O O      O                               O    "
-"         O                O O     OOO    O  O     O              O         O       O     OOOOO           OOOO              O    "
-"         O                O O      O O     O     O O O           O         O      O O      O                              O     "
-"                         OOOOO    OOO     O      O  O             O       O                O                              O     "
-"         O                O O      O     O  O     OO O             O     O                       O               O       O      "
-"                                                                                                 O                       O      "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                          OOO   "
-"  OO       O      OO      OO     O       OOOO     OO     OOOO     OO      OO                       O             O       O   O  "
-" O  O     OO     O  O    O  O    O  O    O       O          O    O  O    O  O                     O      OOOO     O          O  "
-" O OO      O        O      O     O  O    OOO     OOO       O      OO     O  O    O       O       O                 O        O   "
-" OO O      O      OO        O    OOOO       O    O  O      O     O  O     OOO                     O      OOOO     O        O    "
-" O  O      O     O       O  O       O    O  O    O  O     O      O  O       O                      O             O              "
-"  OO      OOO    OOOO     OO        O     OO      OO      O       OO      OO     O       O                                 O    "
-"                                                                                         O                                      "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"  OOO     OO     OOO      OO     OOO     OOOO    OOOO     OO     O  O    OOO        O    O  O    O       O   O   O   O    OO    "
-" O   O   O  O    O  O    O  O    O  O    O       O       O  O    O  O     O         O    O  O    O       OO OO   OO  O   O  O   "
-" O OOO   O  O    O  O    O       O  O    O       O       O       O  O     O         O    O O     O       O O O   O O O   O  O   "
-" O O O   OOOO    OOO     O       O  O    OOO     OOO     O OO    OOOO     O         O    OO      O       O O O   O  OO   O  O   "
-" O OOO   O  O    O  O    O       O  O    O       O       O  O    O  O     O         O    O O     O       O   O   O   O   O  O   "
-" O       O  O    O  O    O  O    O  O    O       O       O  O    O  O     O      O  O    O  O    O       O   O   O   O   O  O   "
-"  OOO    O  O    OOO      OO     OOO     OOOO    O        OOO    O  O    OOO      OO     O  O    OOOO    O   O   O   O    OO    "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-" OOO      OO     OOO      OOO    OOOOO   O  O    O   O   O   O   O   O   O   O   OOOO    OOO     O       OOO       O            "
-" O  O    O  O    O  O    O         O     O  O    O   O   O   O   O   O   O   O      O    O       O         O      O O           "
-" O  O    O  O    O  O    O         O     O  O    O   O   O   O    O O    O   O     O     O        O        O     O   O          "
-" OOO     O  O    OOO      OO       O     O  O    O   O   O O O     O      OOO     O      O        O        O                    "
-" O       O  O    O  O       O      O     O  O     O O    O O O    O O      O     O       O         O       O                    "
-" O       O  O    O  O       O      O     O  O     O O    O O O   O   O     O     O       O         O       O                    "
-" O        OO     O  O    OOO       O      OO       O      O O    O   O     O     OOOO    OOO        O    OOO                    "
-"            O                                                                                       O                    OOOOO  "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-" O               O                  O              O             O        O        O     O       OO                             "
-"  O              O                  O             O              O                       O        O                             "
-"          OO     OOO      OOO     OOO     OO     OOO      OOO    OOO     OO       OO     O  O     O      OOOO    OOO      OO    "
-"            O    O  O    O       O  O    O  O     O      O  O    O  O     O        O     O O      O      O O O   O  O    O  O   "
-"          OOO    O  O    O       O  O    OOOO     O      O  O    O  O     O        O     OO       O      O O O   O  O    O  O   "
-"         O  O    O  O    O       O  O    O        O      O  O    O  O     O        O     O O      O      O O O   O  O    O  O   "
-"          OOO    OOO      OOO     OOO     OOO     O       OOO    O  O     O        O     O  O     O      O O O   O  O     OO    "
-"                                                            O                      O                                            "
-"                                                          OO                     OO                                             "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                           O     O       O        O O           "
-"                                  O                                                       O      O        O      O O            "
-" OOO      OOO    O O      OOO    OOO     O  O    O   O   O O O   O   O   O  O    OOOO     O      O        O                     "
-" O  O    O  O    OO      O        O      O  O    O   O   O O O    O O    O  O       O    O       O         O                    "
-" O  O    O  O    O        OO      O      O  O     O O    O O O     O     O  O     OO      O               O                     "
-" O  O    O  O    O          O     O      O  O     O O    O O O    O O    O  O    O        O      O        O                     "
-" OOO      OOO    O       OOO      OO      OOO      O      OOOO   O   O    OOO    OOOO      O     O       O                      "
-" O          O                                                               O                    O                              "
-" O          O                                                             OO                     O                              "
-"                                                                                                                                "
-"                                                                                                                                "
-"           O        OOO                                                                                                         "
-"           OO       OOOO         OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO   "
-"         O  O        OOO         O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" OOOO    OO      OOO             O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" OOOO     O O    OOOO OOO        O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" OOOO       OO    OOO OOOO       O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" OOOO     O  O         OOO       O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-"          OO       OOO           OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO   "
-"           O       OOOO                                                                                                         "
-"                    OOO                                                                                                         "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-" OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO   "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-" OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO   "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-" OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O    O  O   "
-" OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO    OOOO   "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                "
-"                                                                                                                                ";
+        char font_data[FONT_PITCH * FONT_LINES] =
+"................................................................................................................................"
+"................................................................................................................................"
+"|       |O      |OO OO  |       |  O    |       |       |O      |  O    |O      |       |       |       |       |       |   O   "
+"|       |O      | O O   | O O   | OOO   |       | OO    |O      | O     | O     |       |  O    |       |       |       |   O   "
+"|       |O      |       |OOOOO  |O O    |       |O      |       |O      |  O    | O O   |  O    |       |       |       |  O    "
+"|       |O      |       | O O   | OOO   |O  O   | O     |       |O      |  O    |  O    |OOOOO  |       |OOOO   |       |  O    "
+"|       |O      |       | O O   |  O O  |  O    |O O O  |       |O      |  O    | O O   |  O    |       |       |       | O     "
+"|       |       |       |OOOOO  | OOO   | O     |O  O   |       | O     | O     |       |  O    |       |       |       | O     "
+"|       |O      |       | O O   |  O    |O  O   | OO O  |       |  O    |O      |       |       |O      |       |O      |O      "
+".................................................................................................O.......................O......"
+"................................................................................................................................"
+"................................................................................................................................"
+"................................................................................................................................"
+"................................................................................................................................"
+"| OO    |  O    | OO    |OOO    |O      |OOOO   | OO    |OOOO   | OO    | OO    |       |       |       |       |       | OOO   "
+"|O  O   | OO    |O  O   |   O   |O  O   |O      |O      |   O   |O  O   |O  O   |       |       |  O    |       |O      |O   O  "
+"|O OO   |  O    |   O   |   O   |O  O   |OOO    |O      |   O   |O  O   |O  O   |       |       | O     |OOOO   | O     |    O  "
+"|OO O   |  O    |  O    | OO    |O  O   |   O   |OOO    |  O    | OO    | OOO   |O      |O      |O      |       |  O    |   O   "
+"|O  O   |  O    | O     |   O   |OOOO   |   O   |O  O   |  O    |O  O   |   O   |       |       | O     |OOOO   | O     |  O    "
+"|O  O   |  O    |O      |   O   |   O   |O  O   |O  O   | O     |O  O   |   O   |       |       |  O    |       |O      |       "
+"| OO    | OOO   |OOOO   |OOO    |   O   | OO    | OO    | O     | OO    | OO    |O      |O      |       |       |       |  O    "
+".........................................................................................O......................................"
+"................................................................................................................................"
+"................................................................................................................................"
+"................................................................................................................................"
+"................................................................................................................................"
+"| OOO   | OO    |OOO    | OO    |OOO    |OOOO   |OOOO   | OO    |O  O   |OOO    |   O   |O  O   |O      |O   O  |O   O  | OO    "
+"|O   O  |O  O   |O  O   |O  O   |O  O   |O      |O      |O  O   |O  O   | O     |   O   |O  O   |O      |OO OO  |OO  O  |O  O   "
+"|O OOO  |O  O   |O  O   |O      |O  O   |O      |O      |O      |O  O   | O     |   O   |O O    |O      |O O O  |O O O  |O  O   "
+"|O O O  |OOOO   |OOO    |O      |O  O   |OOO    |OOO    |O OO   |OOOO   | O     |   O   |OO     |O      |O O O  |O  OO  |O  O   "
+"|O OOO  |O  O   |O  O   |O      |O  O   |O      |O      |O  O   |O  O   | O     |   O   |O O    |O      |O   O  |O   O  |O  O   "
+"|O      |O  O   |O  O   |O  O   |O  O   |O      |O      |O  O   |O  O   | O     |O  O   |O  O   |O      |O   O  |O   O  |O  O   "
+"| OOO   |O  O   |OOO    | OO    |OOO    |OOOO   |O      | OOO   |O  O   |OOO    | OO    |O  O   |OOOO   |O   O  |O   O  | OO    "
+"................................................................................................................................"
+"................................................................................................................................"
+"................................................................................................................................"
+"................................................................................................................................"
+"................................................................................................................................"
+"|OOO    | OO    |OOO    | OOO   |OOOOO  |O  O   |O   O  |O   O  |O   O  |O   O  |OOOO   |OOO    |O      |OOO    |  O    |       "
+"|O  O   |O  O   |O  O   |O      |  O    |O  O   |O   O  |O   O  |O   O  |O   O  |   O   |O      |O      |  O    | O O   |       "
+"|O  O   |O  O   |O  O   |O      |  O    |O  O   |O   O  |O   O  | O O   |O   O  |  O    |O      | O     |  O    |O   O  |       "
+"|OOO    |O  O   |OOO    | OO    |  O    |O  O   |O   O  |O O O  |  O    | OOO   | O     |O      | O     |  O    |       |       "
+"|O      |O  O   |O O    |   O   |  O    |O  O   | O O   |O O O  | O O   |  O    |O      |O      |  O    |  O    |       |       "
+"|O      |O  O   |O  O   |   O   |  O    |O  O   | O O   |O O O  |O   O  |  O    |O      |O      |  O    |  O    |       |       "
+"|O      | OO    |O  O   |OOO    |  O    | OO    |  O    | O O   |O   O  |  O    |OOOO   |OOO    |   O   |OOO    |       |       "
+"............O.......................................................................................O....................OOOOO.."
+"................................................................................................................................"
+"................................................................................................................................"
+"................................................................................................................................"
+"................................................................................................................................"
+"|O      |       |O      |       |   O   |       |  O    |       |O      | O     |  O    |O      |OO     |       |       |       "
+"| O     |       |O      |       |   O   |       | O     |       |O      |       |       |O      | O     |       |       |       "
+"|       | OO    |OOO    | OOO   | OOO   | OO    |OOO    | OOO   |OOO    |OO     | OO    |O  O   | O     |OOOO   |OOO    | OO    "
+"|       |   O   |O  O   |O      |O  O   |O  O   | O     |O  O   |O  O   | O     |  O    |O O    | O     |O O O  |O  O   |O  O   "
+"|       | OOO   |O  O   |O      |O  O   |OOOO   | O     |O  O   |O  O   | O     |  O    |OO     | O     |O O O  |O  O   |O  O   "
+"|       |O  O   |O  O   |O      |O  O   |O      | O     |O  O   |O  O   | O     |  O    |O O    | O     |O O O  |O  O   |O  O   "
+"|       | OOO   |OOO    | OOO   | OOO   | OOO   | O     | OOO   |O  O   | O     |  O    |O  O   | O     |O O O  |O  O   | OO    "
+"............................................................O......................O............................................"
+"..........................................................OO.....................OO............................................."
+"................................................................................................................................"
+"................................................................................................................................"
+"................................................................................................................................"
+"|       |       |       |       |       |       |       |       |       |       |       |  O    |O      |O      | O O   |       "
+"|       |       |       |       | O     |       |       |       |       |       |       | O     |O      | O     |O O    |       "
+"|OOO    | OOO   |O O    | OOO   |OOO    |O  O   |O  O   |O O O  |O  O   |O  O   |OOOO   | O     |O      | O     |       |       "
+"|O  O   |O  O   |OO     |O      | O     |O  O   |O  O   |O O O  |O  O   |O  O   |   O   |O      |O      |  O    |       |       "
+"|O  O   |O  O   |O      | OO    | O     |O  O   |O  O   |O O O  | OO    |O  O   | OO    | O     |       | O     |       |       "
+"|O  O   |O  O   |O      |   O   | O     |O  O   |O O    |O O O  |O  O   |O  O   |O      | O     |O      | O     |       |       "
+"|OOO    | OOO   |O      |OOO    | OO    | OOO   |OO     | OOOO  |O  O   | OOO   |OOOO   |  O    |O      |O      |       |       "
+".O..........O...............................................................O....................O.............................."
+".O..........O.............................................................OO.....................O.............................."
+"................................................................................................................................";
+
         const char *vertex_code = "\
 #version 330 core                                                               \n\
 layout (location = 0) in vec4 pos;                                              \n\
@@ -196,14 +140,51 @@ void main()                                                                     
 }                                                                               \n\
 ";
 
-        unsigned char raw_data[FONT_PITCH * FONT_LINES];
-
         for (int i = 0; i < FONT_PITCH * FONT_LINES; i++)
-                raw_data[i] = (font_data[i] == ' ') ? 0 : 0xFF;
+                font_data[i] = (font_data[i] == 'O') ? 0xFF : 0;
+
+        // compute kerning
+        for (int a = 0; a < '~' - ' '; a++) for (int b = 0; b < '~' - ' '; b++)
+        {
+                int achar = (a + ' ') | ('A' ^ 'a');
+                int bchar = (b + ' ') | ('A' ^ 'a');
+                if (achar < 'a' || achar > 'z' || bchar < 'a' || bchar > 'z')
+                        continue;
+
+                int overlap;
+                int abase = (a % 16) * FONT_CH_W + (a / 16) * FONT_PITCH * FONT_CH_H + 1;
+                int bbase = (b % 16) * FONT_CH_W + (b / 16) * FONT_PITCH * FONT_CH_H + 1;
+                for (overlap = 1; overlap < 5; overlap++)
+                {
+                        int boff = font_spacing[a] - overlap;
+
+                        for (int acol = 0; acol < FONT_CH_W; acol++)
+                        {
+                                int bcol = acol - boff;
+                                if (bcol < 0) continue; // b is out of bounds
+
+                                for (int row = 1; row < FONT_CH_H - 1; row++)
+                                {
+                                        int r0 = (row-1) * FONT_PITCH;
+                                        int r1 = (row+0) * FONT_PITCH;
+                                        int r2 = (row+1) * FONT_PITCH;
+                                        int a0_on = font_data[abase + acol + r0] ? 1 : 0;
+                                        int a1_on = font_data[abase + acol + r1] ? 1 : 0;
+                                        int a2_on = font_data[abase + acol + r2] ? 1 : 0;
+                                        int b_on  = font_data[bbase + bcol + r1] ? 1 : 0;
+                                        if ((a0_on && b_on) || (a1_on && b_on) || (a2_on && b_on))
+                                                goto collide;
+                                }
+                        }
+                }
+
+                collide:
+                font_kerning[(a << 8) | b] = overlap - 3;
+        }
 
         glGenTextures(1, &font_tex_id);
         glBindTexture(GL_TEXTURE_2D, font_tex_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, FONT_PITCH, FONT_LINES, 0, GL_RED, GL_UNSIGNED_BYTE, raw_data);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, FONT_PITCH, FONT_LINES, 0, GL_RED, GL_UNSIGNED_BYTE, font_data);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -257,6 +238,7 @@ void font_add_text(char *s, int inx, int iny, float scale)
                 }
 
                 int c = *s - ' ';
+                if (c < 0) c = 0;
                 float u = (c * FONT_CH_W) % FONT_PITCH;
                 float v = (c / (FONT_PITCH / FONT_CH_W)) * FONT_CH_H;
 
@@ -293,7 +275,8 @@ void font_add_text(char *s, int inx, int iny, float scale)
                         *font_buf_p++ = (v + FONT_CH_H) / FONT_LINES;
                 }
 
-                x += font_spacing[c] * scale;
+                int kern = font_spacing[c] - 1 - font_kerning[(c << 8) | (s[1] - ' ')];
+                x += kern * scale;
         }
 }
 

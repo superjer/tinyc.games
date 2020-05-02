@@ -281,8 +281,8 @@ int screenh = H;
 int zooming = false;
 float zoom_amt = 1.f;
 float fast = 1.f;
-int regulated = false;
-int vsync = true;
+int regulated = true;
+int vsync = false;
 int antialiasing = false;
 volatile struct qitem just_generated[VAOW*VAOD];
 volatile size_t just_gen_len;
@@ -630,7 +630,7 @@ void glsetup()
                 glEnableVertexAttribArray(5);
         }
 
-        font_init();
+        TIMECALL(font_init, ());
         sun_init();
 }
 
