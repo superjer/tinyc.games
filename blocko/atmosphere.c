@@ -5,49 +5,8 @@ GLuint sun_vbo, sun_vao;
 
 void sun_init()
 {
-        const char *vertex_code = "\
-#version 330 core                                                               \n\
-layout (location = 0) in vec3 pos;                                              \n\
-layout (location = 1) in vec2 uv;                                               \n\
-                                                                                \n\
-out vec2 uv_v;                                                                  \n\
-                                                                                \n\
-uniform mat4 proj;                                                              \n\
-uniform mat4 view;                                                              \n\
-uniform mat4 model;                                                             \n\
-                                                                                \n\
-void main()                                                                     \n\
-{                                                                               \n\
-    gl_Position = proj * view * model * vec4(pos, 1);                           \n\
-    uv_v = uv;                                                                  \n\
-}                                                                               \n\
-";
-
-        const char *fragment_code = "\
-#version 330 core                                                               \n\
-in vec2 uv_v;                                                                   \n\
-                                                                                \n\
-out vec4 color;                                                                 \n\
-                                                                                \n\
-uniform sampler2D tex;                                                          \n\
-                                                                                \n\
-void main()                                                                     \n\
-{                                                                               \n\
-    //color = vec4(1);                                                          \n\
-    color = vec4(vec3(1 - texture(tex, uv_v).r), 1);                            \n\
-}                                                                               \n\
-";
-
-        unsigned int vertex, fragment;
-        vertex = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vertex, 1, (const char *const *)&vertex_code, NULL);
-        glCompileShader(vertex);
-        check_shader_errors(vertex, "sun vertex");
-
-        fragment = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fragment, 1, (const char *const *)&fragment_code, NULL);
-        glCompileShader(fragment);
-        check_shader_errors(fragment, "sun fragment");
+        unsigned int vertex = file2shader(GL_VERTEX_SHADER, "shaders/sun.vert");
+        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, "shaders/sun.frag");
 
         sun_prog_id = glCreateProgram();
         glAttachShader(sun_prog_id, vertex);

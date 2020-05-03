@@ -315,8 +315,8 @@ int nr_chunks_generated = 0;
 int chunk_gen_ticks = 0;
 
 // glsetup.c protos
-int check_shader_errors(GLuint shader, char *name);
 int check_program_errors(GLuint shader, char *name);
+unsigned int file2shader(unsigned int type, char *filename);
 
 // font.c protos
 void font_begin(int w, int h);
