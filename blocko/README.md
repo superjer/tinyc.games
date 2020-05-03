@@ -22,4 +22,4 @@ Blocko uses OpenGL for hardware-accelerated 3D graphics and may require installi
 
     sudo apt install gcc libsdl2-dev libglew-dev
 
-2. Run run-linux.sh, or you can use make and run ./blocko
+2. Run run-linux.sh, or you can use make and run ./bin

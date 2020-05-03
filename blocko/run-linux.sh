@@ -1,1 +1,1 @@
-make && ./blocko
+make && ./bin
