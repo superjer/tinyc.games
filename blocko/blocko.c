@@ -635,19 +635,19 @@ void glsetup()
         }
 
         // create shadow map texture
-        #define SHADOW_SZ 1024
+        #define SHADOW_SZ 4096
         glGenTextures(1, &shadow_tex_id);
         glBindTexture(GL_TEXTURE_2D, shadow_tex_id);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_SZ, SHADOW_SZ,
                         0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        /*
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_GEQUAL);
-        */
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+        float border_color[4] = {1.f, 1.f, 1.f, 1.f};
+        glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
         glBindTexture(GL_TEXTURE_2D, 0);
 
         glGenFramebuffers(1, &shadow_fbo);
@@ -2076,7 +2076,7 @@ void draw_stuff()
                 glDepthMask(GL_TRUE);
                 glDisable(GL_CULL_FACE);
                 glEnable(GL_POLYGON_OFFSET_FILL);
-                glPolygonOffset(2.f, 4.f);
+                glPolygonOffset(4.f, 4.f);
 
                 //render shadows here
                 glUseProgram(shadow_prog_id);
@@ -2096,10 +2096,12 @@ void draw_stuff()
                 float viewM[16];
                 float f[3];
                 float pitch = (0.5 - night_amt) * 3.1415926535;
-                float yaw = 3.1415926535 * -0.485f;
-                sun_pos.x = roundf(camplayer.pos.x/600.f)*600.f + 300.f * BS * sinf(-yaw) * cosf(pitch);
+                float yaw = 3.1415926535 * -0.49f;
+                sun_pos.x = roundf(camplayer.pos.x/60.f)*60.f + 300.f * BS * sinf(-yaw) * cosf(pitch);
+                //sun_pos.x = camplayer.pos.x + 300.f * BS * sinf(-yaw) * cosf(pitch);
                 sun_pos.y = 100.f * BS - 300.f * BS * sinf(pitch);
-                sun_pos.z = roundf(camplayer.pos.z/600.f)*600.f + 300.f * BS * cosf(-yaw) * cosf(pitch);
+                sun_pos.z = roundf(camplayer.pos.z/60.f)*60.f + 300.f * BS * cosf(-yaw) * cosf(pitch);
+                //sun_pos.z = camplayer.pos.z + 300.f * BS * cosf(-yaw) * cosf(pitch);
                 lookit(viewM, f, sun_pos.x, sun_pos.y, sun_pos.z, pitch, yaw);
                 translate(viewM, -sun_pos.x, -sun_pos.y, -sun_pos.z);
                 glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "proj"), 1, GL_FALSE, orthoM);

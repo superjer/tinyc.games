@@ -159,7 +159,7 @@ void main(void) // geometry                                                     
     eyedist = length(gl_in[0].gl_Position);                                     \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + mvp * a;                               \n\
-    world_pos = world_pos_vs[0] + model * a;                                    \n\
+    world_pos = world_pos_vs[0] + a;                                            \n\
     shadow_pos = shadow_space * world_pos;                                      \n\
     uv = vec2(1,0);                                                             \n\
     illum = (0.1 + illum_vs[0].x) * sidel;                                      \n\
@@ -167,7 +167,7 @@ void main(void) // geometry                                                     
     EmitVertex();                                                               \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + mvp * b;                               \n\
-    world_pos = world_pos_vs[0] + model * b;                                    \n\
+    world_pos = world_pos_vs[0] + b;                                            \n\
     shadow_pos = shadow_space * world_pos;                                      \n\
     uv = vec2(0,0);                                                             \n\
     illum = (0.1 + illum_vs[0].y) * sidel;                                      \n\
@@ -175,7 +175,7 @@ void main(void) // geometry                                                     
     EmitVertex();                                                               \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + mvp * c;                               \n\
-    world_pos = world_pos_vs[0] + model * c;                                    \n\
+    world_pos = world_pos_vs[0] + c;                                            \n\
     shadow_pos = shadow_space * world_pos;                                      \n\
     uv = vec2(1,1);                                                             \n\
     illum = (0.1 + illum_vs[0].z) * sidel;                                      \n\
@@ -183,7 +183,7 @@ void main(void) // geometry                                                     
     EmitVertex();                                                               \n\
                                                                                 \n\
     gl_Position = gl_in[0].gl_Position + mvp * d;                               \n\
-    world_pos = world_pos_vs[0] + model * d;                                    \n\
+    world_pos = world_pos_vs[0] + d;                                            \n\
     shadow_pos = shadow_space * world_pos;                                      \n\
     uv = vec2(0,1);                                                             \n\
     illum = (0.1 + illum_vs[0].w) * sidel;                                      \n\
@@ -209,20 +209,12 @@ in vec4 world_pos;                                                              
 in vec3 normal;                                                                 \n\
                                                                                 \n\
 uniform sampler2DArray tarray;                                                  \n\
-uniform sampler2D shadow_map;                                                   \n\
+uniform sampler2DShadow shadow_map;                                             \n\
 uniform vec3 day_color;                                                         \n\
 uniform vec3 glo_color;                                                         \n\
 uniform vec3 fog_color;                                                         \n\
 uniform vec3 light_pos;                                                         \n\
 uniform vec3 view_pos;                                                          \n\
-                                                                                \n\
-float get_shadow(vec4 v)                                                        \n\
-{                                                                               \n\
-    vec3 p = v.xyz;// / v.w;                                                    \n\
-    p = p * 0.5 + 0.5;                                                          \n\
-    float closest = texture(shadow_map, v.xy).r;                                \n\
-    return v.z >= closest ? 0 : 1;                                              \n\
-}                                                                               \n\
                                                                                 \n\
 void main(void)                                                                 \n\
 {                                                                               \n\
@@ -235,8 +227,8 @@ void main(void)                                                                 
     vec3 halfway_dir = normalize(light_dir + view_dir);                         \n\
     float spec = pow(max(dot(normal, halfway_dir), 0), 16);                     \n\
                                                                                 \n\
-    //float unshadow = textureProj(shadow_map, shadow_pos);                     \n\
-    float unshadow = get_shadow(shadow_pos);                                    \n\
+    vec4 s = vec4(shadow_pos.xyz, 1);                                           \n\
+    float unshadow = textureProj(shadow_map, s);                                \n\
                                                                                 \n\
     vec3 sky = vec3(il * 0.3 + unshadow * (diff + spec)) * day_color;           \n\
     vec3 glo = vec3(glow * glo_color);                                          \n\
