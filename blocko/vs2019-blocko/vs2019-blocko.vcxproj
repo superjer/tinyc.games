@@ -98,7 +98,7 @@ copy ..\..\_win\SDL2-2.0.5\lib\x64\SDL2.dll ..\</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\blocko.c" />
+    <ClCompile Include="..\main.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

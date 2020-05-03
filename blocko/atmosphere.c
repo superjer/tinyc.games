@@ -1,19 +1,7 @@
-#ifdef __APPLE__
-#include <OpenGL/gl3.h>
-#else
-#include <GL/glew.h>
-#endif
-
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-
-extern int check_shader_errors(unsigned int, char *);
-extern int check_program_errors(unsigned int, char *);
+#include "blocko.h"
 
 unsigned int sun_prog_id;
 GLuint sun_vbo, sun_vao;
-extern int show_shadow_map;
 
 void sun_init()
 {

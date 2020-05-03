@@ -10,4 +10,4 @@ export DYLD_FRAMEWORK_PATH=../_mac
         -framework SDL2 \
 	-L/usr/local/Cellar/libomp/10.0.0/lib \
 	-lomp \
-        -o blocko blocko.c && ./blocko
+        -o blocko main.c && ./blocko

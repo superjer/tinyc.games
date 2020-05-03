@@ -1,20 +1,10 @@
-#ifdef __APPLE__
-#include <OpenGL/gl3.h>
-#else
-#include <GL/glew.h>
-#endif
-
-#include <math.h>
-#include <stdio.h>
+#include "blocko.h"
 
 #define FONT_CH_W 8
 #define FONT_CH_H 12
 #define FONT_PITCH 128
 #define FONT_LINES 128
 #define FONT_BUFLEN 16000
-
-int check_shader_errors(unsigned int, char *);
-int check_program_errors(unsigned int, char *);
 
 GLuint font_tex_id;
 unsigned int font_prog_id;

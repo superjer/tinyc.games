@@ -34,7 +34,9 @@
         X(glBufferData), \
         X(glDrawArrays), \
         X(swapwindow), \
-        X(font_init),
+        X(glsetup), \
+        X(font_init), \
+        X(sun_init),
 
 enum timernames {
         #define X(x) timer_ ## x
