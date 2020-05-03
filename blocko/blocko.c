@@ -2215,6 +2215,9 @@ void draw_stuff()
         glUniform3f(glGetUniformLocation(prog_id, "view_pos"), eye0, eye1, eye2);
 
         {
+                float m = ICLAMP(night_amt * 2.f, 0.f, 1.f);
+                glUniform1f(glGetUniformLocation(prog_id, "sharpness"), m*m*m*(m*(m*6.f-15.f)+10.f));
+
                 float r = lerp(night_amt, DAY_R, NIGHT_R);
                 float g = lerp(night_amt, DAY_G, NIGHT_G);
                 float b = lerp(night_amt, DAY_B, NIGHT_B);

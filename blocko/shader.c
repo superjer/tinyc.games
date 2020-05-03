@@ -82,15 +82,15 @@ in vec4 glow_vs[];                                                              
 in float alpha_vs[];                                                            \n\
 in vec4 world_pos_vs[];                                                         \n\
                                                                                 \n\
-out float tex;                                                                  \n\
+flat out float tex;                                                             \n\
 out float illum;                                                                \n\
 out float glow;                                                                 \n\
-out float alpha;                                                                \n\
+flat out float alpha;                                                           \n\
 out vec2 uv;                                                                    \n\
-out float eyedist;                                                              \n\
+flat out float eyedist;                                                         \n\
 out vec4 shadow_pos;                                                            \n\
 out vec4 world_pos;                                                             \n\
-out vec3 normal;                                                                \n\
+flat out vec3 normal;                                                           \n\
                                                                                 \n\
 uniform mat4 model;                                                             \n\
 uniform mat4 view;                                                              \n\
@@ -198,15 +198,15 @@ void main(void) // geometry                                                     
 #version 330 core                                                               \n\
 out vec4 color;                                                                 \n\
                                                                                 \n\
-in float tex;                                                                   \n\
+flat in float tex;                                                              \n\
 in float illum;                                                                 \n\
 in float glow;                                                                  \n\
-in float alpha;                                                                 \n\
+flat in float alpha;                                                            \n\
 in vec2 uv;                                                                     \n\
-in float eyedist;                                                               \n\
+flat in float eyedist;                                                          \n\
 in vec4 shadow_pos;                                                             \n\
 in vec4 world_pos;                                                              \n\
-in vec3 normal;                                                                 \n\
+flat in vec3 normal;                                                            \n\
                                                                                 \n\
 uniform sampler2DArray tarray;                                                  \n\
 uniform sampler2DShadow shadow_map;                                             \n\
@@ -215,6 +215,7 @@ uniform vec3 glo_color;                                                         
 uniform vec3 fog_color;                                                         \n\
 uniform vec3 light_pos;                                                         \n\
 uniform vec3 view_pos;                                                          \n\
+uniform float sharpness;                                                        \n\
                                                                                 \n\
 void main(void)                                                                 \n\
 {                                                                               \n\
@@ -230,7 +231,10 @@ void main(void)                                                                 
     vec4 s = vec4(shadow_pos.xyz, 1);                                           \n\
     float unshadow = textureProj(shadow_map, s);                                \n\
                                                                                 \n\
-    vec3 sky = vec3(il * 0.3 + unshadow * (diff + spec)) * day_color;           \n\
+    float s0 = 0.6 + 0.4 * sharpness;                                           \n\
+    float s1 = 0.3 + 0.7 * (1-sharpness);                                       \n\
+    vec3 sky = vec3(s1 * il + s0 * unshadow * (diff + spec)) * day_color;       \n\
+                                                                                \n\
     vec3 glo = vec3(glow * glo_color);                                          \n\
     vec3 unsky = vec3(1 - sky.r, 1 - sky.g, 1 - sky.b);                         \n\
     vec4 combined = vec4(sky + glo * unsky, alpha);                             \n\
@@ -273,6 +277,9 @@ layout (triangle_strip, max_vertices = 4) out;                                  
                                                                                 \n\
 in float tex_vs[];                                                              \n\
 in float orient_vs[];                                                           \n\
+                                                                                \n\
+flat out float tex;                                                             \n\
+out vec2 uv;                                                                    \n\
                                                                                 \n\
 uniform mat4 model;                                                             \n\
 uniform mat4 view;                                                              \n\
@@ -322,13 +329,19 @@ void main(void) // geometry                                                     
             break;                                                              \n\
     }                                                                           \n\
                                                                                 \n\
+    tex = tex_vs[0];                                                            \n\
+                                                                                \n\
     gl_Position = gl_in[0].gl_Position + mvp * a;                               \n\
+    uv = vec2(1,0);                                                             \n\
     EmitVertex();                                                               \n\
     gl_Position = gl_in[0].gl_Position + mvp * b;                               \n\
+    uv = vec2(0,0);                                                             \n\
     EmitVertex();                                                               \n\
     gl_Position = gl_in[0].gl_Position + mvp * c;                               \n\
+    uv = vec2(1,1);                                                             \n\
     EmitVertex();                                                               \n\
     gl_Position = gl_in[0].gl_Position + mvp * d;                               \n\
+    uv = vec2(0,1);                                                             \n\
     EmitVertex();                                                               \n\
     EndPrimitive();                                                             \n\
 }                                                                               \n\
@@ -336,11 +349,17 @@ void main(void) // geometry                                                     
 
         const char *shadow_fragment_code= "\
 #version 330 core                                                               \n\
+flat in float tex;                                                              \n\
+in vec2 uv;                                                                     \n\
+                                                                                \n\
 out vec4 color;                                                                 \n\
+                                                                                \n\
+uniform sampler2DArray tarray;                                                  \n\
                                                                                 \n\
 void main(void)                                                                 \n\
 {                                                                               \n\
-    color = vec4(1.0);                                                          \n\
+    color = texture(tarray, vec3(uv, tex));                                     \n\
+    if (color.a < 0.51) discard;                                                \n\
 }                                                                               \n\
 ";
 
