@@ -58,7 +58,7 @@ int timer_curr_id = timer_;
 long long int timer_then = 0;
 long long int timer_times[timer_ + 1] = { 0 };
 
-void timer_print(char *buf)
+void timer_print(char *buf, size_t n)
 {
         char *p = buf;
         int i = 0;
@@ -72,6 +72,7 @@ void timer_print(char *buf)
                 float secs = (float)timer_times[i] / 1000.f;
                 float pct = 100.f * (float)timer_times[i] / sum;
                 if (pct >= 0.5f || secs >= 0.1f)
-                        p += sprintf(p, "%6.1f  %2.0f%%  %s\n", secs, pct, timernamesprint[i]);
+                        p += snprintf(p, n - (p-buf),
+                                        "%6.1f  %2.0f%%  %s\n", secs, pct, timernamesprint[i]);
         }
 }

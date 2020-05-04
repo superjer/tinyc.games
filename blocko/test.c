@@ -68,24 +68,31 @@ void debrief()
                 float elapsed = ((float)ticks - last_ticks);
                 float frames = frame - last_frame;
 
-                p += sprintf(p, "vmem %0.0fM used of %0.0fM (%0.0f%% free)\n",
+                p += snprintf(p, 8000 - (p-buf),
+                                "vmem %0.0fM used of %0.0fM (%0.0f%% free)\n",
                                 (float)(total_kb - avail_kb) / 1000.f,
                                 (float)(total_kb)            / 1000.f,
                                 ((float)avail_kb / total_kb) * 100.f);
 
-                p += sprintf(p, "%d omp, %0.2f chunk/s\n",
+                p += snprintf(p, 8000 - (p-buf),
+                                "%d omp, %0.2f chunk/s\n",
                                 omp_threads,
                                 (float)nr_chunks_generated / (chunk_gen_ticks / 1000.f));
 
-                p += sprintf(p, "%.3fM poly/s\n", 1000.f * (float)polys / elapsed / 1000000.f);
-                p += sprintf(p, "%.1f fps\n", 1000.f * frames / elapsed );
+                p += snprintf(p, 8000 - (p-buf),
+                                "%.3fM poly/s\n", 1000.f * (float)polys / elapsed / 1000000.f);
+
+                p += snprintf(p, 8000 - (p-buf),
+                                "%.1f fps\n", 1000.f * frames / elapsed );
 
                 if (sunq_outta_room)
-                        p += sprintf(p, "Out of room in the sun queue (%d times)\n", sunq_outta_room);
+                        p += snprintf(p, 8000 - (p-buf),
+                                        "Out of room in the sun queue (%d times)\n", sunq_outta_room);
                 sunq_outta_room = 0;
 
                 if (gloq_outta_room)
-                        p += sprintf(p, "Out of room in the sun queue (%d times)\n", gloq_outta_room);
+                        p += snprintf(p, 8000 - (p-buf),
+                                        "Out of room in the sun queue (%d times)\n", gloq_outta_room);
                 gloq_outta_room = 0;
 
                 glGetIntegerv(0x9048, &total_kb);
@@ -94,13 +101,14 @@ void debrief()
                 last_frame = frame;
                 polys = 0;
 
-                timer_print(timings_buf);
+                timer_print(timings_buf, 8000);
         }
 
         if (noisy)
         {
                 char xyzbuf[100];
-                sprintf(xyzbuf, "X=%0.0f Y=%0.0f Z=%0.0f %svsync %sreg %smsaa %sfast %scull %slock",
+                snprintf(xyzbuf, 100,
+                                "X=%0.0f Y=%0.0f Z=%0.0f %svsync %sreg %smsaa %sfast %scull %slock",
                                 player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS,
                                 vsync           ? "" : "no",
                                 regulated       ? "" : "no",

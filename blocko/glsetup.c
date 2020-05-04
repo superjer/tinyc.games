@@ -29,7 +29,15 @@ int check_program_errors(GLuint shader, char *name)
 // please free() the returned string
 char *file2str(char *filename)
 {
-        FILE *f = fopen(filename, "r");
+        FILE *f;
+
+        #if defined(_MSC_VER) && _MSC_VER >= 1400
+                if (fopen_s(&f, filename, "r"))
+                        f = NULL;
+        #else
+                f = fopen(filename, "r");
+        #endif
+
         if (!f) goto bad;
         fseek(f, 0, SEEK_END);
         size_t sz = ftell(f);
