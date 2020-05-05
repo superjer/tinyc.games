@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 #define TIMER(name) {                                                           \
-        long long int now = SDL_GetTicks();                                     \
+        long long now = SDL_GetTicks();                                     \
         timer_times[ timer_curr_id ] += now - timer_then;                       \
         timer_curr_id = timer_ ## name;                                         \
         timer_then = now;                                                       \
@@ -9,7 +9,7 @@
 
 // FIXME: push id onto stack if re-entering
 #define TIMECALL(f, args) {                                                     \
-        long long int now = SDL_GetTicks();                                     \
+        long long now = SDL_GetTicks();                                     \
         timer_times[ timer_curr_id ] += now - timer_then;                       \
         timer_then = now;                                                       \
         (f)args;                                                                \
@@ -55,14 +55,14 @@ char timernamesprint[][80] = {
 #undef NAMES
 
 int timer_curr_id = timer_;
-long long int timer_then = 0;
-long long int timer_times[timer_ + 1] = { 0 };
+long long timer_then = 0;
+long long timer_times[timer_ + 1] = { 0 };
 
 void timer_print(char *buf, size_t n)
 {
         char *p = buf;
         int i = 0;
-        long long int sum = 0;
+        long long sum = 0;
 
         for (i = 0; i <= timer_; i++)
                 sum += timer_times[i];

@@ -53,7 +53,7 @@ struct osn_context *osn_context;
 
 #define SCALE 3                    // x magnification
 #define W 1920                     // window width, height
-#define H 1080                     // ^
+#define H 1000                     // ^
 #define CHUNKW 16                  // chunk size (vao size)
 #define CHUNKD 16                  // ^
 #define CHUNKW2 (CHUNKW/2)
@@ -153,7 +153,7 @@ struct osn_context *osn_context;
 #define P2C(p) ((p/CHUNKW)/BS)
 
 // dumb rand -- for simple deterministic rand
-unsigned int dumb_rand(int *seed) { return (*seed = (1103515245 * *seed + 12345) % 2147483648); }
+unsigned dumb_rand(unsigned *seed) { return (*seed = (1103515245 * *seed + 12345) % 2147483648); }
 // helpers for dumb rand, must have local var called seed for all of these
 #define RAND (abs(dumb_rand(&seed)))
 // random float in the range 0-1
@@ -282,7 +282,7 @@ unsigned int shadow_prog_id;
 //globals
 int frame = 0;
 int pframe = 0;
-int world_seed = 160659;
+unsigned world_seed = 160659;
 int noisy = false;
 int vsync = false;
 int show_fresh_updates = false;

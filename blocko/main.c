@@ -130,7 +130,7 @@ void new_game()
 void update_world()
 {
         int i, x, y, z;
-        int seed = SEED1(pframe);
+        unsigned seed = SEED1(pframe);
         for (i = 0; i < 500; i++) {
                 x = RANDI(1, TILESW - 2);
                 z = RANDI(1, TILESD - 2);

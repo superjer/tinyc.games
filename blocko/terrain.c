@@ -5,7 +5,7 @@ float hmap2[TILESW][TILESD];
 
 void gen_hmap(int x0, int x2, int z0, int z2)
 {
-        int seed = SEED4(x0, x2, z0, z2);
+        unsigned seed = SEED4(x0, x2, z0, z2);
 
         // pick corners if they aren't set
         if (hmap[x0][z0] == 0) hmap[x0][z0] = RANDI(64, 127);
@@ -187,7 +187,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
                         if ((cave || platted) && !plateau_bit)
                         {
-                                int seed = SEED2(x, z);
+                                unsigned seed = SEED2(x, z);
                                 if (!slicey_bit || RANDP(5))
                                 {
                                         int type = (y > 100 && hmap2[x][z] > 99) ? WATR : OPEN; //only allow water below low heightmap
@@ -230,7 +230,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         // lower bound         /
         int rxlo = (int)((xlo+1) / REGW) * REGW;
         int rzlo = (int)((zlo+1) / REGD) * REGD;
-        int seed = SEED2(rxlo, rzlo);
+        unsigned seed = SEED2(rxlo, rzlo);
         // find region center
         int rxcenter = rxlo + REGW/2;
         int rzcenter = rzlo + REGD/2;
