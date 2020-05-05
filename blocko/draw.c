@@ -54,16 +54,41 @@ void draw_stuff()
                 glEnable(GL_DEPTH_TEST);
                 glDepthFunc(GL_LEQUAL);
                 glDepthMask(GL_TRUE);
-                glDisable(GL_CULL_FACE);
+                glEnable(GL_CULL_FACE);
+                glCullFace(GL_FRONT);
                 glEnable(GL_POLYGON_OFFSET_FILL);
                 glPolygonOffset(4.f, 4.f);
 
                 //render shadows here
                 glUseProgram(shadow_prog_id);
-                float snear = 8.f;
-                float sfar = 99999.f;
-                float x = 1.f / (20000 / 2.f);
-                float y = -1.f / (20000 / 2.f);
+                // view matrix
+                float viewM[16];
+                float f[3];
+
+                // prevent shaking shadows by quantizing sun pitch
+                float quantizer;
+                float qbracket = sinf(sun_pitch);
+                if      (qbracket > 0.8f) quantizer = 0.001f;
+                else if (qbracket > 0.6f) quantizer = 0.0005f;
+                else if (qbracket > 0.4f) quantizer = 0.00025f;
+                else if (qbracket > 0.2f) quantizer = 0.000125f;
+                else                      quantizer = 0.0000625f;
+
+                float quantized_sun_pitch = roundf(sun_pitch / quantizer) * quantizer;
+                float yaw = 3.1415926535 * -0.5f;
+                float dist2sun = (TILESW / 4) * BS;
+                sun_pos.x = roundf(camplayer.pos.x / BS) * BS + dist2sun * sinf(-yaw) * cosf(quantized_sun_pitch);
+                sun_pos.y = 100 * BS - dist2sun * sinf(quantized_sun_pitch);
+                sun_pos.z = roundf(camplayer.pos.z / BS) * BS + dist2sun * cosf(-yaw) * cosf(quantized_sun_pitch);
+                //snprintf(alert, 300, "sun_pitch %0.4f, quant %0.5f\n", sun_pitch, quantizer);
+                lookit(viewM, f, sun_pos.x, sun_pos.y, sun_pos.z, quantized_sun_pitch, yaw);
+                translate(viewM, -sun_pos.x, -sun_pos.y, -sun_pos.z);
+
+                // proj matrix
+                float snear = 10.f; // TODO find closest possible block
+                float sfar = dist2sun + 9000.f;
+                float x = 1.f / (6000 / 2.f);
+                float y = -1.f / (6000 / 2.f);
                 float z = -1.f / ((sfar - snear) / 2.f);
                 float tz = -(sfar + snear) / (sfar - snear);
                 float orthoM[] = {
@@ -73,17 +98,6 @@ void draw_stuff()
                         0, 0, tz, 1,
                 };
 
-                float viewM[16];
-                float f[3];
-                float pitch = (0.5 - night_amt) * 3.1415926535;
-                float yaw = 3.1415926535 * -0.49f;
-                sun_pos.x = roundf(camplayer.pos.x/60.f)*60.f + 300.f * BS * sinf(-yaw) * cosf(pitch);
-                //sun_pos.x = camplayer.pos.x + 300.f * BS * sinf(-yaw) * cosf(pitch);
-                sun_pos.y = 100.f * BS - 300.f * BS * sinf(pitch);
-                sun_pos.z = roundf(camplayer.pos.z/60.f)*60.f + 300.f * BS * cosf(-yaw) * cosf(pitch);
-                //sun_pos.z = camplayer.pos.z + 300.f * BS * cosf(-yaw) * cosf(pitch);
-                lookit(viewM, f, sun_pos.x, sun_pos.y, sun_pos.z, pitch, yaw);
-                translate(viewM, -sun_pos.x, -sun_pos.y, -sun_pos.z);
                 glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "proj"), 1, GL_FALSE, orthoM);
                 glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "view"), 1, GL_FALSE, viewM);
                 glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "model"), 1, GL_FALSE, identityM);
@@ -113,6 +127,21 @@ void draw_stuff()
         fb_is_bad:
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glDisable(GL_POLYGON_OFFSET_FILL);
+
+        float night_amt;
+        if (sun_pitch < PI) // in the day, linearly change the sky color
+        {
+                night_amt = fmodf(sun_pitch + 3*PI2, TAU) / TAU;
+                if (night_amt > 0.5f) night_amt = 1.f - night_amt;
+                night_amt *= 2.f;
+        }
+        else // at night change via cubic-sine so that it's mostly dark all night
+        {
+                night_amt = 1.f + sinf(sun_pitch);  //  0 to  1
+                night_amt *= night_amt * night_amt; //  0 to  1
+                night_amt *= -0.5f;                 //-.5 to  0
+                night_amt += 1.f;                   //  1 to .5
+        }
 
         if (night_amt > 0.5f)
         {
@@ -154,7 +183,7 @@ void draw_stuff()
         float viewM[16];
         lookit(viewM, f, eye0, eye1, eye2, camplayer.pitch, camplayer.yaw);
 
-        sun_draw(projM, viewM, night_amt, shadow_tex_id);
+        sun_draw(projM, viewM, sun_pitch, shadow_tex_id);
 
         // find where we are pointing at
         rayshot(eye0, eye1, eye2, f[0], f[1], f[2]);
@@ -174,6 +203,7 @@ void draw_stuff()
         glDepthFunc(GL_LEQUAL);
         glDepthMask(GL_TRUE);
         glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
 
         glUseProgram(prog_id);
 

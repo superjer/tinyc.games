@@ -92,7 +92,7 @@ void key_move(int down)
                         if (down) build_test_area();
                         break;
                 case SDLK_n: // night mode on/off
-                        if (down) night_mode = !night_mode;
+                        if (down) reverse_sun = !reverse_sun;
                         break;
                 case SDLK_l: // show light values whereever
                         if (down && place_x >= 0)
@@ -104,12 +104,7 @@ void key_move(int down)
                         }
                         break;
                 case SDLK_p: // speed of the sun
-                        if (down)
-                        {
-                                if (sun_speed == 0.f) sun_speed = 0.005f;
-                                else sun_speed *= 0.5f;
-                                if (sun_speed < 0.00005f) sun_speed = 0.f;
-                        }
+                        if (down) speedy_sun = !speedy_sun;
                         break;
                 case SDLK_F1: // do frustum culling
                         if (down) frustum_culling = !frustum_culling;

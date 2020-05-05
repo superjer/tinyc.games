@@ -17,10 +17,16 @@ void sun_init()
         glDeleteShader(fragment);
 
         float sun_buf[] = {
-                -1000, -10000, -1000, 1, 0, // A
-                 1000, -10000, -1000, 1, 1, // B
-                -1000, -10000,  1000, 0, 0, // D
-                 1000, -10000,  1000, 0, 1, // C
+                // sun
+                10000, -1000, -1000, 1, 0, // A
+                10000,  1000, -1000, 1, 1, // B
+                10000, -1000,  1000, 0, 0, // D
+                10000,  1000,  1000, 0, 1, // C
+                // moon
+                -10000, -400, -400, 1, 0, // A
+                -10000,  400, -400, 1, 1, // B
+                -10000, -400,  400, 0, 0, // D
+                -10000,  400,  400, 0, 1, // C
         };
 
         glGenVertexArrays(1, &sun_vao);
@@ -37,14 +43,14 @@ void sun_init()
         glEnableVertexAttribArray(1);
 }
 
-void sun_draw(float *proj, float *view, float time_of_day, unsigned int texid)
+void sun_draw(float *proj, float *view, float sun_pitch, unsigned int texid)
 {
-        float a = time_of_day * 3.14159f;
+        float a = sun_pitch;
         float model[] = {
-                 cosf(a), sinf(a), 0, 0,
-                -sinf(a), cosf(a), 0, 0,
-                       0,       0, 1, 0,
-                       0,       0, 0, 1,
+                cosf(a), -sinf(a), 0, 0,
+                sinf(a),  cosf(a), 0, 0,
+                      0,       0, 1, 0,
+                      0,       0, 0, 1,
         };
 
         glEnable(GL_BLEND);
@@ -64,4 +70,5 @@ void sun_draw(float *proj, float *view, float time_of_day, unsigned int texid)
 
         glBindVertexArray(sun_vao);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glDrawArrays(GL_TRIANGLE_STRIP, 4, 4);
 }

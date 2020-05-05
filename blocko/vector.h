@@ -94,3 +94,8 @@ void translate(float *mat, float x, float y, float z)
         mat[13] = (mat[1] * x) + (mat[5] * y) + (mat[ 9] * z);
         mat[14] = (mat[2] * x) + (mat[6] * y) + (mat[10] * z);
 }
+
+float distance3d(float x, float y, float z, float a, float b, float c)
+{
+        return sqrtf((x-a) * (x-a) + (y-b) * (y-b) + (z-c) * (z-c));
+}

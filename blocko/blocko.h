@@ -103,6 +103,10 @@ struct osn_context *osn_context;
 #define true 1
 #define false 0
 
+#define PI (3.1415926535)
+#define PI2 (PI/2.f)
+#define TAU (PI*2.f)
+
 #define PNG0 19
 
 #define DAY_R 1.f
@@ -264,7 +268,6 @@ struct player player[NR_PLAYERS] = {{
 struct player camplayer;
 struct point lerped_pos;
 struct point sun_pos;
-float sun_speed = 0.00005f;
 
 SDL_Event event;
 SDL_Window *win;
@@ -291,8 +294,6 @@ int polys = 0;
 int sunq_outta_room = 0;
 int gloq_outta_room = 0;
 int omp_threads = 0;
-int night_mode = true;
-float night_amt = 0.3f;
 int lock_culling = false;
 int frustum_culling = true;
 int zooming = false;
@@ -301,6 +302,9 @@ float fast = 1.f;
 int regulated = true;
 int antialiasing = false;
 int shadow_mapping = true;
+int speedy_sun = false;
+int reverse_sun = false;
+float sun_pitch = 0.3f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down
 char alert[800]; // only for debugging
 
 int mouselook = true;

@@ -160,8 +160,10 @@ void update_world()
                 }
         }
 
-        night_amt += night_mode ? sun_speed : -sun_speed;
-        CLAMP(night_amt, 0.f, 1.f);
+        float speed = speedy_sun ? 0.01f : 0.0001f;
+        sun_pitch += speed * (reverse_sun ? -1 : 1);
+        if (sun_pitch > TAU) sun_pitch -= TAU;
+        if (sun_pitch < 0.f) sun_pitch += TAU;
 }
 
 void move_to_ground(float *inout, int x, int y, int z)
