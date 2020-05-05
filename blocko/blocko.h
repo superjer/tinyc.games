@@ -301,7 +301,7 @@ float zoom_amt = 1.f;
 float fast = 1.f;
 int regulated = true;
 int antialiasing = false;
-int shadow_mapping = true;
+int shadow_mapping = false;
 int speedy_sun = false;
 int reverse_sun = false;
 float sun_pitch = 0.3f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down

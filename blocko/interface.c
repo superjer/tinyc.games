@@ -106,6 +106,9 @@ void key_move(int down)
                 case SDLK_p: // speed of the sun
                         if (down) speedy_sun = !speedy_sun;
                         break;
+                case SDLK_m: // do shadow mapping
+                        if (!down) shadow_mapping = !shadow_mapping;
+                        break;
                 case SDLK_F1: // do frustum culling
                         if (down) frustum_culling = !frustum_culling;
                         break;
@@ -123,9 +126,6 @@ void key_move(int down)
                         {
                                 T_(C2B(32) + x, y, C2B(32) + z) = OPEN;
                         }
-                        break;
-                case SDLK_F10: // do shadow mapping
-                        if (!down) shadow_mapping = !shadow_mapping;
                         break;
                 case SDLK_F12: // draw shadow map on the sun
                         if (!down) show_shadow_map = !show_shadow_map;

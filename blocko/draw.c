@@ -214,6 +214,7 @@ void draw_stuff()
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, shadow_tex_id);
         glUniform1i(glGetUniformLocation(prog_id, "shadow_map"), 1);
+        glUniform1i(glGetUniformLocation(prog_id, "shadow_mapping"), shadow_mapping);
 
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, projM);
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, translated_viewM);

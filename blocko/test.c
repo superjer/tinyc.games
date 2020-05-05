@@ -141,8 +141,8 @@ void debrief()
 
         if (help_layer == 2)
         {
-                char *g1 = "Q     \nF   \nN       \nP       \nT       \nL         \nV    \nR             \n/   \nF1     \nF2          \nF3                    \nF4 ";
-                char *g2 = "Go up!\nFast\nRev. sun\nFast sun\nYest box\nLight vals\nVsync\nFixed interval\nMSAA\nCulling\nLock culling\nFPS, timings, position\nShow fresh updates";
+                char *g1 = "Q     \nF   \nN       \nP       \nT       \nL         \nM             \nV    \nR             \n/   \nF1     \nF2          \nF3                    \nF4 ";
+                char *g2 = "Go up!\nFast\nRev. sun\nFast sun\nYest box\nLight vals\nShadow mapping\nVsync\nFixed interval\nMSAA\nCulling\nLock culling\nFPS, timings, position\nShow fresh updates";
                 font_begin(screenw, screenh);
                 font_add_text(g1, screenw/100.f, screenh/4.f, 0);
                 font_end(0.5, 1, 1);
