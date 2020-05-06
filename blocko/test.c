@@ -69,7 +69,7 @@ void debrief()
                 float frames = frame - last_frame;
 
                 p += snprintf(p, 8000 - (p-buf),
-                                "vmem %0.0fM used of %0.0fM (%0.0f%% free)\n",
+                                "vmem %0.0fm used of %0.0fm (%0.0f%% free)\n",
                                 (float)(total_kb - avail_kb) / 1000.f,
                                 (float)(total_kb)            / 1000.f,
                                 ((float)avail_kb / total_kb) * 100.f);
@@ -80,7 +80,9 @@ void debrief()
                                 (float)nr_chunks_generated / (chunk_gen_ticks / 1000.f));
 
                 p += snprintf(p, 8000 - (p-buf),
-                                "%.3fM poly/s\n", 1000.f * (float)polys / elapsed / 1000000.f);
+                                "%.3fm poly/s, %.3f shadow poly/s\n",
+                                1000.f * (float)polys / elapsed / 1000000.f,
+                                1000.f * (float)shadow_polys / elapsed / 1000000.f);
 
                 p += snprintf(p, 8000 - (p-buf),
                                 "%.1f fps\n", 1000.f * frames / elapsed );
@@ -100,6 +102,7 @@ void debrief()
                 last_ticks = ticks;
                 last_frame = frame;
                 polys = 0;
+                shadow_polys = 0;
 
                 timer_print(timings_buf, 8000);
         }

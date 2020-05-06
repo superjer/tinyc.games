@@ -291,6 +291,7 @@ int show_light_values = false;
 int show_shadow_map = false;
 int help_layer = 1;
 int polys = 0;
+int shadow_polys = 0;
 int sunq_outta_room = 0;
 int gloq_outta_room = 0;
 int omp_threads = 0;

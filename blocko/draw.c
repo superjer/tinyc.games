@@ -26,6 +26,38 @@ int sorter(const void * _a, const void * _b)
                (a->y <  b->y) ?  1 : -1;
 }
 
+int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z)
+{
+        int x_too_lo = 0;
+        int x_too_hi = 0;
+        int y_too_lo = 0;
+        int y_too_hi = 0;
+        int z_too_lo = 0;
+        int z_too_hi = 0;
+        int w_too_lo = 0;
+
+        for (int x = 0; x <= 1; x++) for (int z = 0; z <= 1; z++) for (int y = 0; y <= 1; y++)
+        {
+                float v[4];
+                mat4_f3_multiply(v, matrix,
+                                chunk_x*BS*CHUNKW + x*BS*CHUNKW,
+                                0 + y*BS*TILESH, // TODO: use highest gndheight?
+                                chunk_z*BS*CHUNKD + z*BS*CHUNKD);
+                if (v[0] < -v[3]) x_too_lo++;
+                if (v[0] >  v[3]) x_too_hi++;
+                if (v[1] < -v[3]) y_too_lo++;
+                if (v[1] >  v[3]) y_too_hi++;
+                if (v[2] < -v[3]) z_too_lo++;
+                if (v[2] >  v[3]) z_too_hi++;
+                if (v[3] <   0.f) w_too_lo++;
+        }
+
+        return x_too_lo != 8 && x_too_hi != 8 &&
+               y_too_lo != 8 && y_too_hi != 8 &&
+               z_too_lo != 8 && z_too_hi != 8 &&
+               w_too_lo != 8;
+}
+
 //draw everything in the game on the screen
 void draw_stuff()
 {
@@ -98,6 +130,10 @@ void draw_stuff()
                         0, 0, tz, 1,
                 };
 
+                float shadow_pvM[16];
+                if (!lock_culling)
+                        mat4_multiply(shadow_pvM, orthoM, viewM);
+
                 glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "proj"), 1, GL_FALSE, orthoM);
                 glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "view"), 1, GL_FALSE, viewM);
                 glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "model"), 1, GL_FALSE, identityM);
@@ -114,19 +150,22 @@ void draw_stuff()
                 mat4_multiply(tmpM, orthoM, viewM);
                 mat4_multiply(shadow_space, biasM, tmpM);
 
-                int shadow_poly = 0;
                 for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
                 {
                         int myvbo = i * VAOD + j;
                         if (vbo_len[myvbo] < 1) continue;
-                        glBindVertexArray(vao[myvbo]);
-                        glDrawArrays(GL_POINTS, 0, vbo_len[myvbo]);
-                        shadow_poly += vbo_len[myvbo];
+                        if (!frustum_culling || chunk_in_frustum(shadow_pvM, i, j))
+                        {
+                                glBindVertexArray(vao[myvbo]);
+                                glDrawArrays(GL_POINTS, 0, vbo_len[myvbo]);
+                                shadow_polys += vbo_len[myvbo];
+                        }
                 }
+
+                fb_is_bad:
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glDisable(GL_POLYGON_OFFSET_FILL);
         }
-        fb_is_bad:
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glDisable(GL_POLYGON_OFFSET_FILL);
 
         float night_amt;
         if (sun_pitch < PI) // in the day, linearly change the sky color
@@ -329,41 +368,9 @@ void draw_stuff()
                 int zd = ((j * BS * CHUNKD + BS * CHUNKD2) - eye2);
                 stale[stale_len].y = (xd * xd + zd * zd);
 
-                // skip chunks we can't see anyways
-                if (frustum_culling)
-                {
-                        int x_too_lo = 0;
-                        int x_too_hi = 0;
-                        int y_too_lo = 0;
-                        int y_too_hi = 0;
-                        int z_too_lo = 0;
-                        int z_too_hi = 0;
-                        int w_too_lo = 0;
-
-                        for (int x = 0; x <= 1; x++) for (int z = 0; z <= 1; z++) for (int y = 0; y <= 1; y++)
-                        {
-                                float v[4];
-                                mat4_f3_multiply(v, pvM,
-                                                i*BS*CHUNKW + x*BS*CHUNKW,
-                                                          0 + y*BS*TILESH,
-                                                j*BS*CHUNKD + z*BS*CHUNKD);
-                                if (v[0] < -v[3]) x_too_lo++;
-                                if (v[0] >  v[3]) x_too_hi++;
-                                if (v[1] < -v[3]) y_too_lo++;
-                                if (v[1] >  v[3]) y_too_hi++;
-                                if (v[2] < -v[3]) z_too_lo++;
-                                if (v[2] >  v[3]) z_too_hi++;
-                                if (v[3] <   0.f) w_too_lo++;
-                        }
-
-                        if (x_too_lo == 8 || x_too_hi == 8 ||
-                            y_too_lo == 8 || y_too_hi == 8 ||
-                            z_too_lo == 8 || z_too_hi == 8 ||
-                            w_too_lo == 8)
-                                goto skip;
-                }
-
-                stale_len++;
+                // only queue chunks we could see
+                if (chunk_in_frustum(pvM, i, j))
+                        stale_len++;
 
                 skip: ;
         }
