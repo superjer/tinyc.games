@@ -8,5 +8,5 @@ gems:
   - jekyll-mentions
 
 github:
-  zip_url: https://github.com/superjer/tinyc.games/archive/master.zip
-  tar_url: https://github.com/superjer/tinyc.games/archive/master.tar.gz
+  zip_url: https://github.com/superjer/tinyc.games/zipball/master
+  tar_url: https://github.com/superjer/tinyc.games/tarball/master
