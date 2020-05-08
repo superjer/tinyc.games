@@ -2,6 +2,7 @@
 
 ![Tet](https://raw.githubusercontent.com/superjer/tinyc.games/gh-pages/images/tet-tiny.png)
 ![Flappy](https://raw.githubusercontent.com/superjer/tinyc.games/gh-pages/images/flappy-tiny.png)
+![Blocko](https://raw.githubusercontent.com/superjer/tinyc.games/gh-pages/images/shadow-blocko.png)
 
 # Features
 
