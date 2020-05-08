@@ -6,3 +6,7 @@ theme: jekyll-theme-cayman
 
 gems:
   - jekyll-mentions
+
+github:
+  zip_url: https://github.com/superjer/tinyc.games/archive/master.zip
+  tar_url: https://github.com/superjer/tinyc.games/archive/master.tar.gz
