@@ -31,7 +31,7 @@ void build_test_area()
                         {
                                 T_(x, y, z) = GRAN;
                                 SUN_(x, y, z) = 0;
-                                gndheight[x][z] = y;
+                                GNDH_(x, z) = y;
                         }
                 }
                 else if (y < ty + 1) // space inside
@@ -40,7 +40,7 @@ void build_test_area()
                         SUN_(x, y, z) = 0;
                         if (on_edge)
                         {
-                                gndheight[x][z] = y;
+                                GNDH_(x, z) = y;
                                 sun_enqueue(x, y, z, 0, 15);
                         }
                 }
@@ -94,7 +94,7 @@ void debrief()
 
                 if (gloq_outta_room)
                         p += snprintf(p, 8000 - (p-buf),
-                                        "Out of room in the sun queue (%d times)\n", gloq_outta_room);
+                                        "Out of room in the glo queue (%d times)\n", gloq_outta_room);
                 gloq_outta_room = 0;
 
                 glGetIntegerv(0x9048, &total_kb);

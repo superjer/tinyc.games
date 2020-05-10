@@ -36,7 +36,8 @@
         X(swapwindow), \
         X(glsetup), \
         X(font_init), \
-        X(sun_init),
+        X(sun_init), \
+        X(scoot),
 
 enum timernames {
         #define X(x) timer_ ## x

@@ -1,6 +1,12 @@
 #pragma once
 
-#include <omp.h>
+#ifndef NO_OMPH
+        #include <omp.h>
+#else
+        #define omp_get_num_threads() 0
+        #define omp_set_nested(n)
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -58,8 +64,8 @@ struct osn_context *osn_context;
 #define CHUNKD 16                  // ^
 #define CHUNKW2 (CHUNKW/2)
 #define CHUNKD2 (CHUNKD/2)
-#define VAOW 64                    // how many VAOs wide
-#define VAOD 64                    // how many VAOs deep
+#define VAOW 16                    // how many VAOs wide
+#define VAOD 16                    // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
 #define TILESW (CHUNKW*VAOW)       // total level width, height
 #define TILESH 160                 // ^
@@ -90,8 +96,8 @@ struct osn_context *osn_context;
 #define DOWN  6
 
 #define VERTEX_BUFLEN 100000
-#define SUNQLEN 100000
-#define GLOQLEN 100000
+#define SUNQLEN 10000
+#define GLOQLEN 10000
 
 #define SHADOW_SZ 4096
 
@@ -128,18 +134,24 @@ struct osn_context *osn_context;
 #define FOG_NIGHT_G 0.01f
 #define FOG_NIGHT_B 0.06f
 
-#define T_(x,y,z) tiles[(z) * TILESH * TILESW + (x) * TILESH + (y)]
-#define SUN_(x,y,z) sunlight[(z) * (TILESH+1) * (TILESW+1) + (x) * (TILESH+1) + (y)]
-#define GLO_(x,y,z) glolight[(z) * (TILESH+1) * (TILESW+1) + (x) * (TILESH+1) + (y)]
-#define CORN_(x,y,z) cornlight[(z) * (TILESH+2) * (TILESW+2) + (x) * (TILESH+2) + (y)]
-#define KORN_(x,y,z) kornlight[(z) * (TILESH+2) * (TILESW+2) + (x) * (TILESH+2) + (y)]
+#define T_(x,y,z)    tiles[    ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
+#define SUN_(x,y,z)  sunlight[ ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
+#define GLO_(x,y,z)  glolight[ ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
+#define CORN_(x,y,z) cornlight[((z - scootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - scootx) & (TILESW-1)) * (TILESH+1) + (y)]
+#define KORN_(x,y,z) kornlight[((z - scootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - scootx) & (TILESW-1)) * (TILESH+1) + (y)]
+#define GNDH_(x,z)   gndheight[((z - scootz) & (TILESD-1))              * (TILESW+0) + ((x - scootx) & (TILESW-1))                   ]
+#define AGEN_(x,z)   already_generated[(z - scootz/CHUNKD) & (VAOD-1)][(x - scootx/CHUNKW) & (VAOW-1)]
+
+#define VAO_(x, z)    vbo[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
+#define VBO_(x, z)    vao[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
+#define VBOLEN_(x, z) vbo_len[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 
 // helper macros
-#define IS_OPAQUE(x,y,z) (tiles[(z) * TILESH * TILESW + (x) * TILESH + (y)] < LASTSOLID)
-#define IS_SOLID(x,y,z) (tiles[(z) * TILESH * TILESW + (x) * TILESH + (y)] < LASTSOLID)
-#define ABOVE_GROUND(x,y,z) (gndheight[x][z] >  y)
-#define AT_GROUND(x,y,z)    (gndheight[x][z] == y)
-#define BELOW_GROUND(x,y,z) (gndheight[x][z] <  y)
+#define IS_OPAQUE(x,y,z) (T_(x, y, z) < LASTSOLID)
+#define IS_SOLID(x,y,z) (T_(x, y, z) < LASTSOLID)
+#define ABOVE_GROUND(x,y,z) (GNDH_(x, z) >  y)
+#define AT_GROUND(x,y,z)    (GNDH_(x, z) == y)
+#define BELOW_GROUND(x,y,z) (GNDH_(x, z) <  y)
 
 #define QITEM(x,y,z) ((struct qitem){x, y, z})
 #define DIST_SQ(dx, dy, dz) ((dx)*(dx) + (dy)*(dy) + (dz)*(dz))
@@ -199,10 +211,14 @@ float fog_r, fog_g, fog_b;
 unsigned char *tiles;
 unsigned char *sunlight;
 unsigned char *glolight;
-unsigned char gndheight[TILESW][TILESD];
+unsigned char gndheight[TILESW * TILESD];
 float *cornlight;
 float *kornlight;
 volatile char already_generated[VAOW][VAOD];
+
+int to_scootx, to_scootz; // pending global map offset
+int scootx, scootz;             // actual global map offset
+int chunk_scootx, chunk_scootz; //  ^ in chunks
 
 #define TEST_AREA_SZ 32
 int test_area_x = -1;
@@ -339,12 +355,6 @@ void update_player(struct player * p, int real);
 int collide(struct box l, struct box r);
 int world_collide(struct box box, int wet);
 
-// main.c protos
-void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi);
-void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2);
-void move_to_ground(float *inout, int x, int y, int z);
-void recalc_gndheight(int x, int z);
-
 // test.c protos
 int in_test_area(int x, int y, int z);
 void build_test_area();
@@ -357,3 +367,11 @@ int step_sunlight();
 int step_glolight();
 void remove_sunlight(int px, int py, int pz);
 void remove_glolight(int px, int py, int pz);
+
+// main.c protos
+void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi);
+void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2);
+void move_to_ground(float *inout, int x, int y, int z);
+void recalc_gndheight(int x, int z);
+void scoot(int x, int z);
+void apply_scoot();

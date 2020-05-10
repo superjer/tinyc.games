@@ -33,6 +33,7 @@ int main()
 {
         omp_set_nested(1); // needed or omp won't parallelize chunk gen
         startup();
+        fprintf(stderr, "%d %d %d", 1 % TILESW, 0 % TILESW, -1 % TILESW);
 
         #pragma omp parallel sections
         {
@@ -110,10 +111,10 @@ void startup()
         open_simplex_noise(world_seed, &osn_context);
 
         tiles = calloc(TILESD * TILESH * TILESW, sizeof *tiles);
-        sunlight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *sunlight);
-        glolight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *glolight);
-        cornlight = calloc((TILESD+2) * (TILESH+2) * (TILESW+2), sizeof *cornlight);
-        kornlight = calloc((TILESD+2) * (TILESH+2) * (TILESW+2), sizeof *kornlight);
+        sunlight = calloc(TILESD * TILESH * TILESW, sizeof *sunlight);
+        glolight = calloc(TILESD * TILESH * TILESW, sizeof *glolight);
+        cornlight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *cornlight);
+        kornlight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *kornlight);
 }
 
 void new_game()
@@ -168,7 +169,7 @@ void update_world()
 
 void move_to_ground(float *inout, int x, int y, int z)
 {
-        *inout = gndheight[x][z] * BS - PLYR_H - 1;
+        *inout = GNDH_(x, z) * BS - PLYR_H - 1;
 }
 
 void recalc_gndheight(int x, int z)
@@ -179,7 +180,8 @@ void recalc_gndheight(int x, int z)
                 if (T_(x, y, z) != OPEN)
                         break;
         }
-        gndheight[x][z] = y;
+
+        GNDH_(x, z) = y;
 }
 
 // select block from eye following vector f
@@ -227,4 +229,24 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
         bad:
         target_x = target_y = target_z = -1;
         place_x = place_y = place_z = -1;
+}
+
+void scoot(int cx, int cz)
+{
+        to_scootx += cx;
+        to_scootz += cz;
+}
+
+void apply_scoot()
+{
+        int tile_to_scootx = to_scootx * CHUNKW;
+        int tile_to_scootz = to_scootz * CHUNKD;
+
+        chunk_scootx += to_scootx;
+        chunk_scootz += to_scootz;
+        scootx += tile_to_scootx;
+        scootz += tile_to_scootz;
+
+        to_scootx = 0;
+        to_scootz = 0;
 }

@@ -67,7 +67,7 @@ void glo_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
         if (gq_next_len >= GLOQLEN)
         {
                 gloq_outta_room++;
-                return; // out of room in sun queue
+                return; // out of room in glo queue
         }
 
         for (size_t i = base; i < gq_curr_len; i++)
@@ -179,7 +179,7 @@ void remove_sunlight(int px, int py, int pz)
         for (int y = 0; y < TILESH-1; y++)
                 if (IS_OPAQUE(px, y, pz))
                 {
-                        gndheight[px][pz] = y;
+                        GNDH_(px, pz) = y;
                         break;
                 }
 

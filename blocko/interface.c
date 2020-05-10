@@ -130,6 +130,11 @@ void key_move(int down)
                 case SDLK_F12: // draw shadow map on the sun
                         if (!down) show_shadow_map = !show_shadow_map;
                         break;
+
+                case SDLK_LEFT:  if (down) scoot(-1,  0); break;
+                case SDLK_RIGHT: if (down) scoot( 1,  0); break;
+                case SDLK_DOWN:  if (down) scoot( 0, -1); break;
+                case SDLK_UP:    if (down) scoot( 0,  1); break;
         }
 }
 

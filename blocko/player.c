@@ -167,7 +167,7 @@ void update_player(struct player *p, int real)
                         T_(place_x, place_y, place_z) = HARD;
 
                         if (ABOVE_GROUND(place_x, place_y, place_z))
-                                gndheight[place_x][place_z] = place_y;
+                                GNDH_(place_x, place_z) = place_y;
 
                         int y = place_y;
                         remove_glolight(place_x, y, place_z);

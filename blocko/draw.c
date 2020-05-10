@@ -152,13 +152,12 @@ void draw_stuff()
 
                 for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
                 {
-                        int myvbo = i * VAOD + j;
-                        if (vbo_len[myvbo] < 1) continue;
+                        if (VBOLEN_(i, j)) continue;
                         if (!frustum_culling || chunk_in_frustum(shadow_pvM, i, j))
                         {
-                                glBindVertexArray(vao[myvbo]);
-                                glDrawArrays(GL_POINTS, 0, vbo_len[myvbo]);
-                                shadow_polys += vbo_len[myvbo];
+                                glBindVertexArray(VAO_(i, j));
+                                glDrawArrays(GL_POINTS, 0, VBOLEN_(i, j));
+                                shadow_polys += VBOLEN_(i, j);
                         }
                 }
 
@@ -232,6 +231,9 @@ void draw_stuff()
         memcpy(translated_viewM, viewM, sizeof viewM);
         translate(translated_viewM, -eye0, -eye1, -eye2);
 
+        float modelM[16];
+        memcpy(modelM, identityM, sizeof identityM);
+
         static float pvM[16];
         if (!lock_culling)
                 mat4_multiply(pvM, projM, translated_viewM);
@@ -257,7 +259,7 @@ void draw_stuff()
 
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, projM);
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, translated_viewM);
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, identityM);
+        glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, modelM);
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "shadow_space"), 1, GL_FALSE, shadow_space);
 
         glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
@@ -375,13 +377,18 @@ void draw_stuff()
                 skip: ;
         }
 
-        qsort(stale, stale_len, sizeof(struct qitem), sorter);
+        qsort(stale, stale_len, sizeof *stale, sorter);
         for (size_t my = 0; my < stale_len; my++)
         {
-                int myvbo = stale[my].x * VAOD + stale[my].z;
-                glBindVertexArray(vao[myvbo]);
-                glDrawArrays(GL_POINTS, 0, vbo_len[myvbo]);
-                polys += vbo_len[myvbo];
+                int myx = stale[my].x;
+                int myz = stale[my].z;
+                modelM[12] = myx * BS * CHUNKW;
+                modelM[13] = 0.f;
+                modelM[14] = myz * BS * CHUNKD;
+                glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, modelM);
+                glBindVertexArray(VAO_(myx, myz));
+                glDrawArrays(GL_POINTS, 0, VBOLEN_(myx, myz));
+                polys += VBOLEN_(myx, myz);
         }
 
         // package, ship and render fresh chunks (while the stales are rendering!)
@@ -390,7 +397,6 @@ void draw_stuff()
         {
                 int myx = fresh[my].x;
                 int myz = fresh[my].z;
-                int myvbo = myx * VAOD + myz;
                 int xlo = myx * CHUNKW;
                 int xhi = xlo + CHUNKW;
                 int zlo = myz * CHUNKD;
@@ -398,7 +404,7 @@ void draw_stuff()
                 int ungenerated = false;
 
                 #pragma omp critical
-                if (!already_generated[myx][myz])
+                if (!AGEN_(myx, myz))
                 {
                         ungenerated = true;
                 }
@@ -406,8 +412,8 @@ void draw_stuff()
                 if (ungenerated)
                         continue; // don't bother with ungenerated chunks
 
-                glBindVertexArray(vao[myvbo]);
-                glBindBuffer(GL_ARRAY_BUFFER, vbo[myvbo]);
+                glBindVertexArray(VAO_(myx, myz));
+                glBindBuffer(GL_ARRAY_BUFFER, VBO_(myx, myz));
                 v = vbuf; // reset vertex buffer pointer
                 w = wbuf; // same for water buffer
 
@@ -441,25 +447,28 @@ void draw_stuff()
                         float DNW = KORN_(x  , y+1, z+1);
                         float DNE = KORN_(x+1, y+1, z+1);
                         int t = T_(x, y, z);
+                        int m = x & (CHUNKW-1);
+                        int n = z & (CHUNKD-1);
+
                         if (t == GRAS)
                         {
-                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ 0,    UP, x, y, z, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ 1, SOUTH, x, y, z, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ 1, NORTH, x, y, z, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 1,  WEST, x, y, z, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 1,  EAST, x, y, z, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ 0,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ 1, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ 1, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 1,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 1,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                         }
                         else if (t == DIRT || t == GRG1 || t == GRG2)
                         {
                                 int u = (t == DIRT) ? 2 :
                                         (t == GRG1) ? 3 : 4;
-                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ u,    UP, x, y, z, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ 2, SOUTH, x, y, z, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ 2, NORTH, x, y, z, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 2,  WEST, x, y, z, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 2,  EAST, x, y, z, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, x, y, z, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ u,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ 2, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ 2, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 2,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 2,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                         }
                         else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN ||
                                  t == RLEF || t == YLEF)
@@ -474,28 +483,28 @@ void draw_stuff()
                                         (t == RLEF) ? 16 :
                                         (t == YLEF) ? 17 :
                                                        0 ;
-                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ f,    UP, x, y, z, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ f, SOUTH, x, y, z, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ f, NORTH, x, y, z, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ f,  WEST, x, y, z, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ f,  EAST, x, y, z, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ f,  DOWN, x, y, z, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                         }
                         else if (t == WATR)
                         {
                                 if (y == 0        || T_(x  , y-1, z  ) == OPEN)
                                 {
                                         int f = 7 + (pframe / 10 + (x ^ z)) % 4;
-                                        *w++ = (struct vbufv){ f,    UP, x, y+0.06f, z, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f };
-                                        *w++ = (struct vbufv){ f,  DOWN, x, y-0.94f, z, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f };
+                                        *w++ = (struct vbufv){ f,    UP, m, y+0.06f, n, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f };
+                                        *w++ = (struct vbufv){ f,  DOWN, m, y-0.94f, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f };
                                 }
                         }
                         else if (t == LITE)
                         {
-                                *w++ = (struct vbufv){ 18, SOUTH, x     , y, z+0.5f, use, usw, dse, dsw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                *w++ = (struct vbufv){ 18, NORTH, x     , y, z-0.5f, unw, une, dnw, dne, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                *w++ = (struct vbufv){ 18,  WEST, x+0.5f, y, z     , usw, unw, dsw, dnw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                *w++ = (struct vbufv){ 18,  EAST, x-0.5f, y, z     , une, use, dne, dse, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                *w++ = (struct vbufv){ 18, SOUTH, m     , y, n+0.5f, use, usw, dse, dsw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                *w++ = (struct vbufv){ 18, NORTH, m     , y, n-0.5f, unw, une, dnw, dne, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                *w++ = (struct vbufv){ 18,  WEST, m+0.5f, y, n     , usw, unw, dsw, dnw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                *w++ = (struct vbufv){ 18,  EAST, m-0.5f, y, n     , une, use, dne, dse, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
                         }
 
                         if (show_light_values && in_test_area(x, y, z))
@@ -508,8 +517,8 @@ void draw_stuff()
                                         ty = y - 1;
                                         lit = 0.1f;
                                 }
-                                *w++ = (struct vbufv){ f,    UP, x, ty+0.9f, z, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
-                                *w++ = (struct vbufv){ f,  DOWN, x, ty-0.1f, z, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
+                                *w++ = (struct vbufv){ f,    UP, m, ty+0.9f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
+                                *w++ = (struct vbufv){ f,  DOWN, m, ty-0.1f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
                         }
                 }
 
@@ -519,14 +528,18 @@ void draw_stuff()
                         v += w - wbuf;
                 }
 
-                vbo_len[myvbo] = v - vbuf;
-                polys += vbo_len[myvbo];
+                VBOLEN_(myx, myz) = v - vbuf;
+                polys += VBOLEN_(myx, myz);
                 TIMER(glBufferData)
-                glBufferData(GL_ARRAY_BUFFER, vbo_len[myvbo] * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
+                glBufferData(GL_ARRAY_BUFFER, VBOLEN_(myx, myz) * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
                 if (my < 4) // draw the newly buffered verts
                 {
                         TIMER(glDrawArrays)
-                        glDrawArrays(GL_POINTS, 0, vbo_len[myvbo]);
+                        modelM[12] = myx * BS * CHUNKW;
+                        modelM[13] = 0.f;
+                        modelM[14] = myz * BS * CHUNKD;
+                        glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, modelM);
+                        glDrawArrays(GL_POINTS, 0, VBOLEN_(myx, myz));
                 }
         }
 

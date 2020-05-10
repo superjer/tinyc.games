@@ -359,7 +359,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 {
                         if (above_ground && IS_OPAQUE(x, y, z))
                         {
-                                gndheight[x][z] = y;
+                                GNDH_(x, z) = y;
                                 above_ground = false;
                                 if (y)
                                 {
@@ -390,7 +390,9 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 // on its own thread, loops forever building chunks when needed
 void chunk_builder()
 { for(;;) {
-        int best_x, best_z;
+        apply_scoot();
+
+        int best_x = 0, best_z = 0;
         int px = (player[0].pos.x / BS + CHUNKW2) / CHUNKW;
         int pz = (player[0].pos.z / BS + CHUNKD2) / CHUNKD;
         CLAMP(px, 0, VAOW-1);
@@ -400,7 +402,7 @@ void chunk_builder()
         int best_dist = 99999999;
         for (int x = 0; x < VAOW; x++) for (int z = 0; z < VAOD; z++)
         {
-                if (already_generated[x][z]) continue;
+                if (AGEN_(x, z)) continue;
 
                 int dist_sq = (x - px) * (x - px) + (z - pz) * (z - pz);
                 if (dist_sq < best_dist)
@@ -433,7 +435,7 @@ void chunk_builder()
                 show_time_per_chunk = false;
         }
 
-        already_generated[best_x][best_z] = true;
+        AGEN_(best_x, best_z) = true;
 
         #pragma omp critical
         {
