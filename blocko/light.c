@@ -138,7 +138,7 @@ int step_glolight()
 
 void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
 {
-        for (int z = zlo; z <= zhi; z++) for (int y = 0; y <= TILESH; y++) for (int x = xlo; x <= xhi; x++)
+        for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH; y++) for (int x = xlo; x < xhi; x++)
         {
                 int x_ = (x == 0) ? 0 : x - 1;
                 int y_ = (y == 0) ? 0 : y - 1;

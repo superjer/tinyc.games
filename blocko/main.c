@@ -33,7 +33,6 @@ int main()
 {
         omp_set_nested(1); // needed or omp won't parallelize chunk gen
         startup();
-        fprintf(stderr, "%d %d %d", 1 % TILESW, 0 % TILESW, -1 % TILESW);
 
         #pragma omp parallel sections
         {
@@ -56,6 +55,8 @@ int main()
 
 void main_loop()
 { for (;;) {
+        apply_scoot();
+
         while (SDL_PollEvent(&event)) switch (event.type)
         {
                 case SDL_QUIT:            exit(0);
@@ -233,20 +234,20 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
 
 void scoot(int cx, int cz)
 {
-        to_scootx += cx;
-        to_scootz += cz;
+        #pragma omp critical
+        {
+                future_scootx += cx;
+                future_scootz += cz;
+        }
 }
 
 void apply_scoot()
 {
-        int tile_to_scootx = to_scootx * CHUNKW;
-        int tile_to_scootz = to_scootz * CHUNKD;
-
-        chunk_scootx += to_scootx;
-        chunk_scootz += to_scootz;
-        scootx += tile_to_scootx;
-        scootz += tile_to_scootz;
-
-        to_scootx = 0;
-        to_scootz = 0;
+        #pragma omp critical
+        {
+                scootx = future_scootx * CHUNKW;
+                scootz = future_scootz * CHUNKD;
+                chunk_scootx = future_scootx;
+                chunk_scootz = future_scootz;
+        }
 }

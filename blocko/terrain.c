@@ -3,6 +3,8 @@
 float hmap[TILESW][TILESD];
 float hmap2[TILESW][TILESD];
 
+int tscootx, tscootz, tchunk_scootx, tchunk_scootz;
+
 void gen_hmap(int x0, int x2, int z0, int z2)
 {
         unsigned seed = SEED4(x0, x2, z0, z2);
@@ -163,7 +165,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
                 for (int y = 0; y < TILESH; y++)
                 {
-                        if (y == TILESH - 1) { T_(x, y, z) = HARD; continue; }
+                        if (y == TILESH - 1) { TT_(x, y, z) = HARD; continue; }
 
                         float p300 = noise(x, y, z, 300);
                         float p32 = noise(x, y*mode, z, 16 + 16 * (1.1 + p300));
@@ -191,7 +193,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                                 if (!slicey_bit || RANDP(5))
                                 {
                                         int type = (y > 100 && hmap2[x][z] > 99) ? WATR : OPEN; //only allow water below low heightmap
-                                        T_(x, y, z) = type;
+                                        TT_(x, y, z) = type;
                                         solid_depth = 0;
                                         slicey_bit = false;
                                         goto out;
@@ -211,13 +213,13 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         int ore  =  p2 > 0.4f ? ORE : OREH;
                         int ston = p42 > 0.4f && p9 < -0.3f ? ore : STON;
 
-                        if      (slicey_bit)          T_(x, y, z) = p9 > 0.4f ? HARD : SAND;
-                        else if (solid_depth > 14 + 5 * p9) T_(x, y, z) = GRAN;
-                        else if (y < slv - 5 * p16)   T_(x, y, z) = ston;
-                        else if (y < dlv - 5 * p16)   T_(x, y, z) = p80 > (-solid_depth * 0.1f) ? DIRT : OPEN; // erosion
-                        else if (y < 100 - 5 * p16)   T_(x, y, z) = solid_depth == 1 ? GRAS : DIRT;
-                        else if (y < 120          )   T_(x, y, z) = solid_depth < 4 + 5 * p9 ? SAND : ston;
-                        else                          T_(x, y, z) = HARD;
+                        if      (slicey_bit)          TT_(x, y, z) = p9 > 0.4f ? HARD : SAND;
+                        else if (solid_depth > 14 + 5 * p9) TT_(x, y, z) = GRAN;
+                        else if (y < slv - 5 * p16)   TT_(x, y, z) = ston;
+                        else if (y < dlv - 5 * p16)   TT_(x, y, z) = p80 > (-solid_depth * 0.1f) ? DIRT : OPEN; // erosion
+                        else if (y < 100 - 5 * p16)   TT_(x, y, z) = solid_depth == 1 ? GRAS : DIRT;
+                        else if (y < 120          )   TT_(x, y, z) = solid_depth < 4 + 5 * p9 ? SAND : ston;
+                        else                          TT_(x, y, z) = HARD;
 
                         out: ;
                 }
@@ -293,7 +295,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         int dist_sq = DIST_SQ(cave_points[i].x - x, cave_points[i].y - y, cave_points[i].z - z);
                         if (dist_sq <= cave_points[i].radius_sq)
                         {
-                                T_(x, y, z) = OPEN;
+                                TT_(x, y, z) = OPEN;
                                 break;
                         }
                 }
@@ -302,14 +304,14 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         #pragma omp parallel for
         for (x = xlo+1; x < xhi-1; x++) for (int z = zlo+1; z < zhi-1; z++) for (int y = 100; y < TILESH-2; y++)
         {
-                if (T_(x, y, z) == WATR)
+                if (TT_(x, y, z) == WATR)
                 {
-                        if (T_(x  , y  , z-1) == OPEN ||
-                            T_(x  , y  , z+1) == OPEN ||
-                            T_(x-1, y  , z  ) == OPEN ||
-                            T_(x+1, y  , z  ) == OPEN ||
-                            T_(x  , y+1, z  ) == OPEN)
-                                T_(x, y, z) = WOOD;
+                        if (TT_(x  , y  , z-1) == OPEN ||
+                            TT_(x  , y  , z+1) == OPEN ||
+                            TT_(x-1, y  , z  ) == OPEN ||
+                            TT_(x+1, y  , z  ) == OPEN ||
+                            TT_(x  , y+1, z  ) == OPEN)
+                                TT_(x, y, z) = WOOD;
                 }
         }
 
@@ -324,23 +326,23 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 int z = zlo + CHUNKD/2 + RANDI(-5, 5);
                 for (int y = 10; y < TILESH-2; y++)
                 {
-                        if (T_(x, y, z) == OPEN)
+                        if (TT_(x, y, z) == OPEN)
                                 continue;
 
-                        if (T_(x, y, z) != GRAS && T_(x, y, z) != DIRT)
+                        if (TT_(x, y, z) != GRAS && TT_(x, y, z) != DIRT)
                                 break;
 
                         int yy = y;
                         for (; yy >= y - RANDI(3, 8); yy--)
-                                T_(x, yy, z) = WOOD;
+                                TT_(x, yy, z) = WOOD;
 
                         int ymax = yy + RANDI(2, 4);
 
                         for (int i = x-3; i <= x+3; i++) for (int j = yy-3; j <= ymax; j++) for (int k = z-3; k <= z+3; k++)
                         {
                                 float dist = (i-x) * (i-x) + (j-yy) * (j-yy) + (k-z) * (k-z);
-                                if (T_(i, j, k) == OPEN && dist < radius * radius)
-                                        T_(i, j, k) = leaves;
+                                if (TT_(i, j, k) == OPEN && dist < radius * radius)
+                                        TT_(i, j, k) = leaves;
                         }
 
                         break;
@@ -359,38 +361,50 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 {
                         if (above_ground && IS_OPAQUE(x, y, z))
                         {
-                                GNDH_(x, z) = y;
+                                TGNDH_(x, z) = y;
                                 above_ground = false;
                                 if (y)
                                 {
-                                        SUN_(x, y-1, z) = 0;
+                                        TSUN_(x, y-1, z) = 0;
                                         sun_enqueue(x, y-1, z, 0, light_level);
                                 }
                                 light_level = 0;
                         }
 
-                        if (wet && T_(x, y, z) == OPEN)
-                                T_(x, y, z) = WATR;
+                        if (wet && TT_(x, y, z) == OPEN)
+                                TT_(x, y, z) = WATR;
 
                         if (wet && IS_SOLID(x, y, z))
                                 wet = false;
 
-                        if (T_(x, y, z) == WATR)
+                        if (TT_(x, y, z) == WATR)
                         {
                                 wet = true;
                                 if (light_level) light_level--;
                                 if (light_level) light_level--;
                         }
 
-                        SUN_(x, y, z) = light_level;
+                        TSUN_(x, y, z) = light_level;
                 }
+        }
+}
+
+// update terrain worker thread(s) copies of scoot vars
+void terrain_apply_scoot()
+{
+        #pragma omp critical
+        {
+                tscootx = future_scootx * CHUNKW;
+                tscootz = future_scootz * CHUNKD;
+                tchunk_scootx = future_scootx;
+                tchunk_scootz = future_scootz;
         }
 }
 
 // on its own thread, loops forever building chunks when needed
 void chunk_builder()
 { for(;;) {
-        apply_scoot();
+        terrain_apply_scoot();
 
         int best_x = 0, best_z = 0;
         int px = (player[0].pos.x / BS + CHUNKW2) / CHUNKW;
@@ -402,7 +416,7 @@ void chunk_builder()
         int best_dist = 99999999;
         for (int x = 0; x < VAOW; x++) for (int z = 0; z < VAOD; z++)
         {
-                if (AGEN_(x, z)) continue;
+                if (TAGEN_(x, z)) continue;
 
                 int dist_sq = (x - px) * (x - px) + (z - pz) * (z - pz);
                 if (dist_sq < best_dist)
@@ -429,13 +443,7 @@ void chunk_builder()
         nr_chunks_generated++;
         chunk_gen_ticks += SDL_GetTicks() - ticks_before;
 
-        if (show_time_per_chunk)
-        {
-                fprintf(stderr, "Seconds per chunk gen: %0.5f\n", (float)chunk_gen_ticks / nr_chunks_generated / 1000.f);
-                show_time_per_chunk = false;
-        }
-
-        AGEN_(best_x, best_z) = true;
+        TAGEN_(best_x, best_z) = true;
 
         #pragma omp critical
         {

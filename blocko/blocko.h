@@ -64,8 +64,8 @@ struct osn_context *osn_context;
 #define CHUNKD 16                  // ^
 #define CHUNKW2 (CHUNKW/2)
 #define CHUNKD2 (CHUNKD/2)
-#define VAOW 16                    // how many VAOs wide
-#define VAOD 16                    // how many VAOs deep
+#define VAOW 64                    // how many VAOs wide
+#define VAOD 64                    // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
 #define TILESW (CHUNKW*VAOW)       // total level width, height
 #define TILESH 160                 // ^
@@ -134,17 +134,30 @@ struct osn_context *osn_context;
 #define FOG_NIGHT_G 0.01f
 #define FOG_NIGHT_B 0.06f
 
+// tile pos-to-mem-location macros
 #define T_(x,y,z)    tiles[    ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
 #define SUN_(x,y,z)  sunlight[ ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
 #define GLO_(x,y,z)  glolight[ ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
 #define CORN_(x,y,z) cornlight[((z - scootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - scootx) & (TILESW-1)) * (TILESH+1) + (y)]
 #define KORN_(x,y,z) kornlight[((z - scootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - scootx) & (TILESW-1)) * (TILESH+1) + (y)]
 #define GNDH_(x,z)   gndheight[((z - scootz) & (TILESD-1))              * (TILESW+0) + ((x - scootx) & (TILESW-1))                   ]
-#define AGEN_(x,z)   already_generated[(z - scootz/CHUNKD) & (VAOD-1)][(x - scootx/CHUNKW) & (VAOW-1)]
 
-#define VAO_(x, z)    vbo[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
-#define VBO_(x, z)    vao[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
-#define VBOLEN_(x, z) vbo_len[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
+// for terrain/worker
+#define TT_(x,y,z)    tiles[    ((z - tscootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - tscootx) & (TILESW-1)) * (TILESH+0) + (y)]
+#define TSUN_(x,y,z)  sunlight[ ((z - tscootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - tscootx) & (TILESW-1)) * (TILESH+0) + (y)]
+#define TGLO_(x,y,z)  glolight[ ((z - tscootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - tscootx) & (TILESW-1)) * (TILESH+0) + (y)]
+#define TCORN_(x,y,z) cornlight[((z - tscootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - tscootx) & (TILESW-1)) * (TILESH+1) + (y)]
+#define TKORN_(x,y,z) kornlight[((z - tscootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - tscootx) & (TILESW-1)) * (TILESH+1) + (y)]
+#define TGNDH_(x,z)   gndheight[((z - tscootz) & (TILESD-1))              * (TILESW+0) + ((x - tscootx) & (TILESW-1))                   ]
+
+// chunk pos-to-mem-location macros
+#define AGEN_(x,z)   already_generated[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
+#define VAO_(x,z)    vbo[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
+#define VBO_(x,z)    vao[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
+#define VBOLEN_(x,z) vbo_len[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
+
+// for terrain/worker
+#define TAGEN_(x,z)   already_generated[(z - tchunk_scootz) & (VAOD-1)][(x - tchunk_scootx) & (VAOW-1)]
 
 // helper macros
 #define IS_OPAQUE(x,y,z) (T_(x, y, z) < LASTSOLID)
@@ -216,9 +229,9 @@ float *cornlight;
 float *kornlight;
 volatile char already_generated[VAOW][VAOD];
 
-int to_scootx, to_scootz; // pending global map offset
-int scootx, scootz;             // actual global map offset
-int chunk_scootx, chunk_scootz; //  ^ in chunks
+int future_scootx, future_scootz; // pending global map offset
+int scootx, scootz;               // actual global map offset
+int chunk_scootx, chunk_scootz;   //  ^ in chunks
 
 #define TEST_AREA_SZ 32
 int test_area_x = -1;
@@ -302,7 +315,6 @@ unsigned world_seed = 160659;
 int noisy = false;
 int vsync = false;
 int show_fresh_updates = false;
-int show_time_per_chunk = false;
 int show_light_values = false;
 int show_shadow_map = false;
 int help_layer = 1;

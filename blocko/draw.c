@@ -67,10 +67,12 @@ void draw_stuff()
                 0, 0, 1, 0,
                 0, 0, 0, 1,
         };
-
         float shadow_space[16];
 
         glDisable(GL_MULTISAMPLE);
+
+        float modelM[16];
+        memcpy(modelM, identityM, sizeof identityM);
 
         // make shadow map
         if (shadow_mapping)
@@ -136,7 +138,6 @@ void draw_stuff()
 
                 glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "proj"), 1, GL_FALSE, orthoM);
                 glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "view"), 1, GL_FALSE, viewM);
-                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "model"), 1, GL_FALSE, identityM);
                 glUniform1i(glGetUniformLocation(shadow_prog_id, "tarray"), 0);
                 glUniform1f(glGetUniformLocation(shadow_prog_id, "BS"), BS);
 
@@ -152,10 +153,13 @@ void draw_stuff()
 
                 for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
                 {
-                        if (VBOLEN_(i, j)) continue;
+                        if (!VBOLEN_(i, j)) continue;
                         if (!frustum_culling || chunk_in_frustum(shadow_pvM, i, j))
                         {
                                 glBindVertexArray(VAO_(i, j));
+                                modelM[12] = i * BS * CHUNKW;
+                                modelM[14] = j * BS * CHUNKD;
+                                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "model"), 1, GL_FALSE, modelM);
                                 glDrawArrays(GL_POINTS, 0, VBOLEN_(i, j));
                                 shadow_polys += VBOLEN_(i, j);
                         }
@@ -231,9 +235,6 @@ void draw_stuff()
         memcpy(translated_viewM, viewM, sizeof viewM);
         translate(translated_viewM, -eye0, -eye1, -eye2);
 
-        float modelM[16];
-        memcpy(modelM, identityM, sizeof identityM);
-
         static float pvM[16];
         if (!lock_culling)
                 mat4_multiply(pvM, projM, translated_viewM);
@@ -259,7 +260,6 @@ void draw_stuff()
 
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, projM);
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, translated_viewM);
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, modelM);
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "shadow_space"), 1, GL_FALSE, shadow_space);
 
         glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
@@ -383,7 +383,6 @@ void draw_stuff()
                 int myx = stale[my].x;
                 int myz = stale[my].z;
                 modelM[12] = myx * BS * CHUNKW;
-                modelM[13] = 0.f;
                 modelM[14] = myz * BS * CHUNKD;
                 glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, modelM);
                 glBindVertexArray(VAO_(myx, myz));
