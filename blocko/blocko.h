@@ -170,12 +170,12 @@ struct osn_context *osn_context;
 #define DIST_SQ(dx, dy, dz) ((dx)*(dx) + (dy)*(dy) + (dz)*(dz))
 #define DIST(dx, dy, dz) (sqrt(DIST_SQ(dx, dy, dz)))
 
-#define B2P(b) (b*BS)
-#define P2B(p) (p/BS)
-#define C2B(c) (c*CHUNKW)
-#define C2P(c) (c*BS*CHUNKW)
-#define B2C(b) (b/CHUNKW)
-#define P2C(p) ((p/CHUNKW)/BS)
+#define B2P(b) ((b)*BS)
+#define P2B(p) ((p)/BS)
+#define C2B(c) ((c)*CHUNKW)
+#define C2P(c) ((c)*BS*CHUNKW)
+#define B2C(b) ((b)/CHUNKW)
+#define P2C(p) (((p)/CHUNKW)/BS)
 
 // dumb rand -- for simple deterministic rand
 unsigned dumb_rand(unsigned *seed) { return (*seed = (1103515245 * *seed + 12345) % 2147483648); }
