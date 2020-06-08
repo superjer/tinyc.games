@@ -387,6 +387,8 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         TSUN_(x, y, z) = light_level;
                 }
         }
+
+        recalc_corner_lighting(xlo, xhi, zlo, zhi);
 }
 
 // update terrain worker thread(s) copies of scoot vars

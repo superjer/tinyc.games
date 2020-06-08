@@ -20,7 +20,7 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
         if (T_(x, y, z) < OPEN)
                 return; // no lighting for solid blocks
 
-        SUN_(x, y, z) = incoming_light;
+        set_sunlight(x, y, z, incoming_light);
 
         if (sq_next_len >= SUNQLEN)
         {
@@ -62,7 +62,7 @@ void glo_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
         if (T_(x, y, z) < OPEN)
                 return; // no lighting for solid blocks
 
-        GLO_(x, y, z) = incoming_light;
+        set_glolight(x, y, z, incoming_light);
 
         if (gq_next_len >= GLOQLEN)
         {
@@ -138,7 +138,7 @@ int step_glolight()
 
 void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
 {
-        for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH; y++) for (int x = xlo; x < xhi; x++)
+        for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH; y++)
         {
                 int x_ = (x == 0) ? 0 : x - 1;
                 int y_ = (y == 0) ? 0 : y - 1;
@@ -147,6 +147,38 @@ void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
                 CORN_(x, y, z) = 0.008f * (
                                 SUN_(x_, y_, z_) + SUN_(x , y_, z_) + SUN_(x_, y , z_) + SUN_(x , y , z_) +
                                 SUN_(x_, y_, z ) + SUN_(x , y_, z ) + SUN_(x_, y , z ) + SUN_(x , y , z ));
+                KORN_(x, y, z) = 0.008f * (
+                                GLO_(x_, y_, z_) + GLO_(x , y_, z_) + GLO_(x_, y , z_) + GLO_(x , y , z_) +
+                                GLO_(x_, y_, z ) + GLO_(x , y_, z ) + GLO_(x_, y , z ) + GLO_(x , y , z ));
+        }
+}
+
+void set_sunlight(int xlo, int ylo, int zlo, int light)
+{
+        SUN_(xlo, ylo, zlo) = light;
+
+        for (int x = xlo; x < xlo + 2; x++) for (int z = zlo; z < zlo + 2; z++) for (int y = ylo; y < ylo + 2; y++)
+        {
+                int x_ = (x == 0) ? 0 : x - 1;
+                int y_ = (y == 0) ? 0 : y - 1;
+                int z_ = (z == 0) ? 0 : z - 1;
+
+                CORN_(x, y, z) = 0.008f * (
+                                SUN_(x_, y_, z_) + SUN_(x , y_, z_) + SUN_(x_, y , z_) + SUN_(x , y , z_) +
+                                SUN_(x_, y_, z ) + SUN_(x , y_, z ) + SUN_(x_, y , z ) + SUN_(x , y , z ));
+        }
+}
+
+void set_glolight(int xlo, int ylo, int zlo, int light)
+{
+        GLO_(xlo, ylo, zlo) = light;
+
+        for (int x = xlo; x < xlo + 2; x++) for (int z = zlo; z < zlo + 2; z++) for (int y = ylo; y < ylo + 2; y++)
+        {
+                int x_ = (x == 0) ? 0 : x - 1;
+                int y_ = (y == 0) ? 0 : y - 1;
+                int z_ = (z == 0) ? 0 : z - 1;
+
                 KORN_(x, y, z) = 0.008f * (
                                 GLO_(x_, y_, z_) + GLO_(x , y_, z_) + GLO_(x_, y , z_) + GLO_(x , y , z_) +
                                 GLO_(x_, y_, z ) + GLO_(x , y_, z ) + GLO_(x_, y , z ) + GLO_(x , y , z ));
@@ -228,7 +260,7 @@ void remove_sunlight(int px, int py, int pz)
         if (incoming_light >= my_light)
                 fprintf(stderr, "INCOMING LIGHT > MY LIGHT when darkening\n");
 
-        SUN_(px, py, pz) = incoming_light;
+        set_sunlight(px, py, pz, incoming_light);
 
         // re-lighting may be needed here
         if (future_light)
@@ -300,7 +332,7 @@ void remove_glolight(int px, int py, int pz)
         if (incoming_light >= my_light)
                 fprintf(stderr, "GLO: INCOMING LIGHT > MY LIGHT when darkening\n");
 
-        GLO_(px, py, pz) = incoming_light;
+        set_glolight(px, py, pz, incoming_light);
 
         // re-lighting may be needed here
         if (future_light)

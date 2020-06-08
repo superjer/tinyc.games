@@ -51,6 +51,8 @@ void build_test_area()
                 }
 
         }
+
+        recalc_corner_lighting(tx, tx + TEST_AREA_SZ, tz, tz + TEST_AREA_SZ);
 }
 
 void debrief()

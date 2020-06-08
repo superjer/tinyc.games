@@ -382,6 +382,8 @@ void remove_glolight(int px, int py, int pz);
 
 // main.c protos
 void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi);
+void set_sunlight(int xlo, int ylo, int zlo, int light);
+void set_glolight(int xlo, int ylo, int zlo, int light);
 void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2);
 void move_to_ground(float *inout, int x, int y, int z);
 void recalc_gndheight(int x, int z);

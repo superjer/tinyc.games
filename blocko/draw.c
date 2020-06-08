@@ -416,7 +416,6 @@ void draw_stuff()
                 v = vbuf; // reset vertex buffer pointer
                 w = wbuf; // same for water buffer
 
-                TIMECALL(recalc_corner_lighting, (xlo, xhi, zlo, zhi));
                 TIMER(buildvbo);
 
                 for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH; y++) for (int x = xlo; x < xhi; x++)
