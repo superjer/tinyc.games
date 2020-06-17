@@ -297,6 +297,7 @@ struct player player[NR_PLAYERS] = {{
 struct player camplayer;
 struct point lerped_pos;
 struct point sun_pos;
+struct point moon_pos;
 
 SDL_Event event;
 SDL_Window *win;

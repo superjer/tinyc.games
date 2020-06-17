@@ -58,6 +58,21 @@ int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z)
                w_too_lo != 8;
 }
 
+// prevent shaking shadows by quantizing sun or moon pitch
+float quantize(float p)
+{
+        float quantizer;
+        float qbracket = sinf(p);
+
+        if      (qbracket > 0.8f) quantizer = 0.001f;
+        else if (qbracket > 0.6f) quantizer = 0.0005f;
+        else if (qbracket > 0.4f) quantizer = 0.00025f;
+        else if (qbracket > 0.2f) quantizer = 0.000125f;
+        else                      quantizer = 0.0000625f;
+
+        return roundf(p / quantizer) * quantizer;
+}
+
 //draw everything in the game on the screen
 void draw_stuff()
 {
@@ -99,24 +114,31 @@ void draw_stuff()
                 float viewM[16];
                 float f[3];
 
-                // prevent shaking shadows by quantizing sun pitch
-                float quantizer;
-                float qbracket = sinf(sun_pitch);
-                if      (qbracket > 0.8f) quantizer = 0.001f;
-                else if (qbracket > 0.6f) quantizer = 0.0005f;
-                else if (qbracket > 0.4f) quantizer = 0.00025f;
-                else if (qbracket > 0.2f) quantizer = 0.000125f;
-                else                      quantizer = 0.0000625f;
+                float moon_pitch = sun_pitch + PI;
+                if (moon_pitch < 0) moon_pitch += TAU;
 
-                float quantized_sun_pitch = roundf(sun_pitch / quantizer) * quantizer;
+                float quantized_sun_pitch = quantize(sun_pitch);
+                float quantized_moon_pitch = quantize(moon_pitch);
                 float yaw = 3.1415926535 * -0.5f;
                 float dist2sun = (TILESW / 4) * BS;
                 sun_pos.x = roundf(camplayer.pos.x / BS) * BS + dist2sun * sinf(-yaw) * cosf(quantized_sun_pitch);
                 sun_pos.y = 100 * BS - dist2sun * sinf(quantized_sun_pitch);
                 sun_pos.z = roundf(camplayer.pos.z / BS) * BS + dist2sun * cosf(-yaw) * cosf(quantized_sun_pitch);
-                //snprintf(alert, 300, "sun_pitch %0.4f, quant %0.5f\n", sun_pitch, quantizer);
-                lookit(viewM, f, sun_pos.x, sun_pos.y, sun_pos.z, quantized_sun_pitch, yaw);
-                translate(viewM, -sun_pos.x, -sun_pos.y, -sun_pos.z);
+
+                moon_pos.x = roundf(camplayer.pos.x / BS) * BS + dist2sun * sinf(-yaw) * cosf(quantized_moon_pitch);
+                moon_pos.y = 100 * BS - dist2sun * sinf(quantized_moon_pitch);
+                moon_pos.z = roundf(camplayer.pos.z / BS) * BS + dist2sun * cosf(-yaw) * cosf(quantized_moon_pitch);
+
+                if (sun_pitch < PI)
+                {
+                        lookit(viewM, f, sun_pos.x, sun_pos.y, sun_pos.z, quantized_sun_pitch, yaw);
+                        translate(viewM, -sun_pos.x, -sun_pos.y, -sun_pos.z);
+                }
+                else
+                {
+                        lookit(viewM, f, moon_pos.x, moon_pos.y, moon_pos.z, quantized_moon_pitch, yaw);
+                        translate(viewM, -moon_pos.x, -moon_pos.y, -moon_pos.z);
+                }
 
                 // proj matrix
                 float snear = 10.f; // TODO find closest possible block
@@ -263,7 +285,12 @@ void draw_stuff()
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "shadow_space"), 1, GL_FALSE, shadow_space);
 
         glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
-        glUniform3f(glGetUniformLocation(prog_id, "light_pos"), sun_pos.x, sun_pos.y, sun_pos.z);
+
+        if (sun_pitch < PI)
+                glUniform3f(glGetUniformLocation(prog_id, "light_pos"), sun_pos.x, sun_pos.y, sun_pos.z);
+        else
+                glUniform3f(glGetUniformLocation(prog_id, "light_pos"), moon_pos.x, moon_pos.y, moon_pos.z);
+
         glUniform3f(glGetUniformLocation(prog_id, "view_pos"), eye0, eye1, eye2);
 
         {
