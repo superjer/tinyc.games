@@ -61,6 +61,7 @@ enum doors {WALL, LOCKED, SHUTTER, MAXWALL=SHUTTER, DOOR, HOLE, ENTRY, MAXDOOR};
 enum playerstates {PL_NORMAL, PL_STAB, PL_HURT, PL_DYING, PL_DEAD};
 enum toolboxstates {TB_READY, TB_JUMP, TB_LAND, TB_OPEN, TB_SHUT, TB_HURT};
 
+#include "odnar.c"
 #include "level_data.c"
 
 int garbage[10000] = {0};
@@ -135,6 +136,8 @@ void text(char *fstr, int value, int height);
 //the entry point and main game loop
 int main()
 {
+        odnar();
+
         setup();
         new_game();
 
@@ -430,7 +433,7 @@ void update_player()
                 screen_scroll(0, 1);
 }
 
-int toolbox(struct enemy *e)
+void toolbox(struct enemy *e)
 {
         switch(e->state)
         {

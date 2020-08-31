@@ -73,11 +73,11 @@ struct room {
         0, // treasure
         {
                 ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____,
-                ____, L|U,  PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,U|R,  ____,
-                ____, PIT|L,PIT,  PIT,  PIT,  PIT,  PIT,  PIT,  PIT,  PIT|R,____,
-                ____, PIT|L,PIT,  FACE, PIT,  PIT,  PIT,  FACE, PIT,  PIT|R,____,
-                ____, PIT|L,PIT,  PIT|U,PIT,  PIT,  PIT,  PIT|U,PIT,  PIT|R,____,
-                ____, L|D,  PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,D|R,  ____,
+                L|U,  PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,PIT|U,U|R,
+                ____, ____, ____, ____, ____, ____, PIT,  PIT,  PIT|R,____, ____,
+                ____, ____, L|U,  FACE, PIT|U,____, PIT|D,FACE, D|R,  ____, ____,
+                ____, ____, PIT|L,PIT|U,PIT,  ____, ____, ____, ____, ____, ____,
+                L|D,  PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,PIT|D,D|R,
                 ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____,
         },
 },{

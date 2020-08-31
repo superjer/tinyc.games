@@ -18,61 +18,6 @@ int is_framebuffer_incomplete()
         }
 }
 
-int sorter(const void * _a, const void * _b)
-{
-        const struct qitem *a = _a;
-        const struct qitem *b = _b;
-        return (a->y == b->y) ?  0 :
-               (a->y <  b->y) ?  1 : -1;
-}
-
-int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z)
-{
-        int x_too_lo = 0;
-        int x_too_hi = 0;
-        int y_too_lo = 0;
-        int y_too_hi = 0;
-        int z_too_lo = 0;
-        int z_too_hi = 0;
-        int w_too_lo = 0;
-
-        for (int x = 0; x <= 1; x++) for (int z = 0; z <= 1; z++) for (int y = 0; y <= 1; y++)
-        {
-                float v[4];
-                mat4_f3_multiply(v, matrix,
-                                chunk_x*BS*CHUNKW + x*BS*CHUNKW,
-                                0 + y*BS*TILESH, // TODO: use highest gndheight?
-                                chunk_z*BS*CHUNKD + z*BS*CHUNKD);
-                if (v[0] < -v[3]) x_too_lo++;
-                if (v[0] >  v[3]) x_too_hi++;
-                if (v[1] < -v[3]) y_too_lo++;
-                if (v[1] >  v[3]) y_too_hi++;
-                if (v[2] < -v[3]) z_too_lo++;
-                if (v[2] >  v[3]) z_too_hi++;
-                if (v[3] <   0.f) w_too_lo++;
-        }
-
-        return x_too_lo != 8 && x_too_hi != 8 &&
-               y_too_lo != 8 && y_too_hi != 8 &&
-               z_too_lo != 8 && z_too_hi != 8 &&
-               w_too_lo != 8;
-}
-
-// prevent shaking shadows by quantizing sun or moon pitch
-float quantize(float p)
-{
-        float quantizer;
-        float qbracket = sinf(p);
-
-        if      (qbracket > 0.8f) quantizer = 0.001f;
-        else if (qbracket > 0.6f) quantizer = 0.0005f;
-        else if (qbracket > 0.4f) quantizer = 0.00025f;
-        else if (qbracket > 0.2f) quantizer = 0.000125f;
-        else                      quantizer = 0.0000625f;
-
-        return roundf(p / quantizer) * quantizer;
-}
-
 //draw everything in the game on the screen
 void draw_stuff()
 {
@@ -117,32 +62,18 @@ void draw_stuff()
                 float moon_pitch = sun_pitch + PI;
                 if (moon_pitch < 0) moon_pitch += TAU;
 
-                float quantized_sun_pitch = quantize(sun_pitch);
-                float quantized_moon_pitch = quantize(moon_pitch);
                 float yaw = 3.1415926535 * -0.5f;
-                float dist2sun = (TILESW / 4) * BS;
-                sun_pos.x = roundf(camplayer.pos.x / BS) * BS + dist2sun * sinf(-yaw) * cosf(quantized_sun_pitch);
-                sun_pos.y = 100 * BS - dist2sun * sinf(quantized_sun_pitch);
-                sun_pos.z = roundf(camplayer.pos.z / BS) * BS + dist2sun * cosf(-yaw) * cosf(quantized_sun_pitch);
+                sun_pos.x = 100;
+                sun_pos.y = 100;
+                sun_pos.z = 100;
+                float pitch = -0.8f;
 
-                moon_pos.x = roundf(camplayer.pos.x / BS) * BS + dist2sun * sinf(-yaw) * cosf(quantized_moon_pitch);
-                moon_pos.y = 100 * BS - dist2sun * sinf(quantized_moon_pitch);
-                moon_pos.z = roundf(camplayer.pos.z / BS) * BS + dist2sun * cosf(-yaw) * cosf(quantized_moon_pitch);
-
-                if (sun_pitch < PI)
-                {
-                        lookit(viewM, f, sun_pos.x, sun_pos.y, sun_pos.z, quantized_sun_pitch, yaw);
-                        translate(viewM, -sun_pos.x, -sun_pos.y, -sun_pos.z);
-                }
-                else
-                {
-                        lookit(viewM, f, moon_pos.x, moon_pos.y, moon_pos.z, quantized_moon_pitch, yaw);
-                        translate(viewM, -moon_pos.x, -moon_pos.y, -moon_pos.z);
-                }
+                lookit(viewM, f, sun_pos.x, sun_pos.y, sun_pos.z, pitch, yaw);
+                translate(viewM, -sun_pos.x, -sun_pos.y, -sun_pos.z);
 
                 // proj matrix
                 float snear = 10.f; // TODO find closest possible block
-                float sfar = dist2sun + 9000.f;
+                float sfar = 10.f + 9000.f;
                 float x = 1.f / (6000 / 2.f);
                 float y = -1.f / (6000 / 2.f);
                 float z = -1.f / ((sfar - snear) / 2.f);
@@ -176,7 +107,7 @@ void draw_stuff()
                 for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
                 {
                         if (!VBOLEN_(i, j)) continue;
-                        if (!frustum_culling || chunk_in_frustum(shadow_pvM, i, j))
+                        if (!frustum_culling || 1)
                         {
                                 glBindVertexArray(VAO_(i, j));
                                 modelM[12] = i * BS * CHUNKW;
@@ -192,33 +123,9 @@ void draw_stuff()
                 glDisable(GL_POLYGON_OFFSET_FILL);
         }
 
-        float night_amt;
-        if (sun_pitch < PI) // in the day, linearly change the sky color
-        {
-                night_amt = fmodf(sun_pitch + 3*PI2, TAU) / TAU;
-                if (night_amt > 0.5f) night_amt = 1.f - night_amt;
-                night_amt *= 2.f;
-        }
-        else // at night change via cubic-sine so that it's mostly dark all night
-        {
-                night_amt = 1.f + sinf(sun_pitch);  //  0 to  1
-                night_amt *= night_amt * night_amt; //  0 to  1
-                night_amt *= -0.5f;                 //-.5 to  0
-                night_amt += 1.f;                   //  1 to .5
-        }
-
-        if (night_amt > 0.5f)
-        {
-                fog_r = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_R, FOG_NIGHT_R);
-                fog_g = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_G, FOG_NIGHT_G);
-                fog_b = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_B, FOG_NIGHT_B);
-        }
-        else
-        {
-                fog_r = lerp(2.f*night_amt, FOG_DAY_R, FOG_DUSK_R);
-                fog_g = lerp(2.f*night_amt, FOG_DAY_G, FOG_DUSK_G);
-                fog_b = lerp(2.f*night_amt, FOG_DAY_B, FOG_DUSK_B);
-        }
+        fog_r = 0.8f;
+        fog_g = 0.8f;
+        fog_b = 0.8f;
 
         glViewport(0, 0, screenw, screenh);
         glClearColor(fog_r, fog_g, fog_b, 1.f);
@@ -294,12 +201,12 @@ void draw_stuff()
         glUniform3f(glGetUniformLocation(prog_id, "view_pos"), eye0, eye1, eye2);
 
         {
-                float m = ICLAMP(night_amt * 2.f, 0.f, 1.f);
+                float m = 0.8f;
                 glUniform1f(glGetUniformLocation(prog_id, "sharpness"), m*m*m*(m*(m*6.f-15.f)+10.f));
 
-                float r = lerp(night_amt, DAY_R, NIGHT_R);
-                float g = lerp(night_amt, DAY_G, NIGHT_G);
-                float b = lerp(night_amt, DAY_B, NIGHT_B);
+                float r = 0.9f;
+                float g = 0.9f;
+                float b = 0.9f;
                 glUniform3f(glGetUniformLocation(prog_id, "day_color"), r, g, b);
                 glUniform3f(glGetUniformLocation(prog_id, "glo_color"), 0.92f, 0.83f, 0.69f);
                 glUniform3f(glGetUniformLocation(prog_id, "fog_color"), fog_r, fog_g, fog_b);
@@ -328,7 +235,7 @@ void draw_stuff()
         };
         size_t fresh_len = 4;
 
-        qsort(fresh, fresh_len, sizeof(struct qitem), sorter);
+        //qsort(fresh, fresh_len, sizeof(struct qitem), sorter);
 
         #pragma omp critical
         {
@@ -397,14 +304,11 @@ void draw_stuff()
                 int zd = ((j * BS * CHUNKD + BS * CHUNKD2) - eye2);
                 stale[stale_len].y = (xd * xd + zd * zd);
 
-                // only queue chunks we could see
-                if (chunk_in_frustum(pvM, i, j))
-                        stale_len++;
+                stale_len++;
 
                 skip: ;
         }
 
-        qsort(stale, stale_len, sizeof *stale, sorter);
         for (size_t my = 0; my < stale_len; my++)
         {
                 int myx = stale[my].x;
