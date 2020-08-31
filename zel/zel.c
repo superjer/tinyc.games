@@ -64,7 +64,8 @@ enum toolboxstates {TB_READY, TB_JUMP, TB_LAND, TB_OPEN, TB_SHUT, TB_HURT};
 #include "odnar.c"
 #include "level_data.c"
 
-int garbage[10000] = {0};
+int demilitarized_zone[10000];
+int layer; // current layer
 int roomx; // current room x,y
 int roomy;
 int tiles[TILESH][TILESW];
@@ -264,7 +265,7 @@ void load_room()
                 if(edge_x || edge_y)
                         tiles[y][x] = (door_x ? HALFCLIP : door_y ? OPEN : CLIP);
                 else
-                        tiles[y][x] = rooms[r].tiles[(y-2)*INNERTILESW + (x-2)];
+                        tiles[y][x] = rooms[r].tiles[(y)*TILESW + (x)];
         }
 
         //set the clipping to match the doors

@@ -4,8 +4,8 @@
 #include <time.h>
 
 // default 12x6 
-#define sX 10 // overworld screens across (srooms)
-#define sY 5  // overworld screens down
+#define sX DUNW // overworld screens across (srooms)
+#define sY DUNH // overworld screens down
 #define oX (sX*2) // subscreen count (each screen is 4 subscreens) (orooms)
 #define oY (sY*2)
 #define sW 15 // size of each screen
