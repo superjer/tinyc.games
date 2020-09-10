@@ -38,11 +38,20 @@
 #define L     4        // also works: just R|U
 #define D     8        // ^
 #define FACE 30        // the statue face thing
+
+#define TREE 54
+#define ROCK 55
+#define WATR 56
+#define STON 57
+
 #define BLOK 45        // the bevelled block
 #define CLIP 58        // invisible but solid tile
 #define LASTSOLID CLIP // everything less than here is solid
 #define HALFCLIP 59    // this is half solid (upper half)
 #define SAND 60        // sand - can walk on like open
+
+#define DIRT 150
+
 #define OPEN 75        // invisible open, walkable space
 
 enum enemytypes {
@@ -65,7 +74,7 @@ enum toolboxstates {TB_READY, TB_JUMP, TB_LAND, TB_OPEN, TB_SHUT, TB_HURT};
 #include "level_data.c"
 
 int demilitarized_zone[10000];
-int layer; // current layer
+int inside = 0;
 int roomx; // current room x,y
 int roomy;
 int tiles[TILESH][TILESW];
@@ -255,24 +264,34 @@ void load_room()
 {
         int r = roomy*DUNW + roomx; // current room coordinate
 
-        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
+        if (inside)
         {
-                int edge_x = (x <= 1 || x >= TILESW-2);
-                int door_x = (edge_x && y == TILESH/2);
-                int edge_y = (y <= 1 || y >= TILESH-2);
-                int door_y = (edge_y && x == TILESW/2);
+                for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
+                {
+                        int edge_x = (x <= 1 || x >= TILESW-2);
+                        int door_x = (edge_x && y == TILESH/2);
+                        int edge_y = (y <= 1 || y >= TILESH-2);
+                        int door_y = (edge_y && x == TILESW/2);
 
-                if(edge_x || edge_y)
-                        tiles[y][x] = (door_x ? HALFCLIP : door_y ? OPEN : CLIP);
-                else
-                        tiles[y][x] = rooms[r].tiles[(y)*TILESW + (x)];
+                        if(edge_x || edge_y)
+                                tiles[y][x] = (door_x ? HALFCLIP : door_y ? OPEN : CLIP);
+                        else
+                                tiles[y][x] = rooms[r].tiles[(y)*TILESW + (x)];
+                }
+
+                //set the clipping to match the doors
+                if(rooms[r].doors[NORTH] <= MAXWALL) tiles[1][ 7] = CLIP;
+                if(rooms[r].doors[WEST ] <= MAXWALL) tiles[5][ 1] = CLIP;
+                if(rooms[r].doors[EAST ] <= MAXWALL) tiles[5][13] = CLIP;
+                if(rooms[r].doors[SOUTH] <= MAXWALL) tiles[9][ 7] = CLIP;
         }
-
-        //set the clipping to match the doors
-        if(rooms[r].doors[NORTH] <= MAXWALL) tiles[1][ 7] = CLIP;
-        if(rooms[r].doors[WEST ] <= MAXWALL) tiles[5][ 1] = CLIP;
-        if(rooms[r].doors[EAST ] <= MAXWALL) tiles[5][13] = CLIP;
-        if(rooms[r].doors[SOUTH] <= MAXWALL) tiles[9][ 7] = CLIP;
+        else
+        {
+                for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
+                {
+                        tiles[y][x] = charout[y + roomy * TILESH][x + roomx * TILESW] == '@' ? ROCK : DIRT;
+                }
+        }
 
         int spawns[] = {
                  7,5,   9,2,   4,4,   6,7,   2,2,  10,3,   2,7,   8,4,  11,4,   2,8,  12,6,
@@ -990,6 +1009,8 @@ void draw_stuff()
 
 void draw_doors_lo()
 {
+        if (!inside) return;
+
         SDL_Rect src, dest;
         int r = roomy*DUNW + roomx; // current room coordinate
         int *doors = rooms[r].doors;
@@ -1017,6 +1038,8 @@ void draw_doors_lo()
 
 void draw_doors_hi()
 {
+        if (!inside) return;
+
         SDL_Rect src, dest;
         int r = roomy*DUNW + roomx; // current room coordinate
         int *doors = rooms[r].doors;

@@ -41,6 +41,8 @@ struct sroom {
 
 struct sroom sroom[sX][sY];
 
+char charout[sY * sH][sX * sW];
+
 void remove_access()
 {
         int x, y;
@@ -356,7 +358,6 @@ void place_connecting_rects()
                         }
                         */
                         FUDGE(33);
-                        printf("a:%d b:%d\n", a, b);
                         sroom[i][j].rect[2] = (struct rect){c, a, sW - 1, b};
                 }
 
@@ -386,8 +387,7 @@ void place_connecting_rects()
 void print_srooms()
 {
         int i, j, r;
-        char out[sY * sH][sX * sW];
-        memset(out, '@', (sX * sW * sY * sH));
+        memset(charout, '@', (sX * sW * sY * sH));
         for (i = 0; i < sX; i++) for (j = 0; j < sY; j++) for(r = 0; r < RECTS; r++)
         {
                 if (sroom[i][j].rect[r].x1 == 0 && sroom[i][j].rect[r].y1 == 0)
@@ -397,12 +397,12 @@ void print_srooms()
                         for (int v = sroom[i][j].rect[r].y0; v <= sroom[i][j].rect[r].y1; v++)
                 {
                         int edge = (v == 0 || u == 0 || v == sH - 1 || u == sW - 1);
-                        out[j * sH + v][i * sW + u] = edge ? '.' : ' ';
+                        charout[j * sH + v][i * sW + u] = edge ? '.' : ' ';
                 }
         }
 
         for (i = 0; i < sY * sH; i++)
-                printf("%.*s\n", sX * sW, out[i]);
+                printf("%.*s\n", sX * sW, charout[i]);
 }
 
 void odnar()
