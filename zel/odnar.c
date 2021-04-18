@@ -3,6 +3,11 @@
 #include <stdlib.h>
 #include <time.h>
 
+#ifndef DUNW
+#define DUNW 3
+#define DUNH 3
+#endif
+
 // default 12x6 
 #define sX DUNW // overworld screens across (srooms)
 #define sY DUNH // overworld screens down
@@ -12,12 +17,16 @@
 #define sH 11
 #define sW2 (sW/2)
 #define sH2 (sH/2)
+#define sW4 (sW/4)
+#define sH4 (sH/4)
 #define pW 3 // size of subscreen openings in preview printout
 #define pH 2
 
 #define LOOPINESS 0.04f // how often to accept a random door that makes a loop, 0.0-1.0
 #define EW_BIAS 0.65f // how often to choose an east-west door over north-south, 0.0-1.0
 #define RECTS 6
+#define NUM_KEY_POINTS (sX * sY * 4)
+#define OBSTACLE_ATTEMPTS (sX * sY * 3)
 
 #define false 0
 #define true 1
@@ -45,6 +54,13 @@ struct sroom {
 struct sroom sroom[sX][sY];
 
 char charout[sY * sH][sX * sW];
+char flood_buf[sY * sH][sX * sW];
+
+struct point {
+        int x, y;
+};
+
+struct point key_points[NUM_KEY_POINTS];
 
 void remove_access()
 {
@@ -387,7 +403,7 @@ void place_connecting_rects()
         }
 }
 
-void print_srooms()
+void convert_srooms()
 {
         int i, j, m, n;
         memset(charout, ' ', (sX * sW * sY * sH));
@@ -409,21 +425,21 @@ void print_srooms()
                                 if (!left && !right && oj > 0 && oroom[oi][oj - 1].open_d)
                                         charout[y][x] = ' ';
                                 else
-                                        charout[y][x] = 'W';
+                                        charout[y][x] = 'R';
                         }
                         else if (bottom)
                         {
                                 if (!left && !right && oj < oY - 1 && oroom[oi][oj].open_d)
                                         charout[y][x] = ' ';
                                 else
-                                        charout[y][x] = 'R';
+                                        charout[y][x] = 'W';
                         }
                         else if (left  )
                         {
                                 if (!top && !bottom && oi > 0 && oroom[oi - 1][oj].open_r)
                                         charout[y][x] = ' ';
                                 else
-                                        charout[y][x] = 'S';
+                                        charout[y][x] = 'R';
                         }
                         else if (right )
                         {
@@ -442,9 +458,227 @@ void print_srooms()
                         }
                 }
         }
+}
 
+void bleed_edges()
+{
+        int i, j, m, n;
+        // i,j identify the room
+        for (i = 0; i < sX; i++) for (j = 0; j < sY; j++)
+        {
+                // m,n identify the tile in the room
+                for (m = 0; m < sW; m++) for (n = 0; n < sH; n++)
+                {
+                        // x and y are the global tile position
+                        int x = i * sW + m;
+                        int y = j * sH + n;
+                        if (i > 0 && m == 0 && charout[y][x] == ' ')
+                                charout[y][x] = charout[y][x - 1];
+                        if (i < sX - 1 && m == sW - 1 && charout[y][x] == ' ')
+                                charout[y][x] = charout[y][x + 1];
+                        if (j > 0 && n == 0 && charout[y][x] == ' ')
+                                charout[y][x] = charout[y - 1][x];
+                        if (j < sY - 1 && n == sH - 1 && charout[y][x] == ' ')
+                                charout[y][x] = charout[y + 1][x];
+                }
+        }
+}
+
+void wander(struct point * p, int steps)
+{
+        for (; steps > 0; steps--)
+        {
+                struct point p2 = *p;
+                switch (rand()%4) {
+                        case 0: p2.x--; break;
+                        case 1: p2.y--; break;
+                        case 2: p2.x++; break;
+                        case 3: p2.y++; break;
+                }
+
+                // o-o-b?
+                if (p2.x < 0 || p2.x > sX * sW - 1 || p2.y < 0 || p2.y > sY * sH - 1)
+                        continue;
+
+                // too close to screen edge?
+                int modx = p2.x % sW;
+                int mody = p2.y % sH;
+                if (modx < 2 || modx > sW - 3 || mody < 2 || mody > sH -3)
+                        continue;
+
+                // blocked?
+                if (charout[p2.y][p2.x] != ' ')
+                        continue;
+
+                *p = p2;
+        }
+}
+
+// pick some points on each screen for testing global connectivity
+void set_key_points()
+{
+        int i, j;
+        int k = 0;
+        // i,j identify the room
+        for (i = 0; i < sX; i++) for (j = 0; j < sY; j++)
+        {
+                struct point p;
+
+                p = (struct point){i * sW + sW4, j * sH + sH4};
+                wander(&p, 10);
+                key_points[k++] = p;
+                charout[p.y][p.x] = '.';
+
+                p = (struct point){i * sW + sW4 + sW2, j * sH + sH4};
+                wander(&p, 10);
+                key_points[k++] = p;
+                charout[p.y][p.x] = '.';
+
+                p = (struct point){i * sW + sW4, j * sH + sH4 + sH2};
+                wander(&p, 10);
+                key_points[k++] = p;
+                charout[p.y][p.x] = '.';
+
+                p = (struct point){i * sW + sW4 + sW2, j * sH + sH4 + sH2};
+                wander(&p, 10);
+                key_points[k++] = p;
+                charout[p.y][p.x] = '.';
+        }
+}
+
+int flood(int x, int y)
+{
+        int ttl = 0;
+
+        if (x < 0 || x > sX * sW - 1 || y < 0 || y > sY * sH - 1) // out of bounds
+                return 0;
+        else if (flood_buf[y][x]) // already visited
+                return 0;
+        else if (charout[y][x] == ' ') // open
+                ;
+        else if (charout[y][x] == '.') // key point
+                ttl++;
+        else
+                return 0; // blocked
+
+        flood_buf[y][x] = 1;
+        return ttl
+                + flood(x - 1, y)
+                + flood(x + 1, y)
+                + flood(x, y - 1)
+                + flood(x, y + 1);
+}
+
+int are_key_points_connected()
+{
+        memset(flood_buf, 0, sizeof flood_buf);
+        int num_found = flood(key_points[0].x, key_points[0].y);
+        return num_found == NUM_KEY_POINTS;
+}
+
+void print_srooms()
+{
+        int i;
         for (i = 0; i < sY * sH; i++)
                 printf("%.*s\n", sX * sW, charout[i]);
+}
+
+int find_common_obstacle(int x0, int x1, int y0, int y1)
+{
+        int histo[256] = {};
+        int x, y, i;
+        int best = 0;
+        int best_idx = ' ';
+
+        for (x = x0; x < x1; x++) for (y = y0; y < y1; y++)
+                histo[charout[y][x]]++;
+
+        for (i = 0; i < 256; i++) if (histo[i] > best)
+        {
+                best = histo[i];
+                best_idx = i;
+        }
+
+        return best_idx;
+}
+
+void add_random_obstacles_and_openings()
+{
+        int n;
+        for (n = 0; n < OBSTACLE_ATTEMPTS; n++) {
+                int w = 2 + rand() % 7;
+                int h = 2 + rand() % 7;
+                int x0 = 2 + rand() % (sX * sW - w - 4);
+                int y0 = 2 + rand() % (sY * sH - h - 4);
+                int x1 = x0 + w;
+                int y1 = y0 + h;
+                int x, y;
+                int new_char = ' ';
+
+                // no edges super close to screen borders
+                if (x0 % sW == sW - 1) x0 -= 1;
+                if (x0 % sW == 0     ) x0 -= 2;
+                if (x0 % sW == 1     ) x0 -= 3;
+                if (x0 % sW == 2     ) x0 -= 4;
+                if (x0 < 0) x0 = 0;
+                if (y0 % sH == sH - 1) y0 -= 1;
+                if (y0 % sH == 0     ) y0 -= 2;
+                if (y0 % sH == 1     ) y0 -= 3;
+                if (y0 % sH == 2     ) y0 -= 4;
+                if (y0 < 0) y0 = 0;
+                if (x1 % sW == sW - 2) x1 += 4;
+                if (x1 % sW == sW - 1) x1 += 3;
+                if (x1 % sW == 0     ) x1 += 2;
+                if (x1 % sW == 1     ) x1 += 1;
+                if (x1 > sX * sW - 1 ) x1 = sX * sW - 1;
+                if (y1 % sH == sH - 2) y1 += 4;
+                if (y1 % sH == sH - 1) y1 += 3;
+                if (y1 % sH == 0     ) y1 += 2;
+                if (y1 % sH == 1     ) y1 += 1;
+                if (y1 > sY * sH - 1 ) y1 = sY * sH - 1;
+
+                char common = find_common_obstacle(x0, x1, y0, y1);
+                printf("common obstacle = %c\n", common);
+
+                // block it
+                for (x = x0; x < x1; x++) for (y = y0; y < y1; y++)
+                {
+                        if (charout[y][x] == ' ')
+                                charout[y][x] = '?';
+                }
+
+                if (are_key_points_connected())
+                {
+                        if (common != ' ' && common != '.')
+                        {
+                                new_char = common;
+                        }
+                        else switch (3 * n / OBSTACLE_ATTEMPTS)
+                        {
+                                case 0: new_char = 'W'; break;
+                                case 1: new_char = 'S'; break;
+                                case 2: new_char = 'T'; break;
+                        }
+                }
+
+                int no_edge = (x0 > 1 && y0 > 1 && x1 < sX * sW - 2 && y1 < sY * sH - 2);
+                int no_corner = (((x0 / sW) == (x1 / sW)) || ((y0 / sH) == (y1 / sH)));
+                int opening = no_edge && no_corner && (rand() % 3 == 0);
+
+                // confirm or undo blockage
+                for (x = x0; x < x1; x++) for (y = y0; y < y1; y++) {
+                        if (opening)
+                        {
+                                if (charout[y][x] != '.')
+                                        charout[y][x] = ' ';
+                        }
+                        else
+                        {
+                                if (charout[y][x] == '?')
+                                        charout[y][x] = new_char;
+                        }
+                }
+        }
 }
 
 void odnar()
@@ -470,7 +704,15 @@ void odnar()
         cook_squares_again();
         print_orooms();
 
-        place_initial_rects();
-        place_connecting_rects();
+        //place_initial_rects();
+        //place_connecting_rects();
+        convert_srooms();
+
+        bleed_edges();
+        set_key_points();
+        if (!are_key_points_connected())
+                fprintf(stderr, "failure: key points initially unconnected\n");
+        add_random_obstacles_and_openings();
+
         print_srooms();
 }

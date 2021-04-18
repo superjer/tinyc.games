@@ -79,8 +79,6 @@ int roomx; // current room x,y
 int roomy;
 int tiles[TILESH][TILESW];
 
-struct point { int x, y; };
-
 struct player {
         SDL_Rect pos;
         SDL_Rect hitbox;
@@ -181,9 +179,9 @@ void setup()
 
         for(int i = 0; i < MAXDOOR; i++)
         {
-                char file[80];
-                sprintf(file, "res/room-%d.bmp", i);
-                surf = SDL_LoadBMP(file);
+                char xfile[80];
+                sprintf(xfile, "res/room-%d.bmp", i);
+                surf = SDL_LoadBMP(xfile);
                 SDL_SetColorKey(surf, 1, 0xffff00);
                 edgetex[i] = SDL_CreateTextureFromSurface(renderer, surf);
         }
@@ -319,7 +317,7 @@ void load_room()
 
                 enemy[i].type = rooms[r].enemies[i];
                 enemy[i].alive = 1;
-                enemy[i].hp = 3;
+                enemy[i].hp = 1;
                 enemy[i].freeze = 20 + rand() % 30;
 
                 //find a good spawn position
