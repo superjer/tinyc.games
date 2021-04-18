@@ -19,6 +19,9 @@
 #define EW_BIAS 0.65f // how often to choose an east-west door over north-south, 0.0-1.0
 #define RECTS 6
 
+#define false 0
+#define true 1
+
 #define SWAP(a, b) { int tmp__ = (a); a = b; b = tmp__; }
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
@@ -386,18 +389,57 @@ void place_connecting_rects()
 
 void print_srooms()
 {
-        int i, j, r;
-        memset(charout, '@', (sX * sW * sY * sH));
-        for (i = 0; i < sX; i++) for (j = 0; j < sY; j++) for(r = 0; r < RECTS; r++)
+        int i, j, m, n;
+        memset(charout, ' ', (sX * sW * sY * sH));
+        for (i = 0; i < sX; i++) for (j = 0; j < sY; j++)
         {
-                if (sroom[i][j].rect[r].x1 == 0 && sroom[i][j].rect[r].y1 == 0)
-                        continue;
-
-                for (int u = sroom[i][j].rect[r].x0; u <= sroom[i][j].rect[r].x1; u++)
-                        for (int v = sroom[i][j].rect[r].y0; v <= sroom[i][j].rect[r].y1; v++)
+                for (m = 0; m < sW; m++) for (n = 0; n < sH; n++)
                 {
-                        int edge = (v == 0 || u == 0 || v == sH - 1 || u == sW - 1);
-                        charout[j * sH + v][i * sW + u] = edge ? '.' : ' ';
+                        int x = i * sW + m;
+                        int y = j * sH + n;
+                        int top    = (n <= 1);
+                        int bottom = (n >= sH - 2);
+                        int left   = (m <= 1);
+                        int right  = (m >= sW - 2);
+                        int oi = i * 2 + (m > sW2);
+                        int oj = j * 2 + (n > sH2);
+
+                        if (top)
+                        {
+                                if (!left && !right && oj > 0 && oroom[oi][oj - 1].open_d)
+                                        charout[y][x] = ' ';
+                                else
+                                        charout[y][x] = 'W';
+                        }
+                        else if (bottom)
+                        {
+                                if (!left && !right && oj < oY - 1 && oroom[oi][oj].open_d)
+                                        charout[y][x] = ' ';
+                                else
+                                        charout[y][x] = 'R';
+                        }
+                        else if (left  )
+                        {
+                                if (!top && !bottom && oi > 0 && oroom[oi - 1][oj].open_r)
+                                        charout[y][x] = ' ';
+                                else
+                                        charout[y][x] = 'S';
+                        }
+                        else if (right )
+                        {
+                                if (!top && !bottom && oi < oX - 1 && oroom[oi][oj].open_r)
+                                        charout[y][x] = ' ';
+                                else
+                                        charout[y][x] = 'W';
+                        }
+
+                        if (charout[y][x] == ' ')
+                        {
+                                if (n == sH2 && !oroom[oi][oj].open_d)
+                                        charout[y][x] = 'T';
+                                if (m == sW2 && !oroom[oi][oj].open_r)
+                                        charout[y][x] = 'T';
+                        }
                 }
         }
 

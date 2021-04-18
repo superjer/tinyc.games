@@ -289,7 +289,11 @@ void load_room()
         {
                 for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
                 {
-                        tiles[y][x] = charout[y + roomy * TILESH][x + roomx * TILESW] == '@' ? ROCK : DIRT;
+                        int c = charout[y + roomy * TILESH][x + roomx * TILESW];
+                        tiles[y][x] = c == 'T' ? TREE :
+                                      c == 'R' ? ROCK :
+                                      c == 'S' ? STON :
+                                      c == 'W' ? WATR : DIRT;
                 }
         }
 
