@@ -25,8 +25,9 @@
 #define LOOPINESS 0.04f // how often to accept a random door that makes a loop, 0.0-1.0
 #define EW_BIAS 0.65f // how often to choose an east-west door over north-south, 0.0-1.0
 #define RECTS 6
-#define NUM_KEY_POINTS (sX * sY * 4)
-#define OBSTACLE_ATTEMPTS (sX * sY * 3)
+#define NUM_KEY_POINTS (sX * sY)
+#define OBSTACLE_ATTEMPTS (sX * sY * 4)
+#define OPENINGS_MOD 9
 
 #define false 0
 #define true 1
@@ -409,6 +410,15 @@ void convert_srooms()
         memset(charout, ' ', (sX * sW * sY * sH));
         for (i = 0; i < sX; i++) for (j = 0; j < sY; j++)
         {
+                char screen_char = 'R';
+                switch (rand() % 4)
+                {
+                        case 0: screen_char = 'R'; break;
+                        case 1: screen_char = 'S'; break;
+                        case 2: screen_char = 'T'; break;
+                        case 3: screen_char = 'W'; break;
+                }
+
                 for (m = 0; m < sW; m++) for (n = 0; n < sH; n++)
                 {
                         int x = i * sW + m;
@@ -425,36 +435,36 @@ void convert_srooms()
                                 if (!left && !right && oj > 0 && oroom[oi][oj - 1].open_d)
                                         charout[y][x] = ' ';
                                 else
-                                        charout[y][x] = 'R';
+                                        charout[y][x] = screen_char;
                         }
                         else if (bottom)
                         {
                                 if (!left && !right && oj < oY - 1 && oroom[oi][oj].open_d)
                                         charout[y][x] = ' ';
                                 else
-                                        charout[y][x] = 'W';
+                                        charout[y][x] = screen_char;
                         }
                         else if (left  )
                         {
                                 if (!top && !bottom && oi > 0 && oroom[oi - 1][oj].open_r)
                                         charout[y][x] = ' ';
                                 else
-                                        charout[y][x] = 'R';
+                                        charout[y][x] = screen_char;
                         }
                         else if (right )
                         {
                                 if (!top && !bottom && oi < oX - 1 && oroom[oi][oj].open_r)
                                         charout[y][x] = ' ';
                                 else
-                                        charout[y][x] = 'W';
+                                        charout[y][x] = screen_char;
                         }
 
                         if (charout[y][x] == ' ')
                         {
                                 if (n == sH2 && !oroom[oi][oj].open_d)
-                                        charout[y][x] = 'T';
+                                        charout[y][x] = screen_char;
                                 if (m == sW2 && !oroom[oi][oj].open_r)
-                                        charout[y][x] = 'T';
+                                        charout[y][x] = screen_char;
                         }
                 }
         }
@@ -522,24 +532,11 @@ void set_key_points()
         // i,j identify the room
         for (i = 0; i < sX; i++) for (j = 0; j < sY; j++)
         {
+                // randomly pick one of the 4 quadrant centers
                 struct point p;
+                p.x = i * sW + sW4 + (sW2 * (rand() % 2));
+                p.y = j * sH + sH4 + (sH2 * (rand() % 2));
 
-                p = (struct point){i * sW + sW4, j * sH + sH4};
-                wander(&p, 10);
-                key_points[k++] = p;
-                charout[p.y][p.x] = '.';
-
-                p = (struct point){i * sW + sW4 + sW2, j * sH + sH4};
-                wander(&p, 10);
-                key_points[k++] = p;
-                charout[p.y][p.x] = '.';
-
-                p = (struct point){i * sW + sW4, j * sH + sH4 + sH2};
-                wander(&p, 10);
-                key_points[k++] = p;
-                charout[p.y][p.x] = '.';
-
-                p = (struct point){i * sW + sW4 + sW2, j * sH + sH4 + sH2};
                 wander(&p, 10);
                 key_points[k++] = p;
                 charout[p.y][p.x] = '.';
@@ -638,7 +635,6 @@ void add_random_obstacles_and_openings()
                 if (y1 > sY * sH - 1 ) y1 = sY * sH - 1;
 
                 char common = find_common_obstacle(x0, x1, y0, y1);
-                printf("common obstacle = %c\n", common);
 
                 // block it
                 for (x = x0; x < x1; x++) for (y = y0; y < y1; y++)
@@ -663,7 +659,7 @@ void add_random_obstacles_and_openings()
 
                 int no_edge = (x0 > 1 && y0 > 1 && x1 < sX * sW - 2 && y1 < sY * sH - 2);
                 int no_corner = (((x0 / sW) == (x1 / sW)) || ((y0 / sH) == (y1 / sH)));
-                int opening = no_edge && no_corner && (rand() % 3 == 0);
+                int opening = no_edge && no_corner && (rand() % OPENINGS_MOD == 0);
 
                 // confirm or undo blockage
                 for (x = x0; x < x1; x++) for (y = y0; y < y1; y++) {

@@ -11,23 +11,19 @@
 #include <SDL_ttf.h>
 
 #define SCALE 3                    // 3x magnification
-#define W 900                      // window width, height
-#define H 660                      // ^
+#define W (300*SCALE)              // window width, height
+#define H (220*SCALE)              // ^
 #define TILESW 15                  // total room width, height
 #define TILESH 11                  // ^
 #define INNERTILESW 11             // inner room width, height
 #define INNERTILESH 7              // ^
 #define DUNH 3                     // entire dungeon width, height
-#define DUNW 3                     // ^
-#define STARTX 1                   // starting screen
-#define STARTY 2                   // ^
-#define BS 60                      // block size
+#define DUNW 5                     // ^
+#define BS (20*SCALE)              // block size
 #define BS2 (BS/2)                 // block size in half
 #define PLYR_W BS                  // physical width and height of the player
 #define PLYR_H BS2                 // ^
 #define PLYR_SPD 6                 // units per frame
-#define STARTPX (7*BS)             // starting position within start screen
-#define STARTPY (9*BS)             // ^
 #define LATERAL_STEPS 8            // how far to check for a way around an obstacle
 #define NR_PLAYERS 4
 #define NR_ENEMIES 8
@@ -139,6 +135,7 @@ void draw_stuff();
 void draw_doors_lo();
 void draw_doors_hi();
 void draw_clipping_boxes();
+void draw_map();
 void text(char *fstr, int value, int height);
 
 //the entry point and main game loop
@@ -245,16 +242,21 @@ void key_move(int down)
 //start a new game
 void new_game()
 {
+        //pick key point for start
+        static int kp_start = -1;
+        if (kp_start == -1)
+                kp_start = rand() % NUM_KEY_POINTS;
+
         memset(player, 0, sizeof player);
         player[0].alive = 1;
-        player[0].pos.x = STARTPX;
-        player[0].pos.y = STARTPY;
+        player[0].pos.x = BS * (key_points[kp_start].x % TILESW);
+        player[0].pos.y = BS * (key_points[kp_start].y % TILESH) + BS2;
         player[0].pos.w = PLYR_W;
         player[0].pos.h = PLYR_H;
-        player[0].dir = NORTH;
+        player[0].dir = SOUTH;
         player[0].hp = 3*4;
-        roomx = STARTX;
-        roomy = STARTY;
+        roomx = key_points[kp_start].x / TILESW;
+        roomy = key_points[kp_start].y / TILESH;
         load_room();
 }
 
@@ -291,7 +293,8 @@ void load_room()
                         tiles[y][x] = c == 'T' ? TREE :
                                       c == 'R' ? ROCK :
                                       c == 'S' ? STON :
-                                      c == 'W' ? WATR : DIRT;
+                                      c == 'W' ? WATR :
+                                      c == '.' ? SAND : DIRT;
                 }
         }
 
@@ -805,10 +808,10 @@ void screen_scroll(int dx, int dy)
         //bad room! back to start!
         if(roomx < 0 || roomx >= DUNW || roomy < 0 || roomy >= DUNH)
         {
-                roomx = STARTX;
-                roomy = STARTY;
-                player[0].pos.x = STARTPX;
-                player[0].pos.y = STARTPY;
+                roomx = 0;
+                roomy = 0;
+                player[0].pos.x = BS;
+                player[0].pos.y = BS;
         }
 
         load_room();
@@ -991,6 +994,8 @@ void draw_stuff()
 
         draw_doors_hi();
 
+        if(drawclip) draw_clipping_boxes();
+
         //draw health
         int hp = player[0].hp;
         dest = (SDL_Rect){10, 10, SCALE*10, SCALE*10};
@@ -1001,10 +1006,10 @@ void draw_stuff()
                                     hp < 0 ? 0 : hp);
                 SDL_RenderCopy(renderer, sprites, &src, &dest);
                 hp -= 4;
-                dest.x += SCALE*10;
+                dest.x += SCALE*11;
         }
 
-        if(drawclip) draw_clipping_boxes();
+        draw_map();
 
         SDL_RenderPresent(renderer);
 }
@@ -1067,7 +1072,6 @@ void draw_doors_hi()
         SDL_RenderCopy(renderer, edgetex[doors[SOUTH]], &src, &dest);
 }
 
-#ifndef TINY
 void draw_clipping_boxes()
 {
         SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
@@ -1087,4 +1091,30 @@ void draw_clipping_boxes()
                         SDL_RenderFillRect(renderer, &player[i].hitbox);
         }
 }
-#endif
+
+void draw_map()
+{
+        int x, y, dx, dy;
+        SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
+        dx = W - 20;
+        for (x = DUNW - 1; x >= 0; x--)
+        {
+                dy = 10;
+                for (y = 0; y < DUNH; y++)
+                {
+                        SDL_RenderFillRect(renderer, &(SDL_Rect){
+                                        dx, dy, 8, 8});
+
+                        if (x == roomx && y == roomy)
+                        {
+                                SDL_SetRenderDrawColor(renderer, 0, 0, 180, 255);
+                                SDL_RenderFillRect(renderer, &(SDL_Rect){
+                                                dx, dy, 8, 8});
+                                SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
+                        }
+
+                        dy += 10;
+                }
+                dx -= 10;
+        }
+}
