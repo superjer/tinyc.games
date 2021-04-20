@@ -1,6 +1,12 @@
-blocko/blocko
+blocko/bin
+blocko/*.dll
 flappy/flappy
 maker/maker
 tet/tet
 valet/valet
 zel/zel
+Debug
+x64
+.vs
+.DS_Store
+tags

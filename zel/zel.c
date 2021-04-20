@@ -1,4 +1,4 @@
-// Zel -- http://tinyc.games -- (c) 2016 Jer Wilson
+// Zel -- http://tinyc.games -- (c) 2020 Jer Wilson
 //
 // Zel is a "tiny" adventure game with lots of content. I'll admit it's pushing
 // the boundaries of what a "tiny" game should be.
@@ -11,23 +11,19 @@
 #include <SDL_ttf.h>
 
 #define SCALE 3                    // 3x magnification
-#define W 900                      // window width, height
-#define H 660                      // ^
+#define W (300*SCALE)              // window width, height
+#define H (220*SCALE)              // ^
 #define TILESW 15                  // total room width, height
 #define TILESH 11                  // ^
 #define INNERTILESW 11             // inner room width, height
 #define INNERTILESH 7              // ^
 #define DUNH 3                     // entire dungeon width, height
-#define DUNW 3                     // ^
-#define STARTX 1                   // starting screen
-#define STARTY 2                   // ^
-#define BS 60                      // block size
+#define DUNW 5                     // ^
+#define BS (20*SCALE)              // block size
 #define BS2 (BS/2)                 // block size in half
 #define PLYR_W BS                  // physical width and height of the player
 #define PLYR_H BS2                 // ^
 #define PLYR_SPD 6                 // units per frame
-#define STARTPX (7*BS)             // starting position within start screen
-#define STARTPY (9*BS)             // ^
 #define LATERAL_STEPS 8            // how far to check for a way around an obstacle
 #define NR_PLAYERS 4
 #define NR_ENEMIES 8
@@ -38,11 +34,20 @@
 #define L     4        // also works: just R|U
 #define D     8        // ^
 #define FACE 30        // the statue face thing
+
+#define TREE 54
+#define ROCK 55
+#define WATR 56
+#define STON 57
+
 #define BLOK 45        // the bevelled block
 #define CLIP 58        // invisible but solid tile
 #define LASTSOLID CLIP // everything less than here is solid
 #define HALFCLIP 59    // this is half solid (upper half)
 #define SAND 60        // sand - can walk on like open
+
+#define DIRT 150
+
 #define OPEN 75        // invisible open, walkable space
 
 enum enemytypes {
@@ -61,14 +66,14 @@ enum doors {WALL, LOCKED, SHUTTER, MAXWALL=SHUTTER, DOOR, HOLE, ENTRY, MAXDOOR};
 enum playerstates {PL_NORMAL, PL_STAB, PL_HURT, PL_DYING, PL_DEAD};
 enum toolboxstates {TB_READY, TB_JUMP, TB_LAND, TB_OPEN, TB_SHUT, TB_HURT};
 
+#include "odnar.c"
 #include "level_data.c"
 
-int garbage[10000] = {0};
+int demilitarized_zone[10000];
+int inside = 0;
 int roomx; // current room x,y
 int roomy;
 int tiles[TILESH][TILESW];
-
-struct point { int x, y; };
 
 struct player {
         SDL_Rect pos;
@@ -130,11 +135,14 @@ void draw_stuff();
 void draw_doors_lo();
 void draw_doors_hi();
 void draw_clipping_boxes();
+void draw_map();
 void text(char *fstr, int value, int height);
 
 //the entry point and main game loop
 int main()
 {
+        odnar();
+
         setup();
         new_game();
 
@@ -168,9 +176,9 @@ void setup()
 
         for(int i = 0; i < MAXDOOR; i++)
         {
-                char file[80];
-                sprintf(file, "res/room-%d.bmp", i);
-                surf = SDL_LoadBMP(file);
+                char xfile[80];
+                sprintf(xfile, "res/room-%d.bmp", i);
+                surf = SDL_LoadBMP(xfile);
                 SDL_SetColorKey(surf, 1, 0xffff00);
                 edgetex[i] = SDL_CreateTextureFromSurface(renderer, surf);
         }
@@ -234,16 +242,21 @@ void key_move(int down)
 //start a new game
 void new_game()
 {
+        //pick key point for start
+        static int kp_start = -1;
+        if (kp_start == -1)
+                kp_start = rand() % NUM_KEY_POINTS;
+
         memset(player, 0, sizeof player);
         player[0].alive = 1;
-        player[0].pos.x = STARTPX;
-        player[0].pos.y = STARTPY;
+        player[0].pos.x = BS * (key_points[kp_start].x % TILESW);
+        player[0].pos.y = BS * (key_points[kp_start].y % TILESH) + BS2;
         player[0].pos.w = PLYR_W;
         player[0].pos.h = PLYR_H;
-        player[0].dir = NORTH;
+        player[0].dir = SOUTH;
         player[0].hp = 3*4;
-        roomx = STARTX;
-        roomy = STARTY;
+        roomx = key_points[kp_start].x / TILESW;
+        roomy = key_points[kp_start].y / TILESH;
         load_room();
 }
 
@@ -251,24 +264,39 @@ void load_room()
 {
         int r = roomy*DUNW + roomx; // current room coordinate
 
-        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
+        if (inside)
         {
-                int edge_x = (x <= 1 || x >= TILESW-2);
-                int door_x = (edge_x && y == TILESH/2);
-                int edge_y = (y <= 1 || y >= TILESH-2);
-                int door_y = (edge_y && x == TILESW/2);
+                for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
+                {
+                        int edge_x = (x <= 1 || x >= TILESW-2);
+                        int door_x = (edge_x && y == TILESH/2);
+                        int edge_y = (y <= 1 || y >= TILESH-2);
+                        int door_y = (edge_y && x == TILESW/2);
 
-                if(edge_x || edge_y)
-                        tiles[y][x] = (door_x ? HALFCLIP : door_y ? OPEN : CLIP);
-                else
-                        tiles[y][x] = rooms[r].tiles[(y-2)*INNERTILESW + (x-2)];
+                        if(edge_x || edge_y)
+                                tiles[y][x] = (door_x ? HALFCLIP : door_y ? OPEN : CLIP);
+                        else
+                                tiles[y][x] = rooms[r].tiles[(y)*TILESW + (x)];
+                }
+
+                //set the clipping to match the doors
+                if(rooms[r].doors[NORTH] <= MAXWALL) tiles[1][ 7] = CLIP;
+                if(rooms[r].doors[WEST ] <= MAXWALL) tiles[5][ 1] = CLIP;
+                if(rooms[r].doors[EAST ] <= MAXWALL) tiles[5][13] = CLIP;
+                if(rooms[r].doors[SOUTH] <= MAXWALL) tiles[9][ 7] = CLIP;
         }
-
-        //set the clipping to match the doors
-        if(rooms[r].doors[NORTH] <= MAXWALL) tiles[1][ 7] = CLIP;
-        if(rooms[r].doors[WEST ] <= MAXWALL) tiles[5][ 1] = CLIP;
-        if(rooms[r].doors[EAST ] <= MAXWALL) tiles[5][13] = CLIP;
-        if(rooms[r].doors[SOUTH] <= MAXWALL) tiles[9][ 7] = CLIP;
+        else
+        {
+                for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
+                {
+                        int c = charout[y + roomy * TILESH][x + roomx * TILESW];
+                        tiles[y][x] = c == 'T' ? TREE :
+                                      c == 'R' ? ROCK :
+                                      c == 'S' ? STON :
+                                      c == 'W' ? WATR :
+                                      c == '.' ? SAND : DIRT;
+                }
+        }
 
         int spawns[] = {
                  7,5,   9,2,   4,4,   6,7,   2,2,  10,3,   2,7,   8,4,  11,4,   2,8,  12,6,
@@ -292,7 +320,7 @@ void load_room()
 
                 enemy[i].type = rooms[r].enemies[i];
                 enemy[i].alive = 1;
-                enemy[i].hp = 3;
+                enemy[i].hp = 1;
                 enemy[i].freeze = 20 + rand() % 30;
 
                 //find a good spawn position
@@ -430,7 +458,7 @@ void update_player()
                 screen_scroll(0, 1);
 }
 
-int toolbox(struct enemy *e)
+void toolbox(struct enemy *e)
 {
         switch(e->state)
         {
@@ -780,10 +808,10 @@ void screen_scroll(int dx, int dy)
         //bad room! back to start!
         if(roomx < 0 || roomx >= DUNW || roomy < 0 || roomy >= DUNH)
         {
-                roomx = STARTX;
-                roomy = STARTY;
-                player[0].pos.x = STARTPX;
-                player[0].pos.y = STARTPY;
+                roomx = 0;
+                roomy = 0;
+                player[0].pos.x = BS;
+                player[0].pos.y = BS;
         }
 
         load_room();
@@ -966,6 +994,8 @@ void draw_stuff()
 
         draw_doors_hi();
 
+        if(drawclip) draw_clipping_boxes();
+
         //draw health
         int hp = player[0].hp;
         dest = (SDL_Rect){10, 10, SCALE*10, SCALE*10};
@@ -976,16 +1006,18 @@ void draw_stuff()
                                     hp < 0 ? 0 : hp);
                 SDL_RenderCopy(renderer, sprites, &src, &dest);
                 hp -= 4;
-                dest.x += SCALE*10;
+                dest.x += SCALE*11;
         }
 
-        if(drawclip) draw_clipping_boxes();
+        draw_map();
 
         SDL_RenderPresent(renderer);
 }
 
 void draw_doors_lo()
 {
+        if (!inside) return;
+
         SDL_Rect src, dest;
         int r = roomy*DUNW + roomx; // current room coordinate
         int *doors = rooms[r].doors;
@@ -1013,6 +1045,8 @@ void draw_doors_lo()
 
 void draw_doors_hi()
 {
+        if (!inside) return;
+
         SDL_Rect src, dest;
         int r = roomy*DUNW + roomx; // current room coordinate
         int *doors = rooms[r].doors;
@@ -1038,7 +1072,6 @@ void draw_doors_hi()
         SDL_RenderCopy(renderer, edgetex[doors[SOUTH]], &src, &dest);
 }
 
-#ifndef TINY
 void draw_clipping_boxes()
 {
         SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
@@ -1058,4 +1091,30 @@ void draw_clipping_boxes()
                         SDL_RenderFillRect(renderer, &player[i].hitbox);
         }
 }
-#endif
+
+void draw_map()
+{
+        int x, y, dx, dy;
+        SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
+        dx = W - 20;
+        for (x = DUNW - 1; x >= 0; x--)
+        {
+                dy = 10;
+                for (y = 0; y < DUNH; y++)
+                {
+                        SDL_RenderFillRect(renderer, &(SDL_Rect){
+                                        dx, dy, 8, 8});
+
+                        if (x == roomx && y == roomy)
+                        {
+                                SDL_SetRenderDrawColor(renderer, 0, 0, 180, 255);
+                                SDL_RenderFillRect(renderer, &(SDL_Rect){
+                                                dx, dy, 8, 8});
+                                SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
+                        }
+
+                        dy += 10;
+                }
+                dx -= 10;
+        }
+}

@@ -1,4 +1,4 @@
-// Flappy -- http://tinyc.games -- (c) 2016 Jer Wilson
+// Flappy -- http://tinyc.games -- (c) 2020 Jer Wilson
 //
 // Flappy is an extremely small implementation of the Flappy Bird game.
 

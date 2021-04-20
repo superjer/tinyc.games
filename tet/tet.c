@@ -1,4 +1,4 @@
-// Tet -- http://tinyc.games -- (c) 2016 Jer Wilson
+// Tet -- http://tinyc.games -- (c) 2020 Jer Wilson
 //
 // Tet is an extremely small implementation of Tetris.
 
