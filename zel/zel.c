@@ -62,6 +62,8 @@ enum enemytypes {
         PIPEWRENCH = 14,
 };
 
+#define SCREW_STUN 20
+
 enum dir {NORTH, WEST, EAST, SOUTH};
 enum doors {WALL, LOCKED, SHUTTER, MAXWALL=SHUTTER, DOOR, HOLE, ENTRY, MAXDOOR};
 enum playerstates {PL_NORMAL, PL_STAB, PL_HURT, PL_DYING, PL_DEAD};
@@ -110,6 +112,7 @@ struct enemy {
 int idle_time = 30;
 int frame = 0;
 int drawclip = 0;
+int noclip = false;
 
 SDL_Event event;
 SDL_Renderer *renderer;
@@ -226,7 +229,10 @@ void key_move(int down)
                         if(down) player[0].dir = EAST;
                         break;
                 case SDLK_SPACE:
-                        drawclip = !drawclip;
+                        if (down) drawclip = !drawclip;
+                        break;
+                case SDLK_n:
+                        if (down) noclip = !noclip;
                         break;
                 case SDLK_z:
                 case SDLK_x:
@@ -528,6 +534,7 @@ void toolbox(struct enemy *e)
                                 if(find_free_slot(&slot))
                                 {
                                         enemy[slot].type = rand()%2 ? WRENCH : PIPEWRENCH;
+                                        enemy[slot].hp = 2;
                                         enemy[slot].alive = 1;
                                         enemy[slot].pos = (SDL_Rect){
                                                 e->pos.x + BS2,
@@ -571,6 +578,24 @@ void toolbox(struct enemy *e)
                         }
                         break;
         }
+
+        if (e->stun == 0) for (int i = 0; i < NR_ENEMIES; i++)
+        {
+                if (!enemy[i].alive)
+                        continue;
+                if (enemy[i].type != WRENCH && enemy[i].type != PIPEWRENCH)
+                        continue;
+                if (enemy[i].hp != 1)
+                        continue;
+                if (!collide(e->pos, enemy[i].pos))
+                        continue;
+                e->stun = 50;
+                e->hp--;
+                e->state = TB_HURT;
+                enemy[i].type = PUFF;
+                enemy[i].frame = 0;
+                enemy[i].vel.y = 0;
+        }
 }
 
 void update_enemies()
@@ -593,9 +618,12 @@ void update_enemies()
                 if(player[0].state == PL_STAB &&
                                 enemy[i].type != PUFF &&
                                 enemy[i].stun == 0 &&
+                                enemy[i].hp > 0 &&
                                 collide(player[0].hitbox, enemy[i].pos))
                 {
-                        enemy[i].stun = 50;
+                        // allow player to screw quickly
+                        enemy[i].stun = (enemy[i].type == SCREW ? SCREW_STUN : 50);
+
                         if(--enemy[i].hp > 0)
                         {
                                 if(enemy[i].type == TOOLBOX)
@@ -603,6 +631,11 @@ void update_enemies()
                                         e->vel.y = -5;
                                         e->state = TB_HURT;
                                         e->frame = 5;
+                                }
+                                else if (enemy[i].type == WRENCH || enemy[i].type == PIPEWRENCH)
+                                {
+                                        e->vel.y = -15;
+                                        e->vel.x = 0;
                                 }
                                 else if (enemy[i].type == SCREW)
                                 {
@@ -636,10 +669,18 @@ void update_enemies()
                 {
                         case WRENCH:
                         case PIPEWRENCH:
-                                if(enemy[i].vel.x == 0)
+                                if(enemy[i].vel.x == 0 && enemy[i].vel.y == 0)
                                 {
-                                        enemy[i].vel.x = rand()%2 ? -2 : 2;
-                                        enemy[i].vel.y = rand()%2 ? -2 : 2;
+                                        if (enemy[i].hp < 2)
+                                        {
+                                                enemy[i].type = PUFF;
+                                                enemy[i].frame = 0;
+                                        }
+                                        else
+                                        {
+                                                enemy[i].vel.x = rand()%2 ? -2 : 2;
+                                                enemy[i].vel.y = rand()%2 ? -2 : 2;
+                                        }
                                 }
                                 break;
                         case PIG:
@@ -770,7 +811,7 @@ int move_player(int velx, int vely, int fake_it, int weave)
         int already_stuck = 0;
         int would_be_stuck = 0;
 
-        if(world_collide(player[0].pos))
+        if(world_collide(player[0].pos) || noclip)
                 already_stuck = 1;
 
         if(world_collide(newpos))
@@ -916,13 +957,10 @@ void draw_stuff()
 
                 if (enemy[i].type == SCREW && enemy[i].hp < 2)
                 {
-                        if (enemy[i].hp == 1)
-                                enemy[i].frame = enemy[i].stun > 45 ? 6 : 7;
-                        else
-                                enemy[i].frame = enemy[i].stun > 45 ? 8 : 9;
-
-                        if (enemy[i].stun == 0 && rand() % 100 == 0)
-                                enemy[i].frame = enemy[i].hp == 1 ? 10 : 11;
+                        if (enemy[i].stun == SCREW_STUN)
+                                enemy[i].frame = enemy[i].hp ? 6 : 8;
+                        else if (enemy[i].stun == SCREW_STUN - 5)
+                                enemy[i].frame = enemy[i].hp ? 7 : 9;
                 }
 
                 if(frame%10 == 0) switch(enemy[i].type)
@@ -936,6 +974,13 @@ void draw_stuff()
                         case SCREW:
                                 if (enemy[i].hp >= 2)
                                         enemy[i].frame = (enemy[i].frame + 1) % 6;
+                                else if (enemy[i].stun == 0)
+                                {
+                                        if (rand() % 10 == 0)
+                                                enemy[i].frame = enemy[i].hp ? 10 : 11;
+                                        else
+                                                enemy[i].frame = enemy[i].hp ? 7 : 9;
+                                }
                                 break;
                 }
 
