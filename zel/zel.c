@@ -131,6 +131,7 @@ void squishy_move();
 int collide(SDL_Rect plyr, SDL_Rect block);
 int block_collide(int bx, int by, SDL_Rect plyr);
 int world_collide(SDL_Rect plyr);
+int edge_collide(SDL_Rect plyr);
 void screen_scroll(int dx, int dy);
 void draw_stuff();
 void draw_doors_lo();
@@ -716,7 +717,7 @@ void update_enemies()
                 {
                         newpos.x += enemy[i].vel.x;
                         newpos.y += enemy[i].vel.y;
-                        if(world_collide(newpos))
+                        if(world_collide(newpos) || edge_collide(newpos))
                         {
                                 enemy[i].vel.x = 0;
                                 enemy[i].vel.y = 0;
@@ -738,10 +739,24 @@ int world_collide(SDL_Rect plyr)
                 int by = plyr.y/BS + j;
 
                 if(block_collide(bx, by, plyr))
-                        return 1;
+                        return true;
         }
 
-        return 0;
+        return false;
+}
+
+int edge_collide(SDL_Rect plyr)
+{
+        if (plyr.x + plyr.w >= W)
+                return true;
+        if (plyr.y + plyr.h >= H)
+                return true;
+        if (plyr.x <= 0)
+                return true;
+        if (plyr.y <= 0)
+                return true;
+
+        return false;
 }
 
 //return 0 iff we couldn't actually move
