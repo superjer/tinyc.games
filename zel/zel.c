@@ -62,12 +62,8 @@ enum enemytypes {
         PIPEWRENCH = 14,
 };
 
-#define SCREW_STUN 20
-
 enum dir {NORTH, WEST, EAST, SOUTH};
 enum doors {WALL, LOCKED, SHUTTER, MAXWALL=SHUTTER, DOOR, HOLE, ENTRY, MAXDOOR};
-enum playerstates {PL_NORMAL, PL_STAB, PL_HURT, PL_DYING, PL_DEAD};
-enum toolboxstates {TB_READY, TB_JUMP, TB_LAND, TB_OPEN, TB_SHUT, TB_HURT};
 
 #include "odnar.c"
 #include "level_data.c"
@@ -121,33 +117,31 @@ SDL_Texture *sprites;
 SDL_Texture *edgetex[20];
 TTF_Font *font;
 
-//prototypes
-void setup();
-void new_game();
-void load_room();
 int find_free_slot(int *slot);
-void key_move(int down);
-void update_player();
-void update_enemies();
-int move_player(int velx, int vely, int fake_it, int weave);
-void squishy_move();
 int collide(SDL_Rect plyr, SDL_Rect block);
 int block_collide(int bx, int by, SDL_Rect plyr);
 int world_collide(SDL_Rect plyr);
 int edge_collide(SDL_Rect plyr);
+void new_game();
 void screen_scroll(int dx, int dy);
+
+#include "player.c"
+#include "enemies.c"
+
+//prototypes
+void setup();
+void load_room();
+void key_move(int down);
 void draw_stuff();
 void draw_doors_lo();
 void draw_doors_hi();
 void draw_clipping_boxes();
 void draw_map();
-void text(char *fstr, int value, int height);
 
 //the entry point and main game loop
 int main()
 {
         odnar();
-
         setup();
         new_game();
 
@@ -379,398 +373,6 @@ int find_free_slot(int *slot)
         return 0;
 }
 
-void update_player()
-{
-        struct player *p = player + 0;
-
-        if(player[0].stun > 0)
-                player[0].stun--;
-
-        if(player[0].state == PL_DEAD)
-        {
-                if(player[0].stun < 1)
-                        new_game();
-                return;
-        }
-
-        if(player[0].state == PL_DYING)
-        {
-                if(frame%6 == 0)
-                        player[0].dir = (player[0].dir+1) % 4;
-
-                if(player[0].stun < 1)
-                {
-                        player[0].alive = 0;
-                        player[0].state = PL_DEAD;
-                        player[0].stun = 100;
-                }
-
-                return;
-        }
-
-        if(p->state == PL_STAB)
-        {
-                p->hitbox = p->pos;
-                p->hitbox.x -= 2;
-                p->hitbox.y -= 2 + BS2;
-                p->hitbox.w += 4;
-                p->hitbox.h += 4 + BS2;
-                switch(p->dir)
-                {
-                        case WEST:  p->hitbox.x -= BS;
-                        case EAST:  p->hitbox.w += BS; break;
-                        case NORTH: p->hitbox.y -= BS;
-                        case SOUTH: p->hitbox.h += BS; break;
-                }
-
-                if(--p->delay <= 0)
-                {
-                        p->delay = 0;
-                        p->state = PL_NORMAL;
-                }
-        }
-        else if(!p->vel.x ^ !p->vel.y) // moving only one direction
-        {
-                move_player(p->vel.x, p->vel.y, 0, 1);
-        }
-        else if((p->ylast || !p->vel.x) && p->vel.y)
-        {
-                //only move 1 direction, but try the most recently pressed first
-                int fake_it = move_player(0, p->vel.y, 0, 0);
-                move_player(p->vel.x, 0, fake_it, 0);
-        }
-        else
-        {
-                int fake_it = move_player(p->vel.x, 0, 0, 0);
-                move_player(0, p->vel.y, fake_it, 0);
-        }
-
-        //check for enemy collisions
-        for(int i = 0; i < NR_ENEMIES; i++)
-        {
-                if(player[0].alive && enemy[i].alive &&
-                                player[0].state != PL_DYING &&
-                                player[0].stun < 1 &&
-                                enemy[i].stun < 1 &&
-                                enemy[i].hp > 0 &&
-                                enemy[i].type != PUFF &&
-                                collide(player[0].pos, enemy[i].pos))
-                {
-                        if(--player[0].hp <= 0)
-                        {
-                                player[0].state = PL_DYING;
-                                player[0].stun = 100;
-                        }
-                        else
-                        {
-                                player[0].stun = 50;
-                                player[0].reel = 10;
-                                player[0].reeldir = WEST;
-                        }
-                }
-        }
-
-        //check for leaving screen
-        if(p->pos.x <= 4)
-                screen_scroll(-1, 0);
-        else if(p->pos.x >= W - PLYR_W - 4)
-                screen_scroll(1, 0);
-
-        if(p->pos.y <= 4)
-                screen_scroll(0, -1);
-        else if(p->pos.y >= H - PLYR_H - 4)
-                screen_scroll(0, 1);
-}
-
-void toolbox(struct enemy *e)
-{
-        switch(e->state)
-        {
-                case TB_READY:
-                        if(rand()%40 == 0)
-                        {
-                                e->state = TB_JUMP;
-                                e->vel.y = -20;
-                        }
-                        else if(rand()%40 == 0)
-                        {
-                                e->state = TB_OPEN;
-                                e->frame = 0;
-                        }
-                        break;
-                case TB_JUMP:
-                        e->vel.y += 2;
-                        if(e->vel.y >= 20)
-                        {
-                                e->state = TB_LAND;
-                                e->vel.y = 0;
-                        }
-                        break;
-                case TB_LAND:
-                        if(frame%4 == 0)
-                                e->frame = rand()%2 + 2;
-
-                        if(rand()%40 == 0)
-                        {
-                                e->state = TB_READY;
-                                e->frame = 0;
-                        }
-                        break;
-                case TB_OPEN:
-                        if(e->frame == 0)
-                        {
-                                int speed = rand()%10 ? 7 : 9;
-                                if(e->pos.x < 3*BS)
-                                        e->vel.x = speed;
-                                else if(e->pos.x > W - 7*BS)
-                                        e->vel.x = -speed;
-                                else
-                                        e->vel.x = rand()%2 ? speed : -speed;
-                                e->frame = 1;
-                        }
-                        if(frame%8 == 0 && rand()%3 == 0)
-                        {
-                                int slot;
-                                if(find_free_slot(&slot))
-                                {
-                                        enemy[slot].type = rand()%2 ? WRENCH : PIPEWRENCH;
-                                        enemy[slot].hp = 2;
-                                        enemy[slot].alive = 1;
-                                        enemy[slot].pos = (SDL_Rect){
-                                                e->pos.x + BS2,
-                                                e->pos.y,
-                                                BS,
-                                                BS2
-                                        };
-                                        enemy[slot].vel.x = rand()%2 ? 2 : -2;
-                                        enemy[slot].vel.y = 2;
-                                }
-                        }
-                        if(e->vel.x == 0)
-                        {
-                                e->frame = 6;
-                                e->state = TB_SHUT;
-                        }
-                        else if(frame%20 == 0)
-                        {
-                                if(e->vel.x > 0)
-                                        e->vel.x--;
-                                else
-                                        e->vel.x++;
-                        }
-                        break;
-                case TB_SHUT:
-                        if(frame%10 == 0 && rand()%3 == 0)
-                        {
-                                e->state = TB_READY;
-                                e->frame = 0;
-                        }
-                        break;
-                case TB_HURT:
-                        if(e->vel.y >= 0)
-                        {
-                                e->state = TB_OPEN;
-                                e->frame = 0;
-                        }
-                        else if(frame%4 == 0)
-                        {
-                                e->vel.y++;
-                        }
-                        break;
-        }
-
-        if (e->stun == 0) for (int i = 0; i < NR_ENEMIES; i++)
-        {
-                if (!enemy[i].alive)
-                        continue;
-                if (enemy[i].type != WRENCH && enemy[i].type != PIPEWRENCH)
-                        continue;
-                if (enemy[i].hp != 1)
-                        continue;
-                if (!collide(e->pos, enemy[i].pos))
-                        continue;
-                e->stun = 50;
-                e->hp--;
-                e->state = TB_HURT;
-                enemy[i].type = PUFF;
-                enemy[i].frame = 0;
-                enemy[i].vel.y = 0;
-        }
-}
-
-void update_enemies()
-{
-        for(int i = 0; i < NR_ENEMIES; i++)
-        {
-                struct enemy *e = enemy + i;
-                if(!enemy[i].alive)
-                        continue;
-
-                if(enemy[i].stun > 0)
-                        enemy[i].stun--;
-
-                if(enemy[i].freeze > 0)
-                {
-                        enemy[i].freeze--;
-                        continue;
-                }
-
-                if(player[0].state == PL_STAB &&
-                                enemy[i].type != PUFF &&
-                                enemy[i].stun == 0 &&
-                                enemy[i].hp > 0 &&
-                                collide(player[0].hitbox, enemy[i].pos))
-                {
-                        // allow player to screw quickly
-                        enemy[i].stun = (enemy[i].type == SCREW ? SCREW_STUN : 50);
-
-                        if(--enemy[i].hp > 0)
-                        {
-                                if(enemy[i].type == TOOLBOX)
-                                {
-                                        e->vel.y = -5;
-                                        e->state = TB_HURT;
-                                        e->frame = 5;
-                                }
-                                else if (enemy[i].type == WRENCH || enemy[i].type == PIPEWRENCH)
-                                {
-                                        e->vel.y = -15;
-                                        e->vel.x = 0;
-                                }
-                                else if (enemy[i].type == SCREW)
-                                {
-                                        ;
-                                }
-                                else
-                                {
-                                        enemy[i].reel = 30;
-                                        enemy[i].reeldir = player[0].dir;
-                                }
-                        }
-                        else
-                        {
-                                if(enemy[i].type == TOOLBOX) for(int j = 0; j < NR_ENEMIES; j++)
-                                {
-                                        enemy[j].type = PUFF;
-                                        enemy[j].frame = 0;
-                                }
-
-                                if (enemy[i].type != SCREW)
-                                {
-                                        enemy[i].type = PUFF;
-                                        enemy[i].frame = 0;
-                                        enemy[i].vel.x = 0;
-                                        enemy[i].vel.y = 0;
-                                }
-                        }
-                }
-
-                switch(enemy[i].type)
-                {
-                        case WRENCH:
-                        case PIPEWRENCH:
-                                if(enemy[i].vel.x == 0 && enemy[i].vel.y == 0)
-                                {
-                                        if (enemy[i].hp < 2)
-                                        {
-                                                enemy[i].type = PUFF;
-                                                enemy[i].frame = 0;
-                                        }
-                                        else
-                                        {
-                                                enemy[i].vel.x = rand()%2 ? -2 : 2;
-                                                enemy[i].vel.y = rand()%2 ? -2 : 2;
-                                        }
-                                }
-                                break;
-                        case PIG:
-                                if(enemy[i].vel.x == 0 && rand()%10 == 0)
-                                {
-                                        enemy[i].vel.x = (rand()%2 * 4) - 2;
-                                        enemy[i].vel.y = (rand()%2 * 4) - 2;
-                                }
-                                break;
-                        case SCREW:
-                                if(enemy[i].hp < 2)
-                                {
-                                        enemy[i].vel.x = 0;
-                                        enemy[i].vel.y = 0;
-                                }
-                                else if(frame%3 == 0)
-                                {
-                                        if(rand()%2 == 0)
-                                        {
-                                                enemy[i].vel.x = (rand()%2 * 4) - 2;
-                                                enemy[i].vel.y = 0;
-                                        }
-                                        else
-                                        {
-                                                enemy[i].vel.y = (rand()%2 * 4) - 2;
-                                                enemy[i].vel.x = 0;
-                                        }
-                                }
-                                break;
-                        case BOARD:
-                                if((enemy[i].vel.x == 0 && enemy[i].vel.y == 0) ||
-                                                (rand()%10 == 0 &&
-                                                 enemy[i].pos.x % BS2 == 0 &&
-                                                 enemy[i].pos.y % BS2 == 0))
-                                {
-                                        if(rand()%2 == 0)
-                                        {
-                                                enemy[i].vel.x = (rand()%2 * 4) - 2;
-                                                enemy[i].vel.y = 0;
-                                        }
-                                        else
-                                        {
-                                                enemy[i].vel.y = (rand()%2 * 4) - 2;
-                                                enemy[i].vel.x = 0;
-                                        }
-                                }
-                                break;
-                        case TOOLBOX:
-                                toolbox(enemy + i);
-                                break;
-                }
-
-                SDL_Rect newpos = enemy[i].pos;
-                if(enemy[i].reel)
-                {
-                        enemy[i].reel--;
-                        switch(enemy[i].reeldir)
-                        {
-                                case NORTH: newpos.y -= 10; break;
-                                case WEST:  newpos.x -= 10; break;
-                                case EAST:  newpos.x += 10; break;
-                                case SOUTH: newpos.y += 10; break;
-                        }
-                        if(!world_collide(newpos) && enemy[i].reel != 0)
-                        {
-                                enemy[i].pos = newpos;
-                        }
-                        else
-                        {
-                                enemy[i].pos.x = ((enemy[i].pos.x + BS2 - 1) / BS2) * BS2;
-                                enemy[i].pos.y = ((enemy[i].pos.y + BS2 - 1) / BS2) * BS2;
-                        }
-                }
-                else
-                {
-                        newpos.x += enemy[i].vel.x;
-                        newpos.y += enemy[i].vel.y;
-                        if(world_collide(newpos) || edge_collide(newpos))
-                        {
-                                enemy[i].vel.x = 0;
-                                enemy[i].vel.y = 0;
-                        }
-                        else
-                        {
-                                enemy[i].pos = newpos;
-                        }
-                }
-        }
-}
-
 //collide a rect with nearby world tiles
 int world_collide(SDL_Rect plyr)
 {
@@ -798,84 +400,6 @@ int edge_collide(SDL_Rect plyr)
                 return true;
 
         return false;
-}
-
-//return 0 iff we couldn't actually move
-int move_player(int velx, int vely, int fake_it, int weave)
-{
-        SDL_Rect newpos = player[0].pos;
-
-        newpos.x += velx;
-        newpos.y += vely;
-
-        int already_stuck = 0;
-        int would_be_stuck = 0;
-
-        if(world_collide(player[0].pos) || noclip)
-                already_stuck = 1;
-
-        if(world_collide(newpos))
-                would_be_stuck = 1;
-
-        // see if we can weave laterally instead?
-        if(!already_stuck && would_be_stuck && !fake_it && weave) for(int k = 0; k < LATERAL_STEPS; k++)
-        {
-                SDL_Rect latpos = newpos;
-
-                if(velx > 0) latpos.x -= velx; // don't move positive,
-                if(vely > 0) latpos.y -= vely; // handled by the growing
-
-                if(velx)
-                {
-                        latpos.w += abs(velx); // grow box
-                        latpos.y = newpos.y + k * abs(velx);
-                        if(!world_collide(latpos))
-                        {
-                                //this is the winning position!
-                                //move one step laterally!
-                                player[0].pos.y += abs(velx);
-                                return 1;
-                        }
-                        latpos.y = newpos.y - k * abs(velx);
-                        if(!world_collide(latpos))
-                        {
-                                //this is the winning position!
-                                //move one step laterally!
-                                player[0].pos.y -= abs(velx);
-                                return 1;
-                        }
-                }
-                else if(vely)
-                {
-                        latpos.h += abs(vely); // grow box
-                        latpos.x = newpos.x + k * abs(vely);
-                        if(!world_collide(latpos))
-                        {
-                                //this is the winning position!
-                                //move one step laterally!
-                                player[0].pos.x += abs(vely);
-                                return 1;
-                        }
-                        latpos.x = newpos.x - k * abs(vely);
-                        if(!world_collide(latpos))
-                        {
-                                //this is the winning position!
-                                //move one step laterally!
-                                player[0].pos.x -= abs(vely);
-                                return 1;
-                        }
-                }
-        }
-
-        if(!would_be_stuck || already_stuck)
-        {
-                if(!fake_it) player[0].pos = newpos;
-                return 1;
-        }
-
-        //don't move, but remember intent to move
-        player[0].ylast = vely ? 1 : 0;
-        return 0;
 }
 
 int legit_tile(int x, int y)
@@ -1198,25 +722,25 @@ void draw_map()
 {
         int x, y, dx, dy;
         SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
-        dx = W - 20;
+        dx = W - 30;
         for (x = DUNW - 1; x >= 0; x--)
         {
-                dy = 10;
+                dy = 15;
                 for (y = 0; y < DUNH; y++)
                 {
                         SDL_RenderFillRect(renderer, &(SDL_Rect){
-                                        dx, dy, 8, 8});
+                                        dx, dy, 12, 12});
 
                         if (x == roomx && y == roomy)
                         {
-                                SDL_SetRenderDrawColor(renderer, 0, 0, 180, 255);
+                                SDL_SetRenderDrawColor(renderer, 0, 0, 230, 255);
                                 SDL_RenderFillRect(renderer, &(SDL_Rect){
-                                                dx, dy, 8, 8});
+                                                dx, dy, 12, 12});
                                 SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
                         }
 
-                        dy += 10;
+                        dy += 14;
                 }
-                dx -= 10;
+                dx -= 14;
         }
 }
