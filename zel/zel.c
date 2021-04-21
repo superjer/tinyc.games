@@ -46,7 +46,8 @@
 #define HALFCLIP 59    // this is half solid (upper half)
 #define SAND 60        // sand - can walk on like open
 
-#define DIRT 150
+#define SPOT 150
+#define DIRT 165
 
 #define OPEN 75        // invisible open, walkable space
 
@@ -290,11 +291,21 @@ void load_room()
                 for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
                 {
                         int c = charout[y + roomy * TILESH][x + roomx * TILESW];
-                        tiles[y][x] = c == 'T' ? TREE :
-                                      c == 'R' ? ROCK :
-                                      c == 'S' ? STON :
-                                      c == 'W' ? WATR :
-                                      c == '.' ? SAND : DIRT;
+                        int t = c == 'T' ? TREE :
+                                c == 'R' ? ROCK :
+                                c == 'S' ? STON :
+                                c == 'W' ? WATR :
+                                c == '.' ? SPOT : DIRT;
+                        tiles[y][x] = t;
+                }
+
+                for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
+                {
+                        if (tiles[y][x] != DIRT) continue;
+                        if (x < TILESW - 1 && tiles[y][x + 1] == WATR) tiles[y][x] += R;
+                        if (x > 0          && tiles[y][x - 1] == WATR) tiles[y][x] += L;
+                        if (y < TILESH - 1 && tiles[y + 1][x] == WATR) tiles[y][x] += D;
+                        if (y > 0          && tiles[y - 1][x] == WATR) tiles[y][x] += U;
                 }
         }
 
@@ -342,8 +353,13 @@ void load_room()
                         enemy[i].pos.y = 3*BS;
                         enemy[i].pos.w = 2*BS;
                         enemy[i].pos.h = BS;
-                        enemy[i].hp = 15;
+                        enemy[i].hp = 7;
                         enemy[i].freeze = 10;
+                }
+
+                if(enemy[i].type == SCREW)
+                {
+                        enemy[i].hp = 2;
                 }
         }
 }
@@ -429,6 +445,7 @@ void update_player()
                                 player[0].state != PL_DYING &&
                                 player[0].stun < 1 &&
                                 enemy[i].stun < 1 &&
+                                enemy[i].hp > 0 &&
                                 enemy[i].type != PUFF &&
                                 collide(player[0].pos, enemy[i].pos))
                 {
@@ -586,6 +603,10 @@ void update_enemies()
                                         e->state = TB_HURT;
                                         e->frame = 5;
                                 }
+                                else if (enemy[i].type == SCREW)
+                                {
+                                        ;
+                                }
                                 else
                                 {
                                         enemy[i].reel = 30;
@@ -599,10 +620,14 @@ void update_enemies()
                                         enemy[j].type = PUFF;
                                         enemy[j].frame = 0;
                                 }
-                                enemy[i].type = PUFF;
-                                enemy[i].frame = 0;
-                                enemy[i].vel.x = 0;
-                                enemy[i].vel.y = 0;
+
+                                if (enemy[i].type != SCREW)
+                                {
+                                        enemy[i].type = PUFF;
+                                        enemy[i].frame = 0;
+                                        enemy[i].vel.x = 0;
+                                        enemy[i].vel.y = 0;
+                                }
                         }
                 }
 
@@ -624,7 +649,12 @@ void update_enemies()
                                 }
                                 break;
                         case SCREW:
-                                if(frame%3 == 0)
+                                if(enemy[i].hp < 2)
+                                {
+                                        enemy[i].vel.x = 0;
+                                        enemy[i].vel.y = 0;
+                                }
+                                else if(frame%3 == 0)
                                 {
                                         if(rand()%2 == 0)
                                         {
@@ -869,6 +899,17 @@ void draw_stuff()
                 if(!enemy[i].alive)
                         continue;
 
+                if (enemy[i].type == SCREW && enemy[i].hp < 2)
+                {
+                        if (enemy[i].hp == 1)
+                                enemy[i].frame = enemy[i].stun > 45 ? 6 : 7;
+                        else
+                                enemy[i].frame = enemy[i].stun > 45 ? 8 : 9;
+
+                        if (enemy[i].stun == 0 && rand() % 100 == 0)
+                                enemy[i].frame = enemy[i].hp == 1 ? 10 : 11;
+                }
+
                 if(frame%10 == 0) switch(enemy[i].type)
                 {
                         case PIG:
@@ -878,7 +919,8 @@ void draw_stuff()
                                         enemy[i].frame = 4;
                                 break;
                         case SCREW:
-                                enemy[i].frame = (enemy[i].frame + 1) % 6;
+                                if (enemy[i].hp >= 2)
+                                        enemy[i].frame = (enemy[i].frame + 1) % 6;
                                 break;
                 }
 
@@ -923,7 +965,7 @@ void draw_stuff()
                         if(frame%8 == 0 && ++enemy[i].frame > 4)
                                 enemy[i].alive = 0;
                 }
-                else if(enemy[i].stun > 0)
+                else if(enemy[i].stun > 0 && enemy[i].type != SCREW)
                 {
                         if((frame/2)%2) continue;
 

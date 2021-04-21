@@ -40,6 +40,7 @@ struct oroom {
         int open_r;
         int open_d;
         int access;
+        char base_char;
 };
 
 struct oroom oroom[oX][oY];
@@ -47,12 +48,6 @@ struct oroom oroom[oX][oY];
 struct rect {
         int x0, y0, x1, y1;
 };
-
-struct sroom {
-        struct rect rect[RECTS];
-};
-
-struct sroom sroom[sX][sY];
 
 char charout[sY * sH][sX * sW];
 char flood_buf[sY * sH][sX * sW];
@@ -62,6 +57,11 @@ struct point {
 };
 
 struct point key_points[NUM_KEY_POINTS];
+
+int pct(int chance)
+{
+        return rand() % 100 < chance;
+}
 
 void remove_access()
 {
@@ -258,153 +258,7 @@ int open_a_useful_door(int min_to_open)
         return 0;
 }
 
-int pct(int chance)
-{
-        return rand() % 100 < chance;
-}
-
-void place_initial_rects()
-{
-        int i, j;
-        for (i = 0; i < sX; i++) for (j = 0; j < sY; j++)
-        {
-                //   |   : q | s : u |
-                // --+-------+-------+-
-                //   |   :   |   :   |
-                // ..|.......|.......|.
-                // r |   :   |   :   |
-                // --+-------+=======+-
-                // t |   :   |ij :   |
-                // ..|.......|.......|.
-                // v |   :   |   :   |
-                // --+-------+=======+-
-                //   |   :   |   :   |
-                int s = i * 2;
-                int t = j * 2;
-                int q = s - 1;
-                int r = t - 1;
-                int u = s + 1;
-                int v = t + 1;
-
-                if (i && pct(35) && oroom[q][t].open_r && oroom[q][v].open_r)
-                {
-                        // copy from left
-                        sroom[i][j].rect[0].y0 = sroom[i - 1][j].rect[0].y0;
-                        sroom[i][j].rect[0].y1 = sroom[i - 1][j].rect[0].y1;
-                }
-                else
-                {
-                        int a = 1 + rand() % (sH - 4);
-                        int b = 1 + rand() % (sH - 4);
-                        if (a > b) SWAP(a, b);
-                        a = MIN(a, sroom[i - 1][j].rect[0].y1);
-                        b = MAX(b, sroom[i - 1][j].rect[0].y0);
-                        sroom[i][j].rect[0].y0 = pct(50) ?      2 : a;
-                        sroom[i][j].rect[0].y1 = pct(50) ? sH - 3 : b;
-                }
-
-
-                if (j && pct(15) && oroom[s][r].open_d && oroom[u][r].open_d)
-                {
-                        // copy from up
-                        sroom[i][j].rect[0].x0 = sroom[i][j - 1].rect[0].x0;
-                        sroom[i][j].rect[0].x1 = sroom[i][j - 1].rect[0].x1;
-                }
-                else
-                {
-                        int a = 1 + rand() % (sW - 3);
-                        int b = 1 + rand() % (sW - 3);
-                        if (a > b) SWAP(a, b);
-                        a = MIN(a, sroom[i][j - 1].rect[0].x1);
-                        b = MAX(b, sroom[i][j - 1].rect[0].x0);
-                        sroom[i][j].rect[0].x0 = pct(50) ?      1 : a;
-                        sroom[i][j].rect[0].x1 = pct(50) ? sW - 2 : b;
-                }
-        }
-}
-
-void place_connecting_rects()
-{
-        int i, j;
-        for (i = 0; i < sX; i++) for (j = 0; j < sY; j++)
-        {
-                //   |   : q | s : u |
-                // --+-------+-------+-
-                //   |   :   |   :   |
-                // ..|.......|.......|.
-                // r |   :   |   :   |
-                // --+-------+=======+-
-                // t |   :   |ij :   |
-                // ..|.......|.......|.
-                // v |   :   |   :   |
-                // --+-------+=======+-
-                //   |   :   |   :   |
-                int s = i * 2;
-                int t = j * 2;
-                int q = s - 1;
-                int r = t - 1;
-                int u = s + 1;
-                int v = t + 1;
-
-                #define FUDGE(p) if (pct(p) && b > a) {    \
-                        int fuj = rand() % (b - a);        \
-                        int afuj = fuj ? rand() % fuj : 0; \
-                        a += afuj;                         \
-                        b -= fuj - afuj;                   \
-                }
-
-                // left rect
-                if (i > 0 && (oroom[q][t].open_r || oroom[q][v].open_r))
-                {
-                        int b = MAX(sroom[i][j].rect[0].y0, sroom[i - 1][j].rect[2].y0);
-                        int a = MIN(sroom[i][j].rect[0].y1, sroom[i - 1][j].rect[2].y1);
-                        int c = sroom[i][j].rect[0].x0 - 1;
-                        if (a > b) SWAP(a, b);
-                        sroom[i][j].rect[1] = (struct rect){0, a, c, b};
-                }
-
-                // right rect
-                if (i < sX - 1 && (oroom[u][t].open_r || oroom[u][v].open_r))
-                {
-                        int a = MAX(sroom[i][j].rect[0].y0, sroom[i + 1][j].rect[0].y0);
-                        int b = MIN(sroom[i][j].rect[0].y1, sroom[i + 1][j].rect[0].y1);
-                        int c = sroom[i][j].rect[0].x1 + 1;
-                        //if (a > b) SWAP(a, b);
-                        /*
-                        if (a > b) {
-                                a = b;
-                                c = sroom[i][j].rect[0].x0 + rand() % (sroom[i][j].rect[0].x1 - sroom[i][j].rect[0].x0);
-                                sroom[i][j].rect[5] = (struct rect){c, b, sroom[i][j].rect[0].x1, sroom[i][j].rect[0].y1};
-                        }
-                        */
-                        FUDGE(33);
-                        sroom[i][j].rect[2] = (struct rect){c, a, sW - 1, b};
-                }
-
-                // top rect
-                if (j > 0 && (oroom[s][r].open_d || oroom[u][r].open_d))
-                {
-                        int a = MAX(sroom[i][j].rect[0].x0, sroom[i][j - 1].rect[4].x0);
-                        int b = MIN(sroom[i][j].rect[0].x1, sroom[i][j - 1].rect[4].x1);
-                        int c = sroom[i][j].rect[0].y0 - 1;
-                        if (a > b) SWAP(a, b);
-                        sroom[i][j].rect[3] = (struct rect){a, 0, b, c};
-                }
-
-                // bottom rect
-                if (j < sY - 1 && (oroom[s][v].open_d || oroom[u][v].open_d))
-                {
-                        int a = MAX(sroom[i][j].rect[0].x0, sroom[i][j + 1].rect[0].x0);
-                        int b = MIN(sroom[i][j].rect[0].x1, sroom[i][j + 1].rect[0].x1);
-                        int c = sroom[i][j].rect[0].y1 + 1;
-                        if (a > b) SWAP(a, b);
-                        FUDGE(85);
-                        sroom[i][j].rect[4] = (struct rect){a, c, b, sH - 1};
-                }
-        }
-}
-
-void convert_srooms()
+void convert_orooms_to_charout()
 {
         int i, j, m, n;
         memset(charout, ' ', (sX * sW * sY * sH));
@@ -470,6 +324,7 @@ void convert_srooms()
         }
 }
 
+// make sure solids bleed all the way across screen edges
 void bleed_edges()
 {
         int i, j, m, n;
@@ -494,6 +349,7 @@ void bleed_edges()
         }
 }
 
+// move a point randomly from a starting position with a screen, obeying solids
 void wander(struct point * p, int steps)
 {
         for (; steps > 0; steps--)
@@ -543,6 +399,7 @@ void set_key_points()
         }
 }
 
+// flood-fill used by are_key_points_connected
 int flood(int x, int y)
 {
         int ttl = 0;
@@ -566,6 +423,7 @@ int flood(int x, int y)
                 + flood(x, y + 1);
 }
 
+// returns true if all key points are accessible from each other
 int are_key_points_connected()
 {
         memset(flood_buf, 0, sizeof flood_buf);
@@ -573,13 +431,15 @@ int are_key_points_connected()
         return num_found == NUM_KEY_POINTS;
 }
 
-void print_srooms()
+// just print charout to the screen
+void print_charout()
 {
         int i;
         for (i = 0; i < sY * sH; i++)
                 printf("%.*s\n", sX * sW, charout[i]);
 }
 
+// finds the most common obstacle in a recatangle
 int find_common_obstacle(int x0, int x1, int y0, int y1)
 {
         int histo[256] = {};
@@ -599,6 +459,7 @@ int find_common_obstacle(int x0, int x1, int y0, int y1)
         return best_idx;
 }
 
+// randomly place things w/o breaking the connectivity of key points
 void add_random_obstacles_and_openings()
 {
         int n;
@@ -700,15 +561,16 @@ void odnar()
         cook_squares_again();
         print_orooms();
 
-        //place_initial_rects();
-        //place_connecting_rects();
-        convert_srooms();
+        convert_orooms_to_charout();
 
         bleed_edges();
         set_key_points();
         if (!are_key_points_connected())
+        {
                 fprintf(stderr, "failure: key points initially unconnected\n");
+                exit(1);
+        }
         add_random_obstacles_and_openings();
 
-        print_srooms();
+        print_charout();
 }
