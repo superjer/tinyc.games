@@ -9,7 +9,7 @@ This project is an example of how you can get started making a game in C that wi
 
 ![Tet](https://raw.githubusercontent.com/superjer/tinyc.games/gh-pages/images/tet-tiny.png)
 ![Flappy](https://raw.githubusercontent.com/superjer/tinyc.games/gh-pages/images/flappy-tiny.png)
-![Blocko](https://raw.githubusercontent.com/superjer/tinyc.games/gh-pages/images/blocko-tiny.png)
+![Blocko](https://raw.githubusercontent.com/superjer/tinyc.games/gh-pages/images/shadow-blocko.png)
 
 ## How do I do it?
 
