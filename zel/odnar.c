@@ -473,26 +473,32 @@ void add_random_obstacles_and_openings()
                 int x, y;
                 int new_char = ' ';
 
+                int opening = (rand() % OPENINGS_MOD == 0);
+
                 // no edges super close to screen borders
-                if (x0 % sW == sW - 1) x0 -= 1;
-                if (x0 % sW == 0     ) x0 -= 2;
-                if (x0 % sW == 1     ) x0 -= 3;
-                if (x0 % sW == 2     ) x0 -= 4;
+                if (x0 % sW == sW - 2) x0 -= 0 + opening;
+                if (x0 % sW == sW - 1) x0 -= 1 + opening;
+                if (x0 % sW == 0     ) x0 -= 2 + opening;
+                if (x0 % sW == 1     ) x0 -= 3 + opening;
+                if (x0 % sW == 2     ) x0 -= 4 + opening;
                 if (x0 < 0) x0 = 0;
-                if (y0 % sH == sH - 1) y0 -= 1;
-                if (y0 % sH == 0     ) y0 -= 2;
-                if (y0 % sH == 1     ) y0 -= 3;
-                if (y0 % sH == 2     ) y0 -= 4;
+                if (y0 % sH == sH - 2) y0 -= 0 + opening;
+                if (y0 % sH == sH - 1) y0 -= 1 + opening;
+                if (y0 % sH == 0     ) y0 -= 2 + opening;
+                if (y0 % sH == 1     ) y0 -= 3 + opening;
+                if (y0 % sH == 2     ) y0 -= 4 + opening;
                 if (y0 < 0) y0 = 0;
-                if (x1 % sW == sW - 2) x1 += 4;
-                if (x1 % sW == sW - 1) x1 += 3;
-                if (x1 % sW == 0     ) x1 += 2;
-                if (x1 % sW == 1     ) x1 += 1;
+                if (x1 % sW == sW - 2) x1 += 4 + opening;
+                if (x1 % sW == sW - 1) x1 += 3 + opening;
+                if (x1 % sW == 0     ) x1 += 2 + opening;
+                if (x1 % sW == 1     ) x1 += 1 + opening;
+                if (x1 % sW == 2     ) x1 += 0 + opening;
                 if (x1 > sX * sW - 1 ) x1 = sX * sW - 1;
-                if (y1 % sH == sH - 2) y1 += 4;
-                if (y1 % sH == sH - 1) y1 += 3;
-                if (y1 % sH == 0     ) y1 += 2;
-                if (y1 % sH == 1     ) y1 += 1;
+                if (y1 % sH == sH - 2) y1 += 4 + opening;
+                if (y1 % sH == sH - 1) y1 += 3 + opening;
+                if (y1 % sH == 0     ) y1 += 2 + opening;
+                if (y1 % sH == 1     ) y1 += 1 + opening;
+                if (y1 % sH == 2     ) y1 += 0 + opening;
                 if (y1 > sY * sH - 1 ) y1 = sY * sH - 1;
 
                 char common = find_common_obstacle(x0, x1, y0, y1);
@@ -520,7 +526,7 @@ void add_random_obstacles_and_openings()
 
                 int no_edge = (x0 > 1 && y0 > 1 && x1 < sX * sW - 2 && y1 < sY * sH - 2);
                 int no_corner = (((x0 / sW) == (x1 / sW)) || ((y0 / sH) == (y1 / sH)));
-                int opening = no_edge && no_corner && (rand() % OPENINGS_MOD == 0);
+                opening = opening && no_edge && no_corner;
 
                 // confirm or undo blockage
                 for (x = x0; x < x1; x++) for (y = y0; y < y1; y++) {
