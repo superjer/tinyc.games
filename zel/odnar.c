@@ -22,11 +22,12 @@
 #define pW 3 // size of subscreen openings in preview printout
 #define pH 2
 
-#define LOOPINESS 0.04f // how often to accept a random door that makes a loop, 0.0-1.0
+#define LOOPINESS 0.66f // how often to accept a random door that makes a loop, 0.0-1.0
 #define EW_BIAS 0.65f // how often to choose an east-west door over north-south, 0.0-1.0
 #define RECTS 6
 #define NUM_KEY_POINTS (sX * sY)
 #define OBSTACLE_ATTEMPTS (sX * sY * 4)
+#define GRID_ATTEMPTS (sX * sY * 15)
 #define OPENINGS_MOD 9
 
 #define false 0
@@ -355,7 +356,8 @@ void wander(struct point * p, int steps)
         for (; steps > 0; steps--)
         {
                 struct point p2 = *p;
-                switch (rand()%4) {
+                switch (rand()%4)
+                {
                         case 0: p2.x--; break;
                         case 1: p2.y--; break;
                         case 2: p2.x++; break;
@@ -463,7 +465,8 @@ int find_common_obstacle(int x0, int x1, int y0, int y1)
 void add_random_obstacles_and_openings()
 {
         int n;
-        for (n = 0; n < OBSTACLE_ATTEMPTS; n++) {
+        for (n = 0; n < OBSTACLE_ATTEMPTS; n++)
+        {
                 int w = 2 + rand() % 7;
                 int h = 2 + rand() % 7;
                 int x0 = 2 + rand() % (sX * sW - w - 4);
@@ -529,7 +532,8 @@ void add_random_obstacles_and_openings()
                 opening = opening && no_edge && no_corner;
 
                 // confirm or undo blockage
-                for (x = x0; x < x1; x++) for (y = y0; y < y1; y++) {
+                for (x = x0; x < x1; x++) for (y = y0; y < y1; y++)
+                {
                         if (opening)
                         {
                                 if (charout[y][x] != '.')
@@ -544,13 +548,54 @@ void add_random_obstacles_and_openings()
         }
 }
 
+void add_random_grids()
+{
+        int n;
+        for (n = 0; n < GRID_ATTEMPTS; n++)
+        {
+                int w = 3 + rand() % 9;
+                int h = 3 + rand() % 7;
+                int x0 = 2 + rand() % (sX * sW - w - 4);
+                int y0 = 2 + rand() % (sY * sH - h - 4);
+                int x1 = x0 + w;
+                int y1 = y0 + h;
+                int x, y;
+                int grid_char = rand() % 2 ? 'T' : 'S';
+                int sum = 0;
+
+                if (x0 % sW == sW - 1) x0 -= 1;
+                if (x0 % sW == 0)      x0 -= 2;
+                if (y0 % sH == sH - 1) y0 -= 1;
+                if (y0 % sH == 0)      y0 -= 2;
+                if (x1 % sW == 0)      x1 += 2;
+                if (x1 % sW == 1)      x1 += 1;
+                if (y1 % sH == 0)      y1 += 2;
+                if (y1 % sH == 1)      y1 += 1;
+
+                for (x = x0; x < x1; x++) for (y = y0; y < y1; y++)
+                        sum += charout[y][x] != ' ' && charout[y][x] != '.';
+
+                if (sum) continue;
+
+                for (x = x0 + 1; x < x1 - 1; x++) for (y = y0 + 1; y < y1 - 1; y++)
+                {
+                        if (charout[y][x] == '.') continue;
+
+                        int xedge = (x + 1) % sW < 2;
+                        int yedge = (y + 1) % sH < 2;
+                        if (((x - x0) % 2 || xedge) && ((y - y0) % 2 || yedge))
+                                charout[y][x] = grid_char;
+                }
+        }
+}
+
 void odnar()
 {
         int traverse_count = 0;
 
         srand(time(NULL));
 
-        cook_corners();
+        //cook_corners();
         cook_squares();
 
         print_orooms();
@@ -577,6 +622,7 @@ void odnar()
                 exit(1);
         }
         add_random_obstacles_and_openings();
+        add_random_grids();
 
-        print_charout();
+        //print_charout();
 }

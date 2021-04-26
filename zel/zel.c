@@ -24,7 +24,7 @@
 #define PLYR_W BS                  // physical width and height of the player
 #define PLYR_H BS2                 // ^
 #define PLYR_SPD 6                 // units per frame
-#define LATERAL_STEPS 8            // how far to check for a way around an obstacle
+#define LATERAL_STEPS 6            // how far to check for a way around an obstacle
 #define NR_PLAYERS 4
 #define NR_ENEMIES 8
 
