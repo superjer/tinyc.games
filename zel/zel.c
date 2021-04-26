@@ -42,17 +42,20 @@
 #define ROCK 55
 #define WATR 56
 #define STON 57
+#define RIVR 71
+#define RIV2 72
 
 #define BLOK 45        // the bevelled block
-#define CLIP 58        // invisible but solid tile
+#define CLIP 120       // invisible but solid tile
 #define LASTSOLID CLIP // everything less than here is solid
-#define HALFCLIP 59    // this is half solid (upper half)
-#define SAND 60        // sand - can walk on like open
+#define HALFCLIP 121   // this is half solid (upper half)
+#define SAND 195       // sand - can walk on like open
 
 #define SPOT 150
+#define BRGE 151
 #define DIRT 165
 
-#define OPEN 75        // invisible open, walkable space
+#define OPEN 180       // invisible open, walkable space
 
 enum enemytypes {
         PIG = 7,
@@ -294,6 +297,9 @@ void load_room()
                                 c == 'R' ? ROCK :
                                 c == 'S' ? STON :
                                 c == 'W' ? WATR :
+                                c == 'V' ? RIVR :
+                                c == 'X' ? RIV2 :
+                                c == 'B' ? BRGE :
                                 c == '.' ? SPOT : DIRT;
                         tiles[y][x] = t;
                 }

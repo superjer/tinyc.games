@@ -1,20 +1,14 @@
-#include <stdio.h>
-#include <memory.h>
-#include <stdlib.h>
-#include <time.h>
-
-#ifndef DUNW
-#define DUNW 3
-#define DUNH 3
-#endif
+#include "zel.c"
+#ifndef OW_GEN_H
+#define OW_GEN_H
 
 // default 12x6 
 #define sX DUNW // overworld screens across (srooms)
 #define sY DUNH // overworld screens down
 #define oX (sX*2) // subscreen count (each screen is 4 subscreens) (orooms)
 #define oY (sY*2)
-#define sW 15 // size of each screen
-#define sH 11
+#define sW TILESW // size of each screen
+#define sH TILESH
 #define sW2 (sW/2)
 #define sH2 (sH/2)
 #define sW4 (sW/4)
@@ -28,6 +22,7 @@
 #define NUM_KEY_POINTS (sX * sY)
 #define OBSTACLE_ATTEMPTS (sX * sY * 4)
 #define GRID_ATTEMPTS (sX * sY * 15)
+#define RIVER_ATTEMPTS (sX * sY * 9)
 #define OPENINGS_MOD 9
 
 #define false 0
@@ -271,7 +266,7 @@ void convert_orooms_to_charout()
                         case 0: screen_char = 'R'; break;
                         case 1: screen_char = 'S'; break;
                         case 2: screen_char = 'T'; break;
-                        case 3: screen_char = 'W'; break;
+                        case 3: screen_char = rand() % 4 ? 'R' : 'W'; break;
                 }
 
                 for (m = 0; m < sW; m++) for (n = 0; n < sH; n++)
@@ -464,8 +459,7 @@ int find_common_obstacle(int x0, int x1, int y0, int y1)
 // randomly place things w/o breaking the connectivity of key points
 void add_random_obstacles_and_openings()
 {
-        int n;
-        for (n = 0; n < OBSTACLE_ATTEMPTS; n++)
+        for (int n = 0; n < OBSTACLE_ATTEMPTS; n++)
         {
                 int w = 2 + rand() % 7;
                 int h = 2 + rand() % 7;
@@ -548,10 +542,99 @@ void add_random_obstacles_and_openings()
         }
 }
 
+int can_flow_into(char c)
+{
+        return c != ' ' && c != '.' && c != 'B' && c != 'V';
+}
+
+void river_flow()
+{
+        for (int n = 0; n < RIVER_ATTEMPTS; n++)
+        {
+                int x = rand() % (sX * sW);
+                int y = rand() % (sY * sH);
+                int east_flow = rand() % 2;
+
+                // must start in a body of water or far north
+                if (y != 0 && charout[y][x] != 'W') continue;
+
+                while (charout[y][x] == 'W' && y < sY * sH - 1)
+                        y++;
+
+                if (can_flow_into(charout[y][x]))
+                {
+                        while (1)
+                        {
+                                if (charout[y][x] == 'W' || charout[y][x] == 'V') break;
+
+                                charout[y][x] = 'V';
+                                printf("set river %d %d next char down is '%c'\n", x, y, y < sY * sH - 1 ? charout[y+1][x] : 'o');
+                                printf("can obstructive downflow? %d\n", charout[y + 1][x] == ' ');
+                                if (y >= sY * sH - 1)
+                                {
+                                        printf("large y break\n");
+                                        break;
+                                }
+                                else if (can_flow_into(charout[y + 1][x]))
+                                {
+                                        printf("go south\n");
+                                        y++;
+                                }
+                                else if (east_flow && x < sX * sW - 1 && can_flow_into(charout[y][x + 1]))
+                                {
+                                        printf("go east\n");
+                                        x++;
+                                }
+                                else if (x > 0 && can_flow_into(charout[y][x - 1]))
+                                {
+                                        printf("go west\n");
+                                        x--;
+                                }
+                                else if (x < sX * sW - 1 && can_flow_into(charout[y][x + 1]))
+                                {
+                                        printf("go east (2nd)\n");
+                                        x++;
+                                }
+                                else if (charout[y + 1][x] == ' ') // obstructive downflow
+                                {
+                                        printf("start obstructive downflow\n");
+                                        y++;
+                                        int ystart = y;
+                                        while (y < sY * sH - 1 && charout[y][x] == ' ')
+                                        {
+                                                charout[y][x] = '?';
+                                                y++;
+                                        }
+
+                                        // add bridge
+                                        int randy = ystart + rand() % (y - ystart + 1);
+                                        printf("Bridge at: %d %d\n", x, randy);
+                                        charout[randy][x] = ' ';
+
+                                        //TODO: check for connectivity
+                                        charout[randy][x] = 'B';
+
+                                        for (int yy = ystart; yy < y; yy++)
+                                                if (charout[yy][x] == '?')
+                                                        charout[yy][x] = 'X';
+
+                                        if (y >= sY * sH - 1 || !can_flow_into(charout[y][x]))
+                                                break;
+                                }
+                                else
+                                {
+                                        printf("else break\n");
+                                        break;
+                                }
+                        }
+                        return;
+                }
+        }
+}
+
 void add_random_grids()
 {
-        int n;
-        for (n = 0; n < GRID_ATTEMPTS; n++)
+        for (int n = 0; n < GRID_ATTEMPTS; n++)
         {
                 int w = 3 + rand() % 9;
                 int h = 3 + rand() % 7;
@@ -622,7 +705,10 @@ void ow_gen()
                 exit(1);
         }
         add_random_obstacles_and_openings();
+        river_flow();
         add_random_grids();
 
         //print_charout();
 }
+
+#endif
