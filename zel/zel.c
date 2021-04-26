@@ -68,7 +68,7 @@ enum enemytypes {
 enum dir {NORTH, WEST, EAST, SOUTH};
 enum doors {WALL, LOCKED, SHUTTER, MAXWALL=SHUTTER, DOOR, HOLE, ENTRY, MAXDOOR};
 
-#include "odnar.c"
+#include "ow_gen.c"
 #include "level_data.c"
 
 int demilitarized_zone[10000];
@@ -139,7 +139,7 @@ void screen_scroll(int dx, int dy);
 //the entry point and main game loop
 int main()
 {
-        odnar();
+        ow_gen();
         setup();
         new_game();
 

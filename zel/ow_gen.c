@@ -589,7 +589,7 @@ void add_random_grids()
         }
 }
 
-void odnar()
+void ow_gen()
 {
         int traverse_count = 0;
 
