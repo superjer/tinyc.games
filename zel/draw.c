@@ -126,7 +126,6 @@ void draw_room_tile(int x, int y)
 {
         int t = tiles[y][x];
         int bgtile = t == WATR ? WATR : DIRT;
-        int dofg = (t != WATR && (t < DIRT || t > (DIRT + L + R + U + D)));
 
         if (t != WATR)
         {
@@ -142,7 +141,7 @@ void draw_room_tile(int x, int y)
                 &(SDL_Rect){BS*x, BS*y, BS, BS});
 
         // foreground tile
-        if(dofg && t != DIRT && t != OPEN && t != CLIP && t != HALFCLIP)
+        if(t != WATR && t != DIRT && t != OPEN && t != CLIP && t != HALFCLIP)
                 SDL_RenderCopy(renderer, sprites,
                         &(SDL_Rect){20*(t%15), 20*(t/15), 20, 20},
                         &(SDL_Rect){BS*x, BS*y, BS, BS});

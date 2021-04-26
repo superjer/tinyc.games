@@ -297,15 +297,6 @@ void load_room()
                                 c == '.' ? SPOT : DIRT;
                         tiles[y][x] = t;
                 }
-
-                for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
-                {
-                        if (tiles[y][x] != DIRT) continue;
-                        if (x < TILESW - 1 && tiles[y][x + 1] == WATR) tiles[y][x] += R;
-                        if (x > 0          && tiles[y][x - 1] == WATR) tiles[y][x] += L;
-                        if (y < TILESH - 1 && tiles[y + 1][x] == WATR) tiles[y][x] += D;
-                        if (y > 0          && tiles[y - 1][x] == WATR) tiles[y][x] += U;
-                }
         }
 
         int spawns[] = {
