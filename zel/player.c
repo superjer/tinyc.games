@@ -1,3 +1,7 @@
+#include "zel.c"
+#ifndef PLAYER_C
+#define PLAYER_C
+
 enum playerstates {PL_NORMAL, PL_STAB, PL_HURT, PL_DYING, PL_DEAD};
 
 //return 0 iff we couldn't actually move
@@ -200,3 +204,5 @@ void update_player()
         else if(p->pos.y >= H - PLYR_H - 4)
                 screen_scroll(0, 1);
 }
+
+#endif

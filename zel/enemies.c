@@ -1,3 +1,7 @@
+#include "zel.c"
+#ifndef ENEMIES_C
+#define ENEMIES_C
+
 #define SCREW_STUN 20
 
 enum toolboxstates {TB_READY, TB_JUMP, TB_LAND, TB_OPEN, TB_SHUT, TB_HURT};
@@ -290,3 +294,5 @@ void update_enemies()
                 }
         }
 }
+
+#endif
