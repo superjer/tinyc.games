@@ -561,73 +561,69 @@ void river_flow()
                 while (charout[y][x] == 'W' && y < sY * sH - 1)
                         y++;
 
-                if (can_flow_into(charout[y][x]))
+                if (can_flow_into(charout[y][x])) while (1)
                 {
-                        while (1)
+                        if (charout[y][x] == 'W' || charout[y][x] == 'V') break;
+
+                        charout[y][x] = 'V';
+                        if (y >= sY * sH - 1)
                         {
-                                if (charout[y][x] == 'W' || charout[y][x] == 'V') break;
-
-                                charout[y][x] = 'V';
-                                printf("set river %d %d next char down is '%c'\n", x, y, y < sY * sH - 1 ? charout[y+1][x] : 'o');
-                                printf("can obstructive downflow? %d\n", charout[y + 1][x] == ' ');
-                                if (y >= sY * sH - 1)
-                                {
-                                        printf("large y break\n");
-                                        break;
-                                }
-                                else if (can_flow_into(charout[y + 1][x]))
-                                {
-                                        printf("go south\n");
-                                        y++;
-                                }
-                                else if (east_flow && x < sX * sW - 1 && can_flow_into(charout[y][x + 1]))
-                                {
-                                        printf("go east\n");
-                                        x++;
-                                }
-                                else if (x > 0 && can_flow_into(charout[y][x - 1]))
-                                {
-                                        printf("go west\n");
-                                        x--;
-                                }
-                                else if (x < sX * sW - 1 && can_flow_into(charout[y][x + 1]))
-                                {
-                                        printf("go east (2nd)\n");
-                                        x++;
-                                }
-                                else if (charout[y + 1][x] == ' ') // obstructive downflow
-                                {
-                                        printf("start obstructive downflow\n");
-                                        y++;
-                                        int ystart = y;
-                                        while (y < sY * sH - 1 && charout[y][x] == ' ')
-                                        {
-                                                charout[y][x] = '?';
-                                                y++;
-                                        }
-
-                                        // add bridge
-                                        int randy = ystart + rand() % (y - ystart + 1);
-                                        printf("Bridge at: %d %d\n", x, randy);
-                                        charout[randy][x] = ' ';
-
-                                        //TODO: check for connectivity
-                                        charout[randy][x] = 'B';
-
-                                        for (int yy = ystart; yy < y; yy++)
-                                                if (charout[yy][x] == '?')
-                                                        charout[yy][x] = 'X';
-
-                                        if (y >= sY * sH - 1 || !can_flow_into(charout[y][x]))
-                                                break;
-                                }
-                                else
-                                {
-                                        printf("else break\n");
-                                        break;
-                                }
+                                break;
                         }
-                        return;
+                        else if (can_flow_into(charout[y + 1][x]))
+                        {
+                                y++;
+                        }
+                        else if (east_flow && x < sX * sW - 1 && can_flow_into(charout[y][x + 1]))
+                        {
+                                x++;
+                        }
+                        else if (x > 0 && can_flow_into(charout[y][x - 1]))
+                        {
+                                x--;
+                        }
+                        else if (x < sX * sW - 1 && can_flow_into(charout[y][x + 1]))
+                        {
+                                x++;
+                        }
+                        else if (charout[y + 1][x] == ' ') // obstructive downflow
+                        {
+                                printf("start obstructive downflow\n");
+                                y++;
+                                int ystart = y;
+                                while (y < sY * sH - 1 && charout[y][x] == ' ')
+                                {
+                                        charout[y][x] = '?';
+                                        y++;
+                                }
+
+                                // add bridge
+                                int randy = ystart + rand() % (y - ystart + 1);
+                                printf("Bridge at: %d %d\n", x, randy);
+                                charout[randy][x] = ' ';
+
+                                int bridge_char = 'B';
+                                int river_char = 'X';
+
+                                // if this breaks connectivity, undo the river
+                                if (!are_key_points_connected())
+                                        bridge_char = river_char = ' ';
+
+                                printf("river_char: %c\n", river_char);
+
+                                // confirm or undo river
+                                charout[randy][x] = bridge_char;
+                                for (int yy = ystart; yy < y; yy++)
+                                        if (charout[yy][x] == '?')
+                                                charout[yy][x] = river_char;
+
+                                if (y >= sY * sH - 1 || !can_flow_into(charout[y][x]))
+                                        break;
+                        }
+                        else
+                        {
+                                break;
+                        }
                 }
         }
 }
