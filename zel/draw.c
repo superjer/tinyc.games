@@ -122,29 +122,29 @@ void draw_health()
         }
 }
 
-void draw_room_tile(int x, int y)
+void draw_room_tile(int (*ta)[TILESW], int x, int y, int offx, int offy)
 {
-        int t = tiles[y][x];
+        int t = ta[y][x];
         int bgtile = t == WATR ? WATR : DIRT;
 
         if (t != WATR)
         {
-                if (x > 0      && tiles[y][x - 1] == WATR) bgtile += L;
-                if (x < sW - 1 && tiles[y][x + 1] == WATR) bgtile += R;
-                if (y > 0      && tiles[y - 1][x] == WATR) bgtile += U;
-                if (y < sH - 1 && tiles[y + 1][x] == WATR) bgtile += D;
+                if (x > 0      && ta[y][x - 1] == WATR) bgtile += L;
+                if (x < sW - 1 && ta[y][x + 1] == WATR) bgtile += R;
+                if (y > 0      && ta[y - 1][x] == WATR) bgtile += U;
+                if (y < sH - 1 && ta[y + 1][x] == WATR) bgtile += D;
         }
 
         // background tile
         SDL_RenderCopy(renderer, sprites,
                 &(SDL_Rect){20*(bgtile%15), 20*(bgtile/15), 20, 20},
-                &(SDL_Rect){BS*x, BS*y, BS, BS});
+                &(SDL_Rect){BS*x + offx, BS*y + offy, BS, BS});
 
         // foreground tile
         if(t != WATR && t != DIRT && t != OPEN && t != CLIP && t != HALFCLIP)
                 SDL_RenderCopy(renderer, sprites,
                         &(SDL_Rect){20*(t%15), 20*(t/15), 20, 20},
-                        &(SDL_Rect){BS*x, BS*y, BS, BS});
+                        &(SDL_Rect){BS*x + offx, BS*y + offy, BS, BS});
 }
 
 void draw_enemy(int i)
@@ -236,6 +236,8 @@ void draw_enemy(int i)
         // copy back any changes made
         enemy[i] = e;
 
+        dest.x += scrollx;
+        dest.y += scrolly;
         SDL_RenderCopy(renderer, sprites, &src, &dest);
 }
 
@@ -270,6 +272,8 @@ void draw_player(int i)
 
         src = (SDL_Rect){20+20*animframe, 60+20*p.dir, 20, 20};
         dest = p.pos;
+        dest.x += scrollx;
+        dest.y += scrolly;
         dest.y -= BS2;
         dest.h += BS2;
 
@@ -313,13 +317,21 @@ void draw_stuff()
 
         draw_doors_lo();
 
-        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
-                draw_room_tile(x, y);
+        for (int x = 0; x < TILESW; x++) for (int y = 0; y < TILESH; y++)
+                draw_room_tile(tiles, x, y, scrollx, scrolly);
 
-        for(int i = 0; i < NR_ENEMIES; i++)
+        if (scrollx || scrolly)
+        {
+                int basex = -sign(scrollx) * TILESW * BS;
+                int basey = -sign(scrolly) * TILESH * BS;
+                for (int x = 0; x < TILESW; x++) for (int y = 0; y < TILESH; y++)
+                        draw_room_tile(tiles_old, x, y, basex + scrollx, basey + scrolly);
+        }
+
+        for (int i = 0; i < NR_ENEMIES; i++)
                 draw_enemy(i);
 
-        for(int i = 0; i < NR_PLAYERS; i++)
+        for (int i = 0; i < NR_PLAYERS; i++)
                 draw_player(i);
 
         draw_doors_hi();

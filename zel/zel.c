@@ -30,6 +30,8 @@
 #define LATERAL_STEPS 6            // how far to check for a way around an obstacle
 #define NR_PLAYERS 4
 #define NR_ENEMIES 8
+#define XSCRAMT (TILESW*BS/15)
+#define YSCRAMT (TILESH*BS/15)
 
 #define PIT   0        // pit tile and edges:
 #define R     1        // PIT|R for pit with right edge
@@ -79,6 +81,9 @@ int inside = 0;
 int roomx; // current room x,y
 int roomy;
 int tiles[TILESH][TILESW];
+int tiles_old[TILESH][TILESW];
+int scrollx;
+int scrolly;
 
 struct player {
         SDL_Rect pos;
@@ -134,6 +139,8 @@ int world_collide(SDL_Rect plyr);
 int edge_collide(SDL_Rect plyr);
 void new_game();
 void screen_scroll(int dx, int dy);
+void update_scroll();
+int sign(int n) { return n == 0 ? 0 : n > 0 ? 1 : -1; }
 
 #include "player.c"
 #include "enemies.c"
@@ -157,6 +164,7 @@ int main()
 
                 update_player();
                 update_enemies();
+                update_scroll();
                 draw_stuff();
                 SDL_Delay(1000 / 60);
                 frame++;
@@ -407,8 +415,8 @@ void screen_scroll(int dx, int dy)
         roomx += dx;
         roomy += dy;
 
-        player[0].pos.x -= dx * (W - BS*2);
-        player[0].pos.y -= dy * (H - BS*2);
+        player[0].pos.x -= dx * (W - BS);
+        player[0].pos.y -= dy * (H - BS);
 
         //bad room! back to start!
         if(roomx < 0 || roomx >= DUNW || roomy < 0 || roomy >= DUNH)
@@ -419,7 +427,20 @@ void screen_scroll(int dx, int dy)
                 player[0].pos.y = BS;
         }
 
+        scrollx = dx * TILESW * BS;
+        scrolly = dy * TILESH * BS;
+        memcpy(tiles_old, tiles, sizeof tiles);
         load_room();
+}
+
+void update_scroll()
+{
+        if (scrollx > XSCRAMT) scrollx -= XSCRAMT;
+        else if (scrollx < -XSCRAMT) scrollx += XSCRAMT;
+        else scrollx = 0;
+        if (scrolly > YSCRAMT) scrolly -= YSCRAMT;
+        else if (scrolly < -YSCRAMT) scrolly += YSCRAMT;
+        else scrolly = 0;
 }
 
 //collide a rect with a rect

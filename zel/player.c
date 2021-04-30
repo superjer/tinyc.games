@@ -194,14 +194,14 @@ void update_player()
         }
 
         //check for leaving screen
-        if(p->pos.x <= 4)
+        if(p->pos.x < 0)
                 screen_scroll(-1, 0);
-        else if(p->pos.x >= W - PLYR_W - 4)
+        else if(p->pos.x > W - PLYR_W)
                 screen_scroll(1, 0);
 
-        if(p->pos.y <= 4)
+        if(p->pos.y < PLYR_H)
                 screen_scroll(0, -1);
-        else if(p->pos.y >= H - PLYR_H - 4)
+        else if(p->pos.y > H - PLYR_H)
                 screen_scroll(0, 1);
 }
 
