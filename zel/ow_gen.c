@@ -620,7 +620,7 @@ void river_flow()
                                 }
 
                                 // add bridge
-                                int randy = ystart + rand() % (y - ystart + 1);
+                                int randy = ystart + rand() % (y - ystart);
                                 printf("Bridge at: %d %d\n", x, randy);
                                 charout[randy][x] = ' ';
 
@@ -690,6 +690,49 @@ void add_random_grids()
         }
 }
 
+int is_smoothable(char c)
+{
+        return (c == 'T' || c == 'R' || c == 'S');
+}
+
+int is_smoothing(char c)
+{
+        return (c == 'T' || c == 'R' || c == 'S' || c == 'W');
+}
+
+// get rid of noise within solid areas
+void smoothen()
+{
+        for (int i = 1; i < sY * sH - 1; i++) for (int j = 1; j < sX * sW - 1; j++)
+        {
+                char a = charout[i + 1][j];
+                char b = charout[i - 1][j];
+                char c = charout[i][j + 1];
+                char d = charout[i][j - 1];
+
+                if (!is_smoothable(charout[i][j]))
+                        continue;
+
+                if (is_smoothing(a) && a == b)
+                {
+                        if (charout[i][j] != a)
+                        {
+                                printf("Smoothened %d %d to %c\n", i, j, a);
+                                charout[i][j] = a;
+                        }
+                }
+                else if (is_smoothing(c) && c == d)
+                {
+                        if (charout[i][j] != c)
+                        {
+                                printf("Smoothened %d %d to %c\n", i, j, c);
+                                charout[i][j] = c;
+                        }
+                }
+        }
+
+}
+
 void ow_gen()
 {
         int traverse_count = 0;
@@ -725,6 +768,7 @@ void ow_gen()
         add_random_obstacles_and_openings();
         river_flow();
         add_random_grids();
+        smoothen();
 
         //print_charout();
         print_utf8out();

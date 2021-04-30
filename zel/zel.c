@@ -55,6 +55,7 @@
 
 #define SPOT 150
 #define BRGE 151
+#define CAVE 152
 #define DIRT 165
 
 #define OPEN 180       // invisible open, walkable space
