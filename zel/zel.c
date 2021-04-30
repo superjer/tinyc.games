@@ -16,6 +16,8 @@
 #define SCALE 3                    // 3x magnification
 #define W (300*SCALE)              // window width, height
 #define H (220*SCALE)              // ^
+#define W2 (W/2)
+#define H2 (H/2)
 #define TILESW 15                  // total room width, height
 #define TILESH 11                  // ^
 #define INNERTILESW 11             // inner room width, height
@@ -30,8 +32,6 @@
 #define LATERAL_STEPS 6            // how far to check for a way around an obstacle
 #define NR_PLAYERS 4
 #define NR_ENEMIES 8
-#define XSCRAMT (TILESW*BS/15)
-#define YSCRAMT (TILESH*BS/15)
 
 #define PIT   0        // pit tile and edges:
 #define R     1        // PIT|R for pit with right edge
@@ -336,7 +336,7 @@ void load_room()
                 enemy[i].type = rooms[r].enemies[i];
                 enemy[i].alive = 1;
                 enemy[i].hp = 1;
-                enemy[i].freeze = 20 + rand() % 30;
+                enemy[i].freeze = 30 + rand() % 30;
 
                 //find a good spawn position
                 for(int limit = 0; limit < 70; limit++, j += 2)
@@ -358,7 +358,7 @@ void load_room()
                         enemy[i].pos.w = 2*BS;
                         enemy[i].pos.h = BS;
                         enemy[i].hp = 7;
-                        enemy[i].freeze = 10;
+                        enemy[i].freeze = 30;
                 }
 
                 if(enemy[i].type == SCREW)
@@ -435,11 +435,15 @@ void screen_scroll(int dx, int dy)
 
 void update_scroll()
 {
-        if (scrollx > XSCRAMT) scrollx -= XSCRAMT;
-        else if (scrollx < -XSCRAMT) scrollx += XSCRAMT;
+        int xamt = (W - abs(abs(scrollx) - W2)) / 16 + 2;
+        int yamt = (H - abs(abs(scrolly) - H2)) / 16 + 2;
+
+        if (scrollx > xamt) scrollx -= xamt;
+        else if (scrollx < -xamt) scrollx += xamt;
         else scrollx = 0;
-        if (scrolly > YSCRAMT) scrolly -= YSCRAMT;
-        else if (scrolly < -YSCRAMT) scrolly += YSCRAMT;
+
+        if (scrolly > yamt) scrolly -= yamt;
+        else if (scrolly < -yamt) scrolly += yamt;
         else scrolly = 0;
 }
 
