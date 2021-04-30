@@ -22,7 +22,7 @@
 #define TILESH 11                  // ^
 #define INNERTILESW 11             // inner room width, height
 #define INNERTILESH 7              // ^
-#define DUNH 3                     // entire dungeon width, height
+#define DUNH 4                     // entire dungeon width, height
 #define DUNW 5                     // ^
 #define BS (20*SCALE)              // block size
 #define BS2 (BS/2)                 // block size in half

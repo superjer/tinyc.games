@@ -23,7 +23,7 @@
 #define OBSTACLE_ATTEMPTS (sX * sY * 4)
 #define GRID_ATTEMPTS (sX * sY * 15)
 #define RIVER_ATTEMPTS (sX * sY * 9)
-#define OPENINGS_MOD 9
+#define OPENINGS_MOD 2
 
 #define false 0
 #define true 1
@@ -431,9 +431,31 @@ int are_key_points_connected()
 // just print charout to the screen
 void print_charout()
 {
-        int i;
-        for (i = 0; i < sY * sH; i++)
+        for (int i = 0; i < sY * sH; i++)
                 printf("%.*s\n", sX * sW, charout[i]);
+}
+
+int impassable(char c)
+{
+        return (c != ' ' && c != '.' && c != 'B');
+}
+
+void print_utf8out()
+{
+        char *boxes = " \0\0\0▘\0▝\0▀\0▖\0▌\0▞\0▛\0▗\0▚\0▐\0▜\0▄\0▙\0▟\0█";
+        for (int i = 0; i < sY * sH - 1; i += 2)
+        {
+                for (int j = 0; j < sX * sW - 1; j += 2)
+                {
+                        int pos =
+                                1 * impassable(charout[i  ][j  ]) +
+                                2 * impassable(charout[i  ][j+1]) +
+                                4 * impassable(charout[i+1][j  ]) +
+                                8 * impassable(charout[i+1][j+1]);
+                        printf("%s", boxes + (pos * 4));
+                }
+                printf("\n");
+        }
 }
 
 // finds the most common obstacle in a recatangle
@@ -677,7 +699,7 @@ void ow_gen()
         //cook_corners();
         cook_squares();
 
-        print_orooms();
+        //print_orooms();
 
         while (traverse_count < oX * oY)
         {
@@ -689,7 +711,7 @@ void ow_gen()
                 traverse(oX / 2, oY - 1);
 
         cook_squares_again();
-        print_orooms();
+        //print_orooms();
 
         convert_orooms_to_charout();
 
@@ -705,6 +727,7 @@ void ow_gen()
         add_random_grids();
 
         //print_charout();
+        print_utf8out();
 }
 
 #endif
