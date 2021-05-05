@@ -54,11 +54,6 @@ struct point {
 
 struct point key_points[NUM_KEY_POINTS];
 
-int pct(int chance)
-{
-        return rand() % 100 < chance;
-}
-
 void remove_access()
 {
         int x, y;

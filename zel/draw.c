@@ -151,16 +151,16 @@ void draw_enemy(int i)
 {
         SDL_Rect src;
         SDL_Rect dest;
-        struct enemy e = enemy[i];
+        #define e (enemy[i])
 
         if (!e.alive) return;
 
-        if (e.type == SCREW && e.hp < 2)
+        if (e.type == SCREW && e.state != READY)
         {
                 if (e.stun == SCREW_STUN)
-                        e.frame = e.hp ? 6 : 8;
+                        e.frame = e.state == STUCK ? 6 : 8;
                 else if (e.stun == SCREW_STUN - 5)
-                        e.frame = e.hp ? 7 : 9;
+                        e.frame = e.state == STUCK ? 7 : 9;
         }
 
         if (frame%10 == 0) switch (e.type)
@@ -172,21 +172,21 @@ void draw_enemy(int i)
                                 e.frame = 4;
                         break;
                 case SCREW:
-                        if (e.hp >= 2)
+                        if (e.state == READY)
                                 e.frame = (e.frame + 1) % 6;
                         else if (e.stun == 0)
                         {
                                 if (rand() % 10 == 0)
-                                        e.frame = e.hp ? 10 : 11;
+                                        e.frame = e.state == STUCK ? 10 : 11;
                                 else
-                                        e.frame = e.hp ? 7 : 9;
+                                        e.frame = e.state == STUCK ? 7 : 9;
                         }
                         break;
         }
 
         if (e.type == TOOLBOX)
         {
-                src = (SDL_Rect){20+40*e.frame, 20, 40, 40};
+                src = (SDL_Rect){20 + 40 * e.frame, 20, 40, 40};
                 dest = e.pos;
                 dest.y -= BS;
                 dest.h += BS;
@@ -233,19 +233,18 @@ void draw_enemy(int i)
                 dest.y += (rand()%3 - 1) * SCALE;
         }
 
-        // copy back any changes made
-        enemy[i] = e;
-
         dest.x += scrollx;
         dest.y += scrolly;
         SDL_RenderCopy(renderer, sprites, &src, &dest);
+
+        #undef e
 }
 
 void draw_player(int i)
 {
         SDL_Rect src;
         SDL_Rect dest;
-        struct player p = player[i];
+        #define p (player[i])
 
         if(!p.alive) return;
 
@@ -302,8 +301,7 @@ void draw_player(int i)
                 SDL_RenderCopy(renderer, sprites, &src, &dest);
         }
 
-        // copy back any changes
-        player[i] = p;
+        #undef p
 }
 
 //draw everything in the game on the screen

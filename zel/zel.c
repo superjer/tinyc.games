@@ -74,6 +74,8 @@ enum enemytypes {
 enum dir {NORTH, WEST, EAST, SOUTH};
 enum doors {WALL, LOCKED, SHUTTER, MAXWALL=SHUTTER, DOOR, HOLE, ENTRY, MAXDOOR};
 
+int pct(int chance) { return rand() % 100 < chance; } 
+
 #include "ow_gen.c"
 #include "level_data.c"
 
@@ -115,6 +117,7 @@ struct enemy {
         int hp;
         int stun;
         int freeze;
+        int harmful;
 } enemy[NR_ENEMIES];
 
 int idle_time = 30;
@@ -138,6 +141,7 @@ int collide(SDL_Rect plyr, SDL_Rect block);
 int block_collide(int bx, int by, SDL_Rect plyr);
 int world_collide(SDL_Rect plyr);
 int edge_collide(SDL_Rect plyr);
+int inner_collide(SDL_Rect plyr);
 void new_game();
 void screen_scroll(int dx, int dy);
 void update_scroll();
@@ -335,9 +339,10 @@ void load_room()
                 if(!rooms[r].enemies[i]) continue;
 
                 enemy[i].type = rooms[r].enemies[i];
-                enemy[i].alive = 1;
+                enemy[i].alive = true;
                 enemy[i].hp = 1;
                 enemy[i].freeze = 30 + rand() % 30;
+                enemy[i].harmful = true;
 
                 //find a good spawn position
                 for(int limit = 0; limit < 70; limit++, j += 2)
@@ -358,7 +363,7 @@ void load_room()
                         enemy[i].pos.y = 3*BS;
                         enemy[i].pos.w = 2*BS;
                         enemy[i].pos.h = BS;
-                        enemy[i].hp = 7;
+                        enemy[i].hp = 1;
                         enemy[i].freeze = 30;
                 }
 
@@ -401,6 +406,20 @@ int edge_collide(SDL_Rect plyr)
         if (plyr.x <= 0)
                 return true;
         if (plyr.y <= 0)
+                return true;
+
+        return false;
+}
+
+int inner_collide(SDL_Rect plyr)
+{
+        if (plyr.x + plyr.w >= W - BS * 2)
+                return true;
+        if (plyr.y + plyr.h >= H - BS * 2)
+                return true;
+        if (plyr.x <= BS * 2)
+                return true;
+        if (plyr.y <= BS * 2)
                 return true;
 
         return false;

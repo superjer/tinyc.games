@@ -169,7 +169,7 @@ void update_player()
                                 player[0].state != PL_DYING &&
                                 player[0].stun < 1 &&
                                 enemy[i].stun < 1 &&
-                                enemy[i].hp > 0 &&
+                                enemy[i].harmful &&
                                 enemy[i].type != PUFF &&
                                 collide(player[0].pos, enemy[i].pos))
                 {
