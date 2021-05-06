@@ -2,11 +2,12 @@
 #ifndef DRAW_C
 #define DRAW_C
 
+SDL_Rect src, dest;
+
 void draw_doors_lo()
 {
         if (!inside) return;
 
-        SDL_Rect src, dest;
         int r = roomy*DUNW + roomx; // current room coordinate
         int *doors = rooms[r].doors;
 
@@ -35,7 +36,6 @@ void draw_doors_hi()
 {
         if (!inside) return;
 
-        SDL_Rect src, dest;
         int r = roomy*DUNW + roomx; // current room coordinate
         int *doors = rooms[r].doors;
 
@@ -110,8 +110,8 @@ void draw_map()
 void draw_health()
 {
         int hp = player[0].hp;
-        SDL_Rect dest = {10, 10, SCALE*10, SCALE*10};
-        SDL_Rect src = {290, 140, 10, 10};
+        dest = (SDL_Rect){10, 10, SCALE*10, SCALE*10};
+        src = (SDL_Rect){290, 140, 10, 10};
         for(int hc = 20; hc > 0; hc -= 4)
         {
                 src.y = 140 + 10 * (hp > 4 ? 4 :
@@ -147,14 +147,30 @@ void draw_room_tile(int (*ta)[TILESW], int x, int y, int offx, int offy)
                         &(SDL_Rect){BS*x + offx, BS*y + offy, BS, BS});
 }
 
-void draw_enemy(int i)
+#define e (enemy[n])
+
+void draw_board(int n)
 {
-        SDL_Rect src;
-        SDL_Rect dest;
-        #define e (enemy[i])
+        if (frame % 10 == 0)
+        {
+                e.frame = (e.frame + 1) % 4;
+                if(e.frame == 0 && rand()%10 == 0)
+                        e.frame = 4;
+        }
+}
 
-        if (!e.alive) return;
+void draw_pig(int n)
+{
+        if (frame % 10 == 0)
+        {
+                e.frame = (e.frame + 1) % 4;
+                if(e.frame == 0 && rand()%10 == 0)
+                        e.frame = 4;
+        }
+}
 
+void draw_screw(int n)
+{
         if (e.type == SCREW && e.state != READY)
         {
                 if (e.stun == SCREW_STUN)
@@ -163,87 +179,82 @@ void draw_enemy(int i)
                         e.frame = e.state == STUCK ? 7 : 9;
         }
 
-        if (frame%10 == 0) switch (e.type)
+        if (frame %10 == 0)
         {
-                case PIG:
-                case BOARD:
-                        e.frame = (e.frame + 1) % 4;
-                        if(e.frame == 0 && rand()%10 == 0)
-                                e.frame = 4;
-                        break;
-                case SCREW:
-                        if (e.state == READY)
-                                e.frame = (e.frame + 1) % 6;
-                        else if (e.stun == 0)
-                        {
-                                if (rand() % 10 == 0)
-                                        e.frame = e.state == STUCK ? 10 : 11;
-                                else
-                                        e.frame = e.state == STUCK ? 7 : 9;
-                        }
-                        break;
+                if (e.state == READY)
+                        e.frame = (e.frame + 1) % 6;
+                else if (e.stun == 0)
+                {
+                        if (rand() % 10 == 0)
+                                e.frame = e.state == STUCK ? 10 : 11;
+                        else
+                                e.frame = e.state == STUCK ? 7 : 9;
+                }
         }
 
-        if (e.type == TOOLBOX)
-        {
-                src = (SDL_Rect){20 + 40 * e.frame, 20, 40, 40};
-                dest = e.pos;
-                dest.y -= BS;
-                dest.h += BS;
-        }
-        else if (e.type == WRENCH)
-        {
+        src = (SDL_Rect){0+20*e.frame, e.type*20, 20, 20};
+}
+
+void draw_toolbox(int n)
+{
+        src = (SDL_Rect){20 + 40 * e.frame, 20, 40, 40};
+        dest = e.pos;
+        dest.y -= BS;
+        dest.h += BS;
+}
+
+void draw_wrench(int n)
+{
+        if (e.type == WRENCH)
                 src = (SDL_Rect){280, 60+20*((frame/4)%4), 20, 20};
-                dest = e.pos;
-                dest.y -= BS2;
-                dest.h += BS2;
-        }
-        else if (e.type == PIPEWRENCH)
-        {
-                src = (SDL_Rect){260, 60+20*((frame/4)%8), 20, 20};
-                dest = e.pos;
-                dest.y -= BS2;
-                dest.h += BS2;
-        }
         else
-        {
-                src = (SDL_Rect){0+20*e.frame, e.type*20, 20, 20};
-                dest = e.pos;
-                dest.y -= BS2;
-                dest.h += BS2;
-        }
+                src = (SDL_Rect){260, 60+20*((frame/4)%8), 20, 20};
+}
+
+void draw_enemy(int n)
+{
+        src = (SDL_Rect){20*e.frame, e.type*20, 20, 20};
+        dest = e.pos;
+
+        dest.y -= BS2;
+        dest.h += BS2;
+
+        if (!e.alive) return;
 
         if (e.freeze)
         {
                 int f = 4 - e.freeze;
                 if(f < 0) f = 0;
-                src = (SDL_Rect){100+20*f, 140, 20, 20};
+                src = (SDL_Rect){100 + 20 * f, 140, 20, 20};
         }
         else if (e.type == PUFF)
         {
-                src = (SDL_Rect){100+20*e.frame, 140, 20, 20};
-                if(frame%8 == 0 && ++e.frame > 4)
+                src = (SDL_Rect){100 + 20 * e.frame, 140, 20, 20};
+                if(frame % 8 == 0 && ++e.frame > 4)
                         e.alive = 0;
         }
-        else if (e.stun > 0 && e.type != SCREW)
+        else switch (e.type)
         {
-                if((frame/2)%2) return;
-
-                dest.x += (rand()%3 - 1) * SCALE;
-                dest.y += (rand()%3 - 1) * SCALE;
+                case BOARD:      draw_board(n);   break;
+                case PIG:        draw_pig(n);     break;
+                case SCREW:      draw_screw(n);   break;
+                case TOOLBOX:    draw_toolbox(n); break;
+                case WRENCH:     draw_wrench(n);  break;
+                case PIPEWRENCH: draw_wrench(n);  break;
         }
+
+        if (e.stun > 0 && (frame / 2) % 2)
+                return;
 
         dest.x += scrollx;
         dest.y += scrolly;
         SDL_RenderCopy(renderer, sprites, &src, &dest);
-
-        #undef e
 }
+
+#undef e
 
 void draw_player(int i)
 {
-        SDL_Rect src;
-        SDL_Rect dest;
         #define p (player[i])
 
         if(!p.alive) return;
@@ -264,8 +275,7 @@ void draw_player(int i)
                 }
 
                 animframe = p.frame;
-                if(p.vel.x == 0 && p.vel.y == 0 &&
-                                p.frame != 4)
+                if(p.vel.x == 0 && p.vel.y == 0 && p.frame != 4)
                         animframe = 0;
         }
 

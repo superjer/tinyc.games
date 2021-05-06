@@ -17,7 +17,6 @@ void update_screw(int n)
                         e.state = NEUTRALIZED;
                         e.harmful = false;
                 }
-
         }
 
         if (e.state != READY)
