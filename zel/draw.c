@@ -243,6 +243,7 @@ void draw_enemy(int n)
                 case PIPEWRENCH: draw_wrench(n);  break;
         }
 
+        // flash when stunned
         if (e.stun > 0 && (frame / 2) % 2)
                 return;
 

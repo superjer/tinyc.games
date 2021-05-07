@@ -376,27 +376,27 @@ void load_room()
 
 int find_free_slot(int *slot)
 {
-        for(*slot = 0; *slot < NR_ENEMIES; (*slot)++)
-                if(!enemy[*slot].alive)
-                        return 1;
-        return 0;
+        for (*slot = 0; *slot < NR_ENEMIES; (*slot)++)
+                if (!enemy[*slot].alive)
+                        return true;
+        return false;
 }
 
-//collide a rect with nearby world tiles
+// collide a rect with nearby world tiles
 int world_collide(SDL_Rect plyr)
 {
-        for(int i = 0; i < 3; i++) for(int j = 0; j < 2; j++)
+        for (int i = 0; i < 3; i++) for (int j = 0; j < 2; j++)
         {
                 int bx = plyr.x/BS + i;
                 int by = plyr.y/BS + j;
-
-                if(block_collide(bx, by, plyr))
+                if (block_collide(bx, by, plyr))
                         return true;
         }
 
         return false;
 }
 
+// collide with edge of screen?
 int edge_collide(SDL_Rect plyr)
 {
         if (plyr.x + plyr.w >= W)
@@ -411,6 +411,7 @@ int edge_collide(SDL_Rect plyr)
         return false;
 }
 
+// collide with inner walls of inside room?
 int inner_collide(SDL_Rect plyr)
 {
         if (plyr.x + plyr.w >= W - BS * 2)
@@ -438,7 +439,7 @@ void screen_scroll(int dx, int dy)
         player[0].pos.x -= dx * (W - BS);
         player[0].pos.y -= dy * (H - BS);
 
-        //bad room! back to start!
+        // bad room - reset to known good position
         if(roomx < 0 || roomx >= DUNW || roomy < 0 || roomy >= DUNH)
         {
                 roomx = 0;

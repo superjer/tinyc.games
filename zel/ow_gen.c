@@ -1,8 +1,7 @@
 #include "zel.c"
-#ifndef OW_GEN_H
-#define OW_GEN_H
+#ifndef OW_GEN_C
+#define OW_GEN_C
 
-// default 12x6 
 #define sX DUNW // overworld screens across (srooms)
 #define sY DUNH // overworld screens down
 #define oX (sX*2) // subscreen count (each screen is 4 subscreens) (orooms)
