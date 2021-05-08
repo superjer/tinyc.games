@@ -96,113 +96,113 @@ int move_player(int velx, int vely, int fake_it, int weave)
         return 0;
 }
 
-void update_player()
+void update_player(int i)
 {
-        struct player *p = player + 0;
+        #define p (player[i])
 
-        if(player[0].stun > 0)
-                player[0].stun--;
+        if (p.stun > 0)
+                p.stun--;
 
-        if(player[0].state == PL_DEAD)
+        if (p.state == PL_DEAD)
         {
-                if(player[0].stun < 1)
+                if(p.stun < 1)
                         new_game();
                 return;
         }
 
-        if(player[0].state == PL_DYING)
+        if (p.state == PL_DYING)
         {
-                if(frame%6 == 0)
-                        player[0].dir = (player[0].dir+1) % 4;
+                if (global_frame % 6 == 0)
+                        p.dir = (p.dir+1) % 4;
 
-                if(player[0].stun < 1)
+                if (p.stun < 1)
                 {
-                        player[0].alive = 0;
-                        player[0].state = PL_DEAD;
-                        player[0].stun = 100;
+                        p.exists = false;
+                        p.state = PL_DEAD;
+                        p.stun = 100;
                 }
 
                 return;
         }
 
-        if(p->state == PL_STAB)
+        if(p.state == PL_STAB)
         {
-                p->hitbox = p->pos;
-                p->hitbox.x -= 2;
-                p->hitbox.y -= 2 + BS2;
-                p->hitbox.w += 4;
-                p->hitbox.h += 4 + BS2;
-                switch(p->dir)
+                p.hitbox = p.pos;
+                p.hitbox.x -= 2;
+                p.hitbox.y -= 2 + BS2;
+                p.hitbox.w += 4;
+                p.hitbox.h += 4 + BS2;
+                switch(p.dir)
                 {
-                        case WEST:  p->hitbox.x -= BS;
-                        case EAST:  p->hitbox.w += BS; break;
-                        case NORTH: p->hitbox.y -= BS;
-                        case SOUTH: p->hitbox.h += BS; break;
+                        case WEST:  p.hitbox.x -= BS;
+                        case EAST:  p.hitbox.w += BS; break;
+                        case NORTH: p.hitbox.y -= BS;
+                        case SOUTH: p.hitbox.h += BS; break;
                 }
 
-                if(--p->delay <= 0)
+                if(--p.delay <= 0)
                 {
-                        p->delay = 0;
-                        p->state = PL_NORMAL;
+                        p.delay = 0;
+                        p.state = PL_NORMAL;
                 }
         }
-        else if(!p->vel.x ^ !p->vel.y) // moving only one direction
+        else if(!p.vel.x ^ !p.vel.y) // moving only one direction
         {
-                move_player(p->vel.x, p->vel.y, 0, 1);
+                move_player(p.vel.x, p.vel.y, 0, 1);
         }
-        else if((p->ylast || !p->vel.x) && p->vel.y)
+        else if((p.ylast || !p.vel.x) && p.vel.y)
         {
                 //only move 1 direction, but try the most recently pressed first
-                int fake_it = move_player(0, p->vel.y, 0, 0);
-                move_player(p->vel.x, 0, fake_it, 0);
+                int fake_it = move_player(0, p.vel.y, 0, 0);
+                move_player(p.vel.x, 0, fake_it, 0);
         }
         else
         {
-                int fake_it = move_player(p->vel.x, 0, 0, 0);
-                move_player(0, p->vel.y, fake_it, 0);
+                int fake_it = move_player(p.vel.x, 0, 0, 0);
+                move_player(0, p.vel.y, fake_it, 0);
         }
 
         //check for enemy collisions
-        for(int i = 0; i < NR_ENEMIES; i++)
+        for (int n = 0; n < NR_ENEMIES; n++)
         {
-                if(player[0].alive && enemy[i].alive &&
-                                player[0].state != PL_DYING &&
-                                player[0].stun < 1 &&
-                                enemy[i].stun < 1 &&
-                                enemy[i].harmful &&
-                                enemy[i].type != PUFF &&
-                                collide(player[0].pos, enemy[i].pos))
+                if (!p.exists)                     continue;
+                if (!enemy[n].exists)              continue;
+                if (p.state == PL_DYING)           continue;
+                if (p.stun)                        continue;
+                if (enemy[n].stun)                 continue;
+                if (enemy[n].harmless)             continue;
+                if (!collide(p.pos, enemy[n].pos)) continue;
+
+                if (--p.hp <= 0)
                 {
-                        if(--player[0].hp <= 0)
-                        {
-                                player[0].state = PL_DYING;
-                                player[0].stun = 100;
-                        }
-                        else
-                        {
-                                player[0].stun = 50;
-                                player[0].reel = 5;
-                                switch (player[0].dir)
-                                {
-                                        case NORTH: player[0].reeldir = SOUTH; break;
-                                        case SOUTH: player[0].reeldir = NORTH; break;
-                                        case EAST:  player[0].reeldir = WEST; break;
-                                        case WEST:  player[0].reeldir = EAST; break;
-                                }
-                        }
+                        p.state = PL_DYING;
+                        p.stun = 100;
+                        continue;
+                }
+
+                p.stun = 50;
+                p.reel = 5;
+                switch (p.dir)
+                {
+                        case NORTH: p.reeldir = SOUTH; break;
+                        case SOUTH: p.reeldir = NORTH; break;
+                        case EAST:  p.reeldir = WEST;  break;
+                        case WEST:  p.reeldir = EAST;  break;
                 }
         }
 
         //check for leaving screen
-        if(p->pos.x < 0)
+        if(p.pos.x < 0)
                 screen_scroll(-1, 0);
-        else if(p->pos.x > W - PLYR_W)
+        else if(p.pos.x > W - PLYR_W)
                 screen_scroll(1, 0);
 
-        if(p->pos.y < PLYR_H)
+        if(p.pos.y < PLYR_H)
                 screen_scroll(0, -1);
-        else if(p->pos.y > H - PLYR_H)
+        else if(p.pos.y > H - PLYR_H)
                 screen_scroll(0, 1);
+
+        #undef p
 }
 
 #endif

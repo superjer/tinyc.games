@@ -34,8 +34,11 @@ void become_puff(int n)
 {
         e.type = PUFF;
         e.frame = 0;
+        e.harmless = true;
         e.vel.x = 0;
         e.vel.y = 0;
+        e.pos.w = BS;
+        e.pos.h = BS;
 }
 
 void reel(int n)
@@ -73,7 +76,7 @@ void update_enemies()
 {
         for(int i = 0; i < NR_ENEMIES; i++)
         {
-                if (!enemy[i].alive) continue;
+                if (!enemy[i].exists) continue;
 
                 if (enemy[i].stun > 0) enemy[i].stun--;
 

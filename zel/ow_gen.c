@@ -748,7 +748,7 @@ void ow_gen()
                 traverse(oX / 2, oY - 1);
 
         cook_squares_again();
-        //print_orooms();
+        print_orooms();
 
         convert_orooms_to_charout();
 

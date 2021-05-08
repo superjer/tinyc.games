@@ -33,7 +33,7 @@ void update_toolbox(int n)
         }
         else if (e.state == LAND)
         {
-                if (frame % 4 == 0)
+                if (global_frame % 4 == 0)
                         e.frame = pct(50) ? 2 : 3;
 
                 if (pct(2))
@@ -56,18 +56,18 @@ void update_toolbox(int n)
                         e.frame = 1;
                 }
 
-                if (frame % 20 == 0 && pct(60))
+                if (global_frame % 20 == 0 && pct(60))
                 {
                         int slot;
                         if (find_free_slot(&slot))
                         {
+                                memset(enemy + slot, 0, sizeof *enemy);
                                 enemy[slot].type = pct(60) ? WRENCH : PIPEWRENCH;
+                                enemy[slot].exists = true;
                                 enemy[slot].hp = 2;
                                 enemy[slot].state = READY;
-                                enemy[slot].alive = 1;
-                                enemy[slot].pos = (SDL_Rect){ e.pos.x + BS2, e.pos.y, BS, BS2 };
-                                enemy[slot].vel.x = pct(50) ? 2 : -2;
-                                enemy[slot].vel.y = 2;
+                                enemy[slot].pos = (SDL_Rect){e.pos.x + BS2, e.pos.y, BS, BS};
+                                enemy[slot].vel = (struct point){pct(50) ? 2 : -2, 2};
                         }
                 }
 
@@ -76,7 +76,7 @@ void update_toolbox(int n)
                         e.frame = 6;
                         e.state = SHUT;
                 }
-                else if (frame % 20 == 0)
+                else if (global_frame % 20 == 0)
                 {
                         if (e.vel.x > 0)
                                 e.vel.x--;
@@ -86,7 +86,7 @@ void update_toolbox(int n)
         }
         else if (e.state == SHUT)
         {
-                if (frame % 10 == 0 && pct(33))
+                if (global_frame % 10 == 0 && pct(33))
                 {
                         e.state = READY;
                         e.frame = 0;
@@ -100,7 +100,7 @@ void update_toolbox(int n)
                         e.frame = 0;
                         stop(n);
                 }
-                else if (frame % 6 == 0)
+                else if (global_frame % 6 == 0)
                 {
                         e.vel.y++;
                 }
@@ -109,7 +109,7 @@ void update_toolbox(int n)
         // see if the toolbox gets hit by a reflected wrench
         if (e.stun == 0) for (int i = 0; i < NR_ENEMIES; i++)
         {
-                if (!enemy[i].alive)
+                if (!enemy[i].exists)
                         continue;
                 if (enemy[i].type != WRENCH && enemy[i].type != PIPEWRENCH)
                         continue;
@@ -136,7 +136,7 @@ void update_toolbox(int n)
                         {
                                 if (enemy[j].type != WRENCH && enemy[j].type != PIPEWRENCH)
                                         continue;
-                                enemy[j].harmful = false;
+                                enemy[j].harmless = true;
                                 enemy[j].state = ORPHANED;
                                 enemy[j].stun = amt;
                                 amt += 20;

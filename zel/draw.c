@@ -2,12 +2,46 @@
 #ifndef DRAW_C
 #define DRAW_C
 
-SDL_Rect src, dest;
+void fixed_color_box(SDL_Rect rect, int r, int g, int b, int a)
+{
+        SDL_SetRenderDrawColor(renderer, r, g, b, a);
+        SDL_RenderFillRect(renderer, &rect);
+}
+
+void color_box(SDL_Rect rect, int r, int g, int b, int a)
+{
+        rect.x += scrollx;
+        rect.y += scrolly;
+        fixed_color_box(rect, r, g, b, a);
+}
+
+void sprite(int spr, SDL_Rect dest)
+{
+        int sz = 20;
+        if (spr >= 1000) // extra large sprite?
+        {
+                sz = 40;
+                spr -= 1000;
+        }
+
+        SDL_Rect src = (SDL_Rect){(spr * sz) % 300, (spr * sz) / 300 * sz, sz, sz};
+        dest.x += scrollx;
+        dest.y += scrolly;
+        SDL_RenderCopy(renderer, spritetex, &src, &dest);
+}
+
+void tile(SDL_Rect src, SDL_Rect dest)
+{
+        dest.x += scrollx;
+        dest.y += scrolly;
+        SDL_RenderCopy(renderer, tiletex, &src, &dest);
+}
 
 void draw_doors_lo()
 {
         if (!inside) return;
 
+        SDL_Rect src, dest;
         int r = roomy*DUNW + roomx; // current room coordinate
         int *doors = rooms[r].doors;
 
@@ -36,6 +70,7 @@ void draw_doors_hi()
 {
         if (!inside) return;
 
+        SDL_Rect src, dest;
         int r = roomy*DUNW + roomx; // current room coordinate
         int *doors = rooms[r].doors;
 
@@ -62,44 +97,42 @@ void draw_doors_hi()
 
 void draw_clipping_boxes()
 {
-        SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-        for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
+        for (int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
         {
                 int t = tiles[y][x];
-                if(t <= LASTSOLID)
-                        SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS-1});
-                else if(t == HALFCLIP)
-                        SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS2-1});
+                if (t <= LASTSOLID)
+                        color_box((SDL_Rect){BS*x+1, BS*y+1, BS-1, BS-1}, 255, 0, 0, 120);
+                else if (t == HALFCLIP)
+                        color_box((SDL_Rect){BS*x+1, BS*y+1, BS-1, BS2-1}, 255, 0, 0, 120);
         }
 
-        SDL_SetRenderDrawColor(renderer, 255, 80, 80, 255);
-        for(int i = 0; i < NR_PLAYERS; i++)
+        for (int i = 0; i < NR_PLAYERS; i++)
         {
-                if(player[i].state == PL_STAB && player[i].alive)
-                        SDL_RenderFillRect(renderer, &player[i].hitbox);
+                if (player[i].state == PL_STAB && player[i].exists)
+                        color_box(player[i].hitbox, 255, 80, 80, 120);
+                color_box(player[i].pos, 80, 200, 80, 120);
+        }
+
+        for (int j = 0; j < NR_ENEMIES; j++)
+        {
+                if (enemy[j].exists)
+                        color_box(enemy[j].pos, 200, 80, 200, 120);
         }
 }
 
 void draw_map()
 {
         int x, y, dx, dy;
-        SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
         dx = W - 30;
         for (x = DUNW - 1; x >= 0; x--)
         {
                 dy = 15;
                 for (y = 0; y < DUNH; y++)
                 {
-                        SDL_RenderFillRect(renderer, &(SDL_Rect){
-                                        dx, dy, 12, 12});
+                        fixed_color_box((SDL_Rect){dx, dy, 12, 12}, 180, 180, 180, 255);
 
                         if (x == roomx && y == roomy)
-                        {
-                                SDL_SetRenderDrawColor(renderer, 0, 0, 230, 255);
-                                SDL_RenderFillRect(renderer, &(SDL_Rect){
-                                                dx, dy, 12, 12});
-                                SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
-                        }
+                                fixed_color_box((SDL_Rect){dx, dy, 12, 12}, 0, 0, 230, 255);
 
                         dy += 14;
                 }
@@ -110,15 +143,15 @@ void draw_map()
 void draw_health()
 {
         int hp = player[0].hp;
-        dest = (SDL_Rect){10, 10, SCALE*10, SCALE*10};
-        src = (SDL_Rect){290, 140, 10, 10};
+        SDL_Rect src = (SDL_Rect){220, 200, 10, 10};
+        SDL_Rect dest = (SDL_Rect){10, 10, SCALE*10, SCALE*10};
         for(int hc = 20; hc > 0; hc -= 4)
         {
-                src.y = 140 + 10 * (hp > 4 ? 4 :
+                src.x = 220 + 10 * (hp > 4 ? 4 :
                                     hp < 0 ? 0 : hp);
-                SDL_RenderCopy(renderer, sprites, &src, &dest);
+                SDL_RenderCopy(renderer, spritetex, &src, &dest);
                 hp -= 4;
-                dest.x += SCALE*11;
+                dest.x += SCALE * 11;
         }
 }
 
@@ -136,37 +169,39 @@ void draw_room_tile(int (*ta)[TILESW], int x, int y, int offx, int offy)
         }
 
         // background tile
-        SDL_RenderCopy(renderer, sprites,
-                &(SDL_Rect){20*(bgtile%15), 20*(bgtile/15), 20, 20},
-                &(SDL_Rect){BS*x + offx, BS*y + offy, BS, BS});
+        tile((SDL_Rect){20*(bgtile%15), 20*(bgtile/15), 20, 20},
+             (SDL_Rect){BS*x + offx, BS*y + offy, BS, BS});
 
         // foreground tile
         if(t != WATR && t != DIRT && t != OPEN && t != CLIP && t != HALFCLIP)
-                SDL_RenderCopy(renderer, sprites,
-                        &(SDL_Rect){20*(t%15), 20*(t/15), 20, 20},
-                        &(SDL_Rect){BS*x + offx, BS*y + offy, BS, BS});
+                tile((SDL_Rect){20*(t%15), 20*(t/15), 20, 20},
+                     (SDL_Rect){BS*x + offx, BS*y + offy, BS, BS});
 }
 
 #define e (enemy[n])
 
 void draw_board(int n)
 {
-        if (frame % 10 == 0)
+        if (global_frame % 10 == 0)
         {
                 e.frame = (e.frame + 1) % 4;
-                if(e.frame == 0 && rand()%10 == 0)
+                if(e.frame == 0 && pct(10))
                         e.frame = 4;
         }
+
+        sprite(BOARD + e.frame, e.pos);
 }
 
 void draw_pig(int n)
 {
-        if (frame % 10 == 0)
+        if (global_frame % 10 == 0)
         {
                 e.frame = (e.frame + 1) % 4;
-                if(e.frame == 0 && rand()%10 == 0)
+                if(e.frame == 0 && pct(10))
                         e.frame = 4;
         }
+
+        sprite(PIG + e.frame, e.pos);
 }
 
 void draw_screw(int n)
@@ -179,7 +214,7 @@ void draw_screw(int n)
                         e.frame = e.state == STUCK ? 7 : 9;
         }
 
-        if (frame %10 == 0)
+        if (global_frame % 10 == 0)
         {
                 if (e.state == READY)
                         e.frame = (e.frame + 1) % 6;
@@ -192,48 +227,48 @@ void draw_screw(int n)
                 }
         }
 
-        src = (SDL_Rect){0+20*e.frame, e.type*20, 20, 20};
+        sprite(SCREW + e.frame, e.pos);
 }
 
 void draw_toolbox(int n)
 {
-        src = (SDL_Rect){20 + 40 * e.frame, 20, 40, 40};
-        dest = e.pos;
+        SDL_Rect dest = e.pos;
         dest.y -= BS;
-        dest.h += BS;
+        dest.h = 2 * BS;
+        sprite(TOOLBOX + e.frame, dest);
 }
 
 void draw_wrench(int n)
 {
         if (e.type == WRENCH)
-                src = (SDL_Rect){280, 60+20*((frame/4)%4), 20, 20};
+                sprite(WRENCH + (global_frame / 4) % 4, e.pos);
         else
-                src = (SDL_Rect){260, 60+20*((frame/4)%8), 20, 20};
+                sprite(PIPEWRENCH + (global_frame / 4) % 8, e.pos);
 }
 
 void draw_enemy(int n)
 {
-        src = (SDL_Rect){20*e.frame, e.type*20, 20, 20};
-        dest = e.pos;
-
-        dest.y -= BS2;
-        dest.h += BS2;
-
-        if (!e.alive) return;
+        if (!e.exists) return;
 
         if (e.freeze)
         {
-                int f = 4 - e.freeze;
-                if(f < 0) f = 0;
-                src = (SDL_Rect){100 + 20 * f, 140, 20, 20};
+                int frame = MAX(0, 4 - e.freeze);
+                sprite(PUFF + frame, e.pos);
+                return;
         }
         else if (e.type == PUFF)
         {
-                src = (SDL_Rect){100 + 20 * e.frame, 140, 20, 20};
-                if(frame % 8 == 0 && ++e.frame > 4)
-                        e.alive = 0;
+                if(global_frame % 8 == 0 && ++e.frame > 4)
+                        e.exists = 0;
+                sprite(PUFF + e.frame, e.pos);
+                return;
         }
-        else switch (e.type)
+
+        // flash when stunned
+        if (e.type != SCREW && e.stun > 0 && (global_frame / 2) % 2)
+                return;
+
+        switch (e.type)
         {
                 case BOARD:      draw_board(n);   break;
                 case PIG:        draw_pig(n);     break;
@@ -242,14 +277,6 @@ void draw_enemy(int n)
                 case WRENCH:     draw_wrench(n);  break;
                 case PIPEWRENCH: draw_wrench(n);  break;
         }
-
-        // flash when stunned
-        if (e.stun > 0 && (frame / 2) % 2)
-                return;
-
-        dest.x += scrollx;
-        dest.y += scrolly;
-        SDL_RenderCopy(renderer, sprites, &src, &dest);
 }
 
 #undef e
@@ -258,58 +285,54 @@ void draw_player(int i)
 {
         #define p (player[i])
 
-        if(!p.alive) return;
+        if (!p.exists) return;
 
-        int animframe = 0;
+        int animframe = 5;
 
-        if(p.state == PL_STAB)
+        if (p.state != PL_STAB)
         {
-                animframe = 5;
-        }
-        else
-        {
-                if(frame%5 == 0)
+                if (global_frame % 5 == 0)
                 {
                         p.frame = (p.frame + 1) % 4;
-                        if(p.frame == 0 && rand()%10 == 0)
+                        if (p.frame == 0 && pct(10))
                                 p.frame = 4;
                 }
 
                 animframe = p.frame;
-                if(p.vel.x == 0 && p.vel.y == 0 && p.frame != 4)
+                if (p.vel.x == 0 && p.vel.y == 0 && p.frame != 4)
                         animframe = 0;
         }
 
-        src = (SDL_Rect){20+20*animframe, 60+20*p.dir, 20, 20};
-        dest = p.pos;
-        dest.x += scrollx;
-        dest.y += scrolly;
+        SDL_Rect src = (SDL_Rect){20 * animframe, 20 * p.dir, 20, 20};
+        SDL_Rect dest = p.pos;
         dest.y -= BS2;
         dest.h += BS2;
+        dest.x += scrollx;
+        dest.y += scrolly;
 
-        if(!p.stun || (frame/2)%2)
-                SDL_RenderCopy(renderer, sprites, &src, &dest);
+        if (!p.stun || (global_frame / 2)%2)
+                SDL_RenderCopy(renderer, spritetex, &src, &dest);
 
-        if(animframe == 5)
+        if (p.state == PL_STAB)
         {
-                int screwamt = 0;
+                int slashamt = 0;
                 int retract = 0;
 
-                if(p.delay < 6)
+                if (p.delay < 6)
                         retract = 6 - p.delay;
 
-                if(p.delay > 8)
-                        screwamt = (p.delay/2) % 2;
+                if (p.delay > 8)
+                        slashamt = (p.delay / 2) % 2;
 
-                src.x = 140 + 20*screwamt;
-                switch(p.dir)
+                src.x = 120 + 20 * slashamt;
+                switch (p.dir)
                 {
                         case EAST:  dest.x += BS - retract; break;
                         case NORTH: dest.y -= BS - retract; break;
                         case WEST:  dest.x -= BS - retract; break;
                         case SOUTH: dest.y += BS - retract; break;
                 }
-                SDL_RenderCopy(renderer, sprites, &src, &dest);
+                SDL_RenderCopy(renderer, spritetex, &src, &dest);
         }
 
         #undef p
@@ -322,19 +345,20 @@ void draw_stuff()
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
         //draw room background
-        SDL_RenderCopy(renderer, edgetex[0], NULL, &dest);
+        if (inside)
+                SDL_RenderCopy(renderer, edgetex[0], NULL, &dest);
 
         draw_doors_lo();
 
         for (int x = 0; x < TILESW; x++) for (int y = 0; y < TILESH; y++)
-                draw_room_tile(tiles, x, y, scrollx, scrolly);
+                draw_room_tile(tiles, x, y, 0, 0);
 
         if (scrollx || scrolly)
         {
                 int basex = -sign(scrollx) * TILESW * BS;
                 int basey = -sign(scrolly) * TILESH * BS;
                 for (int x = 0; x < TILESW; x++) for (int y = 0; y < TILESH; y++)
-                        draw_room_tile(tiles_old, x, y, basex + scrollx, basey + scrolly);
+                        draw_room_tile(tiles_old, x, y, basex, basey);
         }
 
         for (int i = 0; i < NR_ENEMIES; i++)

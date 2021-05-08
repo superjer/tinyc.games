@@ -1,4 +1,11 @@
-screen scroll
-generate detail paths between key points
-generate caves / other key locations
-enemy drops
+generate
+  follow original oroom layout
+  detail paths between key points
+  caves / other key locations
+
+basic
+  connect ow to dungeons
+  enemy drops
+
+crazy ideas
+  bump blocks into enemies

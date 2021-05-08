@@ -5,7 +5,7 @@
 
 void update_screw(int n)
 {
-        if (got_stabbed(n))
+        if (e.state != NEUTRALIZED && got_stabbed(n))
         {
                 e.stun = SCREW_STUN; // allow player to screw quickly
                 if (e.state == READY)
@@ -15,7 +15,7 @@ void update_screw(int n)
                 else if (e.state == STUCK)
                 {
                         e.state = NEUTRALIZED;
-                        e.harmful = false;
+                        e.harmless = true;
                 }
         }
 
@@ -23,7 +23,7 @@ void update_screw(int n)
         {
                 stop(n);
         }
-        else if (frame % 3 == 0)
+        else if (global_frame % 3 == 0)
         {
                 stop(n);
                 if (pct(50) == 0)

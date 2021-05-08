@@ -22,8 +22,8 @@
 #define TILESH 11                  // ^
 #define INNERTILESW 11             // inner room width, height
 #define INNERTILESH 7              // ^
-#define DUNH 4                     // entire dungeon width, height
-#define DUNW 5                     // ^
+#define DUNW 5                     // entire dungeon width, height
+#define DUNH 4                     // ^
 #define BS (20*SCALE)              // block size
 #define BS2 (BS/2)                 // block size in half
 #define PLYR_W BS                  // physical width and height of the player
@@ -60,15 +60,14 @@
 
 #define OPEN 180       // invisible open, walkable space
 
-enum enemytypes {
-        PIG = 7,
-        SCREW = 8,
-        BOARD = 9,
-        GLOB = 10,
-        TOOLBOX = 11,
-        PUFF = 12,
-        WRENCH = 13,
-        PIPEWRENCH = 14,
+enum enemytypes { // these match their positions in sprites.bmp
+        SCREW = 120,
+        BOARD = 135,
+        PIG = 150,
+        PUFF = 155,
+        PIPEWRENCH = 165,
+        WRENCH = 173,
+        TOOLBOX = 1015, // +1000 means large sprites
 };
 
 enum dir {NORTH, WEST, EAST, SOUTH};
@@ -99,7 +98,7 @@ struct player {
         int state;
         int delay;
         int frame;
-        int alive;
+        int exists;
         int hp;
         int stun;
 } player[NR_PLAYERS];
@@ -113,22 +112,23 @@ struct enemy {
         int type;
         int delay;
         int frame;
-        int alive;
+        int exists;
         int hp;
         int stun;
         int freeze;
-        int harmful;
+        int harmless;
 } enemy[NR_ENEMIES];
 
 int idle_time = 30;
-int frame = 0;
+int global_frame = 0;
 int drawclip = 0;
 int noclip = false;
 
 SDL_Event event;
 SDL_Renderer *renderer;
 SDL_Surface *surf;
-SDL_Texture *sprites;
+SDL_Texture *spritetex;
+SDL_Texture *tiletex;
 SDL_Texture *edgetex[20];
 TTF_Font *font;
 
@@ -167,12 +167,12 @@ int main()
                         case SDL_KEYUP:   key_move(0); break;
                 }
 
-                update_player();
+                update_player(0);
                 update_enemies();
                 update_scroll();
                 draw_stuff();
                 SDL_Delay(1000 / 60);
-                frame++;
+                global_frame++;
         }
 }
 
@@ -198,7 +198,11 @@ void setup()
 
         surf = SDL_LoadBMP("res/sprites.bmp");
         SDL_SetColorKey(surf, 1, 0xffff00);
-        sprites = SDL_CreateTextureFromSurface(renderer, surf);
+        spritetex = SDL_CreateTextureFromSurface(renderer, surf);
+
+        surf = SDL_LoadBMP("res/tiles.bmp");
+        SDL_SetColorKey(surf, 1, 0xffff00);
+        tiletex = SDL_CreateTextureFromSurface(renderer, surf);
 
         TTF_Init();
         font = TTF_OpenFont("res/LiberationSans-Regular.ttf", 42);
@@ -264,7 +268,7 @@ void new_game()
                 kp_start = rand() % NUM_KEY_POINTS;
 
         memset(player, 0, sizeof player);
-        player[0].alive = 1;
+        player[0].exists = true;
         player[0].pos.x = BS * (key_points[kp_start].x % TILESW);
         player[0].pos.y = BS * (key_points[kp_start].y % TILESH) + BS2;
         player[0].pos.w = PLYR_W;
@@ -339,10 +343,9 @@ void load_room()
                 if(!rooms[r].enemies[i]) continue;
 
                 enemy[i].type = rooms[r].enemies[i];
-                enemy[i].alive = true;
+                enemy[i].exists = true;
                 enemy[i].hp = 1;
                 enemy[i].freeze = 30 + rand() % 30;
-                enemy[i].harmful = true;
 
                 //find a good spawn position
                 for(int limit = 0; limit < 70; limit++, j += 2)
@@ -354,15 +357,12 @@ void load_room()
                         if(tiles[y][x] <= LASTSOLID)
                                 continue; //no spawning in solids
                         if(limit == 70 || abs(x-plx) > 5 || abs(y-ply) > 4)
-                                enemy[i].pos = (SDL_Rect){BS*x, BS*y + BS2, BS, BS2};
+                                enemy[i].pos = (SDL_Rect){BS*x, BS*y, BS, BS};
                 }
 
                 if(enemy[i].type == TOOLBOX)
                 {
-                        enemy[i].pos.x = 13*BS2;
-                        enemy[i].pos.y = 3*BS;
-                        enemy[i].pos.w = 2*BS;
-                        enemy[i].pos.h = BS;
+                        enemy[i].pos = (SDL_Rect){13*BS2, 3*BS, 2*BS, BS};
                         enemy[i].hp = 1;
                         enemy[i].freeze = 30;
                 }
@@ -377,7 +377,7 @@ void load_room()
 int find_free_slot(int *slot)
 {
         for (*slot = 0; *slot < NR_ENEMIES; (*slot)++)
-                if (!enemy[*slot].alive)
+                if (!enemy[*slot].exists)
                         return true;
         return false;
 }
