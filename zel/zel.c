@@ -317,6 +317,7 @@ void load_room()
                                 c == 'V' ? WATR : //RIVR :
                                 c == 'X' ? WATR : //RIV2 :
                                 c == 'B' ? BRGE :
+                                c == 'C' ? CAVE :
                                 c == '.' ? SPOT : DIRT;
                         tiles[y][x] = t;
                 }

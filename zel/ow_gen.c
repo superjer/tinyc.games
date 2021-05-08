@@ -390,7 +390,12 @@ void set_key_points()
         }
 }
 
-// flood-fill used by are_key_points_connected
+int is_open(char c)
+{
+        return (c == ' ' || c == '.' || c == 'B');
+}
+
+// flood-fill used by are_key_points_connected()
 int flood(int x, int y)
 {
         int ttl = 0;
@@ -399,10 +404,10 @@ int flood(int x, int y)
                 return 0;
         else if (flood_buf[y][x]) // already visited
                 return 0;
-        else if (charout[y][x] == ' ') // open
-                ;
         else if (charout[y][x] == '.') // key point
                 ttl++;
+        else if (is_open(charout[y][x])) // open
+                ;
         else
                 return 0; // blocked
 
@@ -602,9 +607,9 @@ void river_flow()
                         {
                                 x++;
                         }
-                        else if (charout[y + 1][x] == ' ') // obstructive downflow
+                        else if (charout[y + 1][x] == ' ') // flow over land
                         {
-                                printf("start obstructive downflow\n");
+                                printf("start flowing over land\n");
                                 y++;
                                 int ystart = y;
                                 while (y < sY * sH - 1 && charout[y][x] == ' ')
@@ -710,21 +715,73 @@ void smoothen()
                 if (is_smoothing(a) && a == b)
                 {
                         if (charout[i][j] != a)
-                        {
-                                printf("Smoothened %d %d to %c\n", i, j, a);
                                 charout[i][j] = a;
-                        }
                 }
                 else if (is_smoothing(c) && c == d)
                 {
                         if (charout[i][j] != c)
-                        {
-                                printf("Smoothened %d %d to %c\n", i, j, c);
                                 charout[i][j] = c;
-                        }
                 }
         }
 
+}
+
+int is_solid(char c)
+{
+        return (c == 'T' || c == 'R' || c == 'S' || c == 'W' || c == '?');
+}
+
+void make_cave(int k)
+{
+        int x = key_points[k].x;
+        int y = key_points[k].y - 1;
+
+        // try to put a cave north of key point
+        for (; y % sH >= 1; y--)
+        {
+                if (!is_solid(charout[y][x])) continue;
+
+                if (is_solid(charout[y - 1][x])
+                                && is_solid(charout[y][x - 1])
+                                && is_solid(charout[y][x + 1]))
+                {
+                        charout[y][x] = 'C';
+                        return;
+                }
+                break;
+        }
+
+        // try to build a door + frame near the key point
+        for (y = key_points[k].y; y % sH > 2; y--)
+        {
+                if (charout[y - 1][x - 1] == ' ') charout[y - 1][x - 1] = '?';
+                if (charout[y - 1][x    ] == ' ') charout[y - 1][x    ] = '?';
+                if (charout[y - 1][x + 1] == ' ') charout[y - 1][x + 1] = '?';
+                if (charout[y    ][x - 1] == ' ') charout[y    ][x - 1] = '?';
+                if (charout[y    ][x + 1] == ' ') charout[y    ][x + 1] = '?';
+
+                int newchar = are_key_points_connected() ? 'R' : ' ';
+
+                printf("K=%d newchar %c\n", k, newchar);
+
+                if (is_solid(charout[y - 1][x - 1])) charout[y - 1][x - 1] = newchar;
+                if (is_solid(charout[y - 1][x    ])) charout[y - 1][x    ] = newchar;
+                if (is_solid(charout[y - 1][x + 1])) charout[y - 1][x + 1] = newchar;
+                if (is_solid(charout[y    ][x - 1])) charout[y    ][x - 1] = newchar;
+                if (is_solid(charout[y    ][x + 1])) charout[y    ][x + 1] = newchar;
+
+                // cave created
+                if (newchar == 'R')
+                {
+                        charout[y][x] = 'C';
+                        if (y == key_points[k].y)
+                        {
+                                key_points[k].y++;
+                                charout[y + 1][x] = '.';
+                        }
+                        return;
+                }
+        }
 }
 
 void ow_gen()
@@ -763,6 +820,9 @@ void ow_gen()
         river_flow();
         add_random_grids();
         smoothen();
+
+        for (int k = 0; k < NUM_KEY_POINTS; k++)
+                make_cave(k);
 
         //print_charout();
         print_utf8out();
