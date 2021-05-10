@@ -44,6 +44,7 @@
 #define ROCK 55
 #define WATR 56
 #define STON 57
+#define PANL 70
 #define RIVR 71
 #define RIV2 72
 
@@ -78,8 +79,7 @@ int pct(int chance) { return rand() % 100 < chance; }
 #include "ow_gen.c"
 #include "level_data.c"
 
-int demilitarized_zone[10000];
-int inside = 0;
+int inside = false;
 int roomx; // current room x,y
 int roomy;
 int tiles[TILESH][TILESW];
@@ -316,6 +316,7 @@ void load_room()
                                 c == 'W' ? WATR :
                                 c == 'V' ? WATR : //RIVR :
                                 c == 'X' ? WATR : //RIV2 :
+                                c == 'P' ? PANL :
                                 c == 'B' ? BRGE :
                                 c == 'C' ? CAVE :
                                 c == '.' ? SPOT : DIRT;

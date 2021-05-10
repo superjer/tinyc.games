@@ -728,7 +728,7 @@ void smoothen()
 
 int is_solid(char c)
 {
-        return (c == 'T' || c == 'R' || c == 'S' || c == 'W' || c == '?');
+        return (c == 'T' || c == 'R' || c == 'S' || c == 'W' || c == 'V' || c == 'X' || c == 'P' || c == '?');
 }
 
 void make_cave(int k)
@@ -760,7 +760,7 @@ void make_cave(int k)
                 if (charout[y    ][x - 1] == ' ') charout[y    ][x - 1] = '?';
                 if (charout[y    ][x + 1] == ' ') charout[y    ][x + 1] = '?';
 
-                int newchar = are_key_points_connected() ? 'R' : ' ';
+                int newchar = are_key_points_connected() ? 'P' : ' ';
 
                 printf("K=%d newchar %c\n", k, newchar);
 
@@ -771,7 +771,7 @@ void make_cave(int k)
                 if (is_solid(charout[y    ][x + 1])) charout[y    ][x + 1] = newchar;
 
                 // cave created
-                if (newchar == 'R')
+                if (newchar == 'P')
                 {
                         charout[y][x] = 'C';
                         if (y == key_points[k].y)
