@@ -170,6 +170,7 @@ void update_player(int i)
                 if (p.state == PL_DYING)           continue;
                 if (p.stun)                        continue;
                 if (enemy[n].stun)                 continue;
+                if (enemy[n].freeze)               continue;
                 if (enemy[n].harmless)             continue;
                 if (!collide(p.pos, enemy[n].pos)) continue;
 
@@ -191,15 +192,18 @@ void update_player(int i)
                 }
         }
 
-        //check for leaving screen
-        if(p.pos.x < 0)
-                screen_scroll(-1, 0);
-        else if(p.pos.x > W - PLYR_W)
-                screen_scroll(1, 0);
+        // check for entering cave, etc
+        if (tiles[ytileof(p.pos)][xtileof(p.pos)] == CAVE)
+                enter_dungeon();
 
-        if(p.pos.y < PLYR_H)
+        // check for leaving screen
+        if (p.pos.x < 0)
+                screen_scroll(-1, 0);
+        else if (p.pos.x > W - PLYR_W)
+                screen_scroll(1, 0);
+        else if (p.pos.y < PLYR_H)
                 screen_scroll(0, -1);
-        else if(p.pos.y > H - PLYR_H)
+        else if (p.pos.y > H - PLYR_H)
                 screen_scroll(0, 1);
 
         #undef p

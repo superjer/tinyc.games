@@ -44,6 +44,7 @@
 #define ROCK 55
 #define WATR 56
 #define STON 57
+#define PANL 70
 #define RIVR 71
 #define RIV2 72
 
@@ -78,10 +79,15 @@ int pct(int chance) { return rand() % 100 < chance; }
 #include "ow_gen.c"
 #include "level_data.c"
 
-int demilitarized_zone[10000];
-int inside = 0;
+int inside = false;
 int roomx; // current room x,y
 int roomy;
+int oldroomx; // previous room x,y
+int oldroomy;
+int entry_roomx;
+int entry_roomy;
+int entry_tilex;
+int entry_tiley;
 int tiles[TILESH][TILESW];
 int tiles_old[TILESH][TILESW];
 int scrollx;
@@ -134,6 +140,7 @@ TTF_Font *font;
 
 //prototypes
 void setup();
+void enter_dungeon();
 void load_room();
 void key_move(int down);
 int find_free_slot(int *slot);
@@ -146,6 +153,8 @@ void new_game();
 void screen_scroll(int dx, int dy);
 void update_scroll();
 int sign(int n) { return n == 0 ? 0 : n > 0 ? 1 : -1; }
+int xtileof(SDL_Rect pos) { return (pos.x + (pos.w / 2)) / BS; }
+int ytileof(SDL_Rect pos) { return (pos.y + pos.h) / BS; }
 
 #include "player.c"
 #include "enemies.c"
@@ -206,6 +215,31 @@ void setup()
 
         TTF_Init();
         font = TTF_OpenFont("res/LiberationSans-Regular.ttf", 42);
+}
+
+void enter_dungeon()
+{
+        entry_roomx = roomx;
+        entry_roomy = roomy;
+        entry_tilex = xtileof(player[0].pos);
+        entry_tiley = ytileof(player[0].pos);
+        inside = true;
+        roomx = 1;
+        roomy = 2;
+        player[0].pos.x = BS * (2 + 5);
+        player[0].pos.y = BS * 9;
+        load_room();
+}
+
+void exit_dungeon()
+{
+        roomx = entry_roomx;
+        roomy = entry_roomy;
+        player[0].pos.x = entry_tilex * BS;
+        player[0].pos.y = entry_tiley * BS + BS2;
+        printf("Player pos set to (%d, %d)\n", player[0].pos.x, player[0].pos.y);
+        inside = false;
+        load_room();
 }
 
 void key_move(int down)
@@ -316,6 +350,7 @@ void load_room()
                                 c == 'W' ? WATR :
                                 c == 'V' ? WATR : //RIVR :
                                 c == 'X' ? WATR : //RIV2 :
+                                c == 'P' ? PANL :
                                 c == 'B' ? BRGE :
                                 c == 'C' ? CAVE :
                                 c == '.' ? SPOT : DIRT;
@@ -434,6 +469,14 @@ int legit_tile(int x, int y)
 
 void screen_scroll(int dx, int dy)
 {
+        if (dy == 1 && rooms[roomy*DUNW + roomx].doors[3] == ENTRY)
+        {
+                exit_dungeon();
+                return;
+        }
+
+        oldroomx = roomx;
+        oldroomy = roomy;
         roomx += dx;
         roomy += dy;
 

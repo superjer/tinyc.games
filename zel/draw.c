@@ -37,61 +37,63 @@ void tile(SDL_Rect src, SDL_Rect dest)
         SDL_RenderCopy(renderer, tiletex, &src, &dest);
 }
 
-void draw_doors_lo()
+void draw_doors_lo(int rx, int ry, int offx, int offy)
 {
-        if (!inside) return;
-
         SDL_Rect src, dest;
-        int r = roomy*DUNW + roomx; // current room coordinate
+        int r = ry*DUNW + rx; // current room coordinate
         int *doors = rooms[r].doors;
+
+        offx += scrollx;
+        offy += scrolly;
 
         //draw right edge
         src  = (SDL_Rect){11*20, 4*20, 4*20, 3*20};
-        dest = (SDL_Rect){11*BS, 4*BS, 4*BS, 3*BS};
+        dest = (SDL_Rect){11*BS + offx, 4*BS + offy, 4*BS, 3*BS};
         SDL_RenderCopy(renderer, edgetex[doors[EAST]], &src, &dest);
 
         //draw top edge
         src  = (SDL_Rect){6*20, 0*20, 3*20, 4*20};
-        dest = (SDL_Rect){6*BS, 0*BS, 3*BS, 4*BS};
+        dest = (SDL_Rect){6*BS + offx, 0*BS + offy, 3*BS, 4*BS};
         SDL_RenderCopy(renderer, edgetex[doors[NORTH]], &src, &dest);
 
         //draw left edge
         src  = (SDL_Rect){0*20, 4*20, 4*20, 3*20};
-        dest = (SDL_Rect){0*BS, 4*BS, 4*BS, 3*BS};
+        dest = (SDL_Rect){0*BS + offx, 4*BS + offy, 4*BS, 3*BS};
         SDL_RenderCopy(renderer, edgetex[doors[WEST]], &src, &dest);
 
         //draw bottom edge
         src  = (SDL_Rect){6*20, 7*20, 3*20, 4*20};
-        dest = (SDL_Rect){6*BS, 7*BS, 3*BS, 4*BS};
+        dest = (SDL_Rect){6*BS + offx, 7*BS + offy, 3*BS, 4*BS};
         SDL_RenderCopy(renderer, edgetex[doors[SOUTH]], &src, &dest);
 }
 
-void draw_doors_hi()
+void draw_doors_hi(int rx, int ry, int offx, int offy)
 {
-        if (!inside) return;
-
         SDL_Rect src, dest;
-        int r = roomy*DUNW + roomx; // current room coordinate
+        int r = ry*DUNW + rx; // current room coordinate
         int *doors = rooms[r].doors;
+
+        offx += scrollx;
+        offy += scrolly;
 
         //draw right edge ABOVE
         src  = (SDL_Rect){14*20, 4*20, 1*20, 3*20};
-        dest = (SDL_Rect){14*BS, 4*BS, 1*BS, 3*BS};
+        dest = (SDL_Rect){14*BS + offx, 4*BS + offy, 1*BS, 3*BS};
         SDL_RenderCopy(renderer, edgetex[doors[EAST]], &src, &dest);
 
         //draw top edge ABOVE
         src  = (SDL_Rect){6*20, 0*20, 3*20, 1*20};
-        dest = (SDL_Rect){6*BS, 0*BS, 3*BS, 1*BS};
+        dest = (SDL_Rect){6*BS + offx, 0*BS + offy, 3*BS, 1*BS};
         SDL_RenderCopy(renderer, edgetex[doors[NORTH]], &src, &dest);
 
         //draw left edge ABOVE
         src  = (SDL_Rect){0*20, 4*20, 1*20, 3*20};
-        dest = (SDL_Rect){0*BS, 4*BS, 1*BS, 3*BS};
+        dest = (SDL_Rect){0*BS + offx, 4*BS + offy, 1*BS, 3*BS};
         SDL_RenderCopy(renderer, edgetex[doors[WEST]], &src, &dest);
 
         //draw bottom edge ABOVE
         src  = (SDL_Rect){6*20, 10*20, 3*20, 1*20};
-        dest = (SDL_Rect){6*BS, 10*BS, 3*BS, 1*BS};
+        dest = (SDL_Rect){6*BS + offx, 10*BS + offy, 3*BS, 1*BS};
         SDL_RenderCopy(renderer, edgetex[doors[SOUTH]], &src, &dest);
 }
 
@@ -99,10 +101,9 @@ void draw_clipping_boxes()
 {
         for (int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
         {
-                int t = tiles[y][x];
-                if (t <= LASTSOLID)
+                if (tiles[y][x] <= LASTSOLID)
                         color_box((SDL_Rect){BS*x+1, BS*y+1, BS-1, BS-1}, 255, 0, 0, 120);
-                else if (t == HALFCLIP)
+                else if (tiles[y][x] == HALFCLIP)
                         color_box((SDL_Rect){BS*x+1, BS*y+1, BS-1, BS2-1}, 255, 0, 0, 120);
         }
 
@@ -169,11 +170,12 @@ void draw_room_tile(int (*ta)[TILESW], int x, int y, int offx, int offy)
         }
 
         // background tile
-        tile((SDL_Rect){20*(bgtile%15), 20*(bgtile/15), 20, 20},
-             (SDL_Rect){BS*x + offx, BS*y + offy, BS, BS});
+        if (!inside)
+                tile((SDL_Rect){20*(bgtile%15), 20*(bgtile/15), 20, 20},
+                     (SDL_Rect){BS*x + offx, BS*y + offy, BS, BS});
 
         // foreground tile
-        if(t != WATR && t != DIRT && t != OPEN && t != CLIP && t != HALFCLIP)
+        if (t != WATR && t != DIRT && t != OPEN && t != CLIP && t != HALFCLIP)
                 tile((SDL_Rect){20*(t%15), 20*(t/15), 20, 20},
                      (SDL_Rect){BS*x + offx, BS*y + offy, BS, BS});
 }
@@ -341,24 +343,31 @@ void draw_player(int i)
 //draw everything in the game on the screen
 void draw_stuff()
 {
-        SDL_Rect dest = {0, 0, W, H};
+        SDL_Rect whole = {scrollx, scrolly, W, H};
+        int offx = -sign(scrollx) * W; // offset for scrolling-away screen
+        int offy = -sign(scrolly) * H;
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
-        //draw room background
         if (inside)
-                SDL_RenderCopy(renderer, edgetex[0], NULL, &dest);
+        {
+                SDL_RenderCopy(renderer, edgetex[0], NULL, &whole); // room bg
+                whole.x += offx;
+                whole.y += offy;
+                if (scrollx || scrolly)
+                        SDL_RenderCopy(renderer, edgetex[0], NULL, &whole); // old room bg
 
-        draw_doors_lo();
+                draw_doors_lo(roomx, roomy, 0, 0);
+                if (scrollx || scrolly)
+                        draw_doors_lo(oldroomx, oldroomy, offx, offy);
+        }
 
         for (int x = 0; x < TILESW; x++) for (int y = 0; y < TILESH; y++)
                 draw_room_tile(tiles, x, y, 0, 0);
 
         if (scrollx || scrolly)
         {
-                int basex = -sign(scrollx) * TILESW * BS;
-                int basey = -sign(scrolly) * TILESH * BS;
                 for (int x = 0; x < TILESW; x++) for (int y = 0; y < TILESH; y++)
-                        draw_room_tile(tiles_old, x, y, basex, basey);
+                        draw_room_tile(tiles_old, x, y, offx, offy);
         }
 
         for (int i = 0; i < NR_ENEMIES; i++)
@@ -367,7 +376,13 @@ void draw_stuff()
         for (int i = 0; i < NR_PLAYERS; i++)
                 draw_player(i);
 
-        draw_doors_hi();
+        if (inside)
+        {
+                draw_doors_hi(roomx, roomy, 0, 0);
+                if (scrollx || scrolly)
+                        draw_doors_hi(oldroomx, oldroomy, offx, offy);
+        }
+
         if(drawclip) draw_clipping_boxes();
         draw_health();
         draw_map();
