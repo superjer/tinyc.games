@@ -1,3 +1,7 @@
+#include "zel.c"
+#ifndef LEVEL_DATA_C
+#define LEVEL_DATA_C
+
 #define ____ OPEN
 
 #define INNEROFFSET ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, \
@@ -57,6 +61,8 @@ struct room {
                 I ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, I
         },
 },{
+},{
+},{
         {       DOOR,
          WALL,          DOOR, // doors for room 1,0
                 LOCKED},
@@ -101,6 +107,8 @@ struct room {
                 I ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, I
                 I ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, ____, I
         },
+},{
+},{
 },{
         {       LOCKED,
          WALL,          DOOR, // doors for room 2,0
@@ -149,3 +157,4 @@ struct room {
 }};
 
 #undef I
+#endif

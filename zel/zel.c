@@ -246,6 +246,14 @@ void key_move(int down)
                 case SDLK_n:
                         if (down) noclip = !noclip;
                         break;
+                case SDLK_d: // enter dungeon?
+                        inside = true;
+                        roomx = 1;
+                        roomy = 2;
+                        player[0].pos.x = BS * (2 + 5);
+                        player[0].pos.y = BS * 9;
+                        load_room();
+                        break;
                 case SDLK_z:
                 case SDLK_x:
                         if(player[0].state == PL_NORMAL)
