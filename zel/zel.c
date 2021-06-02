@@ -469,7 +469,7 @@ int legit_tile(int x, int y)
 
 void screen_scroll(int dx, int dy)
 {
-        if (dy == 1 && rooms[roomy*DUNW + roomx].doors[3] == ENTRY)
+        if (inside && dy == 1 && rooms[roomy*DUNW + roomx].doors[3] == ENTRY)
         {
                 exit_dungeon();
                 return;

@@ -4,15 +4,17 @@
 
 enum playerstates {PL_NORMAL, PL_STAB, PL_HURT, PL_DYING, PL_DEAD};
 
-//return 0 iff we couldn't actually move
-int move_player(int velx, int vely, int fake_it, int weave)
-{
-        SDL_Rect newpos = player[0].pos;
+#define p (player[i])
 
-        if(player[0].reel)
+//return false iff we couldn't actually move
+int move_player(int i, int velx, int vely, int fake_it, int weave)
+{
+        SDL_Rect newpos = p.pos;
+
+        if(p.reel)
         {
-                player[0].reel--;
-                switch(player[0].reeldir)
+                p.reel--;
+                switch(p.reeldir)
                 {
                         case NORTH: newpos.y -= PLYR_SPD * 2; break;
                         case WEST:  newpos.x -= PLYR_SPD * 2; break;
@@ -29,7 +31,7 @@ int move_player(int velx, int vely, int fake_it, int weave)
         int already_stuck = 0;
         int would_be_stuck = 0;
 
-        if(world_collide(player[0].pos) || noclip)
+        if(world_collide(p.pos) || noclip)
                 already_stuck = 1;
 
         if(world_collide(newpos))
@@ -51,16 +53,14 @@ int move_player(int velx, int vely, int fake_it, int weave)
                         {
                                 //this is the winning position!
                                 //move one step laterally!
-                                player[0].pos.y += abs(velx);
-                                return 1;
+                                p.pos.y += abs(velx);
+                                return true;
                         }
                         latpos.y = newpos.y - k * abs(velx);
                         if(!world_collide(latpos))
                         {
-                                //this is the winning position!
-                                //move one step laterally!
-                                player[0].pos.y -= abs(velx);
-                                return 1;
+                                p.pos.y -= abs(velx);
+                                return true;
                         }
                 }
                 else if(vely)
@@ -69,37 +69,31 @@ int move_player(int velx, int vely, int fake_it, int weave)
                         latpos.x = newpos.x + k * abs(vely);
                         if(!world_collide(latpos))
                         {
-                                //this is the winning position!
-                                //move one step laterally!
-                                player[0].pos.x += abs(vely);
-                                return 1;
+                                p.pos.x += abs(vely);
+                                return true;
                         }
                         latpos.x = newpos.x - k * abs(vely);
                         if(!world_collide(latpos))
                         {
-                                //this is the winning position!
-                                //move one step laterally!
-                                player[0].pos.x -= abs(vely);
-                                return 1;
+                                p.pos.x -= abs(vely);
+                                return true;
                         }
                 }
         }
 
         if(!would_be_stuck || already_stuck)
         {
-                if(!fake_it) player[0].pos = newpos;
-                return 1;
+                if(!fake_it) p.pos = newpos;
+                return true;
         }
 
         //don't move, but remember intent to move
-        player[0].ylast = vely ? 1 : 0;
-        return 0;
+        p.ylast = vely ? 1 : 0;
+        return false;
 }
 
 void update_player(int i)
 {
-        #define p (player[i])
-
         if (p.stun > 0)
                 p.stun--;
 
@@ -148,18 +142,18 @@ void update_player(int i)
         }
         else if(!p.vel.x ^ !p.vel.y) // moving only one direction
         {
-                move_player(p.vel.x, p.vel.y, 0, 1);
+                move_player(i, p.vel.x, p.vel.y, false, true);
         }
         else if((p.ylast || !p.vel.x) && p.vel.y)
         {
                 //only move 1 direction, but try the most recently pressed first
-                int fake_it = move_player(0, p.vel.y, 0, 0);
-                move_player(p.vel.x, 0, fake_it, 0);
+                int fake_it = move_player(i, 0, p.vel.y, false, false);
+                move_player(i, p.vel.x, 0, fake_it, false);
         }
         else
         {
-                int fake_it = move_player(p.vel.x, 0, 0, 0);
-                move_player(0, p.vel.y, fake_it, 0);
+                int fake_it = move_player(i, p.vel.x, 0, false, false);
+                move_player(i, 0, p.vel.y, fake_it, false);
         }
 
         //check for enemy collisions
