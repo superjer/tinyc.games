@@ -333,7 +333,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                                 break;
 
                         int yy = y;
-                        for (; yy >= y - RANDI(3, 8); yy--)
+                        for (; yy >= y - (int)RANDI(3, 8); yy--)
                                 TT_(x, yy, z) = WOOD;
 
                         int ymax = yy + RANDI(2, 4);

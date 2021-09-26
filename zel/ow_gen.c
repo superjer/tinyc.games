@@ -44,8 +44,8 @@ struct rect {
         int x0, y0, x1, y1;
 };
 
-char charout[sY * sH][sX * sW];
-char flood_buf[sY * sH][sX * sW];
+unsigned char charout[sY * sH][sX * sW];
+unsigned char flood_buf[sY * sH][sX * sW];
 
 struct point {
         int x, y;
@@ -213,11 +213,32 @@ void cook_squares_again()
         // open doors on screen edges that are not an obstacle
         for (i = 1; i < oX; i += 2) for (j = 1; j < oY; j += 2)
         {
-                if (oroom[i - 1][j].open_r && oroom[i - 1][j + 1].open_r && (oroom[i - 1][j].open_d || oroom[i][j].open_d))
-                        oroom[i - 1][j].open_d = oroom[i][j].open_d = 1;
+                /*
+                    +===+===+===+===+===+===+
+                    #   |i  #i+1|   #   |   #
+                    #   |j-1#j-1|   #   |   #
+                    +---+---+---+---+---+---+
+                    #   |i  #   |   #   |   #
+                    #   |j  #   |   #   |   #
+                    +===+===+===+===+===+===+
+                    #   |   #   |   #   |   #
+                    #   |   #   |   #   |   #
+                    +---+---+---+---+---+---+
+                    #   |   #   |   #i-1|i  #
+                    #   |   #   |   #j  |j  #
+                    +===+===+===+===+===+===+
+                                     i-1 
+                                     j+1
+                */
+                if (j < oY - 1
+                                && oroom[i - 1][j].open_r && oroom[i - 1][j + 1].open_r
+                                && (oroom[i - 1][j].open_d || oroom[i][j].open_d))
+                        oroom[i - 1][j].open_d = oroom[i][j].open_d = true;
                         
-                if (oroom[i][j - 1].open_d && oroom[i + 1][j - 1].open_d && (oroom[i][j - 1].open_r || oroom[i][j].open_r))
-                        oroom[i][j - 1].open_r = oroom[i][j].open_r = 1;
+                if (i < oX - 1
+                                && oroom[i][j - 1].open_d && oroom[i + 1][j - 1].open_d
+                                && (oroom[i][j - 1].open_r || oroom[i][j].open_r))
+                        oroom[i][j - 1].open_r = oroom[i][j].open_r = true;
         }
 }
 

@@ -180,7 +180,7 @@ struct osn_context *osn_context;
 // dumb rand -- for simple deterministic rand
 unsigned dumb_rand(unsigned *seed) { return (*seed = (1103515245 * *seed + 12345) % 2147483648); }
 // helpers for dumb rand, must have local var called seed for all of these
-#define RAND (abs(dumb_rand(&seed)))
+#define RAND (dumb_rand(&seed))
 // random float in the range 0-1
 #define RAND01 ((double)RAND / 2147483648.0)
 // random int in the range lo to hi

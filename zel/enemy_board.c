@@ -19,7 +19,7 @@ void update_board(int n)
         }
 
         // on a tile exactly and stopped, 10%?
-        if (stopped(n) || pct(10) && e.pos.x % BS2 == 0 && e.pos.y % BS2 == 0)
+        if (stopped(n) || (pct(10) && e.pos.x % BS2 == 0 && e.pos.y % BS2 == 0))
         {
                 if (rand()%2 == 0)
                         e.vel.x = pct(50) ? 2 : -2;

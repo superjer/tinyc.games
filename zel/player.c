@@ -128,9 +128,9 @@ void update_player(int i)
                 p.hitbox.h += 4 + BS2;
                 switch(p.dir)
                 {
-                        case WEST:  p.hitbox.x -= BS;
+                        case WEST:  p.hitbox.x -= BS; // fallthru
                         case EAST:  p.hitbox.w += BS; break;
-                        case NORTH: p.hitbox.y -= BS;
+                        case NORTH: p.hitbox.y -= BS; // fallthru
                         case SOUTH: p.hitbox.h += BS; break;
                 }
 

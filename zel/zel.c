@@ -244,11 +244,11 @@ void exit_dungeon()
 
 void key_move(int down)
 {
-        if(event.key.repeat) return;
+        if (event.key.repeat) return;
 
         int amt = down ? PLYR_SPD : -PLYR_SPD;
 
-        if(down)
+        if (down)
         {
                 if(event.key.keysym.sym == SDLK_UP || event.key.keysym.sym == SDLK_DOWN)
                         player[0].ylast = 1;
@@ -256,7 +256,7 @@ void key_move(int down)
                         player[0].ylast = 0;
         }
 
-        switch(event.key.keysym.sym)
+        switch (event.key.keysym.sym)
         {
                 case SDLK_UP:
                         player[0].vel.y -= amt;
