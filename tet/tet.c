@@ -1,4 +1,4 @@
-// Tet -- http://tinyc.games -- (c) 2020 Jer Wilson
+// Tet -- http://tinyc.games -- (c) 2022 Jer Wilson
 //
 // Tet is an extremely small implementation of Tetris.
 
@@ -15,7 +15,10 @@
 #define BAG_SZ 8   // bag size
 #define BS 30      // size of one block
 #define BS2 (BS/2) // size of half a block
-#define PREVIEW_BOX_X (10 + BS * BWIDTH + 10 + BS2)
+#define WBOX (5*BS)// width of a preview/hold box
+#define WBOARD (10*BS)// width of board
+#define HELD_BOX_X (10 + BS2)
+#define PREVIEW_BOX_X (10 + WBOX + 10 + BS * BWIDTH + 10 + BS2)
 #define MAX(a,b) ((a)>(b)?(a):(b))
 
 char shapes[] =
@@ -68,6 +71,8 @@ int falling_rot;
 int grounded;
 int grounded_moves;
 int next_shape;
+int held_shape;
+int hold_count;
 int lines;
 int score;
 int best;
@@ -98,6 +103,7 @@ void shine_line(int y);
 void kill_lines();
 void hard();
 void spin(int dir);
+void hold();
 
 //the entry point and main game loop
 int main()
@@ -124,12 +130,20 @@ int main()
 void setup()
 {
         srand(time(NULL));
-        SDL_Init(SDL_INIT_VIDEO);
+        SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
+
+        printf("%i joysticks were found.\n\n", SDL_NumJoysticks() );
+        printf("The names of the joysticks are:\n");
+        for (size_t i = 0; i < SDL_NumJoysticks(); i++)
+        {
+                SDL_Joystick *joystick = SDL_JoystickOpen(i);
+                printf("    %s\n", SDL_JoystickName(joystick));
+        }
 
         SDL_Window *win = SDL_CreateWindow("Tet",
                         SDL_WINDOWPOS_UNDEFINED,
                         SDL_WINDOWPOS_UNDEFINED,
-                        10 + BWIDTH * BS + 10 + 5 * BS + 10,
+                        10 + WBOX + 10 + WBOARD + 10 + WBOX + 10,
                         10 + VHEIGHT * BS + 10,
                         SDL_WINDOW_SHOWN);
 
@@ -149,13 +163,15 @@ void key_down()
 {
         if (falling_shape) switch (event.key.keysym.sym)
         {
-                case SDLK_a: case SDLK_LEFT:  move(-1, 0); break;
-                case SDLK_d: case SDLK_RIGHT: move( 1, 0); break;
-                case SDLK_w: case SDLK_UP:    hard();      break;
-                case SDLK_s: case SDLK_DOWN:  move( 0, 1); break;
-        
-                case SDLK_COMMA: case SDLK_z:     spin(3);     break;
-                case SDLK_PERIOD: case SDLK_x:     spin(1);     break;
+                case SDLK_a:      case SDLK_LEFT:   move(-1, 0); break;
+                case SDLK_d:      case SDLK_RIGHT:  move( 1, 0); break;
+                case SDLK_w:      case SDLK_UP:     hard();      break;
+                case SDLK_s:      case SDLK_DOWN:   move( 0, 1); break;
+
+                case SDLK_COMMA:  case SDLK_z:      spin(3);     break;
+                case SDLK_PERIOD: case SDLK_x:      spin(1);     break;
+
+                case SDLK_TAB:    case SDLK_LSHIFT: hold();      break;
         }
 }
 
@@ -165,9 +181,6 @@ void update_stuff()
         if (!falling_shape && !shine_time && !dead_time)
         {
                 new_piece();
-                falling_x = 3;
-                falling_y = 2;
-                falling_rot = 0;
         }
 
         grounded = collide(falling_x, falling_y + 1, falling_rot);
@@ -234,7 +247,17 @@ int new_bag(int *bag)
         return 0;
 }
 
-//pick a new next piece from the bag, and put the old on in play
+// set the current piece to the top, middle to start falling
+void reset_fall()
+{
+        idle_time = 0;
+        grounded_moves = 0;
+        falling_x = 3;
+        falling_y = 2;
+        falling_rot = 0;
+}
+
+//pick a new next piece from the bag, and put the old one in play
 void new_piece()
 {
         static int bag[BAG_SZ] = {0};
@@ -243,10 +266,9 @@ void new_piece()
         if (idx >= BAG_SZ) idx = new_bag(bag);
 
         falling_shape = next_shape;
-        printf("next_shape = bag[%d] = %d = %c\n", idx, bag[idx], shape_names[bag[idx]]);
         next_shape = bag[idx++];
-        idle_time = 0;
-        grounded_moves = 0;
+        hold_count = 0;
+        reset_fall();
 }
 
 //move the falling piece left, right, or down
@@ -404,6 +426,15 @@ void spin(int dir)
         }
 }
 
+void hold()
+{
+        if (hold_count++) return;
+        held_shape ^= falling_shape;
+        falling_shape ^= held_shape;
+        held_shape ^= falling_shape;
+        reset_fall();
+}
+
 //draw everything in the game on the screen
 void draw_stuff()
 {
@@ -411,8 +442,9 @@ void draw_stuff()
         SDL_SetRenderDrawColor(renderer, 25, 40, 35, 255);
         SDL_RenderClear(renderer);
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){10, 10, BS * BWIDTH, BS * VHEIGHT});
-        SDL_RenderFillRect(renderer, &(SDL_Rect){10 + BS * BWIDTH + 10, 10, BS * 5, BS * 5});
+        SDL_RenderFillRect(renderer, &(SDL_Rect){10, 10, WBOX, WBOX});
+        SDL_RenderFillRect(renderer, &(SDL_Rect){10 + WBOX + 10, 10, WBOARD, BS * VHEIGHT});
+        SDL_RenderFillRect(renderer, &(SDL_Rect){10 + WBOX + 10 + WBOARD + 10, 10, WBOX, WBOX});
 
         //find ghost piece position
         int ghost_y = falling_y;
@@ -427,7 +459,7 @@ void draw_stuff()
 
                 SDL_SetRenderDrawColor(renderer, 8, 13, 12, 255);
                 SDL_RenderFillRect(renderer, &(SDL_Rect){
-                        10 + BS * (i + falling_x),
+                        10 + WBOX + 10 + BS * (i + falling_x),
                         10 + BS * MAX(0, j + falling_y - 5),
                         BS,
                         BS * (ghost_y - falling_y)
@@ -445,40 +477,52 @@ void draw_stuff()
                         continue;
 
                 if (ghost_j >= 0)
-                        draw_square(10 + BS * world_i, 10 + BS * ghost_j, falling_shape, 1);
+                        draw_square(10 + WBOX + 10 + BS * world_i, 10 + BS * ghost_j, falling_shape, 1);
 
                 if (world_j >= 0)
-                        draw_square(10 + BS * world_i, 10 + BS * world_j, falling_shape, 0);
+                        draw_square(10 + WBOX + 10 + BS * world_i, 10 + BS * world_j, falling_shape, 0);
         }
 
         //draw next piece, centered in the preview box
         for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
         {
-                if (is_solid_part(next_shape, 0, i, j))
-                        draw_square(
-                                PREVIEW_BOX_X + BS * i + BS2 * center[2*next_shape],
-                                10 + BS * j + BS2 * center[2*next_shape + 1],
-                                next_shape,
-                                0
-                        );
+                if (!is_solid_part(next_shape, 0, i, j)) continue;
+                draw_square(
+                        PREVIEW_BOX_X + BS * i + BS2 * center[2*next_shape],
+                        10 + BS * j + BS2 * center[2*next_shape + 1],
+                        next_shape,
+                        0
+                );
+        }
+
+        //draw held piece, centered in the held box
+        for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
+        {
+                if (!is_solid_part(held_shape, 0, i, j)) continue;
+                draw_square(
+                        HELD_BOX_X + BS * i + BS2 * center[2*held_shape],
+                        10 + BS * j + BS2 * center[2*held_shape + 1],
+                        held_shape,
+                        0
+                );
         }
 
         //draw board pieces
         for (int i = 0; i < BWIDTH; i++) for (int j = 0; j < VHEIGHT; j++)
         {
                 if (board[j+5][i])
-                        draw_square(10 + BS * i, 10 + BS * j, board[j+5][i], 0);
+                        draw_square(10 + WBOX + 10 + BS * i, 10 + BS * j, board[j+5][i], 0);
         }
 
         //draw counters and instructions
-        text("Lines:",       0, 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 +   0);
-        text("%d"    ,   lines, 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 +  30);
-        text("Score:",       0, 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 +  70);
-        text("%d"    ,   score, 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 + 100);
-        text("Best:" ,       0, 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 + 140);
-        text("%d"    ,    best, 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 + 170);
-        text("Controls:",    0, 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 + 370);
-        text("arrows, z, x", 0, 10 + BS * BWIDTH + 10, 10 + BS * 5 + 10 + 400);
+        text("Lines:",       0, 10, 10 + WBOX + 10 +   0);
+        text("%d"    ,   lines, 10, 10 + WBOX + 10 +  30);
+        text("Score:",       0, 10, 10 + WBOX + 10 +  70);
+        text("%d"    ,   score, 10, 10 + WBOX + 10 + 100);
+        text("Best:" ,       0, 10, 10 + WBOX + 10 + 140);
+        text("%d"    ,    best, 10, 10 + WBOX + 10 + 170);
+        text("Controls:",    0, 10, 10 + WBOX + 10 + 370);
+        text("arrows, z, x", 0, 10, 10 + WBOX + 10 + 400);
 
         SDL_RenderPresent(renderer);
 }
