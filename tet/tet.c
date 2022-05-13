@@ -57,6 +57,8 @@ unsigned char colors[] = {
         15,  127, 127, // S
         132,   0,  46, // T
         255, 255, 255, // shine color
+         98, 108, 102, // nickel square
+        122, 199,  79, // mantis square
 };
 
 int kicks[] = {   // clockwise                            counterclockwise
@@ -72,6 +74,7 @@ int kicks[] = {   // clockwise                            counterclockwise
 };
 
 unsigned char board[BHEIGHT][BWIDTH];
+unsigned int idmap[BHEIGHT][BWIDTH];
 int killy_lines[BHEIGHT];
 
 int falling_x;
@@ -209,18 +212,18 @@ void key_down()
 
 void joy_down()
 {
-        //printf("Joy down: device=%d button=%d\n", event.jbutton.which, event.jbutton.button);
-        if (!falling_shape) return;
-
-        if (event.jbutton.button >= 4)
-                hold();
-        else
+        printf("Joy down: device=%d button=%d\n", event.jbutton.which, event.jbutton.button);
+        if (!falling_shape)
+                ;
+        else if (event.jbutton.button <= 3)
                 spin(event.jbutton.button % 2 ? 1 : 3);
+        else if (event.jbutton.button <= 5)
+                hold();
 }
 
 void joy_hat()
 {
-        //printf("Joy hat: device=%d hat=%d value=%d\n", event.jhat.which, event.jhat.hat, event.jhat.value);
+        printf("Joy hat: device=%d hat=%d value=%d\n", event.jhat.which, event.jhat.hat, event.jhat.value);
         if (!falling_shape) ;
         else if (event.jhat.value & SDL_HAT_DOWN)  move( 0, 1);
         else if (event.jhat.value & SDL_HAT_LEFT)  move(-1, 0);
@@ -269,7 +272,7 @@ void update_stuff()
                         new_game();
         }
 
-        if (idle_time >= 30)
+        if (idle_time >= 50)
         {
                 move(0, 1);
                 idle_time = 0;
@@ -280,6 +283,7 @@ void update_stuff()
 void new_game()
 {
         memset(board, 0, sizeof board);
+        memset(idmap, 0, sizeof idmap);
         do new_piece(); while (next[0] == 0 || next[0] > 4);
         if (best < score) best = score;
         score = 0;
@@ -346,6 +350,11 @@ void move(int dx, int dy)
         {
                 falling_x += dx;
                 falling_y += dy;
+
+                // reset idle time if you voluntarily move DOWN
+                if (dy) idle_time = 0;
+
+                // reset idle time if piece is grounded, limit grounded moves though
                 if (grounded && grounded_moves < 15)
                 {
                         idle_time = 0;
@@ -355,7 +364,6 @@ void move(int dx, int dy)
         else if (dy)
         {
                 bake();
-                falling_shape = 0;
         }
 }
 
@@ -386,9 +394,49 @@ int collide(int x, int y, int rot)
         return 0;
 }
 
+void check_square_at(int x, int y)
+{
+        int found_ids[4] = {0};
+        int first_found_shape = 0;
+        int color = 10; // gold
+
+        for (int i = x; i < x + 4; i++) for (int j = y; j < y + 4; j++)
+        {
+                if (idmap[j][i] == 0) return; // no square here
+
+                if (first_found_shape && board[j][i] != first_found_shape)
+                        color = 9; // silver
+
+                first_found_shape = board[j][i];
+
+                for (int k = 0; k < 5; k++)
+                {
+                        if (k == 4) return; // too many ids
+
+                        if (found_ids[k] == 0)
+                        {
+                                found_ids[k] = idmap[j][i];
+                                break;
+                        }
+
+                        if (found_ids[k] == idmap[j][i])
+                                break;
+                }
+        }
+
+        for (int i = x; i < x + 4; i++) for (int j = y; j < y + 4; j++)
+        {
+                board[j][i] = color;
+                idmap[j][i] = 0;
+        }
+}
+
 //bake the falling piece into the background/board
 void bake()
 {
+        static int bake_id = 0;
+        bake_id++;
+
         for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
         {
                 int world_i = i + falling_x;
@@ -404,16 +452,20 @@ void bake()
                         dead_time = BWIDTH * VHEIGHT;
 
                 board[world_j][world_i] = falling_shape;
+                idmap[world_j][world_i] = bake_id;
         }
 
-        //check if there are any completed horizontal lines
+        // check for squares
+        for (int j = BHEIGHT - 1; j >= 3; j--)
+                for (int i = 0; i < BWIDTH - 3; i++)
+                        check_square_at(i, j);
+
+        // check if there are any completed horizontal lines
         for (int j = BHEIGHT - 1; j >= 0; j--)
-        {
                 for (int i = 0; i < BWIDTH && board[j][i]; i++)
-                {
                         if (i == BWIDTH - 1) shine_line(j);
-                }
-        }
+
+        falling_shape = 0;
 }
 
 //make a completed line "shine" and mark it to be removed
@@ -437,13 +489,15 @@ void kill_lines()
                 lines++;
                 new_lines++;
                 killy_lines[y] = 0;
-                memset(board[0], 0, sizeof *board);
 
-                for (int j = y; j > 0; j--)
+                for (int j = y; j > 0; j--) for (int i = 0; i < BWIDTH; i++)
                 {
-                        for (int i = 0; i < BWIDTH; i++)
-                                board[j][i] = board[j-1][i];
+                        board[j][i] = board[j-1][i];
+                        idmap[j][i] = idmap[j-1][i];
                 }
+
+                memset(board[0], 0, sizeof *board);
+                memset(idmap[0], 0, sizeof *idmap);
         }
 
         switch (new_lines)
@@ -458,8 +512,9 @@ void kill_lines()
 //move the falling piece as far down as it will go
 void hard()
 {
-        for (; !collide(falling_x, falling_y + 1, falling_rot); falling_y++)
-                idle_time = 30;
+        while (!collide(falling_x, falling_y + 1, falling_rot))
+                falling_y++;
+        idle_time = 50;
 }
 
 //spin the falling piece left or right, if possible
