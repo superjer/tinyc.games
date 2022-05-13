@@ -22,43 +22,53 @@
 #define MAX(a,b) ((a)>(b)?(a):(b))
 
 char shapes[] =
-        ".... .... .... .... .... .... .... .... "
         ".... O... ..O. .OO. .... OO.. .OO. .O.. "
         ".... OOO. OOO. .OO. OOOO .OO. OO.. OOO. "
         ".... .... .... .... .... .... .... .... "
-
-        ".... .OO. .O.. .... .O.. .... .... .... "
-        ".... .O.. .O.. .OO. .O.. .O.. O... .O.. "
-        ".... .O.. .OO. .OO. .O.. OO.. OO.. .OO. "
-        ".... .... .... .... .O.. O... .O.. .O.. "
-
         ".... .... .... .... .... .... .... .... "
-        ".... OOO. OOO. .OO. .... OO.. .OO. .... "
-        ".... ..O. O... .OO. OOOO .OO. OO.. OOO. "
-        ".... .... .... .... .... .... .... .O.. "
 
-        ".... .O.. OO.. .... ..O. .... .... .... "
-        ".... .O.. .O.. .OO. ..O. .O.. O... .O.. "
-        ".... OO.. .O.. .OO. ..O. OO.. OO.. OO.. "
-        ".... .... .... .... ..O. O... .O.. .O.. ";
+        ".... .OO. .O.. .OO. ..O. ..O. .O.. .O.. "
+        ".... .O.. .O.. .OO. ..O. .OO. .OO. .OO. "
+        ".... .O.. .OO. .... ..O. .O.. ..O. .O.. "
+        ".... .... .... .... ..O. .... .... .... "
+
+        ".... .... .... .OO. .... .... .... .... "
+        ".... OOO. OOO. .OO. .... OO.. .OO. OOO. "
+        ".... ..O. O... .... OOOO .OO. OO.. .O.. "
+        ".... .... .... .... .... .... .... .... "
+
+        ".... .O.. OO.. .OO. .O.. .O.. O... .O.. "
+        ".... .O.. .O.. .OO. .O.. OO.. OO.. OO.. "
+        ".... OO.. .O.. .... .O.. O... .O.. .O.. "
+        ".... .... .... .... .O.. .... .... .... ";
 
 
 int center[] = { // helps center shapes in preview box
          0,0, 1,1, 1,1, 0,1, 0,0, 1,1, 1,1, 1,1,
 };
 
-char shape_names[] = ".JLOIZST";
-
 unsigned char colors[] = {
         0,     0,   0, // unused
-        242, 245, 237, // J-piece
-        255, 194,   0, // L-piece
-        15,  127, 127, // square
-        132,   0,  46, // line-piece
-        255,  91,   0, // Z
-        184,   0,  40, // S
-        74,  192, 242, // T
+        242, 245, 237, // J
+        255,  91,   0, // L
+        255, 194,   0, // square
+        74,  192, 242, // line
+        184,   0,  40, // Z
+        15,  127, 127, // S
+        132,   0,  46, // T
         255, 255, 255, // shine color
+};
+
+int kicks[] = {   // clockwise                            counterclockwise
+        0,0,  -1, 0,  -1, 1,   0,-2,  -1,-2,     0,0,   1, 0,   1, 1,   0,-2,   1,-2, // rotation 0
+        0,0,  -1, 0,  -1,-1,   0, 2,  -1, 2,     0,0,  -1, 0,  -1,-1,   0, 2,  -1, 2, // rotation 1
+        0,0,   1, 0,   1, 1,   0,-2,   1,-2,     0,0,  -1, 0,  -1, 1,   0,-2,  -1,-2, // rotation 2
+        0,0,   1, 0,   1,-1,   0, 2,   1, 2,     0,0,   1, 0,   1,-1,   0, 2,   1, 2, // rotation 3
+                // line-clockwise                       line-counterclockwise
+        0,0,   2, 0,  -1, 0,   2,-1,  -1, 2,     0,0,   1, 0,  -2, 0,   1, 2,  -2,-1, // rotation 0
+        0,0,  -2, 0,   1, 0,  -2, 1,   1,-2,     0,0,   1, 0,  -2, 0,   1, 2,  -2,-1, // rotation 1
+        0,0,  -1, 0,   2, 0,  -1,-2,   2, 1,     0,0,  -2, 0,   1, 0,  -2, 1,   1,-2, // rotation 2
+        0,0,   2, 0,  -1, 0,   2,-1,  -1, 2,     0,0,  -1, 0,   2, 0,  -1,-2,   2, 1, // rotation 3
 };
 
 unsigned char board[BHEIGHT][BWIDTH];
@@ -70,7 +80,7 @@ int falling_shape;
 int falling_rot;
 int grounded;
 int grounded_moves;
-int next_shape;
+int next[3];
 int held_shape;
 int hold_count;
 int lines;
@@ -87,6 +97,9 @@ TTF_Font *font;
 //prototypes
 void setup();
 void key_down();
+void joy_down();
+void joy_hat();
+void joy_axis();
 void update_stuff();
 void draw_stuff();
 void draw_square(int x, int y, int shape, int shade);
@@ -117,6 +130,9 @@ int main()
                 {
                         case SDL_QUIT: exit(0);
                         case SDL_KEYDOWN: key_down(); break;
+                        case SDL_JOYBUTTONDOWN: joy_down(); break;
+                        case SDL_JOYHATMOTION: joy_hat(); break;
+                        case SDL_JOYAXISMOTION: joy_axis(); break;
                 }
 
                 update_stuff();
@@ -126,19 +142,28 @@ int main()
         }
 }
 
+void joy_setup()
+{
+        SDL_JoystickEventState(SDL_ENABLE);
+        printf("%i joysticks were found.\n\n", SDL_NumJoysticks() );
+        printf("The names of the joysticks are:\n");
+        for (int i = 0; i < SDL_NumJoysticks(); i++)
+        {
+                SDL_Joystick *joy = SDL_JoystickOpen(i);
+                int num_buttons = SDL_JoystickNumButtons(joy);
+                int num_axes = SDL_JoystickNumAxes(joy);
+                printf("    %s - %d buttons, %d axes\n", SDL_JoystickName(joy), num_buttons, num_axes);
+
+                if (num_buttons == 0)
+                        SDL_JoystickClose(joy);
+        }
+}
+
 //initial setup to get the window and rendering going
 void setup()
 {
         srand(time(NULL));
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
-
-        printf("%i joysticks were found.\n\n", SDL_NumJoysticks() );
-        printf("The names of the joysticks are:\n");
-        for (size_t i = 0; i < SDL_NumJoysticks(); i++)
-        {
-                SDL_Joystick *joystick = SDL_JoystickOpen(i);
-                printf("    %s\n", SDL_JoystickName(joystick));
-        }
 
         SDL_Window *win = SDL_CreateWindow("Tet",
                         SDL_WINDOWPOS_UNDEFINED,
@@ -154,6 +179,8 @@ void setup()
                 exit(-1);
         }
 
+        joy_setup();
+
         TTF_Init();
         font = TTF_OpenFont("res/LiberationSans-Regular.ttf", 28);
 }
@@ -167,12 +194,50 @@ void key_down()
                 case SDLK_d:      case SDLK_RIGHT:  move( 1, 0); break;
                 case SDLK_w:      case SDLK_UP:     hard();      break;
                 case SDLK_s:      case SDLK_DOWN:   move( 0, 1); break;
-
                 case SDLK_COMMA:  case SDLK_z:      spin(3);     break;
                 case SDLK_PERIOD: case SDLK_x:      spin(1);     break;
-
                 case SDLK_TAB:    case SDLK_LSHIFT: hold();      break;
         }
+
+        if (event.key.keysym.sym == SDLK_j) // reset joystick subsystem
+        {
+                SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
+                SDL_InitSubSystem(SDL_INIT_JOYSTICK);
+                joy_setup();
+        }
+}
+
+void joy_down()
+{
+        //printf("Joy down: device=%d button=%d\n", event.jbutton.which, event.jbutton.button);
+        if (!falling_shape) return;
+
+        if (event.jbutton.button >= 4)
+                hold();
+        else
+                spin(event.jbutton.button % 2 ? 1 : 3);
+}
+
+void joy_hat()
+{
+        //printf("Joy hat: device=%d hat=%d value=%d\n", event.jhat.which, event.jhat.hat, event.jhat.value);
+        if (!falling_shape) ;
+        else if (event.jhat.value & SDL_HAT_DOWN)  move( 0, 1);
+        else if (event.jhat.value & SDL_HAT_LEFT)  move(-1, 0);
+        else if (event.jhat.value & SDL_HAT_RIGHT) move( 1, 0);
+        else if (event.jhat.value & SDL_HAT_UP)    hard();
+}
+
+void joy_axis()
+{
+        //printf("Joy axis: device=%d axis=%d value=%d\n", event.jaxis.which, event.jaxis.axis, event.jaxis.value);
+        /*
+        if (!falling_shape) ;
+        else if (event.jaxis.axis % 2 == 0 && event.jaxis.value >  16000) move( 1, 0);
+        else if (event.jaxis.axis % 2 == 0 && event.jaxis.value < -16000) move(-1, 0);
+        else if (event.jaxis.axis % 2 == 1 && event.jaxis.value >  16000) move(0, 1);
+        else if (event.jaxis.axis % 2 == 1 && event.jaxis.value < -16000) hard();
+        */
 }
 
 //update everything that needs to update on its own, without input
@@ -215,11 +280,12 @@ void update_stuff()
 void new_game()
 {
         memset(board, 0, sizeof board);
-        do new_piece(); while (next_shape > 4);
+        do new_piece(); while (next[0] == 0 || next[0] > 4);
         if (best < score) best = score;
         score = 0;
         lines = 0;
         falling_shape = 0;
+        held_shape = 0;
 }
 
 //create a new piece bag with 7 or 8 pieces
@@ -265,8 +331,10 @@ void new_piece()
 
         if (idx >= BAG_SZ) idx = new_bag(bag);
 
-        falling_shape = next_shape;
-        next_shape = bag[idx++];
+        falling_shape = next[0];
+        next[0] = next[1];
+        next[1] = next[2];
+        next[2] = bag[idx++];
         hold_count = 0;
         reset_fall();
 }
@@ -282,7 +350,6 @@ void move(int dx, int dy)
                 {
                         idle_time = 0;
                         grounded_moves++;
-                        printf("Grounded moves: %d\n", grounded_moves);
                 }
         }
         else if (dy)
@@ -334,10 +401,7 @@ void bake()
                         continue;
 
                 if (board[world_j][world_i]) // already a block here? game over
-                {
                         dead_time = BWIDTH * VHEIGHT;
-                        next_shape = 0;
-                }
 
                 board[world_j][world_i] = falling_shape;
         }
@@ -402,26 +466,23 @@ void hard()
 void spin(int dir)
 {
         int new_rot = (falling_rot + dir) % 4;
-        int ok = 0;
+        int k = new_rot * 20 + (dir == 1 ? 0 : 10) + (falling_shape == 4 ? 80 : 0);
 
-        if (!collide(falling_x, falling_y, new_rot))
+        for (int i = 0; i < 5; i++)
         {
-                ok = 1;
-        }
-        else if (!collide(falling_x - 1, falling_y, new_rot))
-        {
-                ok = 1;
-                falling_x -= 1;
-        }
-
-        if (ok)
-        {
-                falling_rot = new_rot;
-                if (grounded && grounded_moves < 15)
+                int kx = kicks[k++];
+                int ky = kicks[k++];
+                if (!collide(falling_x + kx, falling_y + ky, new_rot))
                 {
-                        idle_time = 0;
-                        grounded_moves++;
-                        printf("Grounded moves: %d\n", grounded_moves);
+                        falling_rot = new_rot;
+                        falling_x += kx;
+                        falling_y += ky;
+                        if (grounded && grounded_moves < 15)
+                        {
+                                idle_time = 0;
+                                grounded_moves++;
+                        }
+                        return;
                 }
         }
 }
@@ -444,7 +505,7 @@ void draw_stuff()
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderFillRect(renderer, &(SDL_Rect){10, 10, WBOX, WBOX});
         SDL_RenderFillRect(renderer, &(SDL_Rect){10 + WBOX + 10, 10, WBOARD, BS * VHEIGHT});
-        SDL_RenderFillRect(renderer, &(SDL_Rect){10 + WBOX + 10 + WBOARD + 10, 10, WBOX, WBOX});
+        //SDL_RenderFillRect(renderer, &(SDL_Rect){10 + WBOX + 10 + WBOARD + 10, 10, WBOX, WBOX});
 
         //find ghost piece position
         int ghost_y = falling_y;
@@ -484,13 +545,13 @@ void draw_stuff()
         }
 
         //draw next piece, centered in the preview box
-        for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
+        for (int n = 0; n < 3; n++) for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
         {
-                if (!is_solid_part(next_shape, 0, i, j)) continue;
+                if (!is_solid_part(next[n], 0, i, j)) continue;
                 draw_square(
-                        PREVIEW_BOX_X + BS * i + BS2 * center[2*next_shape],
-                        10 + BS * j + BS2 * center[2*next_shape + 1],
-                        next_shape,
+                        PREVIEW_BOX_X + BS * i + BS2 * center[2 * next[n]],
+                        10 + BS + BS * 4 * n + BS * j + BS2 * center[2 * next[n] + 1],
+                        next[n],
                         0
                 );
         }
@@ -501,7 +562,7 @@ void draw_stuff()
                 if (!is_solid_part(held_shape, 0, i, j)) continue;
                 draw_square(
                         HELD_BOX_X + BS * i + BS2 * center[2*held_shape],
-                        10 + BS * j + BS2 * center[2*held_shape + 1],
+                        10 + BS +  BS * j + BS2 * center[2*held_shape + 1],
                         held_shape,
                         0
                 );
@@ -515,14 +576,15 @@ void draw_stuff()
         }
 
         //draw counters and instructions
-        text("Lines:",       0, 10, 10 + WBOX + 10 +   0);
-        text("%d"    ,   lines, 10, 10 + WBOX + 10 +  30);
-        text("Score:",       0, 10, 10 + WBOX + 10 +  70);
-        text("%d"    ,   score, 10, 10 + WBOX + 10 + 100);
-        text("Best:" ,       0, 10, 10 + WBOX + 10 + 140);
-        text("%d"    ,    best, 10, 10 + WBOX + 10 + 170);
-        text("Controls:",    0, 10, 10 + WBOX + 10 + 370);
-        text("arrows, z, x", 0, 10, 10 + WBOX + 10 + 400);
+        text("Lines:"   ,     0, 10, 10 + WBOX + 30 +   0);
+        text("%d"       , lines, 10, 10 + WBOX + 30 +  30);
+        text("Score:"   ,     0, 10, 10 + WBOX + 30 +  70);
+        text("%d"       , score, 10, 10 + WBOX + 30 + 100);
+        text("Best:"    ,     0, 10, 10 + WBOX + 30 + 140);
+        text("%d"       ,  best, 10, 10 + WBOX + 30 + 170);
+        text("Controls:",     0, 10, 10 + WBOX + 30 + 310);
+        text("arrows,"  ,     0, 10, 10 + WBOX + 30 + 340);
+        text("z, x, tab",     0, 10, 10 + WBOX + 30 + 370);
 
         SDL_RenderPresent(renderer);
 }
