@@ -138,11 +138,11 @@ int main()
                         case SDL_QUIT:             exit(0);
                         case SDL_KEYDOWN:          key_down();  break;
                         case SDL_KEYUP:            key_up();    break;
-                        case SDL_JOYBUTTONDOWN:    joy_down();  break;
-                        case SDL_JOYBUTTONUP:      joy_up();    break;
-                        case SDL_JOYHATMOTION:     joy_hat();   break;
+                        case SDL_CONTROLLERBUTTONDOWN: joy_down(); break;
+                        case SDL_CONTROLLERBUTTONUP: joy_up(); break;
                         case SDL_JOYDEVICEADDED:
                         case SDL_JOYDEVICEREMOVED: joy_setup(); break;
+
                 }
 
                 update_stuff();
@@ -154,26 +154,20 @@ int main()
 
 void joy_setup()
 {
-        SDL_JoystickEventState(SDL_ENABLE);
-        printf("%i joysticks were found.\n\n", SDL_NumJoysticks() );
-        printf("The names of the joysticks are:\n");
         for (int i = 0; i < SDL_NumJoysticks(); i++)
         {
-                SDL_Joystick *joy = SDL_JoystickOpen(i);
-                int num_buttons = SDL_JoystickNumButtons(joy);
-                int num_axes = SDL_JoystickNumAxes(joy);
-                printf("    %s - %d buttons, %d axes\n", SDL_JoystickName(joy), num_buttons, num_axes);
-
-                if (num_buttons == 0)
-                        SDL_JoystickClose(joy);
+                if (!SDL_IsGameController(i)) continue;
+                SDL_GameController *cont = SDL_GameControllerOpen(i);
+                printf("Controller: %s %p\n", SDL_GameControllerNameForIndex(i), cont);
         }
+        SDL_GameControllerEventState(SDL_ENABLE);
 }
 
 //initial setup to get the window and rendering going
 void setup()
 {
         srand(time(NULL));
-        SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
+        SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER);
 
         SDL_Window *win = SDL_CreateWindow("Tet",
                         SDL_WINDOWPOS_UNDEFINED,
@@ -227,29 +221,26 @@ void key_up()
 
 void joy_down()
 {
-        printf("Joy %d down button=%d\n", event.jbutton.which, event.jbutton.button);
-        if (!falling_shape)
-                ;
-        else if (event.jbutton.button <= 3)
-                spin(event.jbutton.button % 2 ? 1 : 3);
-        else if (event.jbutton.button <= 5)
-                hold();
+        if (falling_shape) switch(event.cbutton.button)
+        {
+                case SDL_CONTROLLER_BUTTON_A:            spin(1); break;
+                case SDL_CONTROLLER_BUTTON_B:            spin(3); break;
+                case SDL_CONTROLLER_BUTTON_DPAD_UP:      hard();  break;
+                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:    down  = 1; move_cooldown = 0; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:    left  = 1; move_cooldown = 0; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:   right = 1; move_cooldown = 0; break;
+                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: hold();  break;
+        }
 }
 
 void joy_up()
 {
-}
-
-void joy_hat()
-{
-        printf("Hat %d value=%d\n", event.jhat.which, event.jhat.value);
-        down = left = right = 0;
-        move_cooldown = 0;
-        if (!falling_shape) ;
-        else if (event.jhat.value & SDL_HAT_DOWN)  down = 1;
-        else if (event.jhat.value & SDL_HAT_LEFT)  left = 1;
-        else if (event.jhat.value & SDL_HAT_RIGHT) right = 1;
-        else if (event.jhat.value & SDL_HAT_UP)    hard();
+        switch(event.cbutton.button)
+        {
+                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  down  = 0; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  left  = 0; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: right = 0; break;
+        }
 }
 
 //update everything
@@ -308,6 +299,7 @@ void new_game()
         lines = 0;
         falling_shape = 0;
         held_shape = 0;
+        hold_count = 0;
 }
 
 //create a new piece bag with 7 or 8 pieces
@@ -357,7 +349,6 @@ void new_piece()
         next[0] = next[1];
         next[1] = next[2];
         next[2] = bag[idx++];
-        hold_count = 0;
         reset_fall();
 }
 
@@ -365,7 +356,7 @@ void new_piece()
 void move(int dx, int dy, int gravity)
 {
         if (!gravity)
-                move_cooldown = move_cooldown ? 5 : 25;
+                move_cooldown = move_cooldown ? 5 : 15;
 
         if (!collide(falling_x + dx, falling_y + dy, falling_rot))
         {
@@ -487,6 +478,7 @@ void bake()
                         if (i == BWIDTH - 1) shine_line(j);
 
         falling_shape = 0;
+        hold_count = 0;
 }
 
 //make a completed line "shine" and mark it to be removed
