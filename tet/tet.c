@@ -57,7 +57,7 @@ unsigned char colors[] = {
         15,  127, 127, // S
         132,   0,  46, // T
         255, 255, 255, // shine color
-         98, 108, 102, // nickel square
+         59,  66, 159, // violet blue square
         122, 199,  79, // mantis square
 };
 
@@ -99,10 +99,10 @@ TTF_Font *font;
 
 //prototypes
 void setup();
+void joy_setup();
 void key_down();
 void joy_down();
 void joy_hat();
-void joy_axis();
 void update_stuff();
 void draw_stuff();
 void draw_square(int x, int y, int shape, int shade);
@@ -135,7 +135,8 @@ int main()
                         case SDL_KEYDOWN: key_down(); break;
                         case SDL_JOYBUTTONDOWN: joy_down(); break;
                         case SDL_JOYHATMOTION: joy_hat(); break;
-                        case SDL_JOYAXISMOTION: joy_axis(); break;
+                        case SDL_JOYDEVICEADDED:
+                        case SDL_JOYDEVICEREMOVED: joy_setup(); break;
                 }
 
                 update_stuff();
@@ -203,16 +204,11 @@ void key_down()
         }
 
         if (event.key.keysym.sym == SDLK_j) // reset joystick subsystem
-        {
-                SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
-                SDL_InitSubSystem(SDL_INIT_JOYSTICK);
                 joy_setup();
-        }
 }
 
 void joy_down()
 {
-        printf("Joy down: device=%d button=%d\n", event.jbutton.which, event.jbutton.button);
         if (!falling_shape)
                 ;
         else if (event.jbutton.button <= 3)
@@ -223,24 +219,11 @@ void joy_down()
 
 void joy_hat()
 {
-        printf("Joy hat: device=%d hat=%d value=%d\n", event.jhat.which, event.jhat.hat, event.jhat.value);
         if (!falling_shape) ;
         else if (event.jhat.value & SDL_HAT_DOWN)  move( 0, 1);
         else if (event.jhat.value & SDL_HAT_LEFT)  move(-1, 0);
         else if (event.jhat.value & SDL_HAT_RIGHT) move( 1, 0);
         else if (event.jhat.value & SDL_HAT_UP)    hard();
-}
-
-void joy_axis()
-{
-        //printf("Joy axis: device=%d axis=%d value=%d\n", event.jaxis.which, event.jaxis.axis, event.jaxis.value);
-        /*
-        if (!falling_shape) ;
-        else if (event.jaxis.axis % 2 == 0 && event.jaxis.value >  16000) move( 1, 0);
-        else if (event.jaxis.axis % 2 == 0 && event.jaxis.value < -16000) move(-1, 0);
-        else if (event.jaxis.axis % 2 == 1 && event.jaxis.value >  16000) move(0, 1);
-        else if (event.jaxis.axis % 2 == 1 && event.jaxis.value < -16000) hard();
-        */
 }
 
 //update everything that needs to update on its own, without input
