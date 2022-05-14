@@ -77,6 +77,8 @@ unsigned char board[BHEIGHT][BWIDTH];
 unsigned int idmap[BHEIGHT][BWIDTH];
 int killy_lines[BHEIGHT];
 
+int left, right, down; // true if holding a direction
+int move_cooldown;
 int falling_x;
 int falling_y;
 int falling_shape;
@@ -101,7 +103,9 @@ TTF_Font *font;
 void setup();
 void joy_setup();
 void key_down();
+void key_up();
 void joy_down();
+void joy_up();
 void joy_hat();
 void update_stuff();
 void draw_stuff();
@@ -110,7 +114,7 @@ void set_color_from_shape(int shape, int shade);
 void text(char *fstr, int value, int x, int y);
 void new_game();
 void new_piece();
-void move(int dx, int dy);
+void move(int dx, int dy, int gravity);
 int is_solid_part(int shape, int rot, int i, int j);
 int collide(int x, int y, int rot);
 void bake();
@@ -131,10 +135,12 @@ int main()
         {
                 while (SDL_PollEvent(&event)) switch (event.type)
                 {
-                        case SDL_QUIT: exit(0);
-                        case SDL_KEYDOWN: key_down(); break;
-                        case SDL_JOYBUTTONDOWN: joy_down(); break;
-                        case SDL_JOYHATMOTION: joy_hat(); break;
+                        case SDL_QUIT:             exit(0);
+                        case SDL_KEYDOWN:          key_down();  break;
+                        case SDL_KEYUP:            key_up();    break;
+                        case SDL_JOYBUTTONDOWN:    joy_down();  break;
+                        case SDL_JOYBUTTONUP:      joy_up();    break;
+                        case SDL_JOYHATMOTION:     joy_hat();   break;
                         case SDL_JOYDEVICEADDED:
                         case SDL_JOYDEVICEREMOVED: joy_setup(); break;
                 }
@@ -192,23 +198,36 @@ void setup()
 //handle a key press from the player
 void key_down()
 {
+        if (event.key.repeat) return;
+
         if (falling_shape) switch (event.key.keysym.sym)
         {
-                case SDLK_a:      case SDLK_LEFT:   move(-1, 0); break;
-                case SDLK_d:      case SDLK_RIGHT:  move( 1, 0); break;
-                case SDLK_w:      case SDLK_UP:     hard();      break;
-                case SDLK_s:      case SDLK_DOWN:   move( 0, 1); break;
-                case SDLK_COMMA:  case SDLK_z:      spin(3);     break;
-                case SDLK_PERIOD: case SDLK_x:      spin(1);     break;
-                case SDLK_TAB:    case SDLK_LSHIFT: hold();      break;
+                case SDLK_a:      case SDLK_LEFT:   left = 1;  move_cooldown = 0; break;
+                case SDLK_d:      case SDLK_RIGHT:  right = 1; move_cooldown = 0; break;
+                case SDLK_s:      case SDLK_DOWN:   down = 1;  move_cooldown = 0; break;
+                case SDLK_w:      case SDLK_UP:     hard();    break;
+                case SDLK_COMMA:  case SDLK_z:      spin(3);   break;
+                case SDLK_PERIOD: case SDLK_x:      spin(1);   break;
+                case SDLK_TAB:    case SDLK_LSHIFT: hold();    break;
         }
 
         if (event.key.keysym.sym == SDLK_j) // reset joystick subsystem
                 joy_setup();
 }
 
+void key_up()
+{
+        switch (event.key.keysym.sym)
+        {
+                case SDLK_a:      case SDLK_LEFT:   left = 0;  break;
+                case SDLK_d:      case SDLK_RIGHT:  right = 0; break;
+                case SDLK_s:      case SDLK_DOWN:   down = 0;  break;
+        }
+}
+
 void joy_down()
 {
+        printf("Joy %d down button=%d\n", event.jbutton.which, event.jbutton.button);
         if (!falling_shape)
                 ;
         else if (event.jbutton.button <= 3)
@@ -217,16 +236,23 @@ void joy_down()
                 hold();
 }
 
+void joy_up()
+{
+}
+
 void joy_hat()
 {
+        printf("Hat %d value=%d\n", event.jhat.which, event.jhat.value);
+        down = left = right = 0;
+        move_cooldown = 0;
         if (!falling_shape) ;
-        else if (event.jhat.value & SDL_HAT_DOWN)  move( 0, 1);
-        else if (event.jhat.value & SDL_HAT_LEFT)  move(-1, 0);
-        else if (event.jhat.value & SDL_HAT_RIGHT) move( 1, 0);
+        else if (event.jhat.value & SDL_HAT_DOWN)  down = 1;
+        else if (event.jhat.value & SDL_HAT_LEFT)  left = 1;
+        else if (event.jhat.value & SDL_HAT_RIGHT) right = 1;
         else if (event.jhat.value & SDL_HAT_UP)    hard();
 }
 
-//update everything that needs to update on its own, without input
+//update everything
 void update_stuff()
 {
         if (!falling_shape && !shine_time && !dead_time)
@@ -235,6 +261,15 @@ void update_stuff()
         }
 
         grounded = collide(falling_x, falling_y + 1, falling_rot);
+
+        if (move_cooldown) move_cooldown--;
+
+        if (move_cooldown < 2)
+        {
+                if (left)  move(-1, 0, 0);
+                if (right) move( 1, 0, 0);
+                if (down)  move( 0, 1, 0);
+        }
 
         if (shine_time > 0)
         {
@@ -257,7 +292,7 @@ void update_stuff()
 
         if (idle_time >= 50)
         {
-                move(0, 1);
+                move(0, 1, 1);
                 idle_time = 0;
         }
 }
@@ -327,8 +362,11 @@ void new_piece()
 }
 
 //move the falling piece left, right, or down
-void move(int dx, int dy)
+void move(int dx, int dy, int gravity)
 {
+        if (!gravity)
+                move_cooldown = move_cooldown ? 5 : 25;
+
         if (!collide(falling_x + dx, falling_y + dy, falling_rot))
         {
                 falling_x += dx;
@@ -344,7 +382,7 @@ void move(int dx, int dy)
                         grounded_moves++;
                 }
         }
-        else if (dy)
+        else if (dy && gravity)
         {
                 bake();
         }
