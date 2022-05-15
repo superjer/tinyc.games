@@ -15,32 +15,52 @@
 #define BAG_SZ 8   // bag size
 #define BS 30      // size of one block
 #define BS2 (BS/2) // size of half a block
+#define BW 4       // piece border width
 #define WBOX (5*BS)// width of a preview/hold box
 #define WBOARD (10*BS)// width of board
 #define HELD_BOX_X (10 + BS2)
 #define PREVIEW_BOX_X (10 + WBOX + 10 + BS * BWIDTH + 10 + BS2)
 #define MAX(a,b) ((a)>(b)?(a):(b))
 
+/*
+ * @ 1000000    - none
+ * A 1000001    - up
+ * B 1000010    - right
+ * C 1000011    - right up
+ * D 1000100    - down
+ * E 1000101    - down up
+ * F 1000110    - down right
+ * G 1000111    - down right up
+ * H 1001000    - left
+ * I 1001001    - left up
+ * J 1001010    - left right
+ * K 1001011    - left right up
+ * L 1001100    - left down
+ * M 1001101    - left down up
+ * N 1001110    - left down right
+ * O 1001111    - left down right up
+ */
+
 char shapes[] =
-        ".... O... ..O. .OO. .... OO.. .OO. .O.. "
-        ".... OOO. OOO. .OO. OOOO .OO. OO.. OOO. "
+        ".... D... ..D. .FL. .... BL.. .FH. .D.. "
+        ".... CJH. BJI. .CI. BJJH .CH. BI.. BKH. "
         ".... .... .... .... .... .... .... .... "
         ".... .... .... .... .... .... .... .... "
 
-        ".... .OO. .O.. .OO. ..O. ..O. .O.. .O.. "
-        ".... .O.. .O.. .OO. ..O. .OO. .OO. .OO. "
-        ".... .O.. .OO. .... ..O. .O.. ..O. .O.. "
-        ".... .... .... .... ..O. .... .... .... "
+        ".... .FH. .D.. .FL. ..D. ..D. .D.. .D.. "
+        ".... .E.. .E.. .CI. ..E. .FI. .CL. .GH. "
+        ".... .A.. .CH. .... ..E. .A.. ..A. .A.. "
+        ".... .... .... .... ..A. .... .... .... "
 
-        ".... .... .... .OO. .... .... .... .... "
-        ".... OOO. OOO. .OO. .... OO.. .OO. OOO. "
-        ".... ..O. O... .... OOOO .OO. OO.. .O.. "
+        ".... .... .... .FL. .... .... .... .... "
+        ".... BJL. FJH. .CI. .... BL.. .FH. BNH. "
+        ".... ..A. A... .... BJJH .CH. BI.. .A.. "
         ".... .... .... .... .... .... .... .... "
 
-        ".... .O.. OO.. .OO. .O.. .O.. O... .O.. "
-        ".... .O.. .O.. .OO. .O.. OO.. OO.. OO.. "
-        ".... OO.. .O.. .... .O.. O... .O.. .O.. "
-        ".... .... .... .... .O.. .... .... .... ";
+        ".... .D.. BL.. .FL. .D.. .D.. D... .D.. "
+        ".... .E.. .E.. .CI. .E.. FI.. CL.. BM.. "
+        ".... BI.. .A.. .... .E.. A... .A.. .A.. "
+        ".... .... .... .... .A.. .... .... .... ";
 
 
 int center[] = { // helps center shapes in preview box
@@ -73,8 +93,12 @@ int kicks[] = {   // clockwise                            counterclockwise
         0,0,   2, 0,  -1, 0,   2,-1,  -1, 2,     0,0,  -1, 0,   2, 0,  -1,-2,   2, 1, // rotation 3
 };
 
-unsigned char board[BHEIGHT][BWIDTH];
-unsigned int idmap[BHEIGHT][BWIDTH];
+struct {
+        unsigned char color;
+        unsigned char part;
+        unsigned int id;
+} board[BHEIGHT][BWIDTH];
+
 int killy_lines[BHEIGHT];
 
 int left, right, down; // true if holding a direction
@@ -109,7 +133,7 @@ void joy_up();
 void joy_hat();
 void update_stuff();
 void draw_stuff();
-void draw_square(int x, int y, int shape, int shade);
+void draw_square(int x, int y, int shape, int shade, int part);
 void set_color_from_shape(int shape, int shade);
 void text(char *fstr, int value, int x, int y);
 void new_game();
@@ -156,9 +180,14 @@ void joy_setup()
 {
         for (int i = 0; i < SDL_NumJoysticks(); i++)
         {
-                if (!SDL_IsGameController(i)) continue;
+                if (!SDL_IsGameController(i))
+                {
+                        printf("Controller NOT supported: %s\n", SDL_JoystickNameForIndex(i)); 
+                        printf("Google for SDL_GAMECONTROLLERCONFIG to fix this\n");
+                        continue;
+                }
                 SDL_GameController *cont = SDL_GameControllerOpen(i);
-                printf("Controller: %s %p\n", SDL_GameControllerNameForIndex(i), cont);
+                printf("Controller added: %s %p\n", SDL_GameControllerNameForIndex(i), cont);
         }
         SDL_GameControllerEventState(SDL_ENABLE);
 }
@@ -274,8 +303,11 @@ void update_stuff()
                 int x = dead_time % BWIDTH;
                 int y = dead_time / BWIDTH;
 
-                if (y >= 0 && y < VHEIGHT && x >= 0 && x < BWIDTH)
-                        board[y + 5][x] = rand() % 7 + 1;
+                if (y >= 0 && y < BHEIGHT && x >= 0 && x < BWIDTH)
+                {
+                        board[y + 0][x].color = rand() % 7 + 1;
+                        board[y + 0][x].part = '@';
+                }
 
                 if (--dead_time == 0)
                         new_game();
@@ -292,7 +324,6 @@ void update_stuff()
 void new_game()
 {
         memset(board, 0, sizeof board);
-        memset(idmap, 0, sizeof idmap);
         do new_piece(); while (next[0] == 0 || next[0] > 4);
         if (best < score) best = score;
         score = 0;
@@ -383,7 +414,8 @@ void move(int dx, int dy, int gravity)
 int is_solid_part(int shape, int rot, int i, int j)
 {
         int base = shape*5 + rot*5*8*4;
-        return shapes[base + j*5*8 + i] == 'O';
+        int part = shapes[base + j*5*8 + i];
+        return part == '.' ? 0 : part;
 }
 
 //check if the current piece would collide at a certain position and rotation
@@ -400,7 +432,7 @@ int collide(int x, int y, int rot)
                 if (world_i < 0 || world_i >= BWIDTH || world_j >= BHEIGHT)
                         return 1;
 
-                if (board[world_j][world_i])
+                if (board[world_j][world_i].color)
                         return 1;
         }
         return 0;
@@ -409,17 +441,17 @@ int collide(int x, int y, int rot)
 void check_square_at(int x, int y)
 {
         int found_ids[4] = {0};
-        int first_found_shape = 0;
+        int first_found_color = 0;
         int color = 10; // gold
 
         for (int i = x; i < x + 4; i++) for (int j = y; j < y + 4; j++)
         {
-                if (idmap[j][i] == 0) return; // no square here
+                if (board[j][i].id == 0) return; // no square forming here
 
-                if (first_found_shape && board[j][i] != first_found_shape)
+                if (first_found_color && board[j][i].color != first_found_color)
                         color = 9; // silver
 
-                first_found_shape = board[j][i];
+                first_found_color = board[j][i].color;
 
                 for (int k = 0; k < 5; k++)
                 {
@@ -427,19 +459,19 @@ void check_square_at(int x, int y)
 
                         if (found_ids[k] == 0)
                         {
-                                found_ids[k] = idmap[j][i];
+                                found_ids[k] = board[j][i].id;
                                 break;
                         }
 
-                        if (found_ids[k] == idmap[j][i])
+                        if (found_ids[k] == board[j][i].id)
                                 break;
                 }
         }
 
         for (int i = x; i < x + 4; i++) for (int j = y; j < y + 4; j++)
         {
-                board[j][i] = color;
-                idmap[j][i] = 0;
+                board[j][i].color = color;
+                board[j][i].id = 0;
         }
 }
 
@@ -453,18 +485,17 @@ void bake()
         {
                 int world_i = i + falling_x;
                 int world_j = j + falling_y;
+                int part = is_solid_part(falling_shape, falling_rot, i, j);
 
-                if (!is_solid_part(falling_shape, falling_rot, i, j))
+                if (!part || world_i < 0 || world_i >= BWIDTH || world_j < 0 || world_j >= BHEIGHT)
                         continue;
 
-                if (world_i < 0 || world_i >= BWIDTH || world_j < 0 || world_j >= BHEIGHT)
-                        continue;
+                if (board[world_j][world_i].color) // already a block here? game over
+                        dead_time = BWIDTH * BHEIGHT - 1;
 
-                if (board[world_j][world_i]) // already a block here? game over
-                        dead_time = BWIDTH * VHEIGHT;
-
-                board[world_j][world_i] = falling_shape;
-                idmap[world_j][world_i] = bake_id;
+                board[world_j][world_i].color = falling_shape;
+                board[world_j][world_i].part = part;
+                board[world_j][world_i].id = bake_id;
         }
 
         // check for squares
@@ -474,7 +505,7 @@ void bake()
 
         // check if there are any completed horizontal lines
         for (int j = BHEIGHT - 1; j >= 0; j--)
-                for (int i = 0; i < BWIDTH && board[j][i]; i++)
+                for (int i = 0; i < BWIDTH && board[j][i].color; i++)
                         if (i == BWIDTH - 1) shine_line(j);
 
         falling_shape = 0;
@@ -487,7 +518,7 @@ void shine_line(int y)
         shine_time = 20;
         killy_lines[y] = 1;
         for (int i = 0; i < BWIDTH; i++)
-                board[y][i] = 8; //shiny!
+                board[y][i].color = 8; //shiny!
 }
 
 //remove lines that were marked to be removed by shine_line()
@@ -506,11 +537,9 @@ void kill_lines()
                 for (int j = y; j > 0; j--) for (int i = 0; i < BWIDTH; i++)
                 {
                         board[j][i] = board[j-1][i];
-                        idmap[j][i] = idmap[j-1][i];
                 }
 
                 memset(board[0], 0, sizeof *board);
-                memset(idmap[0], 0, sizeof *idmap);
         }
 
         switch (new_lines)
@@ -573,7 +602,6 @@ void draw_stuff()
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderFillRect(renderer, &(SDL_Rect){10, 10, WBOX, WBOX});
         SDL_RenderFillRect(renderer, &(SDL_Rect){10 + WBOX + 10, 10, WBOARD, BS * VHEIGHT});
-        //SDL_RenderFillRect(renderer, &(SDL_Rect){10 + WBOX + 10 + WBOARD + 10, 10, WBOX, WBOX});
 
         //find ghost piece position
         int ghost_y = falling_y;
@@ -583,15 +611,17 @@ void draw_stuff()
         //draw shadow
         for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
         {
-                if (!is_solid_part(falling_shape, falling_rot, i, j))
+                int part = is_solid_part(falling_shape, falling_rot, i, j);
+                if (!part || (part & 4)) // & 4 means connects down
                         continue;
 
+                int top = MAX(0, j + falling_y - 5);
                 SDL_SetRenderDrawColor(renderer, 8, 13, 12, 255);
                 SDL_RenderFillRect(renderer, &(SDL_Rect){
                         10 + WBOX + 10 + BS * (i + falling_x),
-                        10 + BS * MAX(0, j + falling_y - 5),
+                        10 + BS * top,
                         BS,
-                        BS * (ghost_y - falling_y)
+                        BS * MAX(0, ghost_y + j - 4 - top)
                 });
         }
 
@@ -601,47 +631,37 @@ void draw_stuff()
                 int world_i = i + falling_x;
                 int world_j = j + falling_y - 5;
                 int ghost_j = j + ghost_y - 5;
-
-                if (!is_solid_part(falling_shape, falling_rot, i, j))
-                        continue;
+                int part = is_solid_part(falling_shape, falling_rot, i, j);
 
                 if (ghost_j >= 0)
-                        draw_square(10 + WBOX + 10 + BS * world_i, 10 + BS * ghost_j, falling_shape, 1);
-
+                        draw_square(10 + WBOX + 10 + BS * world_i, 10 + BS * ghost_j, falling_shape, 1, part);
                 if (world_j >= 0)
-                        draw_square(10 + WBOX + 10 + BS * world_i, 10 + BS * world_j, falling_shape, 0);
+                        draw_square(10 + WBOX + 10 + BS * world_i, 10 + BS * world_j, falling_shape, 0, part);
         }
 
         //draw next piece, centered in the preview box
         for (int n = 0; n < 3; n++) for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
-        {
-                if (!is_solid_part(next[n], 0, i, j)) continue;
                 draw_square(
                         PREVIEW_BOX_X + BS * i + BS2 * center[2 * next[n]],
                         10 + BS + BS * 4 * n + BS * j + BS2 * center[2 * next[n] + 1],
                         next[n],
-                        0
+                        0,
+                        is_solid_part(next[n], 0, i, j)
                 );
-        }
 
         //draw held piece, centered in the held box
         for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
-        {
-                if (!is_solid_part(held_shape, 0, i, j)) continue;
                 draw_square(
                         HELD_BOX_X + BS * i + BS2 * center[2*held_shape],
                         10 + BS +  BS * j + BS2 * center[2*held_shape + 1],
                         held_shape,
-                        0
+                        0,
+                        is_solid_part(held_shape, 0, i, j)
                 );
-        }
 
         //draw board pieces
         for (int i = 0; i < BWIDTH; i++) for (int j = 0; j < VHEIGHT; j++)
-        {
-                if (board[j+5][i])
-                        draw_square(10 + WBOX + 10 + BS * i, 10 + BS * j, board[j+5][i], 0);
-        }
+                draw_square(10 + WBOX + 10 + BS * i, 10 + BS * j, board[j+5][i].color, 0, board[j+5][i].part);
 
         //draw counters and instructions
         text("Lines:"   ,     0, 10, 10 + WBOX + 30 +   0);
@@ -658,12 +678,22 @@ void draw_stuff()
 }
 
 //draw a single square/piece of a shape
-void draw_square(int x, int y, int shape, int outline)
+void draw_square(int x, int y, int shape, int outline, int part)
 {
-        set_color_from_shape(shape, -25);
-        SDL_RenderDrawRect(renderer, &(SDL_Rect){x, y, BS, BS});
+        if (!part) return;
+        set_color_from_shape(shape, -50);
+        SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, BS, BS});
         set_color_from_shape(shape, outline ? -255 : 0);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){1 + x, 1 + y, BS - 2, BS - 2});
+        SDL_RenderFillRect(renderer, &(SDL_Rect){
+                        x + (part & 8 ? 0 : BW),
+                        y + BW,
+                        BS - (part & 8 ? 0 : BW) - (part & 2 ? 0 : BW),
+                        BS - BW - BW});
+        SDL_RenderFillRect(renderer, &(SDL_Rect){
+                        x + BW,
+                        y + (part & 1 ? 0 : BW),
+                        BS - BW - BW,
+                        BS - (part & 1 ? 0 : BW) - (part & 4 ? 0 : BW)});
 }
 
 //set the current draw color to the color assoc. with a shape
