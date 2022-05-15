@@ -21,6 +21,7 @@
 #define HELD_BOX_X (10 + BS2)
 #define PREVIEW_BOX_X (10 + WBOX + 10 + BS * BWIDTH + 10 + BS2)
 #define MAX(a,b) ((a)>(b)?(a):(b))
+#define SWAP(a,b) {int c = a; a = b; b = c;}
 
 /*
  * @ 1000000    - none
@@ -39,26 +40,32 @@
  * M 1001101    - left down up
  * N 1001110    - left down right
  * O 1001111    - left down right up
+ *
+ * S 1010011    - right up with vertical band stretch right
+ * V 1010110    - down right with vertical band stretch right
+ *
+ * i 1101001    - left up with vertical band stretch left
+ * l 1101100    - left down with vertical band stretch left
  */
 
 char shapes[] =
-        ".... D... ..D. .FL. .... BL.. .FH. .D.. "
-        ".... CJH. BJI. .CI. BJJH .CH. BI.. BKH. "
+        ".... D... ..D. .Vl. .... BL.. .FH. .D.. "
+        ".... CJH. BJI. .Si. BJJH .CH. BI.. BKH. "
         ".... .... .... .... .... .... .... .... "
         ".... .... .... .... .... .... .... .... "
 
-        ".... .FH. .D.. .FL. ..D. ..D. .D.. .D.. "
-        ".... .E.. .E.. .CI. ..E. .FI. .CL. .GH. "
+        ".... .FH. .D.. .Vl. ..D. ..D. .D.. .D.. "
+        ".... .E.. .E.. .Si. ..E. .FI. .CL. .GH. "
         ".... .A.. .CH. .... ..E. .A.. ..A. .A.. "
         ".... .... .... .... ..A. .... .... .... "
 
-        ".... .... .... .FL. .... .... .... .... "
-        ".... BJL. FJH. .CI. .... BL.. .FH. BNH. "
+        ".... .... .... .Vl. .... .... .... .... "
+        ".... BJL. FJH. .Si. .... BL.. .FH. BNH. "
         ".... ..A. A... .... BJJH .CH. BI.. .A.. "
         ".... .... .... .... .... .... .... .... "
 
-        ".... .D.. BL.. .FL. .D.. .D.. D... .D.. "
-        ".... .E.. .E.. .CI. .E.. FI.. CL.. BM.. "
+        ".... .D.. BL.. .Vl. .D.. .D.. D... .D.. "
+        ".... .E.. .E.. .Si. .E.. FI.. CL.. BM.. "
         ".... BI.. .A.. .... .E.. A... .A.. .A.. "
         ".... .... .... .... .A.. .... .... .... ";
 
@@ -276,9 +283,7 @@ void joy_up()
 void update_stuff()
 {
         if (!falling_shape && !shine_time && !dead_time)
-        {
                 new_piece();
-        }
 
         grounded = collide(falling_x, falling_y + 1, falling_rot);
 
@@ -324,7 +329,7 @@ void update_stuff()
 void new_game()
 {
         memset(board, 0, sizeof board);
-        do new_piece(); while (next[0] == 0 || next[0] > 4);
+        do new_piece(); while (next[0] == 0 || next[0] > 4); // get a nice starting piece
         if (best < score) best = score;
         score = 0;
         lines = 0;
@@ -524,6 +529,20 @@ void shine_line(int y)
 //remove lines that were marked to be removed by shine_line()
 void kill_lines()
 {
+        // clean up sliced pieces
+        for (int y = 0; y < BHEIGHT; y++)
+        {
+                if (killy_lines[y]) continue;
+
+                if (y > 0 && killy_lines[y - 1])
+                        for (int x = 0; x < BWIDTH; x++)
+                                board[y][x].part &= ~1;
+
+                if (y < BHEIGHT - 1 && killy_lines[y + 1])
+                        for (int x = 0; x < BWIDTH; x++)
+                                board[y][x].part &= ~4;
+        }
+
         int new_lines = 0;
         for (int y = 0; y < BHEIGHT; y++)
         {
@@ -535,9 +554,7 @@ void kill_lines()
                 killy_lines[y] = 0;
 
                 for (int j = y; j > 0; j--) for (int i = 0; i < BWIDTH; i++)
-                {
                         board[j][i] = board[j-1][i];
-                }
 
                 memset(board[0], 0, sizeof *board);
         }
@@ -587,9 +604,7 @@ void spin(int dir)
 void hold()
 {
         if (hold_count++) return;
-        held_shape ^= falling_shape;
-        falling_shape ^= held_shape;
-        held_shape ^= falling_shape;
+        SWAP(held_shape, falling_shape);
         reset_fall();
 }
 
@@ -684,15 +699,15 @@ void draw_square(int x, int y, int shape, int outline, int part)
         set_color_from_shape(shape, -50);
         SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, BS, BS});
         set_color_from_shape(shape, outline ? -255 : 0);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){
+        SDL_RenderFillRect(renderer, &(SDL_Rect){ // horizontal band
                         x + (part & 8 ? 0 : BW),
                         y + BW,
                         BS - (part & 8 ? 0 : BW) - (part & 2 ? 0 : BW),
                         BS - BW - BW});
-        SDL_RenderFillRect(renderer, &(SDL_Rect){
-                        x + BW,
+        SDL_RenderFillRect(renderer, &(SDL_Rect){ // vertical band
+                        x + (part & 32 ? 0 : BW),
                         y + (part & 1 ? 0 : BW),
-                        BS - BW - BW,
+                        BS - (part & 32 ? 0 : BW) - (part & 16 ? 0 : BW),
                         BS - (part & 1 ? 0 : BW) - (part & 4 ? 0 : BW)});
 }
 
