@@ -122,9 +122,11 @@ int hold_count;
 int lines;
 int score;
 int best;
+int tick;
 int idle_time;
 int shine_time;
 int dead_time;
+int square_time, square_x, square_y; // big square data
 
 SDL_Event event;
 SDL_Renderer *renderer;
@@ -179,6 +181,7 @@ int main()
                 update_stuff();
                 draw_stuff();
                 SDL_Delay(10);
+                tick++;
                 idle_time++;
         }
 }
@@ -279,9 +282,27 @@ void joy_up()
         }
 }
 
+void fuse_square()
+{
+        for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
+        {
+                if (i != 0) board[square_y + j][square_x + i].part |= 'H' | 32 ; // fuse left
+                if (j != 0) board[square_y + j][square_x + i].part |= 'A';       // fuse up
+                if (i != 3) board[square_y + j][square_x + i].part |= 'B' | 16;  // fuse right
+                if (j != 3) board[square_y + j][square_x + i].part |= 'D';       // fuse down
+        }
+}
+
 //update everything
 void update_stuff()
 {
+        if (square_time > 0)
+        {
+                if (--square_time == 0)
+                        fuse_square();
+                return;
+        }
+
         if (!falling_shape && !shine_time && !dead_time)
                 new_piece();
 
@@ -478,6 +499,9 @@ void check_square_at(int x, int y)
                 board[j][i].color = color;
                 board[j][i].id = 0;
         }
+        square_time = 40;
+        square_x = x;
+        square_y = y;
 }
 
 //bake the falling piece into the background/board
@@ -698,7 +722,7 @@ void draw_square(int x, int y, int shape, int outline, int part)
         if (!part) return;
         set_color_from_shape(shape, -50);
         SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, BS, BS});
-        set_color_from_shape(shape, outline ? -255 : 0);
+        set_color_from_shape(shape, (outline ? -255 : 0) + (shape > 8 ? abs(tick % 100 - 50) : 0));
         SDL_RenderFillRect(renderer, &(SDL_Rect){ // horizontal band
                         x + (part & 8 ? 0 : BW),
                         y + BW,
