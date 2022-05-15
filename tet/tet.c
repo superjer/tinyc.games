@@ -13,15 +13,9 @@
 #define BHEIGHT 25
 #define VHEIGHT 20 // visible height
 #define BAG_SZ 8   // bag size
-#define BS 30      // size of one block
-#define BS2 (BS/2) // size of half a block
-#define BW 4       // piece border width
-#define WBOX (5*BS)// width of a preview/hold box
-#define WBOARD (10*BS)// width of board
-#define HELD_BOX_X (10 + BS2)
-#define PREVIEW_BOX_X (10 + WBOX + 10 + BS * BWIDTH + 10 + BS2)
-#define MAX(a,b) ((a)>(b)?(a):(b))
-#define SWAP(a,b) {int c = a; a = b; b = c;}
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#define SWAP(a,b) {int c = (a); (a) = (b); (b) = c;}
 
 /*
  * @ 1000000    - none
@@ -126,7 +120,17 @@ int tick;
 int idle_time;
 int shine_time;
 int dead_time;
-int square_time, square_x, square_y; // big square data
+int square_time, square_x, square_y; // data for current big square
+
+// window size and resulting sizes & positions of things
+int win_x = 1000;
+int win_y = 750;
+int board_x, board_y, board_w;
+int preview_x, preview_y;
+int hold_x, hold_y;
+int box_w;
+int bs, bs2; // individual block size, and in half
+
 
 SDL_Event event;
 SDL_Renderer *renderer;
@@ -135,11 +139,12 @@ TTF_Font *font;
 //prototypes
 void setup();
 void joy_setup();
+void win_event();
+void resize(int x, int y);
 void key_down();
 void key_up();
 void joy_down();
 void joy_up();
-void joy_hat();
 void update_stuff();
 void draw_stuff();
 void draw_square(int x, int y, int shape, int shade, int part);
@@ -168,14 +173,14 @@ int main()
         {
                 while (SDL_PollEvent(&event)) switch (event.type)
                 {
-                        case SDL_QUIT:             exit(0);
-                        case SDL_KEYDOWN:          key_down();  break;
-                        case SDL_KEYUP:            key_up();    break;
-                        case SDL_CONTROLLERBUTTONDOWN: joy_down(); break;
-                        case SDL_CONTROLLERBUTTONUP: joy_up(); break;
+                        case SDL_QUIT:                 exit(0);
+                        case SDL_KEYDOWN:              key_down();  break;
+                        case SDL_KEYUP:                key_up();    break;
+                        case SDL_CONTROLLERBUTTONDOWN: joy_down();  break;
+                        case SDL_CONTROLLERBUTTONUP:   joy_up();    break;
                         case SDL_JOYDEVICEADDED:
-                        case SDL_JOYDEVICEREMOVED: joy_setup(); break;
-
+                        case SDL_JOYDEVICEREMOVED:     joy_setup(); break;
+                        case SDL_WINDOWEVENT:          win_event(); break;
                 }
 
                 update_stuff();
@@ -192,7 +197,7 @@ void joy_setup()
         {
                 if (!SDL_IsGameController(i))
                 {
-                        printf("Controller NOT supported: %s\n", SDL_JoystickNameForIndex(i)); 
+                        printf("Controller NOT supported: %s\n", SDL_JoystickNameForIndex(i));
                         printf("Google for SDL_GAMECONTROLLERCONFIG to fix this\n");
                         continue;
                 }
@@ -202,6 +207,34 @@ void joy_setup()
         SDL_GameControllerEventState(SDL_ENABLE);
 }
 
+void win_event()
+{
+        if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
+                resize(event.window.data1, event.window.data2);
+}
+
+// recalculate sizes and positions on resize
+void resize(int x, int y)
+{
+        fprintf(stderr, "Window resizing to %dx%d\n", x, y);
+        win_x = x;
+        win_y = y;
+        int smaller = MIN(win_x, win_y * 100 / 160);
+        printf("using base size of %d\n", smaller);
+        bs = smaller / 30 * 2;
+        bs2 = bs / 2;
+        board_x = (x / 2) - bs2 * BWIDTH;
+        board_y = (y / 2) - bs2 * VHEIGHT;
+        board_w = bs * 10;
+        box_w = bs * 5;
+        hold_x = board_x - box_w - bs2;
+        hold_y = board_y;
+        preview_x = board_x + board_w + bs2;
+        preview_y = board_y;
+        TTF_CloseFont(font);
+        font = TTF_OpenFont("res/LiberationSans-Regular.ttf", bs);
+}
+
 //initial setup to get the window and rendering going
 void setup()
 {
@@ -209,11 +242,9 @@ void setup()
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER);
 
         SDL_Window *win = SDL_CreateWindow("Tet",
-                        SDL_WINDOWPOS_UNDEFINED,
-                        SDL_WINDOWPOS_UNDEFINED,
-                        10 + WBOX + 10 + WBOARD + 10 + WBOX + 10,
-                        10 + VHEIGHT * BS + 10,
-                        SDL_WINDOW_SHOWN);
+                        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                        win_x, win_y,
+                        SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 
         renderer = SDL_CreateRenderer(win, -1, 0);
         if (!renderer)
@@ -222,8 +253,7 @@ void setup()
                 exit(-1);
         }
 
-        joy_setup();
-
+        resize(win_x, win_y);
         TTF_Init();
         font = TTF_OpenFont("res/LiberationSans-Regular.ttf", 28);
 }
@@ -639,8 +669,8 @@ void draw_stuff()
         SDL_SetRenderDrawColor(renderer, 25, 40, 35, 255);
         SDL_RenderClear(renderer);
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){10, 10, WBOX, WBOX});
-        SDL_RenderFillRect(renderer, &(SDL_Rect){10 + WBOX + 10, 10, WBOARD, BS * VHEIGHT});
+        SDL_RenderFillRect(renderer, &(SDL_Rect){hold_x, hold_y, box_w, box_w});
+        SDL_RenderFillRect(renderer, &(SDL_Rect){board_x, board_y, board_w, bs * VHEIGHT});
 
         //find ghost piece position
         int ghost_y = falling_y;
@@ -657,10 +687,10 @@ void draw_stuff()
                 int top = MAX(0, j + falling_y - 5);
                 SDL_SetRenderDrawColor(renderer, 8, 13, 12, 255);
                 SDL_RenderFillRect(renderer, &(SDL_Rect){
-                        10 + WBOX + 10 + BS * (i + falling_x),
-                        10 + BS * top,
-                        BS,
-                        BS * MAX(0, ghost_y + j - 4 - top)
+                        board_x + bs * (i + falling_x),
+                        board_y + bs * top,
+                        bs,
+                        bs * MAX(0, ghost_y + j - 4 - top)
                 });
         }
 
@@ -673,16 +703,16 @@ void draw_stuff()
                 int part = is_solid_part(falling_shape, falling_rot, i, j);
 
                 if (ghost_j >= 0)
-                        draw_square(10 + WBOX + 10 + BS * world_i, 10 + BS * ghost_j, falling_shape, 1, part);
+                        draw_square(board_x + bs * world_i, board_y + bs * ghost_j, falling_shape, 1, part);
                 if (world_j >= 0)
-                        draw_square(10 + WBOX + 10 + BS * world_i, 10 + BS * world_j, falling_shape, 0, part);
+                        draw_square(board_x + bs * world_i, board_y + bs * world_j, falling_shape, 0, part);
         }
 
         //draw next piece, centered in the preview box
         for (int n = 0; n < 3; n++) for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
                 draw_square(
-                        PREVIEW_BOX_X + BS * i + BS2 * center[2 * next[n]],
-                        10 + BS + BS * 4 * n + BS * j + BS2 * center[2 * next[n] + 1],
+                        preview_x + bs * i + bs2 * center[2 * next[n]],
+                        preview_y + bs + bs * 4 * n + bs * j + bs2 * center[2 * next[n] + 1],
                         next[n],
                         0,
                         is_solid_part(next[n], 0, i, j)
@@ -691,8 +721,8 @@ void draw_stuff()
         //draw held piece, centered in the held box
         for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
                 draw_square(
-                        HELD_BOX_X + BS * i + BS2 * center[2*held_shape],
-                        10 + BS +  BS * j + BS2 * center[2*held_shape + 1],
+                        hold_x + bs * i + bs2 * center[2*held_shape],
+                        hold_y + bs + bs * j + bs2 * center[2*held_shape + 1],
                         held_shape,
                         0,
                         is_solid_part(held_shape, 0, i, j)
@@ -700,18 +730,19 @@ void draw_stuff()
 
         //draw board pieces
         for (int i = 0; i < BWIDTH; i++) for (int j = 0; j < VHEIGHT; j++)
-                draw_square(10 + WBOX + 10 + BS * i, 10 + BS * j, board[j+5][i].color, 0, board[j+5][i].part);
+                draw_square(board_x + bs * i, board_y + bs * j, board[j+5][i].color, 0, board[j+5][i].part);
 
         //draw counters and instructions
-        text("Lines:"   ,     0, 10, 10 + WBOX + 30 +   0);
-        text("%d"       , lines, 10, 10 + WBOX + 30 +  30);
-        text("Score:"   ,     0, 10, 10 + WBOX + 30 +  70);
-        text("%d"       , score, 10, 10 + WBOX + 30 + 100);
-        text("Best:"    ,     0, 10, 10 + WBOX + 30 + 140);
-        text("%d"       ,  best, 10, 10 + WBOX + 30 + 170);
-        text("Controls:",     0, 10, 10 + WBOX + 30 + 310);
-        text("arrows,"  ,     0, 10, 10 + WBOX + 30 + 340);
-        text("z, x, tab",     0, 10, 10 + WBOX + 30 + 370);
+        int ln = bs * 110 / 100;
+        text("Lines:"   ,     0, hold_x, hold_y + box_w + bs2 + ln *  0);
+        text("%d"       , lines, hold_x, hold_y + box_w + bs2 + ln *  1);
+        text("Score:"   ,     0, hold_x, hold_y + box_w + bs2 + ln *  3);
+        text("%d"       , score, hold_x, hold_y + box_w + bs2 + ln *  4);
+        text("Best:"    ,     0, hold_x, hold_y + box_w + bs2 + ln *  6);
+        text("%d"       ,  best, hold_x, hold_y + box_w + bs2 + ln *  7);
+        text("Controls:",     0, hold_x, hold_y + box_w + bs2 + ln * 10);
+        text("arrows,"  ,     0, hold_x, hold_y + box_w + bs2 + ln * 11);
+        text("z, x, tab",     0, hold_x, hold_y + box_w + bs2 + ln * 12);
 
         SDL_RenderPresent(renderer);
 }
@@ -720,19 +751,20 @@ void draw_stuff()
 void draw_square(int x, int y, int shape, int outline, int part)
 {
         if (!part) return;
+        int bw = MAX(1, outline ? bs / 10 : bs / 6);
         set_color_from_shape(shape, -50);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, BS, BS});
+        SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, bs, bs});
         set_color_from_shape(shape, (outline ? -255 : 0) + (shape > 8 ? abs(tick % 100 - 50) : 0));
         SDL_RenderFillRect(renderer, &(SDL_Rect){ // horizontal band
-                        x + (part & 8 ? 0 : BW),
-                        y + BW,
-                        BS - (part & 8 ? 0 : BW) - (part & 2 ? 0 : BW),
-                        BS - BW - BW});
+                        x + (part & 8 ? 0 : bw),
+                        y + bw,
+                        bs - (part & 8 ? 0 : bw) - (part & 2 ? 0 : bw),
+                        bs - bw - bw});
         SDL_RenderFillRect(renderer, &(SDL_Rect){ // vertical band
-                        x + (part & 32 ? 0 : BW),
-                        y + (part & 1 ? 0 : BW),
-                        BS - (part & 32 ? 0 : BW) - (part & 16 ? 0 : BW),
-                        BS - (part & 1 ? 0 : BW) - (part & 4 ? 0 : BW)});
+                        x + (part & 32 ? 0 : bw),
+                        y + (part & 1 ? 0 : bw),
+                        bs - (part & 32 ? 0 : bw) - (part & 16 ? 0 : bw),
+                        bs - (part & 1 ? 0 : bw) - (part & 4 ? 0 : bw)});
 }
 
 //set the current draw color to the color assoc. with a shape
