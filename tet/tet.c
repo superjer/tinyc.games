@@ -13,6 +13,7 @@
 #define BHEIGHT 25
 #define VHEIGHT 20 // visible height
 #define BAG_SZ 8   // bag size
+#define NPLAY 2
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define SWAP(a,b) {int c = (a); (a) = (b); (b) = c;}
@@ -95,44 +96,45 @@ int kicks[] = {   // clockwise                            counterclockwise
 };
 
 struct {
-        unsigned char color;
-        unsigned char part;
-        unsigned int id;
-} board[BHEIGHT][BWIDTH];
+        struct {
+                unsigned char color;
+                unsigned char part;
+                unsigned int id;
+        } board[BHEIGHT][BWIDTH];
+        int killy_lines[BHEIGHT];
+        int left, right, down; // true if holding a direction
+        int move_cooldown;
+        int falling_x;
+        int falling_y;
+        int falling_shape;
+        int falling_rot;
+        int bag[BAG_SZ];
+        int bag_idx;
+        int grounded;
+        int grounded_moves;
+        int next[3];
+        int held_shape;
+        int hold_count;
+        int lines;
+        int score;
+        int best;
+        int idle_time;
+        int shine_time;
+        int dead_time;
+        int square_time, square_x, square_y; // data for current big square
+        int board_x, board_y, board_w; // positions and sizes of things
+        int preview_x, preview_y;
+        int hold_x, hold_y;
+        int box_w;
+} play[NPLAY], *p;
 
-int killy_lines[BHEIGHT];
-
-int left, right, down; // true if holding a direction
-int move_cooldown;
-int falling_x;
-int falling_y;
-int falling_shape;
-int falling_rot;
-int grounded;
-int grounded_moves;
-int next[3];
-int held_shape;
-int hold_count;
-int lines;
-int score;
-int best;
-int tick;
-int idle_time;
-int shine_time;
-int dead_time;
-int square_time, square_x, square_y; // data for current big square
-
-// window size and resulting sizes & positions of things
-int win_x = 1000;
+int win_x = 1000; // window size
 int win_y = 750;
-int board_x, board_y, board_w;
-int preview_x, preview_y;
-int hold_x, hold_y;
-int box_w;
 int bs, bs2; // individual block size, and in half
 
-
+int tick;
 SDL_Event event;
+SDL_Window *win;
 SDL_Renderer *renderer;
 TTF_Font *font;
 
@@ -167,7 +169,8 @@ void hold();
 int main()
 {
         setup();
-        new_game();
+        for (p = play; p < play + NPLAY; p++)
+                new_game();
 
         for (;;)
         {
@@ -183,11 +186,15 @@ int main()
                         case SDL_WINDOWEVENT:          win_event(); break;
                 }
 
-                update_stuff();
-                draw_stuff();
+                for (p = play; p < play + NPLAY; p++)
+                        update_stuff();
+                SDL_SetRenderDrawColor(renderer, 25, 40, 35, 255);
+                SDL_RenderClear(renderer);
+                for (p = play; p < play + NPLAY; p++)
+                        draw_stuff();
+                SDL_RenderPresent(renderer);
                 SDL_Delay(10);
                 tick++;
-                idle_time++;
         }
 }
 
@@ -219,19 +226,22 @@ void resize(int x, int y)
         fprintf(stderr, "Window resizing to %dx%d\n", x, y);
         win_x = x;
         win_y = y;
-        int smaller = MIN(win_x, win_y * 100 / 160);
-        printf("using base size of %d\n", smaller);
-        bs = smaller / 30 * 2;
+        bs = MIN(win_x / (NPLAY * 22), win_y / 24);
         bs2 = bs / 2;
-        board_x = (x / 2) - bs2 * BWIDTH;
-        board_y = (y / 2) - bs2 * VHEIGHT;
-        board_w = bs * 10;
-        box_w = bs * 5;
-        hold_x = board_x - box_w - bs2;
-        hold_y = board_y;
-        preview_x = board_x + board_w + bs2;
-        preview_y = board_y;
-        TTF_CloseFont(font);
+        printf("Using block size of %d\n", bs);
+        int n = 0;
+        for (p = play; p < play + NPLAY; p++, n++)
+        {
+                p->board_x = (x / (NPLAY * 2)) * (2 * n + 1) - bs2 * BWIDTH;
+                p->board_y = (y / 2) - bs2 * VHEIGHT;
+                p->board_w = bs * 10;
+                p->box_w = bs * 5;
+                p->hold_x = p->board_x - p->box_w - bs2;
+                p->hold_y = p->board_y;
+                p->preview_x = p->board_x + p->board_w + bs2;
+                p->preview_y = p->board_y;
+        }
+        if (font) TTF_CloseFont(font);
         font = TTF_OpenFont("res/LiberationSans-Regular.ttf", bs);
 }
 
@@ -241,7 +251,7 @@ void setup()
         srand(time(NULL));
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER);
 
-        SDL_Window *win = SDL_CreateWindow("Tet",
+        win = SDL_CreateWindow("Tet",
                         SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                         win_x, win_y,
                         SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
@@ -253,25 +263,30 @@ void setup()
                 exit(-1);
         }
 
-        resize(win_x, win_y);
         TTF_Init();
-        font = TTF_OpenFont("res/LiberationSans-Regular.ttf", 28);
+        resize(win_x, win_y);
 }
 
-//handle a key press from the player
+//handle a key press from a player
 void key_down()
 {
+        p = play;
         if (event.key.repeat) return;
 
-        if (falling_shape) switch (event.key.keysym.sym)
+        if (p->falling_shape) switch (event.key.keysym.sym)
         {
-                case SDLK_a:      case SDLK_LEFT:   left = 1;  move_cooldown = 0; break;
-                case SDLK_d:      case SDLK_RIGHT:  right = 1; move_cooldown = 0; break;
-                case SDLK_s:      case SDLK_DOWN:   down = 1;  move_cooldown = 0; break;
+                case SDLK_a:      case SDLK_LEFT:   p->left = 1;  p->move_cooldown = 0; break;
+                case SDLK_d:      case SDLK_RIGHT:  p->right = 1; p->move_cooldown = 0; break;
+                case SDLK_s:      case SDLK_DOWN:   p->down = 1;  p->move_cooldown = 0; break;
                 case SDLK_w:      case SDLK_UP:     hard();    break;
                 case SDLK_COMMA:  case SDLK_z:      spin(3);   break;
                 case SDLK_PERIOD: case SDLK_x:      spin(1);   break;
                 case SDLK_TAB:    case SDLK_LSHIFT: hold();    break;
+                case SDLK_r:
+                        printf("Re-creating renderer\n");
+                        if (renderer) SDL_DestroyRenderer(renderer);
+                        renderer = SDL_CreateRenderer(win, -1, 0);
+                        break;
         }
 
         if (event.key.keysym.sym == SDLK_j) // reset joystick subsystem
@@ -280,35 +295,38 @@ void key_down()
 
 void key_up()
 {
+        p = play;
         switch (event.key.keysym.sym)
         {
-                case SDLK_a:      case SDLK_LEFT:   left = 0;  break;
-                case SDLK_d:      case SDLK_RIGHT:  right = 0; break;
-                case SDLK_s:      case SDLK_DOWN:   down = 0;  break;
+                case SDLK_a:      case SDLK_LEFT:   p->left = 0;  break;
+                case SDLK_d:      case SDLK_RIGHT:  p->right = 0; break;
+                case SDLK_s:      case SDLK_DOWN:   p->down = 0;  break;
         }
 }
 
 void joy_down()
 {
-        if (falling_shape) switch(event.cbutton.button)
+        p = play + 1; // FIXME: choose player based on device
+        if (p->falling_shape) switch(event.cbutton.button)
         {
                 case SDL_CONTROLLER_BUTTON_A:            spin(1); break;
                 case SDL_CONTROLLER_BUTTON_B:            spin(3); break;
                 case SDL_CONTROLLER_BUTTON_DPAD_UP:      hard();  break;
-                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:    down  = 1; move_cooldown = 0; break;
-                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:    left  = 1; move_cooldown = 0; break;
-                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:   right = 1; move_cooldown = 0; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:    p->down  = 1; p->move_cooldown = 0; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:    p->left  = 1; p->move_cooldown = 0; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:   p->right = 1; p->move_cooldown = 0; break;
                 case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: hold();  break;
         }
 }
 
 void joy_up()
 {
+        p = play + 1; // FIXME: choose player based on device
         switch(event.cbutton.button)
         {
-                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  down  = 0; break;
-                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  left  = 0; break;
-                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: right = 0; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  p->down  = 0; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  p->left  = 0; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: p->right = 0; break;
         }
 }
 
@@ -316,93 +334,93 @@ void fuse_square()
 {
         for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
         {
-                if (i != 0) board[square_y + j][square_x + i].part |= 'H' | 32 ; // fuse left
-                if (j != 0) board[square_y + j][square_x + i].part |= 'A';       // fuse up
-                if (i != 3) board[square_y + j][square_x + i].part |= 'B' | 16;  // fuse right
-                if (j != 3) board[square_y + j][square_x + i].part |= 'D';       // fuse down
+                if (i != 0) p->board[p->square_y + j][p->square_x + i].part |= 'H' | 32 ; // fuse left
+                if (j != 0) p->board[p->square_y + j][p->square_x + i].part |= 'A';       // fuse up
+                if (i != 3) p->board[p->square_y + j][p->square_x + i].part |= 'B' | 16;  // fuse right
+                if (j != 3) p->board[p->square_y + j][p->square_x + i].part |= 'D';       // fuse down
         }
 }
 
 //update everything
 void update_stuff()
 {
-        if (square_time > 0)
+        if (p->square_time > 0)
         {
-                if (--square_time == 0)
+                if (--p->square_time == 0)
                         fuse_square();
                 return;
         }
 
-        if (!falling_shape && !shine_time && !dead_time)
+        if (!p->falling_shape && !p->shine_time && !p->dead_time)
                 new_piece();
 
-        grounded = collide(falling_x, falling_y + 1, falling_rot);
+        p->grounded = collide(p->falling_x, p->falling_y + 1, p->falling_rot);
 
-        if (move_cooldown) move_cooldown--;
+        if (p->move_cooldown) p->move_cooldown--;
 
-        if (move_cooldown < 2)
+        if (p->move_cooldown < 2)
         {
-                if (left)  move(-1, 0, 0);
-                if (right) move( 1, 0, 0);
-                if (down)  move( 0, 1, 0);
+                if (p->left)  move(-1, 0, 0);
+                if (p->right) move( 1, 0, 0);
+                if (p->down)  move( 0, 1, 0);
         }
 
-        if (shine_time > 0)
+        if (p->shine_time > 0)
         {
-                shine_time--;
-                if (shine_time == 0)
+                p->shine_time--;
+                if (p->shine_time == 0)
                         kill_lines();
         }
 
-        if (dead_time > 0)
+        if (p->dead_time > 0)
         {
-                int x = dead_time % BWIDTH;
-                int y = dead_time / BWIDTH;
+                int x = p->dead_time % BWIDTH;
+                int y = p->dead_time / BWIDTH;
 
                 if (y >= 0 && y < BHEIGHT && x >= 0 && x < BWIDTH)
                 {
-                        board[y + 0][x].color = rand() % 7 + 1;
-                        board[y + 0][x].part = '@';
+                        p->board[y + 0][x].color = rand() % 7 + 1;
+                        p->board[y + 0][x].part = '@';
                 }
 
-                if (--dead_time == 0)
+                if (--p->dead_time == 0)
                         new_game();
         }
 
-        if (idle_time >= 50)
+        if (++p->idle_time >= 50)
         {
                 move(0, 1, 1);
-                idle_time = 0;
+                p->idle_time = 0;
         }
 }
 
 //reset score and pick one extra random piece
 void new_game()
 {
-        memset(board, 0, sizeof board);
-        do new_piece(); while (next[0] == 0 || next[0] > 4); // get a nice starting piece
-        if (best < score) best = score;
-        score = 0;
-        lines = 0;
-        falling_shape = 0;
-        held_shape = 0;
-        hold_count = 0;
+        memset(p->board, 0, sizeof p->board);
+        p->bag_idx = BAG_SZ;
+        do new_piece(); while (p->next[0] == 0 || p->next[0] > 4); // get a nice starting piece
+        if (p->best < p->score) p->best = p->score;
+        p->score = 0;
+        p->lines = 0;
+        p->held_shape = 0;
+        p->hold_count = 0;
 }
 
 //create a new piece bag with 7 or 8 pieces
-int new_bag(int *bag)
+int new_bag()
 {
         int wildcard_idx = 0;
 
         for (int i = 0; i < BAG_SZ; i++)
         {
                 nope:
-                bag[i] = rand() % BAG_SZ;
+                p->bag[i] = rand() % BAG_SZ;
                 for (int j = 0; j < i; j++)
-                        if (bag[j] == bag[i])
+                        if (p->bag[j] == p->bag[i])
                                 goto nope;
 
-                if (bag[i] == 0) wildcard_idx = i;
+                if (p->bag[i] == 0) wildcard_idx = i;
         }
 
         // skip wildcard if in position zero
@@ -410,32 +428,29 @@ int new_bag(int *bag)
                 return 1;
 
         // set wildcard to some valid piece
-        bag[wildcard_idx] = rand() % 7 + 1;
+        p->bag[wildcard_idx] = rand() % 7 + 1;
         return 0;
 }
 
 // set the current piece to the top, middle to start falling
 void reset_fall()
 {
-        idle_time = 0;
-        grounded_moves = 0;
-        falling_x = 3;
-        falling_y = 2;
-        falling_rot = 0;
+        p->idle_time = 0;
+        p->grounded_moves = 0;
+        p->falling_x = 3;
+        p->falling_y = 3;
+        p->falling_rot = 0;
 }
 
 //pick a new next piece from the bag, and put the old one in play
 void new_piece()
 {
-        static int bag[BAG_SZ] = {0};
-        static int idx = BAG_SZ;
+        if (p->bag_idx >= BAG_SZ) p->bag_idx = new_bag();
 
-        if (idx >= BAG_SZ) idx = new_bag(bag);
-
-        falling_shape = next[0];
-        next[0] = next[1];
-        next[1] = next[2];
-        next[2] = bag[idx++];
+        p->falling_shape = p->next[0];
+        p->next[0] = p->next[1];
+        p->next[1] = p->next[2];
+        p->next[2] = p->bag[p->bag_idx++];
         reset_fall();
 }
 
@@ -443,21 +458,21 @@ void new_piece()
 void move(int dx, int dy, int gravity)
 {
         if (!gravity)
-                move_cooldown = move_cooldown ? 5 : 15;
+                p->move_cooldown = p->move_cooldown ? 5 : 15;
 
-        if (!collide(falling_x + dx, falling_y + dy, falling_rot))
+        if (!collide(p->falling_x + dx, p->falling_y + dy, p->falling_rot))
         {
-                falling_x += dx;
-                falling_y += dy;
+                p->falling_x += dx;
+                p->falling_y += dy;
 
                 // reset idle time if you voluntarily move DOWN
-                if (dy) idle_time = 0;
+                if (dy) p->idle_time = 0;
 
                 // reset idle time if piece is grounded, limit grounded moves though
-                if (grounded && grounded_moves < 15)
+                if (p->grounded && p->grounded_moves < 15)
                 {
-                        idle_time = 0;
-                        grounded_moves++;
+                        p->idle_time = 0;
+                        p->grounded_moves++;
                 }
         }
         else if (dy && gravity)
@@ -482,13 +497,13 @@ int collide(int x, int y, int rot)
                 int world_i = i + x;
                 int world_j = j + y;
 
-                if (!is_solid_part(falling_shape, rot, i, j))
+                if (!is_solid_part(p->falling_shape, rot, i, j))
                         continue;
 
                 if (world_i < 0 || world_i >= BWIDTH || world_j >= BHEIGHT)
                         return 1;
 
-                if (board[world_j][world_i].color)
+                if (p->board[world_j][world_i].color)
                         return 1;
         }
         return 0;
@@ -502,12 +517,12 @@ void check_square_at(int x, int y)
 
         for (int i = x; i < x + 4; i++) for (int j = y; j < y + 4; j++)
         {
-                if (board[j][i].id == 0) return; // no square forming here
+                if (p->board[j][i].id == 0) return; // no square forming here
 
-                if (first_found_color && board[j][i].color != first_found_color)
+                if (first_found_color && p->board[j][i].color != first_found_color)
                         color = 9; // silver
 
-                first_found_color = board[j][i].color;
+                first_found_color = p->board[j][i].color;
 
                 for (int k = 0; k < 5; k++)
                 {
@@ -515,23 +530,23 @@ void check_square_at(int x, int y)
 
                         if (found_ids[k] == 0)
                         {
-                                found_ids[k] = board[j][i].id;
+                                found_ids[k] = p->board[j][i].id;
                                 break;
                         }
 
-                        if (found_ids[k] == board[j][i].id)
+                        if (found_ids[k] == p->board[j][i].id)
                                 break;
                 }
         }
 
         for (int i = x; i < x + 4; i++) for (int j = y; j < y + 4; j++)
         {
-                board[j][i].color = color;
-                board[j][i].id = 0;
+                p->board[j][i].color = color;
+                p->board[j][i].id = 0;
         }
-        square_time = 40;
-        square_x = x;
-        square_y = y;
+        p->square_time = 40;
+        p->square_x = x;
+        p->square_y = y;
 }
 
 //bake the falling piece into the background/board
@@ -542,19 +557,19 @@ void bake()
 
         for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
         {
-                int world_i = i + falling_x;
-                int world_j = j + falling_y;
-                int part = is_solid_part(falling_shape, falling_rot, i, j);
+                int world_i = i + p->falling_x;
+                int world_j = j + p->falling_y;
+                int part = is_solid_part(p->falling_shape, p->falling_rot, i, j);
 
                 if (!part || world_i < 0 || world_i >= BWIDTH || world_j < 0 || world_j >= BHEIGHT)
                         continue;
 
-                if (board[world_j][world_i].color) // already a block here? game over
-                        dead_time = BWIDTH * BHEIGHT - 1;
+                if (p->board[world_j][world_i].color) // already a block here? game over
+                        p->dead_time = BWIDTH * BHEIGHT - 1;
 
-                board[world_j][world_i].color = falling_shape;
-                board[world_j][world_i].part = part;
-                board[world_j][world_i].id = bake_id;
+                p->board[world_j][world_i].color = p->falling_shape;
+                p->board[world_j][world_i].part = part;
+                p->board[world_j][world_i].id = bake_id;
         }
 
         // check for squares
@@ -564,20 +579,20 @@ void bake()
 
         // check if there are any completed horizontal lines
         for (int j = BHEIGHT - 1; j >= 0; j--)
-                for (int i = 0; i < BWIDTH && board[j][i].color; i++)
+                for (int i = 0; i < BWIDTH && p->board[j][i].color; i++)
                         if (i == BWIDTH - 1) shine_line(j);
 
-        falling_shape = 0;
-        hold_count = 0;
+        p->falling_shape = 0;
+        p->hold_count = 0;
 }
 
 //make a completed line "shine" and mark it to be removed
 void shine_line(int y)
 {
-        shine_time = 20;
-        killy_lines[y] = 1;
+        p->shine_time = 20;
+        p->killy_lines[y] = 1;
         for (int i = 0; i < BWIDTH; i++)
-                board[y][i].color = 8; //shiny!
+                p->board[y][i].color = 8; //shiny!
 }
 
 //remove lines that were marked to be removed by shine_line()
@@ -586,69 +601,68 @@ void kill_lines()
         // clean up sliced pieces
         for (int y = 0; y < BHEIGHT; y++)
         {
-                if (killy_lines[y]) continue;
+                if (p->killy_lines[y]) continue;
 
-                if (y > 0 && killy_lines[y - 1])
+                if (y > 0 && p->killy_lines[y - 1])
                         for (int x = 0; x < BWIDTH; x++)
-                                board[y][x].part &= ~1;
+                                p->board[y][x].part &= ~1;
 
-                if (y < BHEIGHT - 1 && killy_lines[y + 1])
+                if (y < BHEIGHT - 1 && p->killy_lines[y + 1])
                         for (int x = 0; x < BWIDTH; x++)
-                                board[y][x].part &= ~4;
+                                p->board[y][x].part &= ~4;
         }
 
         int new_lines = 0;
         for (int y = 0; y < BHEIGHT; y++)
         {
-                if (!killy_lines[y])
-                        continue;
+                if (!p->killy_lines[y]) continue;
 
-                lines++;
+                p->lines++;
                 new_lines++;
-                killy_lines[y] = 0;
+                p->killy_lines[y] = 0;
 
                 for (int j = y; j > 0; j--) for (int i = 0; i < BWIDTH; i++)
-                        board[j][i] = board[j-1][i];
+                        p->board[j][i] = p->board[j-1][i];
 
-                memset(board[0], 0, sizeof *board);
+                memset(p->board[0], 0, sizeof *p->board);
         }
 
         switch (new_lines)
         {
-                case 1: score += 100;  break;
-                case 2: score += 250;  break;
-                case 3: score += 500;  break;
-                case 4: score += 1000; break;
+                case 1: p->score += 100;  break;
+                case 2: p->score += 250;  break;
+                case 3: p->score += 500;  break;
+                case 4: p->score += 1000; break;
         }
 }
 
 //move the falling piece as far down as it will go
 void hard()
 {
-        while (!collide(falling_x, falling_y + 1, falling_rot))
-                falling_y++;
-        idle_time = 50;
+        while (!collide(p->falling_x, p->falling_y + 1, p->falling_rot))
+                p->falling_y++;
+        p->idle_time = 50;
 }
 
 //spin the falling piece left or right, if possible
 void spin(int dir)
 {
-        int new_rot = (falling_rot + dir) % 4;
-        int k = new_rot * 20 + (dir == 1 ? 0 : 10) + (falling_shape == 4 ? 80 : 0);
+        int new_rot = (p->falling_rot + dir) % 4;
+        int k = new_rot * 20 + (dir == 1 ? 0 : 10) + (p->falling_shape == 4 ? 80 : 0);
 
         for (int i = 0; i < 5; i++)
         {
                 int kx = kicks[k++];
                 int ky = kicks[k++];
-                if (!collide(falling_x + kx, falling_y + ky, new_rot))
+                if (!collide(p->falling_x + kx, p->falling_y + ky, new_rot))
                 {
-                        falling_rot = new_rot;
-                        falling_x += kx;
-                        falling_y += ky;
-                        if (grounded && grounded_moves < 15)
+                        p->falling_rot = new_rot;
+                        p->falling_x += kx;
+                        p->falling_y += ky;
+                        if (p->grounded && p->grounded_moves < 15)
                         {
-                                idle_time = 0;
-                                grounded_moves++;
+                                p->idle_time = 0;
+                                p->grounded_moves++;
                         }
                         return;
                 }
@@ -657,8 +671,8 @@ void spin(int dir)
 
 void hold()
 {
-        if (hold_count++) return;
-        SWAP(held_shape, falling_shape);
+        if (p->hold_count++) return;
+        SWAP(p->held_shape, p->falling_shape);
         reset_fall();
 }
 
@@ -666,29 +680,27 @@ void hold()
 void draw_stuff()
 {
         // draw background, black boxes
-        SDL_SetRenderDrawColor(renderer, 25, 40, 35, 255);
-        SDL_RenderClear(renderer);
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){hold_x, hold_y, box_w, box_w});
-        SDL_RenderFillRect(renderer, &(SDL_Rect){board_x, board_y, board_w, bs * VHEIGHT});
+        SDL_RenderFillRect(renderer, &(SDL_Rect){p->hold_x, p->hold_y, p->box_w, p->box_w});
+        SDL_RenderFillRect(renderer, &(SDL_Rect){p->board_x, p->board_y, p->board_w, bs * VHEIGHT});
 
         //find ghost piece position
-        int ghost_y = falling_y;
-        while (ghost_y < BHEIGHT && !collide(falling_x, ghost_y + 1, falling_rot))
+        int ghost_y = p->falling_y;
+        while (ghost_y < BHEIGHT && !collide(p->falling_x, ghost_y + 1, p->falling_rot))
                 ghost_y++;
 
         //draw shadow
         for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
         {
-                int part = is_solid_part(falling_shape, falling_rot, i, j);
+                int part = is_solid_part(p->falling_shape, p->falling_rot, i, j);
                 if (!part || (part & 4)) // & 4 means connects down
                         continue;
 
-                int top = MAX(0, j + falling_y - 5);
+                int top = MAX(0, j + p->falling_y - 5);
                 SDL_SetRenderDrawColor(renderer, 8, 13, 12, 255);
                 SDL_RenderFillRect(renderer, &(SDL_Rect){
-                        board_x + bs * (i + falling_x),
-                        board_y + bs * top,
+                        p->board_x + bs * (i + p->falling_x),
+                        p->board_y + bs * top,
                         bs,
                         bs * MAX(0, ghost_y + j - 4 - top)
                 });
@@ -697,54 +709,63 @@ void draw_stuff()
         //draw falling piece & ghost
         for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
         {
-                int world_i = i + falling_x;
-                int world_j = j + falling_y - 5;
+                int world_i = i + p->falling_x;
+                int world_j = j + p->falling_y - 5;
                 int ghost_j = j + ghost_y - 5;
-                int part = is_solid_part(falling_shape, falling_rot, i, j);
+                int part = is_solid_part(p->falling_shape, p->falling_rot, i, j);
 
                 if (ghost_j >= 0)
-                        draw_square(board_x + bs * world_i, board_y + bs * ghost_j, falling_shape, 1, part);
+                        draw_square(p->board_x + bs * world_i, p->board_y + bs * ghost_j, p->falling_shape, 1, part);
                 if (world_j >= 0)
-                        draw_square(board_x + bs * world_i, board_y + bs * world_j, falling_shape, 0, part);
+                        draw_square(p->board_x + bs * world_i, p->board_y + bs * world_j, p->falling_shape, 0, part);
         }
 
         //draw next piece, centered in the preview box
         for (int n = 0; n < 3; n++) for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
                 draw_square(
-                        preview_x + bs * i + bs2 * center[2 * next[n]],
-                        preview_y + bs + bs * 4 * n + bs * j + bs2 * center[2 * next[n] + 1],
-                        next[n],
+                        p->preview_x + bs * i + bs2 + bs2 * center[2 * p->next[n]],
+                        p->preview_y + bs + bs * 4 * n + bs * j + bs2 * center[2 * p->next[n] + 1],
+                        p->next[n],
                         0,
-                        is_solid_part(next[n], 0, i, j)
+                        is_solid_part(p->next[n], 0, i, j)
                 );
 
         //draw held piece, centered in the held box
         for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
                 draw_square(
-                        hold_x + bs * i + bs2 * center[2*held_shape],
-                        hold_y + bs + bs * j + bs2 * center[2*held_shape + 1],
-                        held_shape,
+                        p->hold_x + bs * i + bs2 + bs2 * center[2 * p->held_shape],
+                        p->hold_y + bs + bs * j + bs2 * center[2 * p->held_shape + 1],
+                        p->held_shape,
                         0,
-                        is_solid_part(held_shape, 0, i, j)
+                        is_solid_part(p->held_shape, 0, i, j)
                 );
 
         //draw board pieces
         for (int i = 0; i < BWIDTH; i++) for (int j = 0; j < VHEIGHT; j++)
-                draw_square(board_x + bs * i, board_y + bs * j, board[j+5][i].color, 0, board[j+5][i].part);
+                draw_square(p->board_x + bs * i,
+                                p->board_y + bs * j,
+                                p->board[j+5][i].color,
+                                0,
+                                p->board[j+5][i].part);
 
         //draw counters and instructions
         int ln = bs * 110 / 100;
-        text("Lines:"   ,     0, hold_x, hold_y + box_w + bs2 + ln *  0);
-        text("%d"       , lines, hold_x, hold_y + box_w + bs2 + ln *  1);
-        text("Score:"   ,     0, hold_x, hold_y + box_w + bs2 + ln *  3);
-        text("%d"       , score, hold_x, hold_y + box_w + bs2 + ln *  4);
-        text("Best:"    ,     0, hold_x, hold_y + box_w + bs2 + ln *  6);
-        text("%d"       ,  best, hold_x, hold_y + box_w + bs2 + ln *  7);
-        text("Controls:",     0, hold_x, hold_y + box_w + bs2 + ln * 10);
-        text("arrows,"  ,     0, hold_x, hold_y + box_w + bs2 + ln * 11);
-        text("z, x, tab",     0, hold_x, hold_y + box_w + bs2 + ln * 12);
-
-        SDL_RenderPresent(renderer);
+        text("Lines:"   ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  0);
+        text("%d"       , p->lines, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  1);
+        text("Score:"   ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  3);
+        text("%d"       , p->score, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  4);
+        text("Best:"    ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  6);
+        text("%d"       ,  p->best, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  7);
+        text("Controls:",        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 10);
+        if (p == play)
+        {
+                text("arrows,"  ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 11);
+                text("z, x, tab",        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 12);
+        }
+        else
+        {
+                text("gamepad"  ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 11);
+        }
 }
 
 //draw a single square/piece of a shape
@@ -780,10 +801,8 @@ void set_color_from_shape(int shape, int shade)
 void text(char *fstr, int value, int x, int y)
 {
         if (!font) return;
-        int w, h;
         char msg[80];
         snprintf(msg, 80, fstr, value);
-        TTF_SizeText(font, msg, &w, &h);
         SDL_Surface *msgsurf = TTF_RenderText_Blended(font, msg, (SDL_Color){80, 90, 85});
         SDL_Texture *msgtex = SDL_CreateTextureFromSurface(renderer, msgsurf);
         SDL_Rect fromrec = {0, 0, msgsurf->w, msgsurf->h};
