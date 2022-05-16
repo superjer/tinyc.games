@@ -131,13 +131,17 @@ struct {
         int hold_x, hold_y;
         int box_w;
         float offs_x, offs_y;
+        int device;
+        char dev_name[80];
 } play[NPLAY], *p;
 
 int win_x = 1000; // window size
 int win_y = 750;
 int bs, bs2; // individual block size, and in half
-
 int tick;
+enum state { ASSIGN = 0, PLAY } state;
+int assign_me;
+
 SDL_Event event;
 SDL_Window *win;
 SDL_Renderer *renderer;
@@ -148,15 +152,17 @@ void setup();
 void joy_setup();
 void win_event();
 void resize(int x, int y);
-void key_down();
+int key_down();
 void key_up();
-void joy_down();
+int joy_down();
 void joy_up();
+int assign(int device);
+void set_p_from_device(int device);
 void update_stuff();
 void draw_stuff();
 void draw_square(int x, int y, int shape, int shade, int part);
 void set_color_from_shape(int shape, int shade);
-void text(char *fstr, int value, int x, int y);
+void text(const char *fstr, int value, int x, int y);
 void new_game();
 void new_piece();
 void move(int dx, int dy, int gravity);
@@ -273,10 +279,13 @@ void setup()
 }
 
 //handle a key press from a player
-void key_down()
+int key_down()
 {
-        p = play;
-        if (event.key.repeat) return;
+        if (event.key.repeat) return 0;
+ 
+        if (state == ASSIGN) return assign(-1);
+
+        set_p_from_device(-1);
 
         if (p->falling_shape) switch (event.key.keysym.sym)
         {
@@ -294,13 +303,18 @@ void key_down()
                         break;
         }
 
-        if (event.key.keysym.sym == SDLK_j) // reset joystick subsystem
+        if (event.key.keysym.sym == SDLK_j) // reset joysticks
+        {
+                state = ASSIGN;
                 joy_setup();
+        }
 }
 
 void key_up()
 {
-        p = play;
+        if (state == ASSIGN) return;
+        set_p_from_device(-1);
+
         switch (event.key.keysym.sym)
         {
                 case SDLK_a:      case SDLK_LEFT:   p->left = 0;  break;
@@ -309,10 +323,12 @@ void key_up()
         }
 }
 
-void joy_down()
+int joy_down()
 {
-        p = play + 1; // FIXME: choose player based on device
-        printf("joy device = %d\n", event.cbutton.which);
+        if (state == ASSIGN) return assign(event.cbutton.which);
+        set_p_from_device(event.cbutton.which);
+
+        printf("joy down %d\n", event.cbutton.button);
         if (p->falling_shape) switch(event.cbutton.button)
         {
                 case SDL_CONTROLLER_BUTTON_A:            spin(1); break;
@@ -327,13 +343,38 @@ void joy_down()
 
 void joy_up()
 {
-        p = play + 1; // FIXME: choose player based on device
+        if (state == ASSIGN) return;
+        set_p_from_device(event.cbutton.which);
+
         switch(event.cbutton.button)
         {
                 case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  p->down  = 0; break;
                 case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  p->left  = 0; break;
                 case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: p->right = 0; break;
         }
+}
+
+int assign(int device)
+{
+        play[assign_me].device = device;
+        if (device == -1)
+                sprintf(play[assign_me].dev_name, "%.10s", "Keyboard");
+        else
+                sprintf(play[assign_me].dev_name, "%.10s", SDL_GameControllerNameForIndex(device));
+
+        if (++assign_me == NPLAY)
+        {
+                state = PLAY;
+                assign_me = 0;
+        }
+}
+
+void set_p_from_device(int device)
+{
+        for (p = play; p < play + NPLAY; p++)
+                if (p->device == device)
+                        return;
+        p = play; // default to first player
 }
 
 void fuse_square()
@@ -350,6 +391,8 @@ void fuse_square()
 //update everything
 void update_stuff()
 {
+        if (state == ASSIGN) return;
+
         if (p->square_time > 0)
         {
                 if (--p->square_time == 0)
@@ -776,17 +819,14 @@ void draw_stuff()
         text("%d"       , p->score, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  4);
         text("Best:"    ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  6);
         text("%d"       ,  p->best, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  7);
-        text("Controls:",        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 10);
-        if (p == play)
-        {
-                text("arrows,"  ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 11);
-                text("z, x, tab",        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 12);
-        }
-        else
-        {
-                text("gamepad"  ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 11);
-        }
+        text("Input:"   ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 11);
+        text(p->dev_name,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 12);
 
+        if (state == ASSIGN)
+                text(p == play + assign_me ? "Press button to join" : "Please wait",
+                                0, p->board_x, p->board_y + bs2 * 19);
+
+        // update bouncy offsets
         if (p->offs_x < .01f && p->offs_x > -.01f) p->offs_x = .0f;
         if (p->offs_y < .01f && p->offs_y > -.01f) p->offs_y = .0f;
         if (p->offs_x) p-> offs_x *= .98f;
@@ -823,9 +863,11 @@ void set_color_from_shape(int shape, int shade)
 }
 
 //render a centered line of text optionally with a %d value in it
-void text(char *fstr, int value, int x, int y)
+void text(const char *fstr, int value, int x, int y)
 {
         if (!font) return;
+        if (!fstr) fstr = "(null)";
+        if (!fstr[0]) fstr = "(empty)";
         char msg[80];
         snprintf(msg, 80, fstr, value);
         SDL_Surface *msgsurf = TTF_RenderText_Blended(font, msg, (SDL_Color){80, 90, 85});
