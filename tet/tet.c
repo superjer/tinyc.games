@@ -18,6 +18,9 @@
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define SWAP(a,b) {int c = (a); (a) = (b); (b) = c;}
 
+// collision test results
+enum { NONE = 0, WALL, NORMAL };
+
 /*
  * @ 1000000    - none
  * A 1000001    - up
@@ -79,8 +82,8 @@ unsigned char colors[] = {
         15,  127, 127, // S
         132,   0,  46, // T
         255, 255, 255, // shine color
-         59,  66, 159, // violet blue square
-        122, 199,  79, // mantis square
+         59,  66, 159, // violet blue big square
+        122, 199,  79, // mantis big square
 };
 
 int kicks[] = {   // clockwise                            counterclockwise
@@ -112,6 +115,7 @@ struct {
         int bag_idx;
         int grounded;
         int grounded_moves;
+        int last_dx_tick;
         int next[3];
         int held_shape;
         int hold_count;
@@ -126,6 +130,7 @@ struct {
         int preview_x, preview_y;
         int hold_x, hold_y;
         int box_w;
+        float offs_x, offs_y;
 } play[NPLAY], *p;
 
 int win_x = 1000; // window size
@@ -307,6 +312,7 @@ void key_up()
 void joy_down()
 {
         p = play + 1; // FIXME: choose player based on device
+        printf("joy device = %d\n", event.cbutton.which);
         if (p->falling_shape) switch(event.cbutton.button)
         {
                 case SDL_CONTROLLER_BUTTON_A:            spin(1); break;
@@ -460,13 +466,18 @@ void move(int dx, int dy, int gravity)
         if (!gravity)
                 p->move_cooldown = p->move_cooldown ? 5 : 15;
 
-        if (!collide(p->falling_x + dx, p->falling_y + dy, p->falling_rot))
+        int collision = collide(p->falling_x + dx, p->falling_y + dy, p->falling_rot);
+
+        if (collision == NONE)
         {
                 p->falling_x += dx;
                 p->falling_y += dy;
 
                 // reset idle time if you voluntarily move DOWN
                 if (dy) p->idle_time = 0;
+
+                // remember last successful x movement time
+                if (dx) p->last_dx_tick = tick;
 
                 // reset idle time if piece is grounded, limit grounded moves though
                 if (p->grounded && p->grounded_moves < 15)
@@ -478,6 +489,11 @@ void move(int dx, int dy, int gravity)
         else if (dy && gravity)
         {
                 bake();
+        }
+        else if (collision == WALL)
+        {
+                if (dx == -1 && tick - p->last_dx_tick < 8) p->offs_x -= .20f;
+                if (dx ==  1 && tick - p->last_dx_tick < 8) p->offs_x += .20f;
         }
 }
 
@@ -492,6 +508,7 @@ int is_solid_part(int shape, int rot, int i, int j)
 //check if the current piece would collide at a certain position and rotation
 int collide(int x, int y, int rot)
 {
+        int ret = NONE;
         for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
         {
                 int world_i = i + x;
@@ -501,12 +518,12 @@ int collide(int x, int y, int rot)
                         continue;
 
                 if (world_i < 0 || world_i >= BWIDTH || world_j >= BHEIGHT)
-                        return 1;
+                        return WALL;
 
                 if (p->board[world_j][world_i].color)
-                        return 1;
+                        ret = NORMAL;
         }
-        return 0;
+        return ret;
 }
 
 void check_square_at(int x, int y)
@@ -642,6 +659,7 @@ void hard()
         while (!collide(p->falling_x, p->falling_y + 1, p->falling_rot))
                 p->falling_y++;
         p->idle_time = 50;
+        p->offs_y += .25f;
 }
 
 //spin the falling piece left or right, if possible
@@ -682,7 +700,9 @@ void draw_stuff()
         // draw background, black boxes
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderFillRect(renderer, &(SDL_Rect){p->hold_x, p->hold_y, p->box_w, p->box_w});
-        SDL_RenderFillRect(renderer, &(SDL_Rect){p->board_x, p->board_y, p->board_w, bs * VHEIGHT});
+        int x = p->board_x + bs * p->offs_x;
+        int y = p->board_y + bs * p->offs_y;
+        SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, p->board_w, bs * VHEIGHT});
 
         //find ghost piece position
         int ghost_y = p->falling_y;
@@ -699,8 +719,8 @@ void draw_stuff()
                 int top = MAX(0, j + p->falling_y - 5);
                 SDL_SetRenderDrawColor(renderer, 8, 13, 12, 255);
                 SDL_RenderFillRect(renderer, &(SDL_Rect){
-                        p->board_x + bs * (i + p->falling_x),
-                        p->board_y + bs * top,
+                        x + bs * (i + p->falling_x),
+                        y + bs * top,
                         bs,
                         bs * MAX(0, ghost_y + j - 4 - top)
                 });
@@ -715,9 +735,9 @@ void draw_stuff()
                 int part = is_solid_part(p->falling_shape, p->falling_rot, i, j);
 
                 if (ghost_j >= 0)
-                        draw_square(p->board_x + bs * world_i, p->board_y + bs * ghost_j, p->falling_shape, 1, part);
+                        draw_square(x + bs * world_i, y + bs * ghost_j, p->falling_shape, 1, part);
                 if (world_j >= 0)
-                        draw_square(p->board_x + bs * world_i, p->board_y + bs * world_j, p->falling_shape, 0, part);
+                        draw_square(x + bs * world_i, y + bs * world_j, p->falling_shape, 0, part);
         }
 
         //draw next piece, centered in the preview box
@@ -742,8 +762,8 @@ void draw_stuff()
 
         //draw board pieces
         for (int i = 0; i < BWIDTH; i++) for (int j = 0; j < VHEIGHT; j++)
-                draw_square(p->board_x + bs * i,
-                                p->board_y + bs * j,
+                draw_square(x + bs * i,
+                                y + bs * j,
                                 p->board[j+5][i].color,
                                 0,
                                 p->board[j+5][i].part);
@@ -766,6 +786,11 @@ void draw_stuff()
         {
                 text("gamepad"  ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 11);
         }
+
+        if (p->offs_x < .01f && p->offs_x > -.01f) p->offs_x = .0f;
+        if (p->offs_y < .01f && p->offs_y > -.01f) p->offs_y = .0f;
+        if (p->offs_x) p-> offs_x *= .98f;
+        if (p->offs_y) p-> offs_y *= .98f;
 }
 
 //draw a single square/piece of a shape
