@@ -313,7 +313,6 @@ int key_down()
                 SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
                 SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
                 state = ASSIGN;
-                //joy_setup();
         }
 }
 
@@ -363,6 +362,10 @@ void joy_up()
 
 int assign(int device)
 {
+        for (int i = 0; i < assign_me; i++)
+                if (play[i].device == device)
+                        return 0;
+
         play[assign_me].device = device;
         if (device == -1)
                 sprintf(play[assign_me].dev_name, "%.10s", "Keyboard");
