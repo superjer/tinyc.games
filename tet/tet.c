@@ -67,6 +67,12 @@ char shapes[] =
         ".... BI.. .A.. .... .E.. A... .A.. .A.. "
         ".... .... .... .... .A.. .... .... .... ";
 
+struct shadow { int x, w, y; } shadows[4][8] = { // pre-computed shadow positions for each piece
+        {{0,0,0}, {0,3,1}, {0,3,1}, {1,2,0}, {0,4,1}, {0,3,1}, {0,3,1}, {0,3,1}},
+        {{0,0,0}, {1,2,0}, {1,2,2}, {1,2,0}, {2,1,0}, {1,2,1}, {1,2,1}, {1,2,1}},
+        {{0,0,0}, {0,3,1}, {0,3,1}, {1,2,0}, {0,4,2}, {0,3,2}, {0,3,2}, {0,3,1}},
+        {{0,0,0}, {0,2,2}, {0,2,0}, {1,2,0}, {1,1,0}, {0,2,1}, {0,2,1}, {0,2,1}},
+};
 
 int center[] = { // helps center shapes in preview box
          0,0, 1,1, 1,1, 0,1, 0,0, 1,1, 1,1, 1,1,
@@ -107,10 +113,9 @@ struct {
         int killy_lines[BHEIGHT];
         int left, right, down; // true if holding a direction
         int move_cooldown;
-        int falling_x;
-        int falling_y;
-        int falling_shape;
-        int falling_rot;
+        int falling_x, falling_y, falling_shape, falling_rot; // current piece
+        int beam_x, beam_y, beam_shape, beam_rot; // hard drop beam
+        int beam_tick;
         int bag[BAG_SZ];
         int bag_idx;
         int grounded;
@@ -370,10 +375,7 @@ int assign(int device)
         if (device == -1)
                 sprintf(play[assign_me].dev_name, "%.10s", "Keyboard");
         else
-        {
-                printf("Setting controller name to %s for device %d\n", SDL_GameControllerNameForIndex(device), device);
                 sprintf(play[assign_me].dev_name, "%.10s", SDL_GameControllerNameForIndex(device));
-        }
 
         if (++assign_me == NPLAY)
         {
@@ -716,6 +718,11 @@ void hard()
                 p->falling_y++;
         p->idle_time = 50;
         p->offs_y += .25f;
+        p->beam_shape = p->falling_shape;
+        p->beam_rot = p->falling_rot;
+        p->beam_x = p->falling_x;
+        p->beam_y = p->falling_y;
+        p->beam_tick = tick;
 }
 
 //spin the falling piece left or right, if possible
@@ -766,20 +773,31 @@ void draw_stuff()
                 ghost_y++;
 
         //draw shadow
-        for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
+        if (p->falling_shape)
         {
-                int part = is_solid_part(p->falling_shape, p->falling_rot, i, j);
-                if (!part || (part & 4)) // & 4 means connects down
-                        continue;
-
-                int top = MAX(0, j + p->falling_y - 5);
+                struct shadow shadow = shadows[p->falling_rot][p->falling_shape];
+                int top = MAX(0, p->falling_y + shadow.y - 5);
                 SDL_SetRenderDrawColor(renderer, 8, 13, 12, 255);
                 SDL_RenderFillRect(renderer, &(SDL_Rect){
-                        x + bs * (i + p->falling_x),
+                        x + bs * (p->falling_x + shadow.x),
                         y + bs * top,
-                        bs,
-                        bs * MAX(0, ghost_y + j - 4 - top)
+                        bs * shadow.w,
+                        MAX(0, bs * (ghost_y - top + shadow.y - 5))
                 });
+        }
+
+        //draw hard drop beam
+        float loss = .05f * (tick - p->beam_tick);
+        if (loss < 1.f && p->beam_shape)
+        {
+                struct shadow shadow = shadows[p->beam_rot][p->beam_shape];
+                int rx = x + bs * (p->beam_x + shadow.x);
+                int rw = bs * shadow.w;
+                int rh = bs * (p->beam_y + shadow.y - 5);
+                int lossw = (1.f - ((1.f - loss) * (1.f - loss))) * rw;
+                int lossh = loss < .5f ? 0.f : (1.f - ((1.f - loss) * (1.f - loss))) * rh;
+                SDL_SetRenderDrawColor(renderer, 33, 37, 43, 255);
+                SDL_RenderFillRect(renderer, &(SDL_Rect){ rx + lossw / 2, y, rw - lossw, rh - lossh });
         }
 
         //draw falling piece & ghost
