@@ -139,6 +139,7 @@ int win_x = 1000; // window size
 int win_y = 750;
 int bs, bs2; // individual block size, and in half
 int tick;
+int joy_tick; // most recent tick when a new joystick was detected
 enum state { ASSIGN = 0, PLAY } state;
 int assign_me;
 
@@ -162,7 +163,7 @@ void update_stuff();
 void draw_stuff();
 void draw_square(int x, int y, int shape, int shade, int part);
 void set_color_from_shape(int shape, int shade);
-void text(const char *fstr, int value, int x, int y);
+void text(char *fstr, int value, int x, int y, int w);
 void new_game();
 void new_piece();
 void move(int dx, int dy, int gravity);
@@ -193,9 +194,11 @@ int main()
                         case SDL_CONTROLLERBUTTONDOWN: joy_down();  break;
                         case SDL_CONTROLLERBUTTONUP:   joy_up();    break;
                         case SDL_JOYDEVICEADDED:
-                        case SDL_JOYDEVICEREMOVED:     joy_setup(); break;
+                        case SDL_JOYDEVICEREMOVED:     joy_tick = tick; break;
                         case SDL_WINDOWEVENT:          win_event(); break;
                 }
+
+                if (joy_tick == tick - 1) joy_setup();
 
                 for (p = play; p < play + NPLAY; p++)
                         update_stuff();
@@ -215,8 +218,8 @@ void joy_setup()
         {
                 if (!SDL_IsGameController(i))
                 {
-                        printf("Controller NOT supported: %s\n", SDL_JoystickNameForIndex(i));
-                        printf("Google for SDL_GAMECONTROLLERCONFIG to fix this\n");
+                        printf("Controller NOT supported: %s", SDL_JoystickNameForIndex(i));
+                        printf(" - Google for SDL_GAMECONTROLLERCONFIG to fix this\n");
                         continue;
                 }
                 SDL_GameController *cont = SDL_GameControllerOpen(i);
@@ -296,17 +299,21 @@ int key_down()
                 case SDLK_COMMA:  case SDLK_z:      spin(3);   break;
                 case SDLK_PERIOD: case SDLK_x:      spin(1);   break;
                 case SDLK_TAB:    case SDLK_LSHIFT: hold();    break;
-                case SDLK_r:
-                        printf("Re-creating renderer\n");
-                        if (renderer) SDL_DestroyRenderer(renderer);
-                        renderer = SDL_CreateRenderer(win, -1, 0);
-                        break;
+        }
+
+        if (event.key.keysym.sym == SDLK_r)
+        {
+                printf("Re-creating renderer\n");
+                if (renderer) SDL_DestroyRenderer(renderer);
+                renderer = SDL_CreateRenderer(win, -1, 0);
         }
 
         if (event.key.keysym.sym == SDLK_j) // reset joysticks
         {
+                SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
+                SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
                 state = ASSIGN;
-                joy_setup();
+                //joy_setup();
         }
 }
 
@@ -328,11 +335,11 @@ int joy_down()
         if (state == ASSIGN) return assign(event.cbutton.which);
         set_p_from_device(event.cbutton.which);
 
-        printf("joy down %d\n", event.cbutton.button);
+        printf("joy_down() device=%d button=%s\n", event.cbutton.which, SDL_GameControllerGetStringForButton(event.cbutton.button));
         if (p->falling_shape) switch(event.cbutton.button)
         {
-                case SDL_CONTROLLER_BUTTON_A:            spin(1); break;
-                case SDL_CONTROLLER_BUTTON_B:            spin(3); break;
+                case SDL_CONTROLLER_BUTTON_A:            spin(3); break;
+                case SDL_CONTROLLER_BUTTON_B:            spin(1); break;
                 case SDL_CONTROLLER_BUTTON_DPAD_UP:      hard();  break;
                 case SDL_CONTROLLER_BUTTON_DPAD_DOWN:    p->down  = 1; p->move_cooldown = 0; break;
                 case SDL_CONTROLLER_BUTTON_DPAD_LEFT:    p->left  = 1; p->move_cooldown = 0; break;
@@ -360,7 +367,10 @@ int assign(int device)
         if (device == -1)
                 sprintf(play[assign_me].dev_name, "%.10s", "Keyboard");
         else
+        {
+                printf("Setting controller name to %s for device %d\n", SDL_GameControllerNameForIndex(device), device);
                 sprintf(play[assign_me].dev_name, "%.10s", SDL_GameControllerNameForIndex(device));
+        }
 
         if (++assign_me == NPLAY)
         {
@@ -813,18 +823,18 @@ void draw_stuff()
 
         //draw counters and instructions
         int ln = bs * 110 / 100;
-        text("Lines:"   ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  0);
-        text("%d"       , p->lines, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  1);
-        text("Score:"   ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  3);
-        text("%d"       , p->score, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  4);
-        text("Best:"    ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  6);
-        text("%d"       ,  p->best, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  7);
-        text("Input:"   ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 11);
-        text(p->dev_name,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 12);
+        text("Lines:"   ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  0, 0);
+        text("%d"       , p->lines, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  1, 0);
+        text("Score:"   ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  3, 0);
+        text("%d"       , p->score, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  4, 0);
+        text("Best:"    ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  6, 0);
+        text("%d"       ,  p->best, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  7, 0);
+        text("Input:"   ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 11, 0);
+        text(p->dev_name,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 12, 0);
 
         if (state == ASSIGN)
-                text(p == play + assign_me ? "Press button to join" : "Please wait",
-                                0, p->board_x, p->board_y + bs2 * 19);
+                text(p >= play + assign_me ? "Press button to join" : p->dev_name,
+                                0, p->board_x, p->board_y + bs2 * 19, bs * 10);
 
         // update bouncy offsets
         if (p->offs_x < .01f && p->offs_x > -.01f) p->offs_x = .0f;
@@ -863,14 +873,18 @@ void set_color_from_shape(int shape, int shade)
 }
 
 //render a centered line of text optionally with a %d value in it
-void text(const char *fstr, int value, int x, int y)
+void text(char *fstr, int value, int x, int y, int w)
 {
-        if (!font) return;
-        if (!fstr) fstr = "(null)";
-        if (!fstr[0]) fstr = "(empty)";
+        if (!font || !fstr || !fstr[0]) return;
         char msg[80];
         snprintf(msg, 80, fstr, value);
-        SDL_Surface *msgsurf = TTF_RenderText_Blended(font, msg, (SDL_Color){80, 90, 85});
+        if (w) // center it
+        {
+                int tw, th;
+                TTF_SizeText(font, msg, &tw, &th);
+                x += (w - tw) / 2;
+        }
+        SDL_Surface *msgsurf = TTF_RenderText_Blended(font, msg, (SDL_Color){180, 190, 185});
         SDL_Texture *msgtex = SDL_CreateTextureFromSurface(renderer, msgsurf);
         SDL_Rect fromrec = {0, 0, msgsurf->w, msgsurf->h};
         SDL_Rect torec = {x, y, msgsurf->w, msgsurf->h};
