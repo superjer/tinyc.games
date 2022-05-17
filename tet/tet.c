@@ -13,7 +13,7 @@
 #define BHEIGHT 25
 #define VHEIGHT 20 // visible height
 #define BAG_SZ 8   // bag size
-#define NPLAY 2
+#define NPLAY 4
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define SWAP(a,b) {int c = (a); (a) = (b); (b) = c;}
@@ -146,6 +146,7 @@ int bs, bs2; // individual block size, and in half
 int tick;
 int joy_tick; // most recent tick when a new joystick was detected
 enum state { ASSIGN = 0, PLAY } state;
+int nplay = 1; // number of players
 int assign_me;
 
 SDL_Event event;
@@ -186,8 +187,6 @@ void hold();
 int main()
 {
         setup();
-        for (p = play; p < play + NPLAY; p++)
-                new_game();
 
         for (;;)
         {
@@ -205,11 +204,11 @@ int main()
 
                 if (joy_tick == tick - 1) joy_setup();
 
-                for (p = play; p < play + NPLAY; p++)
+                for (p = play; p < play + nplay; p++)
                         update_stuff();
                 SDL_SetRenderDrawColor(renderer, 25, 40, 35, 255);
                 SDL_RenderClear(renderer);
-                for (p = play; p < play + NPLAY; p++)
+                for (p = play; p < play + nplay; p++)
                         draw_stuff();
                 SDL_RenderPresent(renderer);
                 SDL_Delay(10);
@@ -245,13 +244,13 @@ void resize(int x, int y)
         fprintf(stderr, "Window resizing to %dx%d\n", x, y);
         win_x = x;
         win_y = y;
-        bs = MIN(win_x / (NPLAY * 22), win_y / 24);
+        bs = MIN(win_x / (nplay * 22), win_y / 24);
         bs2 = bs / 2;
         printf("Using block size of %d\n", bs);
         int n = 0;
-        for (p = play; p < play + NPLAY; p++, n++)
+        for (p = play; p < play + nplay; p++, n++)
         {
-                p->board_x = (x / (NPLAY * 2)) * (2 * n + 1) - bs2 * BWIDTH;
+                p->board_x = (x / (nplay * 2)) * (2 * n + 1) - bs2 * BWIDTH;
                 p->board_y = (y / 2) - bs2 * VHEIGHT;
                 p->board_w = bs * 10;
                 p->box_w = bs * 5;
@@ -291,6 +290,15 @@ int key_down()
 {
         if (event.key.repeat) return 0;
  
+        if (event.key.keysym.sym >= '1' && event.key.keysym.sym <= '4')
+        {
+                nplay = event.key.keysym.sym - '0';
+                resize(win_x, win_y);
+                state = ASSIGN;
+                assign_me = 0;
+                return 0;
+        }
+
         if (state == ASSIGN) return assign(-1);
 
         set_p_from_device(-1);
@@ -377,16 +385,18 @@ int assign(int device)
         else
                 sprintf(play[assign_me].dev_name, "%.10s", SDL_GameControllerNameForIndex(device));
 
-        if (++assign_me == NPLAY)
+        if (++assign_me == nplay)
         {
                 state = PLAY;
                 assign_me = 0;
+                for (p = play; p < play + nplay; p++)
+                        new_game();
         }
 }
 
 void set_p_from_device(int device)
 {
-        for (p = play; p < play + NPLAY; p++)
+        for (p = play; p < play + nplay; p++)
                 if (p->device == device)
                         return;
         p = play; // default to first player
