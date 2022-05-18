@@ -12,4 +12,4 @@ echo %CC%
 set PATH=%PATH%;%SDL%\lib\%ARCH%
 set PATH=%PATH%;%TTF%\lib\%ARCH%
 
-%CC% -DSDL_MAIN_HANDLED -I%SDL%\include -I%TTF%\include -L%SDL%\lib\%ARCH% -L%TTF%\lib\%ARCH% -lm -lSDL2 -lSDL2_ttf -run tet.c
+%CC% -DSDL_MAIN_HANDLED -I%SDL%\include -I%TTF%\include -L%SDL%\lib\%ARCH% -L%TTF%\lib\%ARCH% -lSDL2 -lSDL2_ttf -run tet.c

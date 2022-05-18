@@ -10,6 +10,7 @@
  **  http://github.com/superjer/SPARToR
  **/
 
+#include <math.h>
 #include <SDL_audio.h>
 
 void audioinit();
