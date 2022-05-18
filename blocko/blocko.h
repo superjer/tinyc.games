@@ -64,8 +64,8 @@ struct osn_context *osn_context;
 #define CHUNKD 16                  // ^
 #define CHUNKW2 (CHUNKW/2)
 #define CHUNKD2 (CHUNKD/2)
-#define VAOW 64                    // how many VAOs wide
-#define VAOD 64                    // how many VAOs deep
+#define VAOW 32                    // how many VAOs wide
+#define VAOD 32                    // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
 #define TILESW (CHUNKW*VAOW)       // total level width, height
 #define TILESH 160                 // ^
@@ -312,7 +312,7 @@ unsigned int shadow_prog_id;
 //globals
 int frame = 0;
 int pframe = 0;
-unsigned world_seed = 160659;
+unsigned world_seed = 300;
 int noisy = false;
 int vsync = false;
 int show_fresh_updates = false;
@@ -326,6 +326,7 @@ int gloq_outta_room = 0;
 int omp_threads = 0;
 int lock_culling = false;
 int frustum_culling = true;
+float draw_dist = 160.f;
 int zooming = false;
 float zoom_amt = 1.f;
 float fast = 1.f;

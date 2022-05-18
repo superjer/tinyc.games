@@ -113,8 +113,9 @@ void debrief()
         {
                 char xyzbuf[100];
                 snprintf(xyzbuf, 100,
-                                "X=%0.0f Y=%0.0f Z=%0.0f %svsync %sreg %smsaa %sfast %scull %slock",
+                                "X=%0.0f Y=%0.0f Z=%0.0f drawdist=%.0f %svsync %sreg %smsaa %sfast %scull %slock",
                                 player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS,
+                                draw_dist,
                                 vsync           ? "" : "no",
                                 regulated       ? "" : "no",
                                 antialiasing    ? "" : "no",
@@ -147,7 +148,7 @@ void debrief()
         if (help_layer == 2)
         {
                 char *g1 = "Q     \nF   \nN       \nP       \nT       \nL         \nM             \nV    \nR             \n/   \nF1     \nF2          \nF3                    \nF4 ";
-                char *g2 = "Go up!\nFast\nRev. sun\nFast sun\nYest box\nLight vals\nShadow mapping\nVsync\nFixed interval\nMSAA\nCulling\nLock culling\nFPS, timings, position\nShow fresh updates";
+                char *g2 = "Go up!\nFast\nRev. sun\nFast sun\nTest box\nLight vals\nShadow mapping\nVsync\nFixed interval\nMSAA\nCulling\nLock culling\nFPS, timings, position\nShow fresh updates";
                 font_begin(screenw, screenh);
                 font_add_text(g1, screenw/100.f, screenh/4.f, 0);
                 font_end(0.5, 1, 1);

@@ -58,6 +58,15 @@ int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z)
                w_too_lo != 8;
 }
 
+int chunk_in_range(int chunk_x, int chunk_z)
+{
+        float draw_dist_sq = draw_dist * BS * draw_dist * BS;
+        float delta_x = camplayer.pos.x - (chunk_x + .5f) * BS * CHUNKW;
+        float delta_z = camplayer.pos.z - (chunk_z + .5f) * BS * CHUNKD;
+        float dist_sq = delta_x * delta_x + delta_z * delta_z;
+        return dist_sq < draw_dist_sq;
+}
+
 // prevent shaking shadows by quantizing sun or moon pitch
 float quantize(float p)
 {
@@ -76,7 +85,7 @@ float quantize(float p)
 //draw everything in the game on the screen
 void draw_stuff()
 {
-        float identityM[] = {
+        float identity_mtrx[] = {
                 1, 0, 0, 0,
                 0, 1, 0, 0,
                 0, 0, 1, 0,
@@ -86,8 +95,8 @@ void draw_stuff()
 
         glDisable(GL_MULTISAMPLE);
 
-        float modelM[16];
-        memcpy(modelM, identityM, sizeof identityM);
+        float model_mtrx[16];
+        memcpy(model_mtrx, identity_mtrx, sizeof identity_mtrx);
 
         // make shadow map
         if (shadow_mapping)
@@ -111,7 +120,7 @@ void draw_stuff()
                 //render shadows here
                 glUseProgram(shadow_prog_id);
                 // view matrix
-                float viewM[16];
+                float view_mtrx[16];
                 float f[3];
 
                 float moon_pitch = sun_pitch + PI;
@@ -131,13 +140,13 @@ void draw_stuff()
 
                 if (sun_pitch < PI)
                 {
-                        lookit(viewM, f, sun_pos.x, sun_pos.y, sun_pos.z, quantized_sun_pitch, yaw);
-                        translate(viewM, -sun_pos.x, -sun_pos.y, -sun_pos.z);
+                        lookit(view_mtrx, f, sun_pos.x, sun_pos.y, sun_pos.z, quantized_sun_pitch, yaw);
+                        translate(view_mtrx, -sun_pos.x, -sun_pos.y, -sun_pos.z);
                 }
                 else
                 {
-                        lookit(viewM, f, moon_pos.x, moon_pos.y, moon_pos.z, quantized_moon_pitch, yaw);
-                        translate(viewM, -moon_pos.x, -moon_pos.y, -moon_pos.z);
+                        lookit(view_mtrx, f, moon_pos.x, moon_pos.y, moon_pos.z, quantized_moon_pitch, yaw);
+                        translate(view_mtrx, -moon_pos.x, -moon_pos.y, -moon_pos.z);
                 }
 
                 // proj matrix
@@ -147,41 +156,42 @@ void draw_stuff()
                 float y = -1.f / (6000 / 2.f);
                 float z = -1.f / ((sfar - snear) / 2.f);
                 float tz = -(sfar + snear) / (sfar - snear);
-                float orthoM[] = {
+                float ortho_mtrx[] = {
                         x, 0, 0,  0,
                         0, y, 0,  0,
                         0, 0, z,  0,
                         0, 0, tz, 1,
                 };
 
-                float shadow_pvM[16];
+                float shadow_pv_mtrx[16];
                 if (!lock_culling)
-                        mat4_multiply(shadow_pvM, orthoM, viewM);
+                        mat4_multiply(shadow_pv_mtrx, ortho_mtrx, view_mtrx);
 
-                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "proj"), 1, GL_FALSE, orthoM);
-                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "view"), 1, GL_FALSE, viewM);
+                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "proj"), 1, GL_FALSE, ortho_mtrx);
+                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "view"), 1, GL_FALSE, view_mtrx);
                 glUniform1i(glGetUniformLocation(shadow_prog_id, "tarray"), 0);
                 glUniform1f(glGetUniformLocation(shadow_prog_id, "BS"), BS);
 
-                float biasM[] = {
+                float bias_mtrx[] = {
                         0.5,   0,   0, 1,
                           0, 0.5,   0, 1,
                           0,   0, 0.5, 1,
                         0.5, 0.5, 0.5, 1,
                 };
-                float tmpM[16];
-                mat4_multiply(tmpM, orthoM, viewM);
-                mat4_multiply(shadow_space, biasM, tmpM);
+                float tmp_mtrx[16];
+                mat4_multiply(tmp_mtrx, ortho_mtrx, view_mtrx);
+                mat4_multiply(shadow_space, bias_mtrx, tmp_mtrx);
 
                 for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
                 {
                         if (!VBOLEN_(i, j)) continue;
-                        if (!frustum_culling || chunk_in_frustum(shadow_pvM, i, j))
+                        int passes_vis_test = chunk_in_frustum(shadow_pv_mtrx, i, j) && chunk_in_range(i, j);
+                        if (!frustum_culling || passes_vis_test)
                         {
                                 glBindVertexArray(VAO_(i, j));
-                                modelM[12] = i * BS * CHUNKW;
-                                modelM[14] = j * BS * CHUNKD;
-                                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "model"), 1, GL_FALSE, modelM);
+                                model_mtrx[12] = i * BS * CHUNKW;
+                                model_mtrx[14] = j * BS * CHUNKD;
+                                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "model"), 1, GL_FALSE, model_mtrx);
                                 glDrawArrays(GL_POINTS, 0, VBOLEN_(i, j));
                                 shadow_polys += VBOLEN_(i, j);
                         }
@@ -232,7 +242,7 @@ void draw_stuff()
         float far = 99999.f;
         float frustw = 4.5f * zoom_amt * screenw / screenh;
         float frusth = 4.5f * zoom_amt;
-        float projM[] = {
+        float proj_mtrx[] = {
                 near/frustw,           0,                                  0,  0,
                           0, near/frusth,                                  0,  0,
                           0,           0,       -(far + near) / (far - near), -1,
@@ -244,22 +254,22 @@ void draw_stuff()
         float eye1 = lerped_pos.y + EYEDOWN * (camplayer.sneaking ? 2 : 1);
         float eye2 = lerped_pos.z + PLYR_W / 2;
         float f[3];
-        float viewM[16];
-        lookit(viewM, f, eye0, eye1, eye2, camplayer.pitch, camplayer.yaw);
+        float view_mtrx[16];
+        lookit(view_mtrx, f, eye0, eye1, eye2, camplayer.pitch, camplayer.yaw);
 
-        sun_draw(projM, viewM, sun_pitch, shadow_tex_id);
+        sun_draw(proj_mtrx, view_mtrx, sun_pitch, shadow_tex_id);
 
         // find where we are pointing at
         rayshot(eye0, eye1, eye2, f[0], f[1], f[2]);
 
         // translate by hand
-        float translated_viewM[16];
-        memcpy(translated_viewM, viewM, sizeof viewM);
-        translate(translated_viewM, -eye0, -eye1, -eye2);
+        float translated_view_mtrx[16];
+        memcpy(translated_view_mtrx, view_mtrx, sizeof view_mtrx);
+        translate(translated_view_mtrx, -eye0, -eye1, -eye2);
 
-        static float pvM[16];
+        static float proj_view_mtrx[16];
         if (!lock_culling)
-                mat4_multiply(pvM, projM, translated_viewM);
+                mat4_multiply(proj_view_mtrx, proj_mtrx, translated_view_mtrx);
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -280,8 +290,8 @@ void draw_stuff()
         glUniform1i(glGetUniformLocation(prog_id, "shadow_map"), 1);
         glUniform1i(glGetUniformLocation(prog_id, "shadow_mapping"), shadow_mapping);
 
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, projM);
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, translated_viewM);
+        glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, proj_mtrx);
+        glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, translated_view_mtrx);
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "shadow_space"), 1, GL_FALSE, shadow_space);
 
         glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
@@ -398,7 +408,8 @@ void draw_stuff()
                 stale[stale_len].y = (xd * xd + zd * zd);
 
                 // only queue chunks we could see
-                if (chunk_in_frustum(pvM, i, j))
+                int passes_vis_test = chunk_in_frustum(proj_view_mtrx, i, j) && chunk_in_range(i, j);
+                if (passes_vis_test)
                         stale_len++;
 
                 skip: ;
@@ -409,9 +420,9 @@ void draw_stuff()
         {
                 int myx = stale[my].x;
                 int myz = stale[my].z;
-                modelM[12] = myx * BS * CHUNKW;
-                modelM[14] = myz * BS * CHUNKD;
-                glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, modelM);
+                model_mtrx[12] = myx * BS * CHUNKW;
+                model_mtrx[14] = myz * BS * CHUNKD;
+                glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, model_mtrx);
                 glBindVertexArray(VAO_(myx, myz));
                 glDrawArrays(GL_POINTS, 0, VBOLEN_(myx, myz));
                 polys += VBOLEN_(myx, myz);
@@ -560,10 +571,10 @@ void draw_stuff()
                 if (my < 4) // draw the newly buffered verts
                 {
                         TIMER(glDrawArrays)
-                        modelM[12] = myx * BS * CHUNKW;
-                        modelM[13] = 0.f;
-                        modelM[14] = myz * BS * CHUNKD;
-                        glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, modelM);
+                        model_mtrx[12] = myx * BS * CHUNKW;
+                        model_mtrx[13] = 0.f;
+                        model_mtrx[14] = myz * BS * CHUNKD;
+                        glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, model_mtrx);
                         glDrawArrays(GL_POINTS, 0, VBOLEN_(myx, myz));
                 }
         }
