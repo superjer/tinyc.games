@@ -8,6 +8,7 @@
 #define SDL_DISABLE_IMMINTRIN_H
 #include <SDL.h>
 #include <SDL_ttf.h>
+#include "audio.c"
 
 #define BWIDTH 10  // board width, height
 #define BHEIGHT 25
@@ -153,10 +154,12 @@ SDL_Event event;
 SDL_Window *win;
 SDL_Renderer *renderer;
 TTF_Font *font;
+SDL_AudioDeviceID audio;
 
 //prototypes
 void setup();
 void joy_setup();
+void audio_setup();
 void win_event();
 void resize(int x, int y);
 int key_down();
@@ -267,7 +270,7 @@ void resize(int x, int y)
 void setup()
 {
         srand(time(NULL));
-        SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER);
+        SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO);
 
         win = SDL_CreateWindow("Tet",
                         SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
@@ -283,7 +286,17 @@ void setup()
 
         TTF_Init();
         resize(win_x, win_y);
+        audioinit();
 }
+
+/*
+void audio_setup()
+{
+        SDL_AudioSpec wishes;
+        SDL_AudioSpec reality;
+        audio = SDL_OpenAudioDevice(NULL, 0, &wishes, &reality, SDL_AUDIO_ALLOW_ANY_CHANGE);
+}
+*/
 
 //handle a key press from a player
 int key_down()
@@ -455,6 +468,13 @@ void update_stuff()
                 {
                         p->board[y + 0][x].color = rand() % 7 + 1;
                         p->board[y + 0][x].part = '@';
+                        p->offs_x += .03f * (rand() % 11 - 5);
+                        p->offs_y += .02f * (rand() % 11 - 5);
+                        if (p->dead_time % 20 == 0)
+                        {
+                                int note = MIN(C7, p->dead_time * 400 / 1000);
+                                silly_noise(NOISE, note, note + 12, 10, 10, 10, 200);
+                        }
                 }
 
                 if (--p->dead_time == 0)
@@ -553,15 +573,28 @@ void move(int dx, int dy, int gravity)
                         p->idle_time = 0;
                         p->grounded_moves++;
                 }
+
+                if (!gravity)
+                        silly_noise(TRIANGLE, C3, F3, 1, 1, 1, 1);
         }
         else if (dy && gravity)
         {
                 bake();
+                if (tick != p->beam_tick)
+                        silly_noise(TRIANGLE, C4, F4, 10, 10, 10, 10);
         }
         else if (collision == WALL)
         {
-                if (dx == -1 && tick - p->last_dx_tick < 8) p->offs_x -= .20f;
-                if (dx ==  1 && tick - p->last_dx_tick < 8) p->offs_x += .20f;
+                if (dx == -1 && tick - p->last_dx_tick < 8)
+                {
+                        p->offs_x -= .20f;
+                        silly_noise(TRIANGLE, C2, C2, 25, 5, 5, 25);
+                }
+                if (dx ==  1 && tick - p->last_dx_tick < 8)
+                {
+                        p->offs_x += .20f;
+                        silly_noise(TRIANGLE, E2, C2, 15, 5, 5, 15);
+                }
         }
 }
 
@@ -632,6 +665,8 @@ void check_square_at(int x, int y)
         p->square_time = 40;
         p->square_x = x;
         p->square_y = y;
+        silly_noise(TRIANGLE, G2, G3, 500, 50, 5, 20);
+        silly_noise(TRIANGLE, G2, G3, 500, 50, 5, 20);
 }
 
 //bake the falling piece into the background/board
@@ -678,6 +713,7 @@ void shine_line(int y)
         p->killy_lines[y] = 1;
         for (int i = 0; i < BWIDTH; i++)
                 p->board[y][i].color = 8; //shiny!
+        silly_noise(SINE, G3, G5, 20, 50, 50, 200);
 }
 
 //remove lines that were marked to be removed by shine_line()
@@ -733,6 +769,7 @@ void hard()
         p->beam_x = p->falling_x;
         p->beam_y = p->falling_y;
         p->beam_tick = tick;
+        silly_noise(TRIANGLE, A1, E3, 5, 5, 5, 90);
 }
 
 //spin the falling piece left or right, if possible
@@ -755,9 +792,11 @@ void spin(int dir)
                                 p->idle_time = 0;
                                 p->grounded_moves++;
                         }
+                        silly_noise(TRIANGLE, C5, B5, 1, 1, 1, 1);
                         return;
                 }
         }
+        silly_noise(SQUARE, C5, B5, 1, 1, 1, 1);
 }
 
 void hold()
