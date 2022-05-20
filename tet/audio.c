@@ -1,54 +1,10 @@
-/**
- **  SPARToR
- **  Network Game Engine
- **  Copyright (C) 2010-2015  Jer Wilson
- **
- **  See COPYING for details.
- **
- **  http://www.superjer.com/
- **  http://www.spartor.com/
- **  http://github.com/superjer/SPARToR
- **/
-
 #include <math.h>
 #include <SDL_audio.h>
 
-void audioinit();
-void audiodestroy();
-void play_wav(const char *file);
-void make_sure_wav_is_loaded(const char *file);
-
-#define NUM_PLAYING 2
-#define WAVEFORM_LEN 1024
-#define FULL_MULT 32
 #define NUM_ENVS 20
 
-struct sample {
-        unsigned char *data;
-        unsigned int dpos;
-        unsigned int dlen;
-} playing[NUM_PLAYING];
-
-typedef struct {
-        char *name;
-        SDL_AudioCVT cvt;
-} SOUND_T;
-
-int *a_waveform     = NULL;
-int  a_waveform_len = WAVEFORM_LEN;
-int  a_musictest    = 1;
-
-static int full_waveform[WAVEFORM_LEN*FULL_MULT] = {0};
-static int full_waveform_len = WAVEFORM_LEN*FULL_MULT;
-static int full_waveform_pos = 0;
-
-static int sound_count = 0;
-static int sound_alloc = 0;
-static SOUND_T *sounds = NULL;
-static int inited = 0;
-static SDL_AudioSpec spec;
+static SDL_AudioSpec audiospec;
 static SDL_AudioDeviceID audiodevid;
-
 
 enum WVSHAPE { SINE, SQUARE, TRIANGLE, SAWTOOTH, NOISE, NUM_SHAPES };
 
@@ -58,6 +14,9 @@ typedef struct {
         double volume;
         double attack, decay, sustain, release, attack_ratio;
         double pos;
+	double noiseval;
+	int    noisectr;
+	int    noisesign;
 } ENVELOPE;
 
 ENVELOPE envs[NUM_ENVS];
@@ -183,262 +142,93 @@ static void silly_noise(int shape, int note_lo, int note_hi,
         e->start_freq = music_notes[note].frequency;
         e->volume     = 1.0 + 0.08 * music_notes[note].wavelength;
         if (shape == NOISE)
-                e->volume *= 0.3;
+	{
+		e->noiseval = 0.0;
+		e->noisesign = 1;
+		e->noisectr = 0;
+		e->volume *= 0.2;
+	}
 
         e->attack_ratio = 1.5;
-
         e->attack  = attack  / 1000.f;
         e->decay   = decay   / 1000.f + e->attack;
         e->sustain = sustain / 1000.f + e->decay;
         e->release = release / 1000.f + e->sustain;
-
-        fprintf(stderr, "Note: %2s%d ADSR=%2f, %2f, %2f, %2f, %s\n",
-                        music_notes[note].name,
-                        music_notes[note].octave,
-                        e->attack, e->decay, e->sustain, e->release,
-                        (char[][10]){"SINE", "SQUARE", "TRIANGLE", "SAWTOOTH", "NOISE"}[shape]);
-}
-
-static void music_test( int *buf, int len )
-{
-        int j, n;
-
-        for( j=0; j<len/2; j++ )
-        {
-                static double noiseval  =  0;
-                static int    noisectr  =  1;
-                static int    noisesign = -1;
-
-                if( noisectr-- <= 0 )
-                {
-                        int minimum = 15;
-                        int range   = 150;
-                        noisectr  = minimum + rand()%range;
-                        noisesign = noisesign<0 ? 1 : -1;
-                        noiseval  = 1.0;
-                }
-
-                noiseval *= 0.995;
-
-                for( n=0; n<NUM_ENVS; n++ )
-                {
-                        ENVELOPE *e = envs + n;
-
-                        if( e->pos >= e->release )
-                                continue;
-
-                        double t = e->pos;
-                        e->pos += 1.0/44100;
-
-                        double veloc = e->volume * 2200;
-                        if     ( t <= e->attack  ) veloc *= t/e->attack * e->attack_ratio;
-                        else if( t <= e->decay   ) veloc *= (e->decay-t)/(e->decay-e->attack) * (e->attack_ratio-1.0) + 1.0;
-                        else if( t <= e->sustain ) ;
-                        else if( t <= e->release ) veloc *= (e->release-t)/(e->release-e->sustain);
-
-                        double freq = e->start_freq; //FIXME!
-                        double wl   = 1.0/freq;
-                        double wl2  = wl/2.0;
-                        double frac = fmod(e->pos, wl);
-
-                        switch( e->shape )
-                        {
-                                case SINE:     buf[j] += veloc * sin(frac*freq*6.28318531);                  break;
-                                case SQUARE:   buf[j] += frac>wl2 ? veloc : -veloc;                          break;
-                                case TRIANGLE: buf[j] += (4*freq*(frac>wl2 ? (wl-frac) : frac) - 1) * veloc; break;
-                                case SAWTOOTH: buf[j] += (2*freq*frac - 1) * veloc;                          break;
-                                case NOISE:    buf[j] += (noisesign<0 ? -noiseval : noiseval) * veloc;       break;
-                                default: break;
-                        }
-                }
-        }
 }
 
 void mixaudio(void *unused, unsigned char *stream, int len)
 {
-        int i, j;
-        unsigned int amount;
+        int j;
         int buf[len];
         short *out = (short*)stream;
 
         memset(buf, 0, sizeof *buf * len); // twice as big as it needs to be, if 16bit
 
-        for( i=0; i<NUM_PLAYING; ++i )
-        {
-                amount = playing[i].dlen-playing[i].dpos;
-                if( amount > (unsigned int)len )
-                        amount = len;
-                for( j=0; j<(int)amount/2; j++ )
-                {
-                        short *in = (short*)(playing[i].data + playing[i].dpos) + j;
-                        buf[j] += *in;
-                }
-                playing[i].dpos += amount;
-        }
+        for( int j=0; j<len/2; j++ ) for( int n=0; n<NUM_ENVS; n++ )
+	{
+		ENVELOPE *e = envs + n;
 
-        if( a_musictest ) music_test(buf, len);
+		if( e->pos >= e->release )
+			continue;
+
+		double freq = e->start_freq;
+		double wl   = 1.0 / freq;
+		double wl2  = wl / 2.0;
+		double frac = fmod(e->pos, wl);
+
+		if (e->shape == NOISE)
+		{
+			if (e->noisectr-- <= 0)
+			{
+				double r = (double)rand() / (double)RAND_MAX;
+				e->noisectr  = wl * r * 100000 + 1;
+				e->noisesign = e->noisesign < 0 ? 1 : -1;
+				e->noiseval  = 1.0;
+			}
+			e->noiseval *= 0.995;
+		}
+
+		double t = e->pos;
+		e->pos += 1.0 / 44100;
+
+		double veloc = e->volume * 2200;
+		if      (t <= e->attack ) veloc *= t / e->attack * e->attack_ratio;
+		else if (t <= e->decay  ) veloc *= (e->decay - t) / (e->decay - e->attack) * (e->attack_ratio - 1.0) + 1.0;
+		else if (t <= e->sustain) ;
+		else if (t <= e->release) veloc *= (e->release - t) / (e->release - e->sustain);
+
+		switch (e->shape)
+		{
+			case SINE:     buf[j] += veloc * sin(frac*freq*6.28318531);                  break;
+			case SQUARE:   buf[j] += frac > wl2 ? veloc : -veloc;                        break;
+			case TRIANGLE: buf[j] += (4*freq*(frac>wl2 ? (wl-frac) : frac) - 1) * veloc; break;
+			case SAWTOOTH: buf[j] += (2*freq*frac - 1) * veloc;                          break;
+			case NOISE:    buf[j] += (e->noisesign * e->noiseval) * veloc;               break;
+			default: break;
+		}
+	}
 
         for( j=0; j<len/2; j++ )
         {
                 if(      buf[j] >  32767 ) out[j] = (short) 32767;
                 else if( buf[j] < -32768 ) out[j] = (short)-32768;
                 else                       out[j] = (short)buf[j];
-
-                full_waveform[full_waveform_pos] = out[j];
-                full_waveform_pos = (full_waveform_pos+1) % full_waveform_len;
-                if( full_waveform_pos % a_waveform_len == 0 )
-                        a_waveform = full_waveform + (full_waveform_pos + (FULL_MULT-1)*a_waveform_len) % full_waveform_len;
         }
 }
 
 void audioinit()
 {
-        if( inited ) audiodestroy();
-
         size_t i;
-
         SDL_AudioSpec desired;
-
         desired.freq = 44100;
         desired.format = AUDIO_S16LSB;
         desired.channels = 1;
-        desired.samples = 2560;
+        desired.samples = 512;
         desired.callback = mixaudio;
         desired.userdata = NULL;
-
-        audiodevid = SDL_OpenAudioDevice(NULL, 0, &desired, &spec,
-                        SDL_AUDIO_ALLOW_ANY_CHANGE);
+        audiodevid = SDL_OpenAudioDevice(NULL, 0, &desired, &audiospec, SDL_AUDIO_ALLOW_ANY_CHANGE);
         if (!audiodevid)
-        {
                 fprintf(stderr, "Unable to open audio: %s\n", SDL_GetError());
-                return;
-        }
         else
-        {
                 SDL_PauseAudioDevice(audiodevid, 0);
-                inited = 1;
-        }
-
-        char *sfmt = NULL;
-        switch( spec.format )
-        {
-                #define SFMT(X) case X: sfmt = #X; break;
-                SFMT(AUDIO_U8)
-                SFMT(AUDIO_S8)
-                SFMT(AUDIO_U16LSB)
-                SFMT(AUDIO_S16LSB)
-                SFMT(AUDIO_U16MSB)
-                SFMT(AUDIO_S16MSB)
-        }
-
-        fprintf(stderr, "Audio freq: %d  format: %s  channels: %d  silence: %d  samples: %d  size: %d\n",
-                                                spec.freq, sfmt, spec.channels, spec.silence, spec.samples, spec.size);
-
-        make_sure_wav_is_loaded("sounds/bonk.wav");
-}
-
-void audiodestroy()
-{
-        int i;
-        for( i=0; i<sound_count; i++ )
-                if( sounds[i].cvt.buf )
-                        free(sounds[i].cvt.buf);
-
-        free(sounds);
-        sounds = NULL;
-        sound_count = 0;
-        sound_alloc = 0;
-
-        SDL_CloseAudio();
-
-        inited = 0;
-}
-
-void play_wav(const char *name)
-{
-        int i;
-        SDL_AudioCVT *cvt = NULL;
-
-        // Find sound by name
-        for( i=0; i<sound_count; i++ )
-                if( 0==strcmp(name, sounds[i].name) )
-                {
-                        cvt = &sounds[i].cvt;
-                        break;
-                }
-
-        if( !cvt )
-        {
-                fprintf(stderr, "Could not find sound: %s\n", name);
-                return;
-        }
-
-        // Look for an empty (or finished) sound slot
-        for( i=0; i<NUM_PLAYING; ++i )
-                if( playing[i].dpos == playing[i].dlen )
-                        break;
-
-        if( i == NUM_PLAYING )
-                return;
-
-        SDL_LockAudioDevice(audiodevid);
-        playing[i].data = cvt->buf;
-        playing[i].dlen = cvt->len_cvt;
-        playing[i].dpos = 0;
-        SDL_UnlockAudioDevice(audiodevid);
-}
-
-void make_sure_wav_is_loaded(const char *file)
-{
-        // Parse out name w/o dirs or extension
-        const char *p = strrchr(file, '/');
-        p = p ? p+1 : file;
-        char *name = malloc(strlen(p)+1);
-        strcpy(name, p);
-        char *q;
-        for( q=name; *q; q++ )
-                if( *q=='.' ) *q = '\0';
-
-        // Check if this sound is already loaded
-        int i;
-        for( i=0; i<sound_count; i++ )
-                if( 0==strcmp(name, sounds[i].name) )
-                        goto fail;
-
-        // Find an empty slot or make one
-        if( sound_count >= sound_alloc )
-        {
-                size_t new_alloc = sound_alloc < 8 ? 8 : sound_alloc*2;
-                sounds = realloc( sounds, new_alloc * sizeof *sounds );
-                memset( sounds + sound_alloc, 0, (new_alloc - sound_alloc) * sizeof *sounds );
-                sound_alloc = new_alloc;
-        }
-
-        SOUND_T *s = sounds + sound_count;
-        SDL_AudioSpec wave;
-        unsigned char *data;
-        unsigned int dlen;
-
-        // Load the sound file and convert it to 16-bit stereo at 22kHz
-        if( SDL_LoadWAV(file, &wave, &data, &dlen) == NULL )
-        {
-                fprintf(stderr, "Couldn't load %s: %s\n", file, SDL_GetError());
-                goto fail;
-        }
-
-        s->name = name;
-
-        SDL_BuildAudioCVT(&s->cvt, wave.format, wave.channels, wave.freq, spec.format, spec.channels, spec.freq);
-        s->cvt.buf = malloc(dlen*s->cvt.len_mult);
-        memcpy(s->cvt.buf, data, dlen);
-        s->cvt.len = dlen;
-        SDL_ConvertAudio(&s->cvt);
-        SDL_FreeWAV(data);
-
-        sound_count++;
-        return;
-
-        fail:
-        free(name);
-        return;
 }

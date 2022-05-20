@@ -22,7 +22,7 @@
 // collision test results
 enum { NONE = 0, WALL, NORMAL };
 
-/*
+/* Letters below indicate connections of sub-pieces, for rendering borders
  * @ 1000000    - none
  * A 1000001    - up
  * B 1000010    - right
@@ -32,12 +32,7 @@ enum { NONE = 0, WALL, NORMAL };
  * F 1000110    - down right
  * G 1000111    - down right up
  * H 1001000    - left
- * I 1001001    - left up
- * J 1001010    - left right
- * K 1001011    - left right up
- * L 1001100    - left down
- * M 1001101    - left down up
- * N 1001110    - left down right
+ * ...
  * O 1001111    - left down right up
  *
  * S 1010011    - right up with vertical band stretch right
@@ -244,12 +239,10 @@ void win_event()
 // recalculate sizes and positions on resize
 void resize(int x, int y)
 {
-        fprintf(stderr, "Window resizing to %dx%d\n", x, y);
         win_x = x;
         win_y = y;
         bs = MIN(win_x / (nplay * 22), win_y / 24);
         bs2 = bs / 2;
-        printf("Using block size of %d\n", bs);
         int n = 0;
         for (p = play; p < play + nplay; p++, n++)
         {
@@ -340,6 +333,7 @@ int key_down()
                 SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
                 state = ASSIGN;
         }
+	return 0;
 }
 
 void key_up()
@@ -371,6 +365,7 @@ int joy_down()
                 case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:   p->right = 1; p->move_cooldown = 0; break;
                 case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: hold();  break;
         }
+	return 0;
 }
 
 void joy_up()
@@ -405,6 +400,7 @@ int assign(int device)
                 for (p = play; p < play + nplay; p++)
                         new_game();
         }
+	return 0;
 }
 
 void set_p_from_device(int device)
@@ -464,16 +460,16 @@ void update_stuff()
                 int x = p->dead_time % BWIDTH;
                 int y = p->dead_time / BWIDTH;
 
-                if (y >= 0 && y < BHEIGHT && x >= 0 && x < BWIDTH)
+                if (y >= 0 && y < BHEIGHT && x >= 0 && x < BWIDTH && p->dead_time > 49)
                 {
                         p->board[y + 0][x].color = rand() % 7 + 1;
                         p->board[y + 0][x].part = '@';
                         p->offs_x += .03f * (rand() % 11 - 5);
                         p->offs_y += .02f * (rand() % 11 - 5);
-                        if (p->dead_time % 20 == 0)
+                        if (p->dead_time % 10 == 9)
                         {
                                 int note = MIN(C7, p->dead_time * 400 / 1000);
-                                silly_noise(NOISE, note, note + 12, 10, 10, 10, 200);
+                                silly_noise(NOISE, note, note + 12, 10, 10, 10, 250);
                         }
                 }
 
@@ -493,7 +489,7 @@ void new_game()
 {
         memset(p->board, 0, sizeof p->board);
         p->bag_idx = BAG_SZ;
-        do new_piece(); while (p->next[0] == 0 || p->next[0] > 4); // get a nice starting piece
+        do new_piece(); while (p->falling_shape == 0 || p->falling_shape > 4); // get a nice starting piece
         if (p->best < p->score) p->best = p->score;
         p->score = 0;
         p->lines = 0;
@@ -913,7 +909,7 @@ void draw_stuff()
         if (p->offs_y) p-> offs_y *= .98f;
 }
 
-//draw a single square/piece of a shape
+//draw a single square of a shape
 void draw_square(int x, int y, int shape, int outline, int part)
 {
         if (!part) return;
