@@ -75,18 +75,22 @@ int center[] = { // helps center shapes in preview box
 };
 
 unsigned char colors[] = {
-        0,     0,   0, // unused
+          0,   0,   0, // unused
         242, 245, 237, // J
         255,  91,   0, // L
         255, 194,   0, // square
-        74,  192, 242, // line
+         74, 192, 242, // line
         184,   0,  40, // Z
-        15,  127, 127, // S
+         15, 127, 127, // S
         132,   0,  46, // T
         255, 255, 255, // shine color
-         59,  66, 159, // violet blue big square
-        122, 199,  79, // mantis big square
+        159, 166, 255, // heterosquare shine
+        222, 255, 179, // homosquare shine
+         59,  66, 159, // heterosquare
+        122, 199,  79, // homosquare
 };
+
+enum color_names { SHINY = 8, HETEROSQUARE = 11, HOMOSQUARE = 12 };
 
 int kicks[] = {   // clockwise                            counterclockwise
         0,0,  -1, 0,  -1, 1,   0,-2,  -1,-2,     0,0,   1, 0,   1, 1,   0,-2,   1,-2, // rotation 0
@@ -100,11 +104,17 @@ int kicks[] = {   // clockwise                            counterclockwise
         0,0,   2, 0,  -1, 0,   2,-1,  -1, 2,     0,0,  -1, 0,   2, 0,  -1,-2,   2, 1, // rotation 3
 };
 
+float combo_bonus[] = {
+	1.f, 1.5f, 2.5f, 3.5f, 5.f, 7.5f, 10.f, 15.f, 25.f, 40.f,
+	60.f, 90.f, 130.f, 200.f, 300.f, 450.f, 650.f, 1000.f
+};
+#define MAX_COMBO (sizeof combo_bonus / sizeof *combo_bonus)
+
 struct {
         struct {
-                unsigned char color;
-                unsigned char part;
-                unsigned int id;
+                int color;
+                int part;
+                int id;
         } board[BHEIGHT][BWIDTH];
         int killy_lines[BHEIGHT];
         int left, right, down; // true if holding a direction
@@ -122,6 +132,8 @@ struct {
         int hold_count;
         int lines;
         int score;
+	int combo;
+	int square_mult;
         int best;
         int idle_time;
         int shine_time;
@@ -597,8 +609,8 @@ void move(int dx, int dy, int gravity)
 //check if a sub-part of the falling shape is solid at a particular rotation
 int is_solid_part(int shape, int rot, int i, int j)
 {
-        int base = shape*5 + rot*5*8*4;
-        int part = shapes[base + j*5*8 + i];
+        int base = shape * 5 + rot * 5 * 8 * 4;
+        int part = shapes[base + j * 5 * 8 + i];
         return part == '.' ? 0 : part;
 }
 
@@ -627,14 +639,14 @@ void check_square_at(int x, int y)
 {
         int found_ids[4] = {0};
         int first_found_color = 0;
-        int color = 10; // gold
+        int color = HOMOSQUARE;
 
         for (int i = x; i < x + 4; i++) for (int j = y; j < y + 4; j++)
         {
                 if (p->board[j][i].id == 0) return; // no square forming here
 
                 if (first_found_color && p->board[j][i].color != first_found_color)
-                        color = 9; // silver
+                        color = HETEROSQUARE;
 
                 first_found_color = p->board[j][i].color;
 
@@ -694,9 +706,16 @@ void bake()
                         check_square_at(i, j);
 
         // check if there are any completed horizontal lines
+	int shines = 0;
         for (int j = BHEIGHT - 1; j >= 0; j--)
                 for (int i = 0; i < BWIDTH && p->board[j][i].color; i++)
-                        if (i == BWIDTH - 1) shine_line(j);
+                        if (i == BWIDTH - 1)
+			{
+				shine_line(j);
+				shines++;
+			}
+
+	if (shines == 0) p->combo = 0;
 
         p->falling_shape = 0;
         p->hold_count = 0;
@@ -708,7 +727,18 @@ void shine_line(int y)
         p->shine_time = 20;
         p->killy_lines[y] = 1;
         for (int i = 0; i < BWIDTH; i++)
-                p->board[y][i].color = 8; //shiny!
+	{
+		int *color = &p->board[y][i].color;
+		if (*color == HOMOSQUARE || *color == HETEROSQUARE)
+		{
+			p->square_mult += (*color == HOMOSQUARE) ? 2 : 1;
+			*color -= 2;
+		}
+		else
+		{
+			*color = SHINY;
+		}
+	}
         silly_noise(SINE, G3, G5, 20, 50, 50, 200);
 }
 
@@ -744,12 +774,18 @@ void kill_lines()
                 memset(p->board[0], 0, sizeof *p->board);
         }
 
+	float b2b_bonus = combo_bonus[MIN(MAX_COMBO, p->combo)];
+	float sq_bonus = combo_bonus[MIN(MAX_COMBO, p->square_mult / 4)];
+	p->combo += new_lines;
+	p->square_mult = 0;
+	printf("Kill: b2b = %f, sq = %f\n", b2b_bonus, sq_bonus);
+
         switch (new_lines)
         {
-                case 1: p->score += 100;  break;
-                case 2: p->score += 250;  break;
-                case 3: p->score += 500;  break;
-                case 4: p->score += 1000; break;
+                case 1: p->score += b2b_bonus * sq_bonus * 100;  break;
+                case 2: p->score += b2b_bonus * sq_bonus * 250;  break;
+                case 3: p->score += b2b_bonus * sq_bonus * 500;  break;
+                case 4: p->score += b2b_bonus * sq_bonus * 1000; break;
         }
 }
 
@@ -916,7 +952,7 @@ void draw_square(int x, int y, int shape, int outline, int part)
         int bw = MAX(1, outline ? bs / 10 : bs / 6);
         set_color_from_shape(shape, -50);
         SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, bs, bs});
-        set_color_from_shape(shape, (outline ? -255 : 0) + (shape > 8 ? abs(tick % 100 - 50) : 0));
+        set_color_from_shape(shape, (outline ? -255 : 0) + (shape >= HETEROSQUARE ? abs(tick % 100 - 50) : 0));
         SDL_RenderFillRect(renderer, &(SDL_Rect){ // horizontal band
                         x + (part & 8 ? 0 : bw),
                         y + bw,
