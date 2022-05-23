@@ -122,6 +122,7 @@ struct {
                 int id;
         } board[BHEIGHT][BWIDTH];
         int killy_lines[BHEIGHT];
+        int line_offset[BHEIGHT]; // amount lines have left to fall
         int left, right, down; // true if holding a direction
         int move_cooldown;
         int falling_x, falling_y, falling_shape, falling_rot; // current piece
@@ -132,7 +133,7 @@ struct {
         int grounded;
         int grounded_moves;
         int last_dx_tick;
-        int next[3];
+        int next[5];
         int held_shape;
         int hold_count;
         int lines;
@@ -470,6 +471,13 @@ void update_stuff()
                 if (p->shine_time == 0)
                         kill_lines();
         }
+        else for (int y = 0; y < BHEIGHT; y++)
+        {
+                if (p->line_offset[y] > 0)
+                        p->line_offset[y] -= bs2;
+                if (p->line_offset[y] < 0)
+                        p->line_offset[y] = 0;        
+        }
 
         if (p->dead_time > 0)
         {
@@ -504,11 +512,14 @@ void update_stuff()
 void new_game()
 {
         memset(p->board, 0, sizeof p->board);
+        memset(p->killy_lines, 0, sizeof p->killy_lines);
+        memset(p->line_offset, 0, sizeof p->line_offset);
         p->bag_idx = BAG_SZ;
         do new_piece(); while (p->falling_shape == 0 || p->falling_shape > 4); // get a nice starting piece
         if (p->best < p->score) p->best = p->score;
         p->score = 0;
         p->lines = 0;
+        p->level = 0;
         p->held_shape = 0;
         p->hold_count = 0;
 }
@@ -556,7 +567,9 @@ void new_piece()
         p->falling_shape = p->next[0];
         p->next[0] = p->next[1];
         p->next[1] = p->next[2];
-        p->next[2] = p->bag[p->bag_idx++];
+        p->next[2] = p->next[3];
+        p->next[3] = p->next[4];
+        p->next[4] = p->bag[p->bag_idx++];
         reset_fall();
 }
 
@@ -761,6 +774,7 @@ void kill_lines()
         // clean up sliced pieces
         for (int y = 0; y < BHEIGHT; y++)
         {
+                p->line_offset[y] = 0;
                 if (p->killy_lines[y]) continue;
 
                 if (y > 0 && p->killy_lines[y - 1])
@@ -781,8 +795,12 @@ void kill_lines()
                 new_lines++;
                 p->killy_lines[y] = 0;
 
-                for (int j = y; j > 0; j--) for (int i = 0; i < BWIDTH; i++)
-                        p->board[j][i] = p->board[j-1][i];
+                for (int j = y; j > 0; j--)
+		{
+                        p->line_offset[j] = p->line_offset[j-1] + bs;
+			for (int i = 0; i < BWIDTH; i++)
+                       	        p->board[j][i] = p->board[j-1][i];
+                }
 
                 memset(p->board[0], 0, sizeof *p->board);
         }
@@ -903,7 +921,7 @@ void draw_stuff()
         }
 
         //draw next piece, centered in the preview box
-        for (int n = 0; n < 3; n++) for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
+        for (int n = 0; n < 5; n++) for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
                 draw_square(
                         p->preview_x + bs * i + bs2 + bs2 * center[2 * p->next[n]],
                         p->preview_y + bs + bs * 4 * n + bs * j + bs2 * center[2 * p->next[n] + 1],
@@ -925,7 +943,7 @@ void draw_stuff()
         //draw board pieces
         for (int i = 0; i < BWIDTH; i++) for (int j = 0; j < VHEIGHT; j++)
                 draw_square(x + bs * i,
-                                y + bs * j,
+                                y + bs * j - p->line_offset[j+5],
                                 p->board[j+5][i].color,
                                 0,
                                 p->board[j+5][i].part);
