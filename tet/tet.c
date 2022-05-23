@@ -22,7 +22,7 @@
 // collision test results
 enum { NONE = 0, WALL, NORMAL };
 
-/* Letters below indicate connections of sub-pieces, for rendering borders
+/* Bits in each letter indicate which borders to draw in draw_square()
  * @ 1000000    - none
  * A 1000001    - up
  * B 1000010    - right
@@ -105,10 +105,15 @@ int kicks[] = {   // clockwise                            counterclockwise
 };
 
 float combo_bonus[] = {
-	1.f, 1.5f, 2.5f, 3.5f, 5.f, 7.5f, 10.f, 15.f, 25.f, 40.f,
-	60.f, 90.f, 130.f, 200.f, 300.f, 450.f, 650.f, 1000.f
+        1.f, 1.5f, 2.5f, 3.5f, 5.f, 7.5f, 10.f, 15.f, 25.f, 40.f,
+        60.f, 90.f, 130.f, 200.f, 300.f, 450.f, 650.f, 1000.f
 };
-#define MAX_COMBO (sizeof combo_bonus / sizeof *combo_bonus)
+#define MAX_COMBO ((sizeof combo_bonus / sizeof *combo_bonus) - 1)
+
+int rewards[] = { 0, 100, 250, 500, 1000 };
+
+int speeds[] = { 50, 40, 35, 30, 26, 23, 20, 18, 16, 14, 12, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1 };
+#define MAX_SPEED ((sizeof speeds / sizeof *speeds) - 1)
 
 struct {
         struct {
@@ -131,10 +136,10 @@ struct {
         int held_shape;
         int hold_count;
         int lines;
-        int score;
-	int combo;
-	int square_mult;
-        int best;
+        int score, best;
+        int b2b_combo, sq_combo;
+        int reward, reward_x, reward_y;
+        int level;
         int idle_time;
         int shine_time;
         int dead_time;
@@ -179,7 +184,7 @@ void update_stuff();
 void draw_stuff();
 void draw_square(int x, int y, int shape, int shade, int part);
 void set_color_from_shape(int shape, int shade);
-void text(char *fstr, int value, int x, int y, int w);
+void text(char *fstr, int value, int x, int y, int w, int flash);
 void new_game();
 void new_piece();
 void move(int dx, int dy, int gravity);
@@ -330,6 +335,7 @@ int key_down()
                 case SDLK_COMMA:  case SDLK_z:      spin(3);   break;
                 case SDLK_PERIOD: case SDLK_x:      spin(1);   break;
                 case SDLK_TAB:    case SDLK_LSHIFT: hold();    break;
+                case SDLK_l:                        p->lines += 10; break;
         }
 
         if (event.key.keysym.sym == SDLK_r)
@@ -345,7 +351,7 @@ int key_down()
                 SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
                 state = ASSIGN;
         }
-	return 0;
+        return 0;
 }
 
 void key_up()
@@ -366,7 +372,6 @@ int joy_down()
         if (state == ASSIGN) return assign(event.cbutton.which);
         set_p_from_device(event.cbutton.which);
 
-        printf("joy_down() device=%d button=%s\n", event.cbutton.which, SDL_GameControllerGetStringForButton(event.cbutton.button));
         if (p->falling_shape) switch(event.cbutton.button)
         {
                 case SDL_CONTROLLER_BUTTON_A:            spin(3); break;
@@ -377,7 +382,7 @@ int joy_down()
                 case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:   p->right = 1; p->move_cooldown = 0; break;
                 case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: hold();  break;
         }
-	return 0;
+        return 0;
 }
 
 void joy_up()
@@ -400,10 +405,9 @@ int assign(int device)
                         return 0;
 
         play[assign_me].device = device;
-        if (device == -1)
-                sprintf(play[assign_me].dev_name, "%.10s", "Keyboard");
-        else
-                sprintf(play[assign_me].dev_name, "%.10s", SDL_GameControllerNameForIndex(device));
+        sprintf(play[assign_me].dev_name, "%.10s", (device == -1 ?
+                        "Keyboard" :
+                        SDL_GameControllerName(SDL_GameControllerFromInstanceID(device))));
 
         if (++assign_me == nplay)
         {
@@ -412,7 +416,7 @@ int assign(int device)
                 for (p = play; p < play + nplay; p++)
                         new_game();
         }
-	return 0;
+        return 0;
 }
 
 void set_p_from_device(int device)
@@ -489,7 +493,7 @@ void update_stuff()
                         new_game();
         }
 
-        if (++p->idle_time >= 50)
+        if (++p->idle_time >= (p->grounded ? 50 : speeds[MIN(MAX_SPEED, p->level)]))
         {
                 move(0, 1, 1);
                 p->idle_time = 0;
@@ -706,16 +710,25 @@ void bake()
                         check_square_at(i, j);
 
         // check if there are any completed horizontal lines
-	int shines = 0;
+        int shines = 0;
         for (int j = BHEIGHT - 1; j >= 0; j--)
                 for (int i = 0; i < BWIDTH && p->board[j][i].color; i++)
                         if (i == BWIDTH - 1)
-			{
-				shine_line(j);
-				shines++;
-			}
+                        {
+                                shine_line(j);
+                                shines++;
+                        }
 
-	if (shines == 0) p->combo = 0;
+        if (shines)
+        {
+                p->reward_x = p->board_x + bs * (p->falling_x + 2);
+                p->reward_y = p->board_y + bs * (p->falling_y - 4);
+                p->reward = 0;
+        }
+        else
+        {
+                p->b2b_combo = 0;
+        }
 
         p->falling_shape = 0;
         p->hold_count = 0;
@@ -727,18 +740,18 @@ void shine_line(int y)
         p->shine_time = 20;
         p->killy_lines[y] = 1;
         for (int i = 0; i < BWIDTH; i++)
-	{
-		int *color = &p->board[y][i].color;
-		if (*color == HOMOSQUARE || *color == HETEROSQUARE)
-		{
-			p->square_mult += (*color == HOMOSQUARE) ? 2 : 1;
-			*color -= 2;
-		}
-		else
-		{
-			*color = SHINY;
-		}
-	}
+        {
+                int *color = &p->board[y][i].color;
+                if (*color == HOMOSQUARE || *color == HETEROSQUARE)
+                {
+                        p->sq_combo += (*color == HOMOSQUARE) ? 2 : 1;
+                        *color -= 2;
+                }
+                else
+                {
+                        *color = SHINY;
+                }
+        }
         silly_noise(SINE, G3, G5, 20, 50, 50, 200);
 }
 
@@ -774,19 +787,13 @@ void kill_lines()
                 memset(p->board[0], 0, sizeof *p->board);
         }
 
-	float b2b_bonus = combo_bonus[MIN(MAX_COMBO, p->combo)];
-	float sq_bonus = combo_bonus[MIN(MAX_COMBO, p->square_mult / 4)];
-	p->combo += new_lines;
-	p->square_mult = 0;
-	printf("Kill: b2b = %f, sq = %f\n", b2b_bonus, sq_bonus);
-
-        switch (new_lines)
-        {
-                case 1: p->score += b2b_bonus * sq_bonus * 100;  break;
-                case 2: p->score += b2b_bonus * sq_bonus * 250;  break;
-                case 3: p->score += b2b_bonus * sq_bonus * 500;  break;
-                case 4: p->score += b2b_bonus * sq_bonus * 1000; break;
-        }
+        p->level = p->lines / 10;
+        float b2b_bonus = combo_bonus[MIN(MAX_COMBO, p->b2b_combo)];
+        float sq_bonus = combo_bonus[MIN(MAX_COMBO, p->sq_combo / 4)];
+        p->b2b_combo += new_lines;
+        p->sq_combo = 0;
+        p->reward = b2b_bonus * sq_bonus * rewards[new_lines];
+        p->score += p->reward;
 }
 
 //move the falling piece as far down as it will go
@@ -925,18 +932,27 @@ void draw_stuff()
 
         //draw counters and instructions
         int ln = bs * 110 / 100;
-        text("Lines:"   ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  0, 0);
-        text("%d"       , p->lines, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  1, 0);
-        text("Score:"   ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  3, 0);
-        text("%d"       , p->score, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  4, 0);
-        text("Best:"    ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  6, 0);
-        text("%d"       ,  p->best, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  7, 0);
-        text("Input:"   ,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 11, 0);
-        text(p->dev_name,        0, p->hold_x, p->hold_y + p->box_w + bs2 + ln * 12, 0);
+        char combo_amt[80];
+        sprintf(combo_amt, "%0.1f", combo_bonus[MIN(MAX_COMBO, p->b2b_combo)]);
+        text("Lines:"   , 0           , p->hold_x, p->hold_y + p->box_w + bs2 + ln *  0, 0, 0);
+        text("%d"       , p->lines    , p->hold_x, p->hold_y + p->box_w + bs2 + ln *  1, 0, 0);
+        text("Score:"   , 0           , p->hold_x, p->hold_y + p->box_w + bs2 + ln *  3, 0, 0);
+        text("%d"       , p->score    , p->hold_x, p->hold_y + p->box_w + bs2 + ln *  4, 0, 0);
+        text("%d"       , p->best     , p->hold_x, p->hold_y + p->box_w + bs2 + ln *  5, 0, 0);
+        text("Level %d" , p->level    , p->hold_x, p->hold_y + p->box_w + bs2 + ln *  7, 0, 0);
+        text("Combo %d" , p->b2b_combo, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  9, 0, 0);
+        text(combo_amt  , 0           , p->hold_x, p->hold_y + p->box_w + bs2 + ln * 10, 0, 0);
+        text(p->dev_name, 0           , p->hold_x, p->hold_y + p->box_w + bs2 + ln * 12, 0, 0);
+
+        if (p->reward)
+        {
+                text("%d", p->reward, p->reward_x - 100, p->reward_y, 200, 1);
+                p->reward_y--;
+        }
 
         if (state == ASSIGN)
                 text(p >= play + assign_me ? "Press button to join" : p->dev_name,
-                                0, p->board_x, p->board_y + bs2 * 19, bs * 10);
+                                0, p->board_x, p->board_y + bs2 * 19, bs * 10, 0);
 
         // update bouncy offsets
         if (p->offs_x < .01f && p->offs_x > -.01f) p->offs_x = .0f;
@@ -975,7 +991,7 @@ void set_color_from_shape(int shape, int shade)
 }
 
 //render a centered line of text optionally with a %d value in it
-void text(char *fstr, int value, int x, int y, int w)
+void text(char *fstr, int value, int x, int y, int w, int flash)
 {
         if (!font || !fstr || !fstr[0]) return;
         char msg[80];
@@ -986,7 +1002,9 @@ void text(char *fstr, int value, int x, int y, int w)
                 TTF_SizeText(font, msg, &tw, &th);
                 x += (w - tw) / 2;
         }
-        SDL_Surface *msgsurf = TTF_RenderText_Blended(font, msg, (SDL_Color){180, 190, 185});
+        SDL_Color color = (SDL_Color){180, 190, 185};
+        if (flash) color = (tick / 3) % 2 ? (SDL_Color){0, 0, 0} : (SDL_Color){255, 255, 255};
+        SDL_Surface *msgsurf = TTF_RenderText_Blended(font, msg, color);
         SDL_Texture *msgtex = SDL_CreateTextureFromSurface(renderer, msgsurf);
         SDL_Rect fromrec = {0, 0, msgsurf->w, msgsurf->h};
         SDL_Rect torec = {x, y, msgsurf->w, msgsurf->h};

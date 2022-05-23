@@ -1,13 +1,16 @@
 Countdown to start
-Speedup
-Visual affect for cleared lines, etc
+Level
+* Speedup
+Visual affect for cleared lines
+* Particles?
+* Remaining pieces fall
 3D
 Menus
  * Select number of players
  * Detect controllers
  * Redraw
  * Quit current game
-Scoring
+Visible Scoring
  * Combos
  * Squares
 Coop mode like Connect
