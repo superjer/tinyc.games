@@ -1,17 +1,14 @@
-Countdown to start
-Level
-* Speedup
-Visual affect for cleared lines
-* Particles?
-* Remaining pieces fall
-3D
 Menus
  * Select number of players
  * Detect controllers
  * Redraw
  * Quit current game
-Visible Scoring
- * Combos
- * Squares
+
 Coop mode like Connect
+
 Remake tiny version
+
+3D
+
+Visual affect for cleared lines
+* Particles?

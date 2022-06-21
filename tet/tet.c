@@ -15,6 +15,7 @@
 #define VHEIGHT 20 // visible height
 #define BAG_SZ 8   // bag size
 #define NPLAY 4
+#define CTDN_TICKS 80
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define SWAP(a,b) {int c = (a); (a) = (b); (b) = c;}
@@ -115,6 +116,8 @@ int rewards[] = { 0, 100, 250, 500, 1000 };
 int speeds[] = { 50, 40, 35, 30, 26, 23, 20, 18, 16, 14, 12, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1 };
 #define MAX_SPEED ((sizeof speeds / sizeof *speeds) - 1)
 
+char countdown_msg[][10] = { "Go!", "- 1 -", "- 2 -", "- 3 -", "-   -" };
+
 struct {
         struct {
                 int color;
@@ -141,6 +144,7 @@ struct {
         int b2b_combo, sq_combo;
         int reward, reward_x, reward_y;
         int level;
+        int countdown_time;
         int idle_time;
         int shine_time;
         int dead_time;
@@ -327,7 +331,7 @@ int key_down()
 
         set_p_from_device(-1);
 
-        if (p->falling_shape) switch (event.key.keysym.sym)
+        if (p->falling_shape && p->countdown_time < CTDN_TICKS) switch (event.key.keysym.sym)
         {
                 case SDLK_a:      case SDLK_LEFT:   p->left = 1;  p->move_cooldown = 0; break;
                 case SDLK_d:      case SDLK_RIGHT:  p->right = 1; p->move_cooldown = 0; break;
@@ -444,6 +448,17 @@ void update_stuff()
 {
         if (state == ASSIGN) return;
 
+        if (p->countdown_time > 0)
+        {
+                int note = p->countdown_time > CTDN_TICKS ? A4 : A5;
+                if (p->countdown_time % CTDN_TICKS == 0)
+                        silly_noise(TRIANGLE, note, note, 80, 50, 5, 20);
+
+                p->countdown_time--;
+                if (p->countdown_time > CTDN_TICKS)
+                        return;
+        }
+
         if (p->square_time > 0)
         {
                 if (--p->square_time == 0)
@@ -522,6 +537,7 @@ void new_game()
         p->level = 0;
         p->held_shape = 0;
         p->hold_count = 0;
+        p->countdown_time = 4 * CTDN_TICKS;
 }
 
 //create a new piece bag with 7 or 8 pieces
@@ -967,6 +983,9 @@ void draw_stuff()
                 text("%d", p->reward, p->reward_x - 100, p->reward_y, 200, 1);
                 p->reward_y--;
         }
+
+        if (p->countdown_time > 0)
+                text(countdown_msg[p->countdown_time / CTDN_TICKS], 0, p->board_x, p->board_y + bs2 * 19, bs * 10, 0);
 
         if (state == ASSIGN)
                 text(p >= play + assign_me ? "Press button to join" : p->dev_name,
