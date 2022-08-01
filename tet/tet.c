@@ -163,9 +163,11 @@ int win_y = 750;
 int bs, bs2; // individual block size, and in half
 int tick;
 int joy_tick; // most recent tick when a new joystick was detected
-enum state { ASSIGN = 0, PLAY } state;
+enum state { MAIN_MENU = 0, NUMBER_MENU, ASSIGN, PLAY} state;
 int nplay = 1; // number of players
 int assign_me;
+
+int menu_pos;
 
 SDL_Event event;
 SDL_Window *win;
@@ -184,8 +186,11 @@ void key_up();
 int joy_down();
 void joy_up();
 int assign(int device);
+int menu_input();
 void set_p_from_device(int device);
+void update_menu();
 void update_stuff();
+void draw_menu();
 void draw_stuff();
 void draw_square(int x, int y, int shape, int shade, int part);
 void set_color_from_shape(int shape, int shade);
@@ -224,11 +229,15 @@ int main()
 
                 if (joy_tick == tick - 1) joy_setup();
 
-                for (p = play; p < play + nplay; p++)
+                if (state == MAIN_MENU || state == NUMBER_MENU)
+                        update_menu();
+                else if (state == PLAY) for (p = play; p < play + nplay; p++)
                         update_stuff();
                 SDL_SetRenderDrawColor(renderer, 25, 40, 35, 255);
                 SDL_RenderClear(renderer);
-                for (p = play; p < play + nplay; p++)
+                if (state == MAIN_MENU || state == NUMBER_MENU)
+                        draw_menu();
+                else for (p = play; p < play + nplay; p++)
                         draw_stuff();
                 SDL_RenderPresent(renderer);
                 SDL_Delay(10);
@@ -304,15 +313,6 @@ void setup()
         audioinit();
 }
 
-/*
-void audio_setup()
-{
-        SDL_AudioSpec wishes;
-        SDL_AudioSpec reality;
-        audio = SDL_OpenAudioDevice(NULL, 0, &wishes, &reality, SDL_AUDIO_ALLOW_ANY_CHANGE);
-}
-*/
-
 //handle a key press from a player
 int key_down()
 {
@@ -327,6 +327,7 @@ int key_down()
                 return 0;
         }
 
+        if (state == MAIN_MENU || state == NUMBER_MENU) return menu_input();
         if (state == ASSIGN) return assign(-1);
 
         set_p_from_device(-1);
@@ -403,6 +404,28 @@ void joy_up()
         }
 }
 
+int menu_input()
+{
+        switch (event.key.keysym.sym)
+        {
+                case SDLK_s:      case SDLK_DOWN:   menu_pos++; break;
+                case SDLK_w:      case SDLK_UP:     menu_pos--; break;
+                case SDLK_RETURN:
+                        if (state == MAIN_MENU)
+                        {
+                                if (menu_pos == 0) state = NUMBER_MENU;
+                        }
+                        else
+                        {
+                                nplay = menu_pos + 1;
+                                resize(win_x, win_y);
+                                state = ASSIGN;
+                                assign_me = 0;
+                        }
+                        break;
+        }
+}
+
 int assign(int device)
 {
         for (int i = 0; i < assign_me; i++)
@@ -443,11 +466,22 @@ void fuse_square()
         }
 }
 
+void update_menu()
+{
+        if (menu_pos < 0) menu_pos = 0;
+        if (state == MAIN_MENU)
+        {
+                if (menu_pos > 2) menu_pos = 2;
+        }
+        else
+        {
+                if (menu_pos > 3) menu_pos = 3;
+        }
+}
+
 //update everything
 void update_stuff()
 {
-        if (state == ASSIGN) return;
-
         if (p->countdown_time > 0)
         {
                 int note = p->countdown_time > CTDN_TICKS ? A4 : A5;
@@ -877,6 +911,29 @@ void hold()
         if (p->hold_count++) return;
         SWAP(p->held_shape, p->falling_shape);
         reset_fall();
+}
+
+void draw_menu()
+{
+        p = play;
+        int ln = bs * 130 / 100;
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(renderer, &(SDL_Rect){p->hold_x, p->hold_y + p->box_w + bs2 + ln + ln * menu_pos, p->board_w, ln});
+        if (state == MAIN_MENU)
+        {
+                text("Main Menu"        , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  0, 0, 0);
+                text("Play"             , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  1, 0, 0);
+                text("Options"          , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  2, 0, 0);
+                text("Quit"             , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  3, 0, 0);
+        }
+        else if (state == NUMBER_MENU)
+        {
+                text("How many players?", 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  0, 0, 0);
+                text("1"                , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  1, 0, 0);
+                text("2"                , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  2, 0, 0);
+                text("3"                , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  3, 0, 0);
+                text("4"                , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  4, 0, 0);
+        }
 }
 
 //draw everything in the game on the screen
