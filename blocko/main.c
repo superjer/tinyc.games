@@ -41,14 +41,20 @@ int main()
                         TIMECALL(glsetup, ());
                         TIMECALL(font_init, ());
                         TIMECALL(sun_init, ());
-                        new_game();
+                        if (TERRAIN_THREAD)
+                                new_game();
+                        else
+                                create_hmap();
                         main_loop();
                 }
 
                 #pragma omp section
-                { // worker thread, chunk builder
-                        create_hmap();
-                        chunk_builder();
+                { // worker thread for terrain generation
+                        if (TERRAIN_THREAD)
+                        {
+                                create_hmap();
+                                chunk_builder();
+                        }
                 }
         }
 }
@@ -73,6 +79,13 @@ void main_loop()
                                         break;
                         }
                         break;
+        }
+
+        if (!TERRAIN_THREAD)
+        {
+                chunk_builder();
+                if (frame == 0)
+                        new_game();
         }
 
         float interval = 1000.f / 60.f;
@@ -121,7 +134,7 @@ void startup()
 void new_game()
 {
         while(just_gen_len < 1)
-                ; // wait for worker thread build first chunk
+                SDL_Delay(1); // wait for worker thread build first chunk
 
         printf("1st chunk generated, ready to start game\n");
 

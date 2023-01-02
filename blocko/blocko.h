@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <stdbool.h>
 #define GL3_PROTOTYPES 1
 
 #ifdef __APPLE__
@@ -27,7 +28,7 @@
 
 #include "../_osn/open-simplex-noise.c"
 struct osn_context *osn_context;
-#define noise(x,y,z,scale) open_simplex_noise3(osn_context,(float)(x+0.5)/(scale),(float)(y+0.5)/(scale),(float)(z+0.5)/(scale))
+#define noise(x,y,z,scale) open_simplex_noise3(osn_context,(float)((x)-tscootx+0.5f)/(scale),(float)((y)+0.5f)/(scale),(float)((z)-tscootz+0.5f)/(scale))
 
 #include "timer.h"
 #include "vector.h"
@@ -56,6 +57,10 @@ struct osn_context *osn_context;
 #define RLEF 81
 #define YLEF 82
 
+
+#ifndef TERRAIN_THREAD
+#define TERRAIN_THREAD 1           // whether to put terrain generation in its own thread
+#endif
 
 #define SCALE 3                    // x magnification
 #define W 1920                     // window width, height
@@ -166,6 +171,10 @@ struct osn_context *osn_context;
 #define AT_GROUND(x,y,z)    (GNDH_(x, z) == y)
 #define BELOW_GROUND(x,y,z) (GNDH_(x, z) <  y)
 
+// helper macros for terrain/worker
+#define TIS_OPAQUE(x,y,z) (TT_(x, y, z) < LASTSOLID)
+#define TIS_SOLID(x,y,z) (TT_(x, y, z) < LASTSOLID)
+
 #define QITEM(x,y,z) ((struct qitem){x, y, z})
 #define DIST_SQ(dx, dy, dz) ((dx)*(dx) + (dy)*(dy) + (dz)*(dz))
 #define DIST(dx, dy, dz) (sqrt(DIST_SQ(dx, dy, dz)))
@@ -192,10 +201,10 @@ unsigned dumb_rand(unsigned *seed) { return (*seed = (1103515245 * *seed + 12345
 // randomly true or false 50/50
 #define RANDBOOL (RAND % 2 == 0)
 // helpers for deterministically setting seed from several values, plus world_seed
-#define SEED1(a)       (world_seed ^ (a << 4))
-#define SEED2(a,b)     (world_seed ^ (a << 4) ^ (b << 8))
-#define SEED3(a,b,c)   (world_seed ^ (a << 4) ^ (b << 8) ^ (c << 12))
-#define SEED4(a,b,c,d) (world_seed ^ (a << 4) ^ (b << 8) ^ (c << 12) ^ (d << 16))
+#define SEED1(a)       (world_seed ^ ((a) << 4))
+#define SEED2(a,b)     (world_seed ^ ((a) << 4) ^ ((b) << 8))
+#define SEED3(a,b,c)   (world_seed ^ ((a) << 4) ^ ((b) << 8) ^ ((c) << 12))
+#define SEED4(a,b,c,d) (world_seed ^ ((a) << 4) ^ ((b) << 8) ^ ((c) << 12) ^ ((d) << 16))
 
 float lerp(float t, float a, float b) { return a + t * (b - a); }
 

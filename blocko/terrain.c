@@ -5,6 +5,8 @@ float hmap2[TILESW][TILESD];
 
 int tscootx, tscootz, tchunk_scootx, tchunk_scootz;
 
+#define THMAP(x,z) (hmap2[((x)-tscootx)%TILESW][((z)-tscootz)%TILESD])
+
 void gen_hmap(int x0, int x2, int z0, int z2)
 {
         unsigned seed = SEED4(x0, x2, z0, z2);
@@ -128,18 +130,20 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         CLAMP(zhi, 0, TILESD-1);
 
         static char column_already_generated[TILESW][TILESD];
-
         int x;
 
         #pragma omp parallel for
         for (x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
         {
                 if (x == xlo && z == zlo)
+                {
                         omp_threads = omp_get_num_threads();
+                        //printf("gen_chunk threads: %d\n", omp_threads);
+                }
 
-                if (column_already_generated[x][z])
+                if (column_already_generated[(x-tscootx) & (TILESW-1)][(z-tscootz) & (TILESD-1)])
                         continue;
-                column_already_generated[x][z] = true;
+                column_already_generated[(x-tscootx) & (TILESW-1)][(z-tscootz) & (TILESD-1)] = true;
 
                 float p1080 = noise(x, 0, -z, 1080);
                 float p530 = noise(z, 0, x, 530);
@@ -153,9 +157,9 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 {
                         float flatten = (p200 - 0.2f) * 80;
                         CLAMP(flatten, 1, 12);
-                        hmap2[x][z] -= 100;
-                        hmap2[x][z] /= flatten;
-                        hmap2[x][z] += 100;
+                        THMAP(x,z) -= 100;
+                        THMAP(x,z) /= flatten;
+                        THMAP(x,z) += 100;
                 }
 
                 int solid_depth = 0;
@@ -182,17 +186,17 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
                         int cave = (p90 < -0.24 || p91 < -0.24) && (p42 > 0.5 && p9 < 0.4);
 
-                        if (y > hmap2[x][z] - ((p80 + 1) * 20) && p90 > 0.4 && p91 > 0.4 && p42 > 0.01 && p42 < 0.09 && p300 > 0.3)
+                        if (y > THMAP(x,z) - ((p80 + 1) * 20) && p90 > 0.4 && p91 > 0.4 && p42 > 0.01 && p42 < 0.09 && p300 > 0.3)
                                 slicey_bit = true;
 
-                        int platted = y < hmap2[x][z] + plat * (mode * 0.125f + 0.875f);
+                        int platted = y < THMAP(x,z) + plat * (mode * 0.125f + 0.875f);
 
                         if ((cave || platted) && !plateau_bit)
                         {
-                                unsigned seed = SEED2(x, z);
+                                unsigned seed = SEED2(x - tscootx, z - tscootz);
                                 if (!slicey_bit || RANDP(5))
                                 {
-                                        int type = (y > 100 && hmap2[x][z] > 99) ? WATR : OPEN; //only allow water below low heightmap
+                                        int type = (y > 100 && THMAP(x,z) > 99) ? WATR : OPEN; //only allow water below low heightmap
                                         TT_(x, y, z) = type;
                                         solid_depth = 0;
                                         slicey_bit = false;
@@ -201,7 +205,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         }
                         else
                         {
-                                if (mode == 10 && plat && !cave && y < hmap2[x][z])
+                                if (mode == 10 && plat && !cave && y < THMAP(x,z))
                                         plateau_bit = true;
                                 slicey_bit = false;
                         }
@@ -230,9 +234,11 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         #define REGD (CHUNKD*16)
         // find region          ,-- have to add 1 bc we're overdrawing chunks
         // lower bound         /
-        int rxlo = (int)((xlo+1) / REGW) * REGW;
-        int rzlo = (int)((zlo+1) / REGD) * REGD;
+        int rxlo = (int)((xlo-tscootx+1) / REGW) * REGW;
+        int rzlo = (int)((zlo-tscootz+1) / REGD) * REGD;
         unsigned seed = SEED2(rxlo, rzlo);
+        rxlo = (int)((xlo+1) / REGW) * REGW; // now without scooting
+        rzlo = (int)((zlo+1) / REGD) * REGD;
         // find region center
         int rxcenter = rxlo + REGW/2;
         int rzcenter = rzlo + REGD/2;
@@ -317,7 +323,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
         // trees?
         float p191 = noise(zlo, 0, xlo, 191);
-        seed = SEED2(xlo, zlo);
+        seed = SEED2(xlo - tscootx, zlo - tscootz);
         if (p191 > 0.2f) while (RANDP(95))
         {
                 char leaves = RANDBOOL ? RLEF : YLEF;
@@ -359,7 +365,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
                 for (int y = 0; y < TILESH-1; y++)
                 {
-                        if (above_ground && IS_OPAQUE(x, y, z))
+                        if (above_ground && TIS_OPAQUE(x, y, z))
                         {
                                 TGNDH_(x, z) = y;
                                 above_ground = false;
@@ -374,7 +380,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         if (wet && TT_(x, y, z) == OPEN)
                                 TT_(x, y, z) = WATR;
 
-                        if (wet && IS_SOLID(x, y, z))
+                        if (wet && TIS_SOLID(x, y, z))
                                 wet = false;
 
                         if (TT_(x, y, z) == WATR)
@@ -431,6 +437,8 @@ void chunk_builder()
 
         if (best_dist == 99999999)
         {
+                if (!TERRAIN_THREAD)
+                        return;
                 SDL_Delay(1);
                 continue;
         }
@@ -453,5 +461,8 @@ void chunk_builder()
                 just_generated[just_gen_len].z = best_z;
                 just_gen_len++;
         }
+
+        if (!TERRAIN_THREAD)
+                return;
 } }
 
