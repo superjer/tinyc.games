@@ -14,7 +14,7 @@ This project is an example of how you can get started making a game in C that wi
 ## Games
 
 ### Tet
-A Tetris clone which is getting a too un-tiny. Cool animations, sound, controller support, multiplayer etc.
+A Tetris clone which is getting way too large. Cool animations, sound, controller support, multiplayer etc.
 This is too much for a "tiny" game so I'll be paring it down and moving the fully featured version to its own branch or repo.
 
 ### Flappy
