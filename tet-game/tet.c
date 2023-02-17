@@ -85,29 +85,23 @@ unsigned char colors[] = {
          15, 127, 127, // S
         132,   0,  46, // T
         255, 255, 255, // shine color
-        159, 166, 255, // heterosquare shine
-        222, 255, 179, // homosquare shine
-         59,  66, 159, // heterosquare
-        122, 199,  79, // homosquare
 };
 
-enum color_names { SHINY = 8, HETEROSQUARE = 11, HOMOSQUARE = 12 };
-
 int kicks[] = {   // clockwise                            counterclockwise
-        0,0,  -1, 0,  -1, 1,   0,-2,  -1,-2,     0,0,   1, 0,   1, 1,   0,-2,   1,-2, // rotation 0
-        0,0,  -1, 0,  -1,-1,   0, 2,  -1, 2,     0,0,  -1, 0,  -1,-1,   0, 2,  -1, 2, // rotation 1
-        0,0,   1, 0,   1, 1,   0,-2,   1,-2,     0,0,  -1, 0,  -1, 1,   0,-2,  -1,-2, // rotation 2
-        0,0,   1, 0,   1,-1,   0, 2,   1, 2,     0,0,   1, 0,   1,-1,   0, 2,   1, 2, // rotation 3
+        0,0,  -1, 0,  -1, 1,   0,-2,  -1,-2,     0,0,   1, 0,   1, 1,   0,-2,   1,-2, // rot 0
+        0,0,  -1, 0,  -1,-1,   0, 2,  -1, 2,     0,0,  -1, 0,  -1,-1,   0, 2,  -1, 2, // rot 1
+        0,0,   1, 0,   1, 1,   0,-2,   1,-2,     0,0,  -1, 0,  -1, 1,   0,-2,  -1,-2, // rot 2
+        0,0,   1, 0,   1,-1,   0, 2,   1, 2,     0,0,   1, 0,   1,-1,   0, 2,   1, 2, // rot 3
                 // line-clockwise                       line-counterclockwise
-        0,0,   2, 0,  -1, 0,   2,-1,  -1, 2,     0,0,   1, 0,  -2, 0,   1, 2,  -2,-1, // rotation 0
-        0,0,  -2, 0,   1, 0,  -2, 1,   1,-2,     0,0,   1, 0,  -2, 0,   1, 2,  -2,-1, // rotation 1
-        0,0,  -1, 0,   2, 0,  -1,-2,   2, 1,     0,0,  -2, 0,   1, 0,  -2, 1,   1,-2, // rotation 2
-        0,0,   2, 0,  -1, 0,   2,-1,  -1, 2,     0,0,  -1, 0,   2, 0,  -1,-2,   2, 1, // rotation 3
+        0,0,   2, 0,  -1, 0,   2,-1,  -1, 2,     0,0,   1, 0,  -2, 0,   1, 2,  -2,-1, // rot 0
+        0,0,  -2, 0,   1, 0,  -2, 1,   1,-2,     0,0,   1, 0,  -2, 0,   1, 2,  -2,-1, // rot 1
+        0,0,  -1, 0,   2, 0,  -1,-2,   2, 1,     0,0,  -2, 0,   1, 0,  -2, 1,   1,-2, // rot 2
+        0,0,   2, 0,  -1, 0,   2,-1,  -1, 2,     0,0,  -1, 0,   2, 0,  -1,-2,   2, 1, // rot 3
 };
 
 float combo_bonus[] = {
-        1.f, 1.5f, 2.5f, 3.5f, 5.f, 7.5f, 10.f, 15.f, 25.f, 40.f,
-        60.f, 90.f, 130.f, 200.f, 300.f, 450.f, 650.f, 1000.f
+        1.f, 1.5f, 2.f, 3.f, 4.f, 5.f, 6.f, 8.f, 10.f, 12.f, 15.f, 20.f,
+        25.f, 30.f, 40.f, 50.f, 75.f, 100.f
 };
 #define MAX_COMBO ((sizeof combo_bonus / sizeof *combo_bonus) - 1)
 
@@ -116,13 +110,12 @@ int rewards[] = { 0, 100, 250, 500, 1000 };
 int speeds[] = { 50, 40, 35, 30, 26, 23, 20, 18, 16, 14, 12, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1 };
 #define MAX_SPEED ((sizeof speeds / sizeof *speeds) - 1)
 
-char countdown_msg[][10] = { "Go!", "- 1 -", "- 2 -", "- 3 -", "-   -" };
+char countdown_msg[][10] = { "    Go!", "    - 1 -", "    - 2 -", "    - 3 -", "    -   -" };
 
 struct {
         struct {
                 int color;
                 int part;
-                int id;
         } board[BHEIGHT][BWIDTH];
         int killy_lines[BHEIGHT];
         int line_offset[BHEIGHT]; // amount lines have left to fall
@@ -148,12 +141,10 @@ struct {
         int idle_time;
         int shine_time;
         int dead_time;
-        int square_time, square_x, square_y; // data for current big square
         int board_x, board_y, board_w; // positions and sizes of things
         int preview_x, preview_y;
         int hold_x, hold_y;
         int box_w;
-        float offs_x, offs_y;
         int device;
         char dev_name[80];
 } play[NPLAY], *p;
@@ -161,13 +152,14 @@ struct {
 int win_x = 1000; // window size
 int win_y = 750;
 int bs, bs2; // individual block size, and in half
+int line_height; // text line height
 int tick;
 int joy_tick; // most recent tick when a new joystick was detected
 enum state { MAIN_MENU = 0, NUMBER_MENU, ASSIGN, PLAY} state;
 int nplay = 1; // number of players
 int assign_me;
-
-int menu_pos;
+int menu_pos; // current position in menu
+int text_x, text_y; // position of text drawing
 
 SDL_Event event;
 SDL_Window *win;
@@ -177,24 +169,15 @@ SDL_AudioDeviceID audio;
 
 //prototypes
 void setup();
-void joy_setup();
 void audio_setup();
 void win_event();
 void resize(int x, int y);
-int key_down();
-void key_up();
-int joy_down();
-void joy_up();
-int assign(int device);
-int menu_input();
-void set_p_from_device(int device);
 void update_menu();
 void update_stuff();
 void draw_menu();
 void draw_stuff();
 void draw_square(int x, int y, int shape, int shade, int part);
-void set_color_from_shape(int shape, int shade);
-void text(char *fstr, int value, int x, int y, int w, int flash);
+void text(char *fstr, int value);
 void new_game();
 void new_piece();
 void move(int dx, int dy, int gravity);
@@ -207,6 +190,8 @@ void kill_lines();
 void hard();
 void spin(int dir);
 void hold();
+
+#include "input.c"
 
 //the entry point and main game loop
 int main()
@@ -245,22 +230,6 @@ int main()
         }
 }
 
-void joy_setup()
-{
-        for (int i = 0; i < SDL_NumJoysticks(); i++)
-        {
-                if (!SDL_IsGameController(i))
-                {
-                        printf("Controller NOT supported: %s", SDL_JoystickNameForIndex(i));
-                        printf(" - Google for SDL_GAMECONTROLLERCONFIG to fix this\n");
-                        continue;
-                }
-                SDL_GameController *cont = SDL_GameControllerOpen(i);
-                printf("Controller added: %s %p\n", SDL_GameControllerNameForIndex(i), cont);
-        }
-        SDL_GameControllerEventState(SDL_ENABLE);
-}
-
 void win_event()
 {
         if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
@@ -274,6 +243,7 @@ void resize(int x, int y)
         win_y = y;
         bs = MIN(win_x / (nplay * 22), win_y / 24);
         bs2 = bs / 2;
+        line_height = bs * 125 / 100;
         int n = 0;
         for (p = play; p < play + nplay; p++, n++)
         {
@@ -304,7 +274,7 @@ void setup()
         renderer = SDL_CreateRenderer(win, -1, 0);
         if (!renderer)
         {
-                fprintf(stderr, "Could not create SDL renderer for some reason\n");
+                fprintf(stderr, "Could not create SDL renderer\n");
                 exit(-1);
         }
 
@@ -313,173 +283,14 @@ void setup()
         audioinit();
 }
 
-//handle a key press from a player
-int key_down()
-{
-        if (event.key.repeat) return 0;
- 
-        if (event.key.keysym.sym >= '1' && event.key.keysym.sym <= '4')
-        {
-                nplay = event.key.keysym.sym - '0';
-                resize(win_x, win_y);
-                state = ASSIGN;
-                assign_me = 0;
-                return 0;
-        }
-
-        if (state == MAIN_MENU || state == NUMBER_MENU) return menu_input();
-        if (state == ASSIGN) return assign(-1);
-
-        set_p_from_device(-1);
-
-        if (p->falling_shape && p->countdown_time < CTDN_TICKS) switch (event.key.keysym.sym)
-        {
-                case SDLK_a:      case SDLK_LEFT:   p->left = 1;  p->move_cooldown = 0; break;
-                case SDLK_d:      case SDLK_RIGHT:  p->right = 1; p->move_cooldown = 0; break;
-                case SDLK_s:      case SDLK_DOWN:   p->down = 1;  p->move_cooldown = 0; break;
-                case SDLK_w:      case SDLK_UP:     hard();    break;
-                case SDLK_COMMA:  case SDLK_z:      spin(3);   break;
-                case SDLK_PERIOD: case SDLK_x:      spin(1);   break;
-                case SDLK_TAB:    case SDLK_LSHIFT: hold();    break;
-                case SDLK_l:                        p->lines += 10; break;
-        }
-
-        if (event.key.keysym.sym == SDLK_r)
-        {
-                printf("Re-creating renderer\n");
-                if (renderer) SDL_DestroyRenderer(renderer);
-                renderer = SDL_CreateRenderer(win, -1, 0);
-        }
-
-        if (event.key.keysym.sym == SDLK_j) // reset joysticks
-        {
-                SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
-                SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
-                state = ASSIGN;
-        }
-        return 0;
-}
-
-void key_up()
-{
-        if (state == ASSIGN) return;
-        set_p_from_device(-1);
-
-        switch (event.key.keysym.sym)
-        {
-                case SDLK_a:      case SDLK_LEFT:   p->left = 0;  break;
-                case SDLK_d:      case SDLK_RIGHT:  p->right = 0; break;
-                case SDLK_s:      case SDLK_DOWN:   p->down = 0;  break;
-        }
-}
-
-int joy_down()
-{
-        if (state == ASSIGN) return assign(event.cbutton.which);
-        set_p_from_device(event.cbutton.which);
-
-        if (p->falling_shape) switch(event.cbutton.button)
-        {
-                case SDL_CONTROLLER_BUTTON_A:            spin(3); break;
-                case SDL_CONTROLLER_BUTTON_B:            spin(1); break;
-                case SDL_CONTROLLER_BUTTON_DPAD_UP:      hard();  break;
-                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:    p->down  = 1; p->move_cooldown = 0; break;
-                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:    p->left  = 1; p->move_cooldown = 0; break;
-                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:   p->right = 1; p->move_cooldown = 0; break;
-                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: hold();  break;
-        }
-        return 0;
-}
-
-void joy_up()
-{
-        if (state == ASSIGN) return;
-        set_p_from_device(event.cbutton.which);
-
-        switch(event.cbutton.button)
-        {
-                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  p->down  = 0; break;
-                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  p->left  = 0; break;
-                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: p->right = 0; break;
-        }
-}
-
-int menu_input()
-{
-        switch (event.key.keysym.sym)
-        {
-                case SDLK_s:      case SDLK_DOWN:   menu_pos++; break;
-                case SDLK_w:      case SDLK_UP:     menu_pos--; break;
-                case SDLK_RETURN:
-                        if (state == MAIN_MENU)
-                        {
-                                if (menu_pos == 0) state = NUMBER_MENU;
-                        }
-                        else
-                        {
-                                nplay = menu_pos + 1;
-                                resize(win_x, win_y);
-                                state = ASSIGN;
-                                assign_me = 0;
-                        }
-                        break;
-        }
-}
-
-int assign(int device)
-{
-        for (int i = 0; i < assign_me; i++)
-                if (play[i].device == device)
-                        return 0;
-
-        play[assign_me].device = device;
-        sprintf(play[assign_me].dev_name, "%.10s", (device == -1 ?
-                        "Keyboard" :
-                        SDL_GameControllerName(SDL_GameControllerFromInstanceID(device))));
-
-        if (++assign_me == nplay)
-        {
-                state = PLAY;
-                assign_me = 0;
-                for (p = play; p < play + nplay; p++)
-                        new_game();
-        }
-        return 0;
-}
-
-void set_p_from_device(int device)
-{
-        for (p = play; p < play + nplay; p++)
-                if (p->device == device)
-                        return;
-        p = play; // default to first player
-}
-
-void fuse_square()
-{
-        for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
-        {
-                if (i != 0) p->board[p->square_y + j][p->square_x + i].part |= 'H' | 32 ; // fuse left
-                if (j != 0) p->board[p->square_y + j][p->square_x + i].part |= 'A';       // fuse up
-                if (i != 3) p->board[p->square_y + j][p->square_x + i].part |= 'B' | 16;  // fuse right
-                if (j != 3) p->board[p->square_y + j][p->square_x + i].part |= 'D';       // fuse down
-        }
-}
-
 void update_menu()
 {
+        int menu_max = (state == NUMBER_MENU ? 3 : 2);
         if (menu_pos < 0) menu_pos = 0;
-        if (state == MAIN_MENU)
-        {
-                if (menu_pos > 2) menu_pos = 2;
-        }
-        else
-        {
-                if (menu_pos > 3) menu_pos = 3;
-        }
+        if (menu_pos > menu_max) menu_pos = menu_max;
 }
 
-//update everything
+//update everything while the game is running normally
 void update_stuff()
 {
         if (p->countdown_time > 0)
@@ -491,13 +302,6 @@ void update_stuff()
                 p->countdown_time--;
                 if (p->countdown_time > CTDN_TICKS)
                         return;
-        }
-
-        if (p->square_time > 0)
-        {
-                if (--p->square_time == 0)
-                        fuse_square();
-                return;
         }
 
         if (!p->falling_shape && !p->shine_time && !p->dead_time)
@@ -525,7 +329,7 @@ void update_stuff()
                 if (p->line_offset[y] > 0)
                         p->line_offset[y] -= bs2;
                 if (p->line_offset[y] < 0)
-                        p->line_offset[y] = 0;        
+                        p->line_offset[y] = 0;
         }
 
         if (p->dead_time > 0)
@@ -537,8 +341,6 @@ void update_stuff()
                 {
                         p->board[y + 0][x].color = rand() % 7 + 1;
                         p->board[y + 0][x].part = '@';
-                        p->offs_x += .03f * (rand() % 11 - 5);
-                        p->offs_y += .02f * (rand() % 11 - 5);
                         if (p->dead_time % 10 == 9)
                         {
                                 int note = MIN(C7, p->dead_time * 400 / 1000);
@@ -564,7 +366,7 @@ void new_game()
         memset(p->killy_lines, 0, sizeof p->killy_lines);
         memset(p->line_offset, 0, sizeof p->line_offset);
         p->bag_idx = BAG_SZ;
-        do new_piece(); while (p->falling_shape == 0 || p->falling_shape > 4); // get a nice starting piece
+        new_piece();
         if (p->best < p->score) p->best = p->score;
         p->score = 0;
         p->lines = 0;
@@ -615,10 +417,13 @@ void new_piece()
         if (p->bag_idx >= BAG_SZ) p->bag_idx = new_bag();
 
         p->falling_shape = p->next[0];
+        memmove(p->next, p->next + 1, sizeof *(p->next) * 4);
+        /*
         p->next[0] = p->next[1];
         p->next[1] = p->next[2];
         p->next[2] = p->next[3];
         p->next[3] = p->next[4];
+        */
         p->next[4] = p->bag[p->bag_idx++];
         reset_fall();
 }
@@ -661,15 +466,9 @@ void move(int dx, int dy, int gravity)
         else if (collision == WALL)
         {
                 if (dx == -1 && tick - p->last_dx_tick < 8)
-                {
-                        p->offs_x -= .20f;
                         silly_noise(TRIANGLE, C2, C2, 25, 5, 5, 25);
-                }
                 if (dx ==  1 && tick - p->last_dx_tick < 8)
-                {
-                        p->offs_x += .20f;
                         silly_noise(TRIANGLE, E2, C2, 15, 5, 5, 15);
-                }
         }
 }
 
@@ -702,61 +501,17 @@ int collide(int x, int y, int rot)
         return ret;
 }
 
-void check_square_at(int x, int y)
-{
-        int found_ids[4] = {0};
-        int first_found_color = 0;
-        int color = HOMOSQUARE;
-
-        for (int i = x; i < x + 4; i++) for (int j = y; j < y + 4; j++)
-        {
-                if (p->board[j][i].id == 0) return; // no square forming here
-
-                if (first_found_color && p->board[j][i].color != first_found_color)
-                        color = HETEROSQUARE;
-
-                first_found_color = p->board[j][i].color;
-
-                for (int k = 0; k < 5; k++)
-                {
-                        if (k == 4) return; // too many ids
-
-                        if (found_ids[k] == 0)
-                        {
-                                found_ids[k] = p->board[j][i].id;
-                                break;
-                        }
-
-                        if (found_ids[k] == p->board[j][i].id)
-                                break;
-                }
-        }
-
-        for (int i = x; i < x + 4; i++) for (int j = y; j < y + 4; j++)
-        {
-                p->board[j][i].color = color;
-                p->board[j][i].id = 0;
-        }
-        p->square_time = 40;
-        p->square_x = x;
-        p->square_y = y;
-        silly_noise(TRIANGLE, G2, G3, 500, 50, 5, 20);
-        silly_noise(TRIANGLE, G2, G3, 500, 50, 5, 20);
-}
-
 //bake the falling piece into the background/board
 void bake()
 {
-        static int bake_id = 0;
-        bake_id++;
-
         for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
         {
                 int world_i = i + p->falling_x;
                 int world_j = j + p->falling_y;
                 int part = is_solid_part(p->falling_shape, p->falling_rot, i, j);
 
-                if (!part || world_i < 0 || world_i >= BWIDTH || world_j < 0 || world_j >= BHEIGHT)
+                if (!part || world_i < 0 || world_i >= BWIDTH
+                          || world_j < 0 || world_j >= BHEIGHT)
                         continue;
 
                 if (p->board[world_j][world_i].color) // already a block here? game over
@@ -764,13 +519,7 @@ void bake()
 
                 p->board[world_j][world_i].color = p->falling_shape;
                 p->board[world_j][world_i].part = part;
-                p->board[world_j][world_i].id = bake_id;
         }
-
-        // check for squares
-        for (int j = BHEIGHT - 1; j >= 3; j--)
-                for (int i = 0; i < BWIDTH - 3; i++)
-                        check_square_at(i, j);
 
         // check if there are any completed horizontal lines
         int shines = 0;
@@ -803,18 +552,7 @@ void shine_line(int y)
         p->shine_time = 20;
         p->killy_lines[y] = 1;
         for (int i = 0; i < BWIDTH; i++)
-        {
-                int *color = &p->board[y][i].color;
-                if (*color == HOMOSQUARE || *color == HETEROSQUARE)
-                {
-                        p->sq_combo += (*color == HOMOSQUARE) ? 2 : 1;
-                        *color -= 2;
-                }
-                else
-                {
-                        *color = SHINY;
-                }
-        }
+                p->board[y][i].color = 8; // the extra color
         silly_noise(SINE, G3, G5, 20, 50, 50, 200);
 }
 
@@ -870,7 +608,6 @@ void hard()
         while (!collide(p->falling_x, p->falling_y + 1, p->falling_rot))
                 p->falling_y++;
         p->idle_time = 50;
-        p->offs_y += .25f;
         p->beam_shape = p->falling_shape;
         p->beam_rot = p->falling_rot;
         p->beam_x = p->falling_x;
@@ -916,23 +653,28 @@ void hold()
 void draw_menu()
 {
         p = play;
-        int ln = bs * 130 / 100;
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){p->hold_x, p->hold_y + p->box_w + bs2 + ln + ln * menu_pos, p->board_w, ln});
+        SDL_RenderFillRect(renderer, &(SDL_Rect){
+                        p->hold_x,
+                        p->hold_y + p->box_w + bs2 + line_height * (menu_pos + 1),
+                        p->board_w,
+                        line_height });
+        text_x = p->hold_x;
+        text_y = p->hold_y + p->box_w + bs2;
         if (state == MAIN_MENU)
         {
-                text("Main Menu"        , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  0, 0, 0);
-                text("Play"             , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  1, 0, 0);
-                text("Options"          , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  2, 0, 0);
-                text("Quit"             , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  3, 0, 0);
+                text("Main Menu"        , 0);
+                text("Play"             , 0);
+                text("Options"          , 0);
+                text("Quit"             , 0);
         }
         else if (state == NUMBER_MENU)
         {
-                text("How many players?", 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  0, 0, 0);
-                text("1"                , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  1, 0, 0);
-                text("2"                , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  2, 0, 0);
-                text("3"                , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  3, 0, 0);
-                text("4"                , 0, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  4, 0, 0);
+                text("How many players?", 0);
+                text("1"                , 0);
+                text("2"                , 0);
+                text("3"                , 0);
+                text("4"                , 0);
         }
 }
 
@@ -942,8 +684,8 @@ void draw_stuff()
         // draw background, black boxes
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderFillRect(renderer, &(SDL_Rect){p->hold_x, p->hold_y, p->box_w, p->box_w});
-        int x = p->board_x + bs * p->offs_x;
-        int y = p->board_y + bs * p->offs_y;
+        int x = p->board_x;
+        int y = p->board_y;
         SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, p->board_w, bs * VHEIGHT});
 
         //find ghost piece position
@@ -961,8 +703,7 @@ void draw_stuff()
                         x + bs * (p->falling_x + shadow.x),
                         y + bs * top,
                         bs * shadow.w,
-                        MAX(0, bs * (ghost_y - top + shadow.y - 5))
-                });
+                        MAX(0, bs * (ghost_y - top + shadow.y - 5)) });
         }
 
         //draw hard drop beam
@@ -976,7 +717,8 @@ void draw_stuff()
                 int lossw = (1.f - ((1.f - loss) * (1.f - loss))) * rw;
                 int lossh = loss < .5f ? 0.f : (1.f - ((1.f - loss) * (1.f - loss))) * rh;
                 SDL_SetRenderDrawColor(renderer, 33, 37, 43, 255);
-                SDL_RenderFillRect(renderer, &(SDL_Rect){ rx + lossw / 2, y, rw - lossw, rh - lossh });
+                SDL_RenderFillRect(renderer, &(SDL_Rect){
+                                rx + lossw / 2, y, rw - lossw, rh - lossh});
         }
 
         //draw falling piece & ghost
@@ -1025,54 +767,31 @@ void draw_stuff()
         int ln = bs * 110 / 100;
         char combo_amt[80];
         sprintf(combo_amt, "%0.1f", combo_bonus[MIN(MAX_COMBO, p->b2b_combo)]);
-        text("Lines:"   , 0           , p->hold_x, p->hold_y + p->box_w + bs2 + ln *  0, 0, 0);
-        text("%d"       , p->lines    , p->hold_x, p->hold_y + p->box_w + bs2 + ln *  1, 0, 0);
-        text("Score:"   , 0           , p->hold_x, p->hold_y + p->box_w + bs2 + ln *  3, 0, 0);
-        text("%d"       , p->score    , p->hold_x, p->hold_y + p->box_w + bs2 + ln *  4, 0, 0);
-        text("%d"       , p->best     , p->hold_x, p->hold_y + p->box_w + bs2 + ln *  5, 0, 0);
-        text("Level %d" , p->level    , p->hold_x, p->hold_y + p->box_w + bs2 + ln *  7, 0, 0);
-        text("Combo %d" , p->b2b_combo, p->hold_x, p->hold_y + p->box_w + bs2 + ln *  9, 0, 0);
-        text(combo_amt  , 0           , p->hold_x, p->hold_y + p->box_w + bs2 + ln * 10, 0, 0);
-        text(p->dev_name, 0           , p->hold_x, p->hold_y + p->box_w + bs2 + ln * 12, 0, 0);
+        text_x = p->hold_x;
+        text_y = p->hold_y + p->box_w + bs2;
+        text("Lines:"   , 0           );
+        text("%d "      , p->lines    );
+        text("Score:"   , 0           );
+        text("%d "      , p->score    );
+        text("Best:"    , 0           );
+        text("%d "      , p->best     );
+        text("Level %d ", p->level    );
+        text(p->dev_name, 0           );
 
         if (p->reward)
         {
-                text("%d", p->reward, p->reward_x - 100, p->reward_y, 200, 1);
-                p->reward_y--;
+                text_x = p->reward_x - 100;
+                text_y = p->reward_y--;
+                text(" %d", p->reward);
         }
 
+        text_x = p->board_x + bs2;
+        text_y = p->board_y + bs2 * 19;
         if (p->countdown_time > 0)
-                text(countdown_msg[p->countdown_time / CTDN_TICKS], 0, p->board_x, p->board_y + bs2 * 19, bs * 10, 0);
+                text(countdown_msg[p->countdown_time / CTDN_TICKS], 0);
 
         if (state == ASSIGN)
-                text(p >= play + assign_me ? "Press button to join" : p->dev_name,
-                                0, p->board_x, p->board_y + bs2 * 19, bs * 10, 0);
-
-        // update bouncy offsets
-        if (p->offs_x < .01f && p->offs_x > -.01f) p->offs_x = .0f;
-        if (p->offs_y < .01f && p->offs_y > -.01f) p->offs_y = .0f;
-        if (p->offs_x) p-> offs_x *= .98f;
-        if (p->offs_y) p-> offs_y *= .98f;
-}
-
-//draw a single square of a shape
-void draw_square(int x, int y, int shape, int outline, int part)
-{
-        if (!part) return;
-        int bw = MAX(1, outline ? bs / 10 : bs / 6);
-        set_color_from_shape(shape, -50);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, bs, bs});
-        set_color_from_shape(shape, (outline ? -255 : 0) + (shape >= HETEROSQUARE ? abs(tick % 100 - 50) : 0));
-        SDL_RenderFillRect(renderer, &(SDL_Rect){ // horizontal band
-                        x + (part & 8 ? 0 : bw),
-                        y + bw,
-                        bs - (part & 8 ? 0 : bw) - (part & 2 ? 0 : bw),
-                        bs - bw - bw});
-        SDL_RenderFillRect(renderer, &(SDL_Rect){ // vertical band
-                        x + (part & 32 ? 0 : bw),
-                        y + (part & 1 ? 0 : bw),
-                        bs - (part & 32 ? 0 : bw) - (part & 16 ? 0 : bw),
-                        bs - (part & 1 ? 0 : bw) - (part & 4 ? 0 : bw)});
+                text(p >= play + assign_me ? "Press button to join" : p->dev_name, 0 );
 }
 
 //set the current draw color to the color assoc. with a shape
@@ -1084,25 +803,40 @@ void set_color_from_shape(int shape, int shade)
         SDL_SetRenderDrawColor(renderer, r, g, b, 255);
 }
 
-//render a centered line of text optionally with a %d value in it
-void text(char *fstr, int value, int x, int y, int w, int flash)
+//draw a single square of a shape
+void draw_square(int x, int y, int shape, int outline, int part)
+{
+        if (!part) return;
+        int bw = MAX(1, outline ? bs / 10 : bs / 6);
+        set_color_from_shape(shape, -50);
+        SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, bs, bs});
+        set_color_from_shape(shape, outline ? -255 : 0);
+        SDL_RenderFillRect(renderer, &(SDL_Rect){ // horizontal band
+                        x + (part & 8 ? 0 : bw),
+                        y + bw,
+                        bs - (part & 8 ? 0 : bw) - (part & 2 ? 0 : bw),
+                        bs - bw - bw });
+        SDL_RenderFillRect(renderer, &(SDL_Rect){ // vertical band
+                        x + (part & 32 ? 0 : bw),
+                        y + (part & 1 ? 0 : bw),
+                        bs - (part & 32 ? 0 : bw) - (part & 16 ? 0 : bw),
+                        bs - (part & 1 ? 0 : bw) - (part & 4 ? 0 : bw) });
+}
+
+//render a line of text optionally with a %d value in it
+void text(char *fstr, int value)
 {
         if (!font || !fstr || !fstr[0]) return;
         char msg[80];
         snprintf(msg, 80, fstr, value);
-        if (w) // center it
-        {
-                int tw, th;
-                TTF_SizeText(font, msg, &tw, &th);
-                x += (w - tw) / 2;
-        }
         SDL_Color color = (SDL_Color){180, 190, 185};
-        if (flash) color = (tick / 3) % 2 ? (SDL_Color){0, 0, 0} : (SDL_Color){255, 255, 255};
+        if (fstr[0] == ' ' && tick / 3 % 2) color = (SDL_Color){255, 255, 255};
         SDL_Surface *msgsurf = TTF_RenderText_Blended(font, msg, color);
         SDL_Texture *msgtex = SDL_CreateTextureFromSurface(renderer, msgsurf);
         SDL_Rect fromrec = {0, 0, msgsurf->w, msgsurf->h};
-        SDL_Rect torec = {x, y, msgsurf->w, msgsurf->h};
+        SDL_Rect torec = {text_x, text_y, msgsurf->w, msgsurf->h};
         SDL_RenderCopy(renderer, msgtex, &fromrec, &torec);
         SDL_DestroyTexture(msgtex);
         SDL_FreeSurface(msgsurf);
+        text_y += bs * 125 / 100 + (fstr[strlen(fstr) - 1] == ' ' ? bs : 0);
 }
