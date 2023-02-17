@@ -114,7 +114,7 @@ void debrief()
                 polys = 0;
                 shadow_polys = 0;
 
-                timer_print(timings_buf, 8000);
+                timer_print(timings_buf, 8000, false);
         }
 
         if (noisy)

@@ -41,6 +41,9 @@ int main()
                         TIMECALL(glsetup, ());
                         TIMECALL(font_init, ());
                         TIMECALL(sun_init, ());
+                        char timings_buf[8000];
+                        timer_print(timings_buf, 8000, true);
+                        printf("%s", timings_buf);
                         if (TERRAIN_THREAD)
                                 new_game();
                         else
