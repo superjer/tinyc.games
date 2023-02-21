@@ -343,8 +343,8 @@ void update_stuff()
                         p->board[y + 0][x].part = '@';
                         if (p->dead_time % 10 == 9)
                         {
-                                int note = MIN(C7, p->dead_time * 400 / 1000);
-                                silly_noise(NOISE, note, note + 12, 10, 10, 10, 250);
+                                int note = MAX(A0, p->dead_time * 200 / 1000);
+                                silly_noise(SINE, note, note + 12, 10, 10, 10, 25);
                         }
                 }
 
