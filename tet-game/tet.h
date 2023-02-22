@@ -64,6 +64,7 @@ unsigned char colors[] = {
         0x89, 0xc9, 0x26, // S
         0x88, 0x48, 0x8f, // T
          255,  255,  255, // shine color
+        0x6f, 0x78, 0x66, // garbage color
 };
 
 int kicks[] = {   // clockwise                            counterclockwise
@@ -136,6 +137,7 @@ int assign_me;            // who is getting an input device assigned?
 int menu_pos;             // current position in menu
 int text_x, text_y;       // position of text drawing
 int line_height;          // text line height
+int garbage_race;
 
 SDL_Event event;
 SDL_Window *win;
@@ -148,7 +150,7 @@ void resize(int x, int y);
 void update_player();
 void move(int dx, int dy, int gravity);
 void reset_fall();
-void bake(); 
+void bake();
 void new_game();
 int is_solid_part(int shape, int rot, int i, int j);
 int collide(int x, int y, int rot);

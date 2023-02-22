@@ -98,7 +98,7 @@ int device_from_key()
 {
         switch(event.key.keysym.sym) {
                 case SDLK_w: case SDLK_a: case SDLK_s: case SDLK_d: case SDLK_z: case SDLK_x:
-                case SDLK_TAB: case SDLK_CAPSLOCK: case SDLK_LSHIFT: 
+                case SDLK_TAB: case SDLK_CAPSLOCK: case SDLK_LSHIFT:
                         return WASD;
                 default:
                         return ARROW_KEYS;
@@ -114,7 +114,10 @@ int menu_input()
                 case SDLK_RETURN:
                         if (state == MAIN_MENU)
                         {
-                                if (menu_pos == 0) state = NUMBER_MENU;
+                                if (menu_pos == 0) garbage_race = 0;
+                                if (menu_pos == 1) garbage_race = 1;
+                                if (menu_pos == 2) exit(0);
+                                state = NUMBER_MENU;
                         }
                         else
                         {
@@ -172,7 +175,7 @@ int key_down()
                 case SDLK_x:   case SDLK_LSHIFT:    case SDLK_RSHIFT: spin(1); break;
                 case SDLK_TAB: case SDLK_BACKSLASH:                   hold();  break;
         }
-        
+
         return 0;
 }
 

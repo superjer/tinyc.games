@@ -120,6 +120,21 @@ void kill_lines()
         p->score += p->reward;
 }
 
+void add_garbage()
+{
+        for (int y = BHEIGHT - 10; y < BHEIGHT; y++)
+        {
+                int skip = rand() % 10;
+                for (int x = 0; x < 10; x++)
+                        if (x != skip && rand() % 20)
+                        {
+                                p->board[y][x].color = 9;
+                                p->board[y][x].part = '@';
+                                p->line_fullness[y]++;
+                        }
+        }
+}
+
 // reset score and pick one extra random piece
 void new_game()
 {
@@ -134,6 +149,8 @@ void new_game()
         p->held.color = 0;
         p->hold_uses = 0;
         p->countdown_time = 4 * CTDN_TICKS;
+
+        if (garbage_race) add_garbage();
 }
 
 // set the current piece to the top, middle to start falling

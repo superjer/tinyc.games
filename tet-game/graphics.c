@@ -37,8 +37,8 @@ void draw_menu()
         if (state == MAIN_MENU)
         {
                 text("Main Menu"        , 0);
-                text("Play"             , 0);
-                text("Options"          , 0);
+                text("Endless"          , 0);
+                text("Garbage Race"     , 0);
                 text("Quit"             , 0);
         }
         else if (state == NUMBER_MENU)
@@ -143,7 +143,7 @@ void draw_player()
                                 p->board[j][i].color, 0, p->board[j][i].part);
 
         // draw falling piece & ghost
-        draw_shape(p->board_x + bs * p->it.x, p->board_y + bs * (ghost_y - 5), p->it.color, p->it.rot, OUTLINE); 
+        draw_shape(p->board_x + bs * p->it.x, p->board_y + bs * (ghost_y - 5), p->it.color, p->it.rot, OUTLINE);
         draw_shape(p->board_x + bs * p->it.x, p->board_y + bs * (p->it.y - 5), p->it.color, p->it.rot, 0);
 
         // draw next pieces
