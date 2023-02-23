@@ -1,11 +1,6 @@
-#include <math.h>
-#include <SDL_audio.h>
+#pragma once
 
 #define NUM_ENVS 20
-#define NUM_SAMPLES 512
-
-static SDL_AudioSpec audiospec;
-static SDL_AudioDeviceID audiodevid;
 
 enum shape {SINE, SQUARE, TRIANGLE};
 
@@ -100,77 +95,6 @@ struct {
         {"B" , 5,  987.767,  0.345},
 };
 
-static void silly_noise(int shape, int note_lo, int note_hi,
-                double attack, double decay, double sustain, double release)
-{
-        int note = note_lo + rand() % (note_hi - note_lo + 1);
-        if (note < A0 || note > C6) return;
-
-        envs[rand() % NUM_ENVS] = (struct envelope){
-                .shape      = shape,
-                .start_freq = music_notes[note].frequency,
-                .volume     = 1.0 + 0.08 * music_notes[note].wavelength,
-                .attack     = (attack                            ) / 1000.f,
-                .decay      = (attack + decay                    ) / 1000.f,
-                .sustain    = (attack + decay + sustain          ) / 1000.f,
-                .release    = (attack + decay + sustain + release) / 1000.f,
-        };
-}
-
-void mixaudio(void *unused, unsigned char *stream, int len)
-{
-        int j;
-        int buf[NUM_SAMPLES/2] = {0};
-        short *out = (short*)stream;
-
-        for (int j = 0; j < len/2; j++) for (int n = 0; n < NUM_ENVS; n++)
-	{
-		struct envelope *e = envs + n;
-		if (e->pos >= e->release)
-			continue;
-
-		double freq = e->start_freq;
-		double wl   = 1.0 / freq;
-		double wl2  = wl / 2.0;
-		double frac = fmod(e->pos, wl);
-		double t = e->pos;
-		e->pos += 1.0 / 44100;
-
-		double veloc = e->volume * 2200;
-		if      (t <= e->attack ) veloc *= t / e->attack * 1.5;
-		else if (t <= e->decay  ) veloc *= (e->decay - t) / (e->decay - e->attack) * .5 + 1.0;
-		else if (t <= e->sustain) ;
-		else if (t <= e->release) veloc *= (e->release - t) / (e->release - e->sustain);
-
-		switch (e->shape)
-		{
-			case SINE:     buf[j] += veloc * sin(frac * freq * 6.28318531);                      break;
-			case SQUARE:   buf[j] += frac > wl2 ? veloc : -veloc;                                break;
-			case TRIANGLE: buf[j] += (4 * freq * (frac > wl2 ? (wl - frac) : frac) - 1) * veloc; break;
-		}
-	}
-
-        for (j = 0; j < len/2; j++)
-        {
-                if      (buf[j] >  32767) out[j] = (short) 32767;
-                else if (buf[j] < -32768) out[j] = (short)-32768;
-                else                      out[j] = (short)buf[j];
-        }
-}
-
-void audioinit()
-{
-        size_t i;
-        SDL_AudioSpec desired = {
-                .freq = 44100,
-                .format = AUDIO_S16LSB,
-                .channels = 1,
-                .samples = NUM_SAMPLES,
-                .callback = mixaudio,
-        };
-        audiodevid = SDL_OpenAudioDevice(NULL, 0, &desired, &audiospec, SDL_AUDIO_ALLOW_ANY_CHANGE);
-        if (!audiodevid)
-                fprintf(stderr, "Unable to open audio: %s\n", SDL_GetError());
-        else
-                SDL_PauseAudioDevice(audiodevid, 0);
-}
+void audio_init();
+void audio_tone(int shape, int note_lo, int note_hi,
+                double attack, double decay, double sustain, double release);
