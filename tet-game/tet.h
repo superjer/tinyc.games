@@ -54,17 +54,17 @@ struct shadow { int x, w, y; } shadows[4][8] = { // pre-computed shadow position
 // helps center shapes in preview box
 int center[] = {0,0, 1,1, 1,1, 0,1, 0,0, 1,1, 1,1, 1,1};
 
-unsigned char colors[] = {
-           0,    0,    0, // unused
-        0x19, 0x83, 0xc4, // J
-        0xfa, 0x83, 0x33, // L
-        0xff, 0xca, 0x39, // square
-        0x1b, 0xe7, 0xff, // line
-        0xff, 0x5a, 0x5f, // Z
-        0x89, 0xc9, 0x26, // S
-        0x88, 0x48, 0x8f, // T
-         255,  255,  255, // shine color
-        0x6f, 0x78, 0x66, // garbage color
+int colors[] = {
+        0x000000, // unused
+        0x1983c4, // J
+        0xfa8333, // L
+        0xffca39, // square
+        0x1be7ff, // line
+        0xff5a5f, // Z
+        0x89c926, // S
+        0x88488f, // T
+        0xffffff, // shine color
+        0x6f7866, // garbage color
 };
 
 int kicks[] = {   // clockwise                            counterclockwise

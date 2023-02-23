@@ -54,9 +54,9 @@ void draw_menu()
 // set the current draw color to the color assoc. with a shape
 void set_color_from_shape(int shape, int shade)
 {
-        int r = MAX(colors[shape*3 + 0] + shade, 0);
-        int g = MAX(colors[shape*3 + 1] + shade, 0);
-        int b = MAX(colors[shape*3 + 2] + shade, 0);
+        int r = MAX((colors[shape] >> 16 & 0xFF) + shade, 0);
+        int g = MAX((colors[shape] >>  8 & 0xFF) + shade, 0);
+        int b = MAX((colors[shape] >>  0 & 0xFF) + shade, 0);
         SDL_SetRenderDrawColor(renderer, r, g, b, 255);
 }
 
