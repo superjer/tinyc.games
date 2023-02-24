@@ -56,15 +56,15 @@ int center[] = {0,0, 1,1, 1,1, 0,1, 0,0, 1,1, 1,1, 1,1};
 
 int colors[] = {
         0x000000, // unused
-        0x1983c4, // J
-        0xfa8333, // L
-        0xffca39, // square
-        0x1be7ff, // line
-        0xff5a5f, // Z
-        0x89c926, // S
-        0x88488f, // T
-        0xffffff, // shine color
-        0x6f7866, // garbage color
+        0x8500cc, // J             blue
+        0xf87500, // L             orange
+        0xffc700, // square        yellow
+        0x9774e0, // line          cyan
+        0xe72200, // Z             red
+        0x75c100, // S             green
+        0xff87e7, // T             purple
+        0xffffff, // shine color   white
+        0x6f7866, // garbage color gray
 };
 
 int kicks[] = {   // clockwise                            counterclockwise

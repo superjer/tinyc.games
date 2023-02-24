@@ -65,7 +65,7 @@ void draw_mino(int x, int y, int shape, int outline, int part)
 {
         if (!part) return;
         int bw = MAX(1, outline ? bs / 10 : bs / 6);
-        set_color_from_shape(shape, -50);
+        set_color_from_shape(shape, -40);
         SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, bs, bs});
         set_color_from_shape(shape, outline ? -255 : 0);
         SDL_RenderFillRect(renderer, &(SDL_Rect){ // horizontal band
@@ -101,7 +101,7 @@ void draw_player()
         if (state != PLAY && state != ASSIGN) return;
 
         // draw background, black boxes
-        SDL_SetRenderDrawColor(renderer, 16, 26, 24, 255);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderFillRect(renderer, &(SDL_Rect){p->held.x, p->held.y, p->box_w, p->box_w});
         SDL_RenderFillRect(renderer, &(SDL_Rect){p->board_x, p->board_y, p->board_w, bs * VHEIGHT});
 
