@@ -128,18 +128,24 @@ void kill_lines()
         }
 }
 
-void add_garbage()
+void receive_garbage(int nasty)
 {
-        for (int y = BHEIGHT - 10; y < BHEIGHT; y++)
+        int gap = rand() % 10;
+        for (; p->garbage; p->garbage--)
         {
-                int skip = rand() % 10;
-                for (int x = 0; x < 10; x++)
-                        if (x != skip && rand() % 20)
+                memmove(p->board, p->board + 1, (BHEIGHT - 1) * sizeof *p->board);
+                memmove(p->line_fullness, p->line_fullness + 1, (BHEIGHT - 1) * sizeof *p->line_fullness);
+                memset(p->board[BHEIGHT - 1], 0, sizeof *p->board);
+                p->line_fullness[BHEIGHT - 1] = 0;
+
+                for (int i = 0; i < 10; i++)
+                        if (gap != i && (!nasty || rand() % 20))
                         {
-                                p->board[y][x].color = 9;
-                                p->board[y][x].part = '@';
-                                p->line_fullness[y]++;
+                                p->board[BHEIGHT - 1][i] = (struct spot){9, '@'};
+                                p->line_fullness[BHEIGHT - 1]++;
                         }
+
+                if (nasty) gap = rand() % 10;
         }
 }
 
@@ -158,7 +164,11 @@ void new_game()
         p->hold_uses = 0;
         p->countdown_time = 4 * CTDN_TICKS;
 
-        if (garbage_race) add_garbage();
+        if (garbage_race)
+        {
+                p->garbage = 10;
+                receive_garbage(1);
+        }
 }
 
 // set the current piece to the top, middle to start falling
@@ -189,20 +199,6 @@ void new_piece()
         memmove(p->next, p->next + 1, sizeof *(p->next) * 4);
         p->next[4] = p->bag[p->bag_idx++];
         reset_fall();
-}
-
-void receive_garbage()
-{
-        int gap = rand() % 10;
-        for (; p->garbage; p->garbage--)
-        {
-                memmove(p->board, p->board + 1, (BHEIGHT - 1) * sizeof *p->board);
-                memmove(p->line_fullness, p->line_fullness + 1, (BHEIGHT - 1) * sizeof *p->line_fullness);
-                for (int i = 0; i < 10; i++)
-                        p->board[BHEIGHT - 1][i] = (gap == i) ?
-                                (struct spot){0, 0} : (struct spot){9, '@'};
-                p->line_fullness[BHEIGHT - 1] = 9;
-        }
 }
 
 //move the falling piece left, right, or down
@@ -237,7 +233,7 @@ void move(int dx, int dy, int gravity)
         else if (dy && gravity)
         {
                 bake();
-                if (p->garbage) receive_garbage();
+                if (p->garbage) receive_garbage(0);
                 if (tick != p->beam_tick)
                         audio_tone(TRIANGLE, C4, F4, 10, 10, 10, 10);
         }
