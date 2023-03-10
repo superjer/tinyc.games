@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#define SDL_DISABLE_IMMINTRIN_H
+#define SDL_DISABLE_IMMINTRIN_H // why do I need this again? For mac? For win??
 #include "tet.h"
 
 // allows us to compile as single file:
@@ -118,6 +118,14 @@ void kill_lines()
         p->combo++;
         p->reward = combo_bonus[MIN(MAX_COMBO, p->combo)] * rewards[new_lines];
         p->score += p->reward;
+
+        if (nplay > 1)
+        {
+                p->reward /= 400; // in multiplayer, send garbage
+                int opponent;
+                do opponent = rand() % nplay; while (play + opponent == p);
+                play[opponent].garbage += p->reward;
+        }
 }
 
 void add_garbage()
@@ -183,6 +191,20 @@ void new_piece()
         reset_fall();
 }
 
+void receive_garbage()
+{
+        int gap = rand() % 10;
+        for (; p->garbage; p->garbage--)
+        {
+                memmove(p->board, p->board + 1, (BHEIGHT - 1) * sizeof *p->board);
+                memmove(p->line_fullness, p->line_fullness + 1, (BHEIGHT - 1) * sizeof *p->line_fullness);
+                for (int i = 0; i < 10; i++)
+                        p->board[BHEIGHT - 1][i] = (gap == i) ?
+                                (struct spot){0, 0} : (struct spot){9, '@'};
+                p->line_fullness[BHEIGHT - 1] = 9;
+        }
+}
+
 //move the falling piece left, right, or down
 void move(int dx, int dy, int gravity)
 {
@@ -215,6 +237,7 @@ void move(int dx, int dy, int gravity)
         else if (dy && gravity)
         {
                 bake();
+                if (p->garbage) receive_garbage();
                 if (tick != p->beam_tick)
                         audio_tone(TRIANGLE, C4, F4, 10, 10, 10, 10);
         }
