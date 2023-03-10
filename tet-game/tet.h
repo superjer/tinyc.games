@@ -115,6 +115,7 @@ struct {
         int lines, score, best;         // scoring
         int combo;                      // clears in-a-row
         int reward, reward_x, reward_y; // for hovering points indicator
+        int garbage;                    // queued garbage received from opponents
         int level;                      // difficultly level (lines/10)
         int countdown_time;             // ready-set-go countdown
         int idle_time;                  // how long the player has been idle in ticks

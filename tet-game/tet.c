@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#define SDL_DISABLE_IMMINTRIN_H
+#define SDL_DISABLE_IMMINTRIN_H // why do I need this again? For mac? For win??
 #include "tet.h"
 
 // allows us to compile as single file:
@@ -118,6 +118,14 @@ void kill_lines()
         p->combo++;
         p->reward = combo_bonus[MIN(MAX_COMBO, p->combo)] * rewards[new_lines];
         p->score += p->reward;
+
+        if (nplay > 1)
+        {
+                p->reward /= 400; // in multiplayer, send garbage
+                int opponent;
+                do opponent = rand() % nplay; while (play + opponent == p);
+                play[opponent].garbage += p->reward;
+        }
 }
 
 void add_garbage()
@@ -269,6 +277,19 @@ void update_player()
         {
                 move(0, 1, 1);
                 p->idle_time = 0;
+        }
+
+        // receive garbage
+        if (p->garbage)
+        {
+                printf("garbage- moving %d\n", p->garbage);
+                memmove(p->board + BHEIGHT - 1, p->board + BHEIGHT - p->garbage + 1, p->garbage * sizeof p->board[0]);
+                memmove(p->line_fullness, p->line_fullness + 1, p->garbage * sizeof p->line_fullness[0]);
+                /*
+                for (int i = 0; i < 10; i++)
+                        p->board[0]
+                        */
+                p->garbage = 0;
         }
 }
 
