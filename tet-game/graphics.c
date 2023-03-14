@@ -142,6 +142,12 @@ void draw_player()
                 draw_mino(p->board_x + bs * i, p->board_y + bs * (j-5) - p->line_offset[j],
                                 p->board[j][i].color, 0, p->board[j][i].part);
 
+        // draw queued garbage
+        int y = p->board_y + bs * (VHEIGHT);
+        for (int i = 0; i < GARB_LVLS; i++)
+                for (int j = 0; j < p->garbage[i]; j++)
+                        draw_mino(p->board_x - 3 * bs2, (y -= bs), (3 - i) + 9, 0, '@');
+
         // draw falling piece & ghost
         draw_shape(p->board_x + bs * p->it.x, p->board_y + bs * (ghost_y - 5), p->it.color, p->it.rot, OUTLINE);
         draw_shape(p->board_x + bs * p->it.x, p->board_y + bs * (p->it.y - 5), p->it.color, p->it.rot, 0);

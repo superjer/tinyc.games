@@ -1,0 +1,9 @@
+Show incoming garbage bar
+
+Animate garbage send
+
+Game over
+ * singleplayer: top out
+ * singleplayer garbage: clear all
+ * multiplayer: all but one top out
+ * multiplayer garbage: first player to clear all

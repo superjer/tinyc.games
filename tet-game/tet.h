@@ -6,6 +6,7 @@
 #define BHEIGHT 25
 #define VHEIGHT 20 // visible height
 #define BAG_SZ 7   // bag size
+#define GARB_LVLS 4 // levels of queued garbage
 #define NPLAY 4
 #define CTDN_TICKS 80
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
@@ -64,7 +65,10 @@ int colors[] = {
         0x89c926, // S
         0x88488f, // T
         0xffffff, // shine color
-        0x6f7866, // garbage color
+        0x6f7866, // garbage colors
+        0x9fa896,
+        0xffca39,
+        0xff5a5f,
 };
 
 int kicks[] = {   // clockwise                            counterclockwise
@@ -115,7 +119,7 @@ struct {
         int lines, score, best;         // scoring
         int combo;                      // clears in-a-row
         int reward, reward_x, reward_y; // for hovering points indicator
-        int garbage;                    // queued garbage received from opponents
+        int garbage[GARB_LVLS + 1];     // queued garbage, e.g. received from opponents
         int level;                      // difficultly level (lines/10)
         int countdown_time;             // ready-set-go countdown
         int idle_time;                  // how long the player has been idle in ticks

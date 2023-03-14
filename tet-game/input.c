@@ -174,6 +174,9 @@ int key_down()
                 case SDLK_z:   case SDLK_CAPSLOCK:  case SDLK_RETURN: spin(3); break;
                 case SDLK_x:   case SDLK_LSHIFT:    case SDLK_RSHIFT: spin(1); break;
                 case SDLK_TAB: case SDLK_BACKSLASH:                   hold();  break;
+
+                case SDLK_g:
+                        p->garbage[3] += 1 + rand() % 3;
         }
 
         return 0;

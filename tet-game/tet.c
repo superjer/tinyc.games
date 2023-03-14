@@ -124,14 +124,21 @@ void kill_lines()
                 p->reward /= 400; // in multiplayer, send garbage
                 int opponent;
                 do opponent = rand() % nplay; while (play + opponent == p);
-                play[opponent].garbage += p->reward;
+                play[opponent].garbage[GARB_LVLS - 1] += p->reward;
         }
+}
+
+void age_garbage()
+{
+        p->garbage[0] += p->garbage[1];
+        for (int i = 1; i < GARB_LVLS; i++)
+                p->garbage[i] = p->garbage[i + 1]; // last loop looks like it goes oob, but there's room!
 }
 
 void receive_garbage(int nasty)
 {
         int gap = rand() % 10;
-        for (; p->garbage; p->garbage--)
+        for (int i = 0; p->garbage[0] && i < 8; p->garbage[0]--, i++) // no more than 8 garbage at a time
         {
                 memmove(p->board, p->board + 1, (BHEIGHT - 1) * sizeof *p->board);
                 memmove(p->line_fullness, p->line_fullness + 1, (BHEIGHT - 1) * sizeof *p->line_fullness);
@@ -155,6 +162,7 @@ void new_game()
         memset(p->board, 0, sizeof p->board);
         memset(p->line_fullness, 0, sizeof p->line_fullness);
         memset(p->line_offset, 0, sizeof p->line_offset);
+        memset(p->garbage, 0, sizeof p->garbage);
         p->bag_idx = BAG_SZ;
         if (p->best < p->score) p->best = p->score;
         p->score = 0;
@@ -166,7 +174,7 @@ void new_game()
 
         if (garbage_race)
         {
-                p->garbage = 10;
+                memset(p->garbage, 1, sizeof *p->garbage * 10);
                 receive_garbage(1);
         }
 }
@@ -233,7 +241,7 @@ void move(int dx, int dy, int gravity)
         else if (dy && gravity)
         {
                 bake();
-                if (p->garbage) receive_garbage(0);
+                receive_garbage(0);
                 if (tick != p->beam_tick)
                         audio_tone(TRIANGLE, C4, F4, 10, 10, 10, 10);
         }
@@ -289,6 +297,9 @@ void update_player()
                 move(0, 1, 1);
                 p->idle_time = 0;
         }
+
+        if (tick % 600 == 0)
+                age_garbage();
 }
 
 void game_over()
