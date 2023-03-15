@@ -118,6 +118,7 @@ int menu_input()
                                 if (menu_pos == 1) garbage_race = 1;
                                 if (menu_pos == 2) exit(0);
                                 state = NUMBER_MENU;
+                                menu_pos = 0;
                         }
                         else
                         {
@@ -177,6 +178,7 @@ int key_down()
 
                 case SDLK_g:
                         p->garbage[3] += 1 + rand() % 3;
+                        p->garbage_tick = tick;
         }
 
         return 0;

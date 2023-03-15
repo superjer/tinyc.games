@@ -75,6 +75,39 @@ void setup()
         audio_init();
 }
 
+void age_garbage()
+{
+        p->garbage[0] += p->garbage[1];
+        for (int i = 1; i < GARB_LVLS; i++)
+                p->garbage[i] = p->garbage[i + 1]; // last loop looks like it goes oob, but there's room!
+        p->garbage_tick = tick;
+}
+
+void receive_garbage()
+{
+        int gap = rand() % 10;
+        int max_at_once = garbage_race ? 10 : 6; // no more than 6, 10 garbage at a time
+        for (int i = 0; p->garbage[0] && i < max_at_once; p->garbage[0]--, i++)
+        {
+                memmove(p->board, p->board + 1, (BHEIGHT - 1) * sizeof *p->board);
+                memmove(p->line_fullness, p->line_fullness + 1, (BHEIGHT - 1) * sizeof *p->line_fullness);
+                memmove(p->line_special, p->line_special + 1, (BHEIGHT - 1) * sizeof *p->line_special);
+                memset(p->board[BHEIGHT - 1], 0, sizeof *p->board);
+                p->line_fullness[BHEIGHT - 1] = 0;
+                p->line_special[BHEIGHT - 1] = 1; // special = garbage
+                p->garbage_remaining++;
+
+                for (int i = 0; i < 10; i++)
+                        if (gap != i && (!garbage_race || rand() % 20))
+                        {
+                                p->board[BHEIGHT - 1][i] = (struct spot){9, '@'};
+                                p->line_fullness[BHEIGHT - 1]++;
+                        }
+
+                if (garbage_race) gap = rand() % 10;
+        }
+}
+
 // remove lines that are full
 void kill_lines()
 {
@@ -100,18 +133,20 @@ void kill_lines()
 
                 p->lines++;
                 new_lines++;
-                p->line_fullness[y] = 0;
+                if (p->line_special[y]) p->garbage_remaining--;
 
                 for (int j = y; j > 0; j--)
                 {
                         p->line_offset[j] = p->line_offset[j-1] + bs;
                         p->line_fullness[j] = p->line_fullness[j-1];
+                        p->line_special[j] = p->line_special[j-1];
                         for (int i = 0; i < BWIDTH; i++)
                                 p->board[j][i] = p->board[j-1][i];
                 }
 
                 memset(p->board[0], 0, sizeof *p->board);
                 p->line_fullness[0] = 0;
+                p->line_special[0] = 0;
         }
 
         p->level = p->lines / 10;
@@ -125,34 +160,15 @@ void kill_lines()
                 int opponent;
                 do opponent = rand() % nplay; while (play + opponent == p);
                 play[opponent].garbage[GARB_LVLS - 1] += p->reward;
+                play[opponent].garbage_tick = tick;
         }
-}
 
-void age_garbage()
-{
-        p->garbage[0] += p->garbage[1];
-        for (int i = 1; i < GARB_LVLS; i++)
-                p->garbage[i] = p->garbage[i + 1]; // last loop looks like it goes oob, but there's room!
-}
-
-void receive_garbage(int nasty)
-{
-        int gap = rand() % 10;
-        for (int i = 0; p->garbage[0] && i < 8; p->garbage[0]--, i++) // no more than 8 garbage at a time
+        if (garbage_race && p->garbage_remaining == 0)
         {
-                memmove(p->board, p->board + 1, (BHEIGHT - 1) * sizeof *p->board);
-                memmove(p->line_fullness, p->line_fullness + 1, (BHEIGHT - 1) * sizeof *p->line_fullness);
-                memset(p->board[BHEIGHT - 1], 0, sizeof *p->board);
-                p->line_fullness[BHEIGHT - 1] = 0;
-
-                for (int i = 0; i < 10; i++)
-                        if (gap != i && (!nasty || rand() % 20))
-                        {
-                                p->board[BHEIGHT - 1][i] = (struct spot){9, '@'};
-                                p->line_fullness[BHEIGHT - 1]++;
-                        }
-
-                if (nasty) gap = rand() % 10;
+                age_garbage();
+                receive_garbage();
+                if (p->garbage_remaining == 0)
+                        state = GAMEOVER;
         }
 }
 
@@ -163,6 +179,7 @@ void new_game()
         memset(p->line_fullness, 0, sizeof p->line_fullness);
         memset(p->line_offset, 0, sizeof p->line_offset);
         memset(p->garbage, 0, sizeof p->garbage);
+        p->garbage_remaining = 0;
         p->bag_idx = BAG_SZ;
         if (p->best < p->score) p->best = p->score;
         p->score = 0;
@@ -174,8 +191,11 @@ void new_game()
 
         if (garbage_race)
         {
-                memset(p->garbage, 1, sizeof *p->garbage * 10);
-                receive_garbage(1);
+                p->garbage[0] = 10;
+                p->garbage[1] = 5;
+                p->garbage[2] = 5;
+                p->garbage[3] = 5;
+                receive_garbage();
         }
 }
 
@@ -241,7 +261,7 @@ void move(int dx, int dy, int gravity)
         else if (dy && gravity)
         {
                 bake();
-                receive_garbage(0);
+                receive_garbage();
                 if (tick != p->beam_tick)
                         audio_tone(TRIANGLE, C4, F4, 10, 10, 10, 10);
         }
@@ -298,7 +318,7 @@ void update_player()
                 p->idle_time = 0;
         }
 
-        if (tick % 600 == 0)
+        if (tick - p->garbage_tick > (garbage_race ? 6000 : 600))
                 age_garbage();
 }
 

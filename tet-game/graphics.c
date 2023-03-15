@@ -98,7 +98,7 @@ void draw_shape(int x, int y, int color, int rot, int flags)
 // draw everything in the game on the screen for current player
 void draw_player()
 {
-        if (state != PLAY && state != ASSIGN) return;
+        if (state == MAIN_MENU || state == NUMBER_MENU) return;
 
         // draw background, black boxes
         SDL_SetRenderDrawColor(renderer, 16, 26, 24, 255);
@@ -162,9 +162,10 @@ void draw_player()
         // draw scores etc
         text_x = p->held.x;
         text_y = p->held.y + p->box_w + bs2;
-        text("%d pts "   , p->score    );
-        text("%d lines " , p->lines    );
-        text(p->dev_name , 0           );
+        text("%d pts "   , p->score);
+        text("%d lines " , p->lines);
+        text("%d garbo " , p->garbage_remaining);
+        text(p->dev_name , 0);
 
         if (p->reward)
         {
@@ -179,7 +180,9 @@ void draw_player()
                 text(countdown_msg[p->countdown_time / CTDN_TICKS], 0);
 
         if (state == ASSIGN)
-                text(p >= play + assign_me ? "Press button to join" : p->dev_name, 0 );
+                text(p >= play + assign_me ? "Press button to join" : p->dev_name, 0);
+
+        if (state == GAMEOVER) text("Game over", 0);
 }
 
 // recalculate sizes and positions on resize

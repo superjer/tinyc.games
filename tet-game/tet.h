@@ -102,6 +102,7 @@ struct spot { int color, part; };
 struct {
         struct spot board[BHEIGHT][BWIDTH]; // the board, excluding the falling piece
         int line_fullness[BHEIGHT];     // how full is each row? 0-10
+        int line_special[BHEIGHT];      // line is special? e.g. garbage
         int line_offset[BHEIGHT];       // amount upper bit has left to fall after clearing lines
         int left, right, down;          // true when holding a direction
         int move_cooldown;              // cooldown before hold-to-repeat movement
@@ -120,6 +121,8 @@ struct {
         int combo;                      // clears in-a-row
         int reward, reward_x, reward_y; // for hovering points indicator
         int garbage[GARB_LVLS + 1];     // queued garbage, e.g. received from opponents
+        int garbage_tick;               // keeps track of when to age garbage
+        int garbage_remaining;          // how many lines of garbage remain to clear to win
         int level;                      // difficultly level (lines/10)
         int countdown_time;             // ready-set-go countdown
         int idle_time;                  // how long the player has been idle in ticks
@@ -132,7 +135,7 @@ struct {
         char dev_name[80];              // input device "name"
 } play[NPLAY], *p;                      // one per player
 
-enum state { MAIN_MENU = 0, NUMBER_MENU, ASSIGN, PLAY} state;
+enum state { MAIN_MENU = 0, NUMBER_MENU, ASSIGN, PLAY, GAMEOVER} state;
 int win_x = 1000;         // window size
 int win_y = 750;
 int bs, bs2;              // individual block size, and in half
