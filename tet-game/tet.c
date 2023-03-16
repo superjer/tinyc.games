@@ -89,19 +89,16 @@ void receive_garbage()
         int max_at_once = garbage_race ? 10 : 6; // no more than 6, 10 garbage at a time
         for (int i = 0; p->garbage[0] && i < max_at_once; p->garbage[0]--, i++)
         {
-                memmove(p->board, p->board + 1, (BHEIGHT - 1) * sizeof *p->board);
-                memmove(p->line_fullness, p->line_fullness + 1, (BHEIGHT - 1) * sizeof *p->line_fullness);
-                memmove(p->line_special, p->line_special + 1, (BHEIGHT - 1) * sizeof *p->line_special);
-                memset(p->board[BHEIGHT - 1], 0, sizeof *p->board);
-                p->line_fullness[BHEIGHT - 1] = 0;
-                p->line_special[BHEIGHT - 1] = 1; // special = garbage
+                memmove(p->row, p->row + 1, (BHEIGHT - 1) * sizeof *p->row);
+                memset(&p->row[BHEIGHT - 1], 0, sizeof *p->row);
+                p->row[BHEIGHT - 1].special = 1; // special = garbage
                 p->garbage_remaining++;
 
                 for (int i = 0; i < 10; i++)
                         if (gap != i && (!garbage_race || rand() % 20))
                         {
-                                p->board[BHEIGHT - 1][i] = (struct spot){9, '@'};
-                                p->line_fullness[BHEIGHT - 1]++;
+                                p->row[BHEIGHT - 1].col[i] = (struct spot){9, '@'};
+                                p->row[BHEIGHT - 1].fullness++;
                         }
 
                 if (garbage_race) gap = rand() % 10;
@@ -114,39 +111,34 @@ void kill_lines()
         // clean up sliced pieces
         for (int y = 0; y < BHEIGHT; y++)
         {
-                p->line_offset[y] = 0;
-                if (p->line_fullness[y] == 10) continue;
+                p->row[y].offset = 0;
+                if (p->row[y].fullness == 10) continue;
 
-                if (y > 0 && p->line_fullness[y - 1] == 10)
+                if (y > 0 && p->row[y - 1].fullness == 10)
                         for (int x = 0; x < BWIDTH; x++)
-                                p->board[y][x].part &= ~1;
+                                p->row[y].col[x].part &= ~1;
 
-                if (y < BHEIGHT - 1 && p->line_fullness[y + 1] == 10)
+                if (y < BHEIGHT - 1 && p->row[y + 1].fullness == 10)
                         for (int x = 0; x < BWIDTH; x++)
-                                p->board[y][x].part &= ~4;
+                                p->row[y].col[x].part &= ~4;
         }
 
         int new_lines = 0;
         for (int y = 0; y < BHEIGHT; y++)
         {
-                if (p->line_fullness[y] != 10) continue;
+                if (p->row[y].fullness != 10) continue;
 
                 p->lines++;
                 new_lines++;
-                if (p->line_special[y]) p->garbage_remaining--;
+                if (p->row[y].special) p->garbage_remaining--;
 
                 for (int j = y; j > 0; j--)
                 {
-                        p->line_offset[j] = p->line_offset[j-1] + bs;
-                        p->line_fullness[j] = p->line_fullness[j-1];
-                        p->line_special[j] = p->line_special[j-1];
-                        for (int i = 0; i < BWIDTH; i++)
-                                p->board[j][i] = p->board[j-1][i];
+                        p->row[j] = p->row[j - 1];
+                        p->row[j].offset += bs;
                 }
 
-                memset(p->board[0], 0, sizeof *p->board);
-                p->line_fullness[0] = 0;
-                p->line_special[0] = 0;
+                memset(&p->row[0], 0, sizeof p->row[0]);
         }
 
         p->level = p->lines / 10;
@@ -175,10 +167,7 @@ void kill_lines()
 // reset score and pick one extra random piece
 void new_game()
 {
-        memset(p->board, 0, sizeof p->board);
-        memset(p->line_fullness, 0, sizeof p->line_fullness);
-        memset(p->line_offset, 0, sizeof p->line_offset);
-        memset(p->garbage, 0, sizeof p->garbage);
+        memset(p->row, 0, sizeof p->row);
         p->garbage_remaining = 0;
         p->bag_idx = BAG_SZ;
         if (p->best < p->score) p->best = p->score;
@@ -304,7 +293,7 @@ void update_player()
         }
 
         for (int y = 0; y < BHEIGHT; y++)
-                p->line_offset[y] = MAX(0, p->line_offset[y] - bs2);
+                p->row[y].offset = MAX(0, p->row[y].offset - bs2);
 
         if (p->shine_time > 0 && --p->shine_time == 0)
                 kill_lines();
@@ -332,7 +321,7 @@ void game_over()
 // check if a line has been completed and act accordingly
 int increment_and_check_line(int y)
 {
-        if (++p->line_fullness[y] != 10)
+        if (++p->row[y].fullness != 10)
                 return 0;
 
         p->reward = 0; // set up hovering reward number
@@ -341,7 +330,7 @@ int increment_and_check_line(int y)
         p->shine_time = 20;
 
         for (int i = 0; i < BWIDTH; i++)
-                p->board[y][i].color = 8;
+                p->row[y].col[i].color = 8;
 
         audio_tone(SINE, G3, G5, 20, 50, 50, 200);
         return 1;
@@ -360,11 +349,11 @@ void bake()
 
                 if (!part) continue;
 
-                if (p->board[world_j][world_i].color)
+                if (p->row[world_j].col[world_i].color)
                         game_over();
 
-                p->board[world_j][world_i].color = p->it.color;
-                p->board[world_j][world_i].part = part;
+                p->row[world_j].col[world_i].color = p->it.color;
+                p->row[world_j].col[world_i].part = part;
                 completed_lines += increment_and_check_line(world_j);
         }
 
@@ -390,7 +379,7 @@ int collide(int x, int y, int rot)
                 {
                         if (i + x < 0 || i + x >= BWIDTH || j + y >= BHEIGHT)
                                 return WALL;
-                        if (p->board[j + y][i + x].color)
+                        if (p->row[j + y].col[i + x].color)
                                 ret = NORMAL;
                 }
 

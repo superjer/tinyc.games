@@ -139,8 +139,8 @@ void draw_player()
 
         // draw pieces on board
         for (int i = 0; i < BWIDTH; i++) for (int j = 0; j < BHEIGHT; j++)
-                draw_mino(p->board_x + bs * i, p->board_y + bs * (j-5) - p->line_offset[j],
-                                p->board[j][i].color, 0, p->board[j][i].part);
+                draw_mino(p->board_x + bs * i, p->board_y + bs * (j-5) - p->row[j].offset,
+                                p->row[j].col[i].color, 0, p->row[j].col[i].part);
 
         // draw queued garbage
         int y = p->board_y + bs * (VHEIGHT);

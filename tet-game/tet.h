@@ -98,12 +98,15 @@ char countdown_msg[][20] = {"           Go!", "           - 1 -", "           - 
 
 struct piece { int x, y, rot, color; };
 struct spot { int color, part; };
+struct row {
+        struct spot col[BWIDTH];
+        int fullness;
+        int special;
+        int offset;
+};
 
 struct {
-        struct spot board[BHEIGHT][BWIDTH]; // the board, excluding the falling piece
-        int line_fullness[BHEIGHT];     // how full is each row? 0-10
-        int line_special[BHEIGHT];      // line is special? e.g. garbage
-        int line_offset[BHEIGHT];       // amount upper bit has left to fall after clearing lines
+        struct row row[BHEIGHT];        // the board, excluding the falling piece
         int left, right, down;          // true when holding a direction
         int move_cooldown;              // cooldown before hold-to-repeat movement
         struct piece it;                // current falling piece - "it"
