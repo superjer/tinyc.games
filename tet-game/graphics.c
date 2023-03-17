@@ -51,6 +51,40 @@ void draw_menu()
         }
 }
 
+void draw_particles()
+{
+        for (int i = 0; i < NPARTS; i++)
+        {
+                if (parts[i].r <= 0.5f)
+                        continue;
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                SDL_RenderFillRect(renderer, &(SDL_Rect){
+                        parts[i].x,
+                        parts[i].y,
+                        parts[i].r,
+                        parts[i].r,
+                });
+                parts[i].x += parts[i].vx;
+                parts[i].y += parts[i].vy;
+                parts[i].r *= 0.992f + (rand() % 400) * 0.00001f;
+                if (parts[i].r > 0.8 * bs)
+                {
+                        parts[i].vy *= 0.82f;
+                }
+                else for (int n = 0; n < NFLOWS; n++)
+                {
+                        float xdiff = flows[n].x - parts[i].x;
+                        float ydiff = flows[n].y - parts[i].y;
+                        float distsq = xdiff * xdiff + ydiff * ydiff;
+                        if (distsq < flows[n].r * flows[n].r)
+                        {
+                                parts[i].vx += flows[n].vx;
+                                parts[i].vy += flows[n].vy;
+                        }
+                }
+        }
+}
+
 // set the current draw color to the color assoc. with a shape
 void set_color_from_shape(int shape, int shade)
 {
@@ -165,6 +199,12 @@ void draw_player()
         text("%d pts "   , p->score);
         text("%d lines " , p->lines);
         text("%d garbo " , p->garbage_remaining);
+
+        int secs = p->ticks / 60 % 60;
+        int mins = p->ticks / 60 / 60 % 60;
+        char minsec[80];
+        sprintf(minsec, "%d:%02d.%02d ", mins, secs, p->ticks % 60 * 1000 / 600);
+        text(minsec      , 0);
         text(p->dev_name , 0);
 
         if (p->reward)
@@ -183,6 +223,18 @@ void draw_player()
                 text(p >= play + assign_me ? "Press button to join" : p->dev_name, 0);
 
         if (state == GAMEOVER) text("Game over", 0);
+}
+
+void reflow()
+{
+        for (int n = 0; n < NFLOWS; n++)
+        {
+                flows[n].x = rand() % win_x;
+                flows[n].y = rand() % win_y;
+                flows[n].r = rand() % 100 + 100;
+                flows[n].vx = (rand() % 10 - 5) * 0.01f;
+                flows[n].vy = (rand() % 10 - 5) * 0.01f;
+        }
 }
 
 // recalculate sizes and positions on resize
@@ -205,6 +257,7 @@ void resize(int x, int y)
                 p->preview_x = p->board_x + p->board_w + bs2;
                 p->preview_y = p->board_y;
         }
+        reflow();
         if (font) TTF_CloseFont(font);
         font = TTF_OpenFont("../common/res/LiberationSans-Regular.ttf", bs);
 }

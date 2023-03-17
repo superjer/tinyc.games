@@ -8,6 +8,8 @@
 #define BAG_SZ 7   // bag size
 #define GARB_LVLS 4 // levels of queued garbage
 #define NPLAY 4
+#define NPARTS 100
+#define NFLOWS 20
 #define CTDN_TICKS 80
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
@@ -134,9 +136,15 @@ struct {
         int board_x, board_y, board_w;  // positions and sizes of things
         int preview_x, preview_y;       // position of preview
         int box_w;                      // width of hold box / preview box
+        int ticks;                      // counts up while game is going
+        int seed1, seed2;               // make garbage and bags fair
         int device;                     // SDL's input device id
         char dev_name[80];              // input device "name"
 } play[NPLAY], *p;                      // one per player
+
+struct particle { float x, y, r, vx, vy; };
+struct particle parts[NPARTS];
+struct particle flows[NFLOWS];
 
 enum state { MAIN_MENU = 0, NUMBER_MENU, ASSIGN, PLAY, GAMEOVER} state;
 int win_x = 1000;         // window size
@@ -149,15 +157,15 @@ int menu_pos;             // current position in menu
 int text_x, text_y;       // position of text drawing
 int line_height;          // text line height
 int garbage_race;
+int npart;
+int seed;
 
 SDL_Event event;
 SDL_Window *win;
 SDL_Renderer *renderer;
 TTF_Font *font;
 
-// prototypes
 void setup();
-void resize(int x, int y);
 void update_player();
 void move(int dx, int dy, int gravity);
 void reset_fall();

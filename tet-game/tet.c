@@ -10,8 +10,8 @@
 
 // allows us to compile as single file:
 #include "../common/tinyc.games/audio.c"
-#include "input.c"
 #include "graphics.c"
+#include "input.c"
 
 // the entry point and main game loop
 int main()
@@ -46,6 +46,7 @@ int main()
                         draw_player();
                 }
 
+                draw_particles();
                 SDL_RenderPresent(renderer);
                 SDL_Delay(10);
                 tick++;
@@ -75,6 +76,16 @@ void setup()
         audio_init();
 }
 
+unsigned garb_rand()
+{
+        return (p->seed1 = (1103515245 * p->seed1 + 12345) % 2147483648);
+}
+
+unsigned bag_rand()
+{
+        return (p->seed2 = (1103515245 * p->seed2 + 13456) % 2147483648);
+}
+
 void age_garbage()
 {
         p->garbage[0] += p->garbage[1];
@@ -85,34 +96,48 @@ void age_garbage()
 
 void receive_garbage()
 {
-        int gap = rand() % 10;
+        int gap = garb_rand() % 10;
         int max_at_once = garbage_race ? 10 : 6; // no more than 6, 10 garbage at a time
         for (int i = 0; p->garbage[0] && i < max_at_once; p->garbage[0]--, i++)
         {
                 memmove(p->row, p->row + 1, (BHEIGHT - 1) * sizeof *p->row);
                 memset(&p->row[BHEIGHT - 1], 0, sizeof *p->row);
                 p->row[BHEIGHT - 1].special = 1; // special = garbage
+                p->row[BHEIGHT - 1].offset = (p->countdown_time ? 0 : -bs);
                 p->garbage_remaining++;
 
                 for (int i = 0; i < 10; i++)
-                        if (gap != i && (!garbage_race || rand() % 20))
+                        if (gap != i && (!garbage_race || garb_rand() % 20))
                         {
                                 p->row[BHEIGHT - 1].col[i] = (struct spot){9, '@'};
                                 p->row[BHEIGHT - 1].fullness++;
                         }
 
-                if (garbage_race) gap = rand() % 10;
+                if (garbage_race) gap = garb_rand() % 10;
         }
 }
 
-// remove lines that are full
+void new_particle(int x, int y)
+{
+        parts[npart++] = (struct particle){
+                p->board_x + x * bs - bs2,
+                p->board_y + (y + VHEIGHT - BHEIGHT) * bs - bs2,
+                bs * 0.8f,
+                (rand() % 10 - 5) * 0.1f,
+                (rand() % 30 + 30) * 0.1f,
+        };
+        if (npart >= NPARTS) npart = 0;
+}
+
 void kill_lines()
 {
         // clean up sliced pieces
         for (int y = 0; y < BHEIGHT; y++)
         {
                 p->row[y].offset = 0;
-                if (p->row[y].fullness == 10) continue;
+                if (p->row[y].fullness == 10)
+                        for (int x = 0; x < BWIDTH; x++)
+                                new_particle(x, y);
 
                 if (y > 0 && p->row[y - 1].fullness == 10)
                         for (int x = 0; x < BWIDTH; x++)
@@ -155,6 +180,8 @@ void kill_lines()
                 play[opponent].garbage_tick = tick;
         }
 
+        reflow();
+
         if (garbage_race && p->garbage_remaining == 0)
         {
                 age_garbage();
@@ -164,7 +191,6 @@ void kill_lines()
         }
 }
 
-// reset score and pick one extra random piece
 void new_game()
 {
         memset(p->row, 0, sizeof p->row);
@@ -177,6 +203,8 @@ void new_game()
         p->held.color = 0;
         p->hold_uses = 0;
         p->countdown_time = 4 * CTDN_TICKS;
+        p->seed1 = seed;
+        p->seed2 = seed;
 
         if (garbage_race)
         {
@@ -209,7 +237,7 @@ void new_piece()
                         p->bag[i] = i % 7 + 1;
 
                 for (int i = 0; i < BAG_SZ; i++)
-                        SWAP(p->bag[i], p->bag[rand() % BAG_SZ]);
+                        SWAP(p->bag[i], p->bag[bag_rand() % BAG_SZ]);
         }
 
         p->it.color = p->next[0];
@@ -278,6 +306,8 @@ void update_player()
                         return;
         }
 
+        p->ticks++;
+
         while (!p->it.color && !p->shine_time && !p->dead_time)
                 new_piece();
 
@@ -293,7 +323,10 @@ void update_player()
         }
 
         for (int y = 0; y < BHEIGHT; y++)
-                p->row[y].offset = MAX(0, p->row[y].offset - bs2);
+                if (p->row[y].offset > 0)
+                        p->row[y].offset = MAX(0, p->row[y].offset - bs2);
+                else
+                        p->row[y].offset = MIN(0, p->row[y].offset + bs2);
 
         if (p->shine_time > 0 && --p->shine_time == 0)
                 kill_lines();

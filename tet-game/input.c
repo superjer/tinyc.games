@@ -148,6 +148,7 @@ int assign(int device)
         {
                 state = PLAY;
                 assign_me = 0;
+                seed = rand();
                 for (p = play; p < play + nplay; p++)
                         new_game();
         }
@@ -159,6 +160,7 @@ int key_down()
 {
         if (event.key.repeat)                           return 0;
         if (state == MAIN_MENU || state == NUMBER_MENU) return menu_input();
+        if (state == GAMEOVER)                          return (state = MAIN_MENU);
         if (state == ASSIGN)                            return assign(device_from_key());
 
         set_p_from_device(device_from_key());
@@ -200,6 +202,7 @@ void key_up()
 int joy_down()
 {
         if (state == ASSIGN) return assign(event.cbutton.which);
+        if (state == GAMEOVER) return (state = MAIN_MENU);
         set_p_from_device(event.cbutton.which);
 
         if (p->it.color) switch(event.cbutton.button)
