@@ -26,7 +26,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "../common/nothings/stb_image.h"
 
-#include "../common/osn/open-simplex-noise.c"
+#include "../common/smcameron/open-simplex-noise.c"
 struct osn_context *osn_context;
 #define noise(x,y,z,scale) open_simplex_noise3(osn_context,(float)((x)-tscootx+0.5f)/(scale),(float)((y)+0.5f)/(scale),(float)((z)-tscootz+0.5f)/(scale))
 
