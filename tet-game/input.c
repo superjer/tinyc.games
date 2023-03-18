@@ -88,12 +88,19 @@ void joy_setup()
 }
 
 // set current player to match an input device
-void set_p_from_device(int device)
+void set_player_from_device(int device)
 {
-        for (p = play; p < play + nplay; p++)
-                if (p->device == device)
+        for (int i = 0; i < NPLAY; i++)
+        {
+                if (play[i].device < 0)
+                        p = play + i; // default to any keyboard
+
+                if (play[i].device == device)
+                {
+                        p = play + i;
                         return;
-        p = play; // default to first player
+                }
+        }
 }
 
 // figure out which "device" from key pressed, i.e. WASD or Arrow keys
@@ -108,13 +115,18 @@ int device_from_key()
         }
 }
 
-int menu_input()
+int menu_input(int key_or_button)
 {
-        switch (event.key.keysym.sym)
+        switch (key_or_button)
         {
-                case SDLK_s:      case SDLK_DOWN:   menu_pos++; break;
-                case SDLK_w:      case SDLK_UP:     menu_pos--; break;
-                case SDLK_RETURN:
+                case SDLK_s:  case SDLK_DOWN:
+                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:   menu_pos++; break;
+
+                case SDLK_w:  case SDLK_UP:
+                case SDL_CONTROLLER_BUTTON_DPAD_UP:     menu_pos--; break;
+
+                case SDLK_RETURN:  case SDLK_z:
+                case SDL_CONTROLLER_BUTTON_A:
                         if (state == MAIN_MENU)
                         {
                                 if (menu_pos == 0) garbage_race = 0;
@@ -162,11 +174,11 @@ int assign(int device)
 int key_down()
 {
         if (event.key.repeat)                           return 0;
-        if (state == MAIN_MENU || state == NUMBER_MENU) return menu_input();
+        if (state == MAIN_MENU || state == NUMBER_MENU) return menu_input(event.key.keysym.sym);
         if (state == GAMEOVER)                          return (state = MAIN_MENU);
         if (state == ASSIGN)                            return assign(device_from_key());
 
-        set_p_from_device(device_from_key());
+        set_player_from_device(device_from_key());
 
         if (!p->it.color || p->countdown_time >= CTDN_TICKS) return 0;
 
@@ -188,7 +200,7 @@ int key_down()
 void key_up()
 {
         if (state == ASSIGN) return;
-        set_p_from_device(device_from_key());
+        set_player_from_device(device_from_key());
 
         switch (event.key.keysym.sym)
         {
@@ -202,7 +214,8 @@ int joy_down()
 {
         if (state == ASSIGN) return assign(event.cbutton.which);
         if (state == GAMEOVER) return (state = MAIN_MENU);
-        set_p_from_device(event.cbutton.which);
+        if (state == MAIN_MENU || state == NUMBER_MENU) return menu_input(event.cbutton.button);
+        set_player_from_device(event.cbutton.which);
 
         if (p->it.color) switch(event.cbutton.button)
         {
@@ -220,7 +233,7 @@ int joy_down()
 void joy_up()
 {
         if (state == ASSIGN) return;
-        set_p_from_device(event.cbutton.which);
+        set_player_from_device(event.cbutton.which);
 
         switch(event.cbutton.button)
         {

@@ -107,7 +107,7 @@ struct row {
         int offset;
 };
 
-struct {
+struct player {
         struct row row[BHEIGHT];        // the board, excluding the falling piece
         int left, right, down;          // true when holding a direction
         int move_cooldown;              // cooldown before hold-to-repeat movement
