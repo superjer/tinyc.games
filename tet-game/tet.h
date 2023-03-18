@@ -2,6 +2,14 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 
+#define GL3_PROTOTYPES 1
+
+#ifdef __APPLE__
+#include <OpenGL/gl3.h>
+#else
+#include <GL/glew.h>
+#endif
+
 #define BWIDTH 10  // board width, height
 #define BHEIGHT 25
 #define VHEIGHT 20 // visible height
@@ -164,6 +172,7 @@ int garbage_race;
 int npart;
 int seed;
 
+SDL_GLContext ctx;
 SDL_Event event;
 SDL_Window *win;
 SDL_Renderer *renderer;

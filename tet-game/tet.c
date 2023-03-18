@@ -36,8 +36,9 @@ int main()
                 }
                 if (joy_tick == tick - 1) joy_setup();
 
-                SDL_SetRenderDrawColor(renderer, 0x2f, 0x2f, 0x2f, 255);
-                SDL_RenderClear(renderer);
+                glViewport(0, 0, win_x, win_y);
+                glClearColor(0.18f, 0.18f, 0.18f, 1.f);
+                glClear(GL_COLOR_BUFFER_BIT);
                 draw_menu();
 
                 for (p = play; p < play + nplay; p++)
@@ -47,7 +48,7 @@ int main()
                 }
 
                 draw_particles();
-                SDL_RenderPresent(renderer);
+                SDL_GL_SwapWindow(win);
                 SDL_Delay(10);
                 tick++;
         }
@@ -59,10 +60,19 @@ void setup()
         srand(time(NULL));
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO);
 
-        win = SDL_CreateWindow("Tet",
-                        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                        win_x, win_y,
-                        SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+        win = SDL_CreateWindow("Tet", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                win_x, win_y, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
+        if (!win) exit(fprintf(stderr, "%s\n", SDL_GetError()));
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        ctx = SDL_GL_CreateContext(win);
+        if (!ctx) exit(fprintf(stderr, "Could not create GL context\n"));
+
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+        SDL_GL_SetSwapInterval(1);
 
         renderer = SDL_CreateRenderer(win, -1, 0);
         if (!renderer)
