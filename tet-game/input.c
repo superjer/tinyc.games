@@ -211,8 +211,8 @@ int joy_down()
                 case SDL_CONTROLLER_BUTTON_B:            spin(1); break;
                 case SDL_CONTROLLER_BUTTON_DPAD_UP:      hard();  break;
                 case SDL_CONTROLLER_BUTTON_DPAD_DOWN:    down();  break;
-                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:    down();  break;
-                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:   down();  break;
+                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:    left();  break;
+                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:   right(); break;
                 case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: hold();  break;
         }
         return 0;
