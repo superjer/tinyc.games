@@ -27,24 +27,24 @@ enum { NONE = 0, WALL, NORMAL };
 //   1100000    - ...     right ...
 
 char shapes[] =
-        ".... D... ..D. .Vl. .... BL.. .FH. .D.. "
+        ".... D... ..D. .Vl. .... BL.. .FH. ;D;. "
         ".... CJH. BJI. .Si. BJJH .CH. BI.. BKH. "
-        ".... .... .... .... .... .... .... .... "
+        ".... .... .... .... .... .... .... ,.,. "
         ".... .... .... .... .... .... .... .... "
 
-        ".... .FH. .D.. .Vl. ..D. ..D. .D.. .D.. "
+        ".... .FH. .D.. .Vl. ..D. ..D. .D.. ,D;. "
         ".... .E.. .E.. .Si. ..E. .FI. .CL. .GH. "
-        ".... .A.. .CH. .... ..E. .A.. ..A. .A.. "
+        ".... .A.. .CH. .... ..E. .A.. ..A. ,A;. "
         ".... .... .... .... ..A. .... .... .... "
 
-        ".... .... .... .Vl. .... .... .... .... "
+        ".... .... .... .Vl. .... .... .... ,.,. "
         ".... BJL. FJH. .Si. .... BL.. .FH. BNH. "
-        ".... ..A. A... .... BJJH .CH. BI.. .A.. "
+        ".... ..A. A... .... BJJH .CH. BI.. ;A;. "
         ".... .... .... .... .... .... .... .... "
 
-        ".... .D.. BL.. .Vl. .D.. .D.. D... .D.. "
+        ".... .D.. BL.. .Vl. .D.. .D.. D... ;D,. "
         ".... .E.. .E.. .Si. .E.. FI.. CL.. BM.. "
-        ".... BI.. .A.. .... .E.. A... .A.. .A.. "
+        ".... BI.. .A.. .... .E.. A... .A.. ;A,. "
         ".... .... .... .... .A.. .... .... .... ";
 
 struct shadow { int x, w, y; } shadows[4][8] = { // pre-computed shadow positions for each piece
@@ -138,6 +138,8 @@ struct {
         int box_w;                      // width of hold box / preview box
         int ticks;                      // counts up while game is going
         int seed1, seed2;               // make garbage and bags fair
+        float offs_x, offs_y;
+        char *tspin;
         int device;                     // SDL's input device id
         char dev_name[80];              // input device "name"
 } play[NPLAY], *p;                      // one per player
@@ -172,4 +174,5 @@ void reset_fall();
 void bake();
 void new_game();
 int is_solid_part(int shape, int rot, int i, int j);
+int is_tspin_part(int shape, int rot, int i, int j);
 int collide(int x, int y, int rot);

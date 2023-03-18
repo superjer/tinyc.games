@@ -120,11 +120,11 @@ void receive_garbage()
 void new_particle(int x, int y)
 {
         parts[npart++] = (struct particle){
-                p->board_x + x * bs - bs2,
-                p->board_y + (y + VHEIGHT - BHEIGHT) * bs - bs2,
+                p->board_x + x * bs,
+                p->board_y + (y + VHEIGHT - BHEIGHT) * bs + bs2,
                 bs * 0.8f,
-                (rand() % 10 - 5) * 0.1f,
-                (rand() % 30 + 30) * 0.1f,
+                (rand() % 10 - 5) * 0.02f,
+                (rand() % 30 + 30) * 0.02f,
         };
         if (npart >= NPARTS) npart = 0;
 }
@@ -285,9 +285,15 @@ void move(int dx, int dy, int gravity)
         else if (collision == WALL)
         {
                 if (dx == -1 && tick - p->last_dx_tick < 8)
+                {
+                        p->offs_x -= .20f;
                         audio_tone(TRIANGLE, C2, C2, 25, 5, 5, 25);
+                }
                 if (dx ==  1 && tick - p->last_dx_tick < 8)
+                {
+                        p->offs_x += .20f;
                         audio_tone(TRIANGLE, E2, C2, 15, 5, 5, 15);
+                }
         }
 }
 
@@ -364,8 +370,6 @@ int increment_and_check_line(int y)
 
         for (int i = 0; i < BWIDTH; i++)
                 p->row[y].col[i].color = 8;
-
-        audio_tone(SINE, G3, G5, 20, 50, 50, 200);
         return 1;
 }
 
@@ -373,12 +377,21 @@ int increment_and_check_line(int y)
 void bake()
 {
         int completed_lines = 0;
+        int tsum = 0; // for detecting t-spins
+        int stuck = collide(p->it.x    , p->it.y - 1, p->it.rot)
+                 && collide(p->it.x - 1, p->it.y    , p->it.rot)
+                 && collide(p->it.x + 1, p->it.y    , p->it.rot);
 
         for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
         {
                 int world_i = i + p->it.x;
                 int world_j = j + p->it.y;
                 int part = is_solid_part(p->it.color, p->it.rot, i, j);
+
+                int tpart = is_tspin_part(p->it.color, p->it.rot, i, j);
+                if (world_i < 0 || world_i >= BWIDTH || world_j < 0 || world_j >= BHEIGHT ||
+                        p->row[world_j].col[world_i].color)
+                        tsum += tpart;
 
                 if (!part) continue;
 
@@ -392,7 +405,31 @@ void bake()
 
         p->it.color = 0;
         p->hold_uses = 0;
-        if (!completed_lines) p->combo = 0; // break combo
+        p->tspin = "";
+
+        if (stuck && tsum >= 21)
+        {
+                p->tspin = "T-SPIN!";
+                audio_tone(SQUARE, F2, F2, 2, 2, 2, 2);
+                audio_tone(SQUARE, D4, D4, 2, 3, 1, 1);
+                audio_tone(SINE, C5, C5, 20, 5, 1, 1);
+                audio_tone(SINE, E5, E5, 80, 5, 1, 40);
+        }
+        else if (stuck && tsum == 12)
+        {
+                p->tspin = "T-SPIN MINI";
+                audio_tone(SQUARE, F2, F2, 2, 2, 2, 2);
+                audio_tone(SQUARE, D4, D4, 2, 3, 1, 1);
+        }
+        else if (completed_lines)
+        {
+                for (int i = 0; i < completed_lines; i++)
+                        audio_tone(SINE, G3, G5, 20, 50, 50, 200);
+        }
+        else
+        {
+                p->combo = 0; // break combo
+        }
 }
 
 // check if a sub-part of the falling shape is solid at a particular rotation
@@ -400,7 +437,14 @@ int is_solid_part(int shape, int rot, int i, int j)
 {
         int base = shape * 5 + rot * 5 * 8 * 4;
         int part = shapes[base + j * 5 * 8 + i];
-        return part == '.' ? 0 : part;
+        return part < '@' ? 0 : part;
+}
+
+int is_tspin_part(int shape, int rot, int i, int j)
+{
+        int base = shape * 5 + rot * 5 * 8 * 4;
+        int part = shapes[base + j * 5 * 8 + i];
+        return part == ',' ? 1 : part == ';' ? 10 : 0;
 }
 
 // check if the current piece would collide at a certain position and rotation

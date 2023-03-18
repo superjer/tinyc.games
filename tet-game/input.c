@@ -4,6 +4,8 @@
 #define WASD -1
 #define ARROW_KEYS -2
 
+void resize(int, int);
+
 void down()
 {
         p->down = 1;
@@ -57,6 +59,7 @@ void hard()
         p->idle_time = 50;
         p->beam = p->it;
         p->beam_tick = tick;
+        p->offs_y += .25f;
         audio_tone(TRIANGLE, A1, E3, 5, 5, 5, 90);
 }
 
@@ -177,10 +180,6 @@ int key_down()
                 case SDLK_z:   case SDLK_CAPSLOCK:  case SDLK_RETURN: spin(3); break;
                 case SDLK_x:   case SDLK_LSHIFT:    case SDLK_RSHIFT: spin(1); break;
                 case SDLK_TAB: case SDLK_BACKSLASH:                   hold();  break;
-
-                case SDLK_g:
-                        p->garbage[3] += 1 + rand() % 3;
-                        p->garbage_tick = tick;
         }
 
         return 0;

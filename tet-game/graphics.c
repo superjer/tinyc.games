@@ -134,10 +134,13 @@ void draw_player()
 {
         if (state == MAIN_MENU || state == NUMBER_MENU) return;
 
+        int x = p->board_x + bs * p->offs_x;
+        int y = p->board_y + bs * p->offs_y;
+
         // draw background, black boxes
         SDL_SetRenderDrawColor(renderer, 16, 26, 24, 255);
         SDL_RenderFillRect(renderer, &(SDL_Rect){p->held.x, p->held.y, p->box_w, p->box_w});
-        SDL_RenderFillRect(renderer, &(SDL_Rect){p->board_x, p->board_y, p->board_w, bs * VHEIGHT});
+        SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, p->board_w, bs * VHEIGHT});
 
         // find ghost piece position
         int ghost_y = p->it.y;
@@ -151,8 +154,8 @@ void draw_player()
                 int top = MAX(0, p->it.y + shadow.y - 5);
                 SDL_SetRenderDrawColor(renderer, 8, 13, 12, 255);
                 SDL_RenderFillRect(renderer, &(SDL_Rect){
-                        p->board_x + bs * (p->it.x + shadow.x),
-                        p->board_y + bs * top,
+                        x + bs * (p->it.x + shadow.x),
+                        y + bs * top,
                         bs * shadow.w,
                         MAX(0, bs * (ghost_y - top + shadow.y - 5)) });
         }
@@ -166,25 +169,25 @@ void draw_player()
                 int rh = bs * (p->beam.y + shadow.y - 5);
                 int lossw = (1.f - ((1.f - loss) * (1.f - loss))) * rw;
                 int lossh = loss < .5f ? 0.f : (1.f - ((1.f - loss) * (1.f - loss))) * rh;
-                SDL_SetRenderDrawColor(renderer, 33, 37, 43, 255);
-                SDL_RenderFillRect(renderer, &(SDL_Rect){ (p->board_x + bs * (p->beam.x + shadow.x)) + lossw / 2,
-                                p->board_y + lossh, rw - lossw, rh - lossh});
+                SDL_SetRenderDrawColor(renderer, 66, 74, 86, 255);
+                SDL_RenderFillRect(renderer, &(SDL_Rect){ (x + bs * (p->beam.x + shadow.x)) + lossw / 2,
+                                y + lossh, rw - lossw, rh - lossh});
         }
 
         // draw pieces on board
         for (int i = 0; i < BWIDTH; i++) for (int j = 0; j < BHEIGHT; j++)
-                draw_mino(p->board_x + bs * i, p->board_y + bs * (j-5) - p->row[j].offset,
+                draw_mino(x + bs * i, y + bs * (j-5) - p->row[j].offset,
                                 p->row[j].col[i].color, 0, p->row[j].col[i].part);
 
         // draw queued garbage
-        int y = p->board_y + bs * (VHEIGHT);
+        int yy = y + bs * (VHEIGHT);
         for (int i = 0; i < GARB_LVLS; i++)
                 for (int j = 0; j < p->garbage[i]; j++)
-                        draw_mino(p->board_x - 3 * bs2, (y -= bs), (3 - i) + 9, 0, '@');
+                        draw_mino(x - 3 * bs2, (yy -= bs), (3 - i) + 9, 0, '@');
 
         // draw falling piece & ghost
-        draw_shape(p->board_x + bs * p->it.x, p->board_y + bs * (ghost_y - 5), p->it.color, p->it.rot, OUTLINE);
-        draw_shape(p->board_x + bs * p->it.x, p->board_y + bs * (p->it.y - 5), p->it.color, p->it.rot, 0);
+        draw_shape(x + bs * p->it.x, y + bs * (ghost_y - 5), p->it.color, p->it.rot, OUTLINE);
+        draw_shape(x + bs * p->it.x, y + bs * (p->it.y - 5), p->it.color, p->it.rot, 0);
 
         // draw next pieces
         for (int n = 0; n < 5; n++)
@@ -196,16 +199,17 @@ void draw_player()
         // draw scores etc
         text_x = p->held.x;
         text_y = p->held.y + p->box_w + bs2;
-        text("%d pts "   , p->score);
-        text("%d lines " , p->lines);
-        text("%d garbo " , p->garbage_remaining);
+        text("%d pts ", p->score);
+        text("%d lines ", p->lines);
 
         int secs = p->ticks / 60 % 60;
         int mins = p->ticks / 60 / 60 % 60;
         char minsec[80];
         sprintf(minsec, "%d:%02d.%02d ", mins, secs, p->ticks % 60 * 1000 / 600);
-        text(minsec      , 0);
-        text(p->dev_name , 0);
+        text(minsec, 0);
+        text(p->dev_name, 0);
+        if (p->combo > 1) text("%d combo ", p->combo);
+        text(p->tspin, 0);
 
         if (p->reward)
         {
@@ -214,8 +218,8 @@ void draw_player()
                 text("%d", p->reward);
         }
 
-        text_x = p->board_x + bs2;
-        text_y = p->board_y + bs2 * 19;
+        text_x = x + bs2;
+        text_y = y + bs2 * 19;
         if (p->countdown_time > 0)
                 text(countdown_msg[p->countdown_time / CTDN_TICKS], 0);
 
@@ -223,6 +227,12 @@ void draw_player()
                 text(p >= play + assign_me ? "Press button to join" : p->dev_name, 0);
 
         if (state == GAMEOVER) text("Game over", 0);
+
+        // update bouncy offsets
+        if (p->offs_x < .01f && p->offs_x > -.01f) p->offs_x = .0f;
+        if (p->offs_y < .01f && p->offs_y > -.01f) p->offs_y = .0f;
+        if (p->offs_x) p-> offs_x *= .98f;
+        if (p->offs_y) p-> offs_y *= .98f;
 }
 
 void reflow()
