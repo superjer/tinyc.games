@@ -128,9 +128,11 @@ struct player {
         int garbage[GARB_LVLS + 1];     // queued garbage, e.g. received from opponents
         int garbage_tick;               // keeps track of when to age garbage
         int garbage_remaining;          // how many lines of garbage remain to clear to win
+        int top_garb;                   // highest position of garbage stack drawn
         int level;                      // difficultly level (lines/10)
         int countdown_time;             // ready-set-go countdown
         int idle_time;                  // how long the player has been idle in ticks
+        int shiny_lines;
         int shine_time;                 // delay in ticks before clearing line(s)
         int dead_time;                  // delay in ticks after game over
         int board_x, board_y, board_w;  // positions and sizes of things
@@ -144,7 +146,7 @@ struct player {
         char dev_name[80];              // input device "name"
 } play[NPLAY], *p;                      // one per player
 
-struct particle { float x, y, r, vx, vy; };
+struct particle { float x, y, r, vx, vy; int opponent; };
 struct particle parts[NPARTS];
 struct particle flows[NFLOWS];
 

@@ -67,7 +67,25 @@ void draw_particles()
                 parts[i].x += parts[i].vx;
                 parts[i].y += parts[i].vy;
                 parts[i].r *= 0.992f + (rand() % 400) * 0.00001f;
-                if (parts[i].r > 0.8 * bs)
+                int opponent = parts[i].opponent;
+
+                if(opponent >= 0 && parts[i].r < 0.9 * bs)
+                {
+                        int a = play[opponent].top_garb;
+                        int b = play[opponent].board_y + bs * VHEIGHT;
+                        float targ_x = play[opponent].board_x - 3 * bs2;
+                        float targ_y = rand() % (b - a + 1) + a;
+                        float ideal_vec_x = (targ_x - parts[i].x) * 0.0005f;
+                        float ideal_vec_y = (targ_y - parts[i].y) * 0.0005f;
+                        parts[i].vx *= 0.99f;
+                        parts[i].vy *= 0.99f;
+                        parts[i].vx += ideal_vec_x;
+                        parts[i].vy += ideal_vec_y;
+                        if (fabsf(parts[i].x - targ_x) < bs
+                                        && fabsf(parts[i].y - targ_y) < bs)
+                                parts[i].r = 0.f;
+                }
+                else if (parts[i].r > 0.8 * bs)
                 {
                         parts[i].vy *= 0.82f;
                 }
@@ -180,10 +198,10 @@ void draw_player()
                                 p->row[j].col[i].color, 0, p->row[j].col[i].part);
 
         // draw queued garbage
-        int yy = y + bs * (VHEIGHT);
+        p->top_garb = y + bs * VHEIGHT;
         for (int i = 0; i < GARB_LVLS; i++)
                 for (int j = 0; j < p->garbage[i]; j++)
-                        draw_mino(x - 3 * bs2, (yy -= bs), (3 - i) + 9, 0, '@');
+                        draw_mino(x - 3 * bs2, (p->top_garb -= bs), (3 - i) + 9, 0, '@');
 
         // draw falling piece & ghost
         draw_shape(x + bs * p->it.x, y + bs * (ghost_y - 5), p->it.color, p->it.rot, OUTLINE);

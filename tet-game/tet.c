@@ -117,7 +117,7 @@ void receive_garbage()
         }
 }
 
-void new_particle(int x, int y)
+void new_particle(int x, int y, int opponent)
 {
         parts[npart++] = (struct particle){
                 p->board_x + x * bs,
@@ -125,19 +125,38 @@ void new_particle(int x, int y)
                 bs * 0.8f,
                 (rand() % 10 - 5) * 0.02f,
                 (rand() % 30 + 30) * 0.02f,
+                opponent,
         };
         if (npart >= NPARTS) npart = 0;
 }
 
 void kill_lines()
 {
+        int opponent = -1; // target if we end up sending garbage
+
+        p->lines += p->shiny_lines;
+        p->level = p->lines / 10;
+        p->combo++;
+        p->reward = combo_bonus[MIN(MAX_COMBO, p->combo)] * rewards[p->shiny_lines];
+        p->score += p->reward;
+        p->shiny_lines = 0;
+        int sendable = p->reward / 400; // garbage to send
+
+        if (sendable && nplay > 1 && !garbage_race)
+        {
+                do opponent = rand() % nplay; while (play + opponent == p);
+                play[opponent].garbage[GARB_LVLS - 1] += sendable;
+                play[opponent].garbage_tick = tick;
+        }
+
+
         // clean up sliced pieces
         for (int y = 0; y < BHEIGHT; y++)
         {
                 p->row[y].offset = 0;
                 if (p->row[y].fullness == 10)
                         for (int x = 0; x < BWIDTH; x++)
-                                new_particle(x, y);
+                                new_particle(x, y, opponent);
 
                 if (y > 0 && p->row[y - 1].fullness == 10)
                         for (int x = 0; x < BWIDTH; x++)
@@ -148,13 +167,10 @@ void kill_lines()
                                 p->row[y].col[x].part &= ~4;
         }
 
-        int new_lines = 0;
         for (int y = 0; y < BHEIGHT; y++)
         {
                 if (p->row[y].fullness != 10) continue;
 
-                p->lines++;
-                new_lines++;
                 if (p->row[y].special) p->garbage_remaining--;
 
                 for (int j = y; j > 0; j--)
@@ -164,20 +180,6 @@ void kill_lines()
                 }
 
                 memset(&p->row[0], 0, sizeof p->row[0]);
-        }
-
-        p->level = p->lines / 10;
-        p->combo++;
-        p->reward = combo_bonus[MIN(MAX_COMBO, p->combo)] * rewards[new_lines];
-        p->score += p->reward;
-
-        if (nplay > 1)
-        {
-                p->reward /= 400; // in multiplayer, send garbage
-                int opponent;
-                do opponent = rand() % nplay; while (play + opponent == p);
-                play[opponent].garbage[GARB_LVLS - 1] += p->reward;
-                play[opponent].garbage_tick = tick;
         }
 
         reflow();
@@ -367,6 +369,7 @@ int increment_and_check_line(int y)
         p->reward_x = p->board_x + bs * (p->it.x + 2);
         p->reward_y = p->board_y + bs * (p->it.y - 4);
         p->shine_time = 20;
+        p->shiny_lines++;
 
         for (int i = 0; i < BWIDTH; i++)
                 p->row[y].col[i].color = 8;
