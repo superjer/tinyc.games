@@ -1,5 +1,75 @@
 #include "tet.h"
 
+#define VBUFLEN 20000
+
+unsigned main_prog_id;
+GLuint main_vao;
+GLuint main_vbo;
+float vbuf[VBUFLEN];
+int vbuf_n;
+float color_r, color_g, color_b;
+
+int check_shader_errors(GLuint shader, char *name)
+{
+        GLint success;
+        GLchar log[1024];
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+        if (success) return 0;
+        glGetShaderInfoLog(shader, 1024, NULL, log);
+        fprintf(stderr, "ERROR in %s shader program: %s\n", name, log);
+        exit(1);
+        return 1;
+}
+
+int check_program_errors(GLuint shader, char *name)
+{
+        GLint success;
+        GLchar log[1024];
+        glGetProgramiv(shader, GL_LINK_STATUS, &success);
+        if (success) return 0;
+        glGetProgramInfoLog(shader, 1024, NULL, log);
+        fprintf(stderr, "ERROR in %s shader: %s\n", name, log);
+        exit(1);
+        return 1;
+}
+
+// please free() the returned string
+char *file2str(char *filename)
+{
+        FILE *f;
+
+        #if defined(_MSC_VER) && _MSC_VER >= 1400
+                if (fopen_s(&f, filename, "r"))
+                        f = NULL;
+        #else
+                f = fopen(filename, "r");
+        #endif
+
+        if (!f) goto bad;
+        fseek(f, 0, SEEK_END);
+        size_t sz = ftell(f);
+        rewind(f);
+        char *buf = calloc(sz + 1, sizeof *buf);
+        if (fread(buf, 1, sz, f) != sz) goto bad;
+        fclose(f);
+        return buf;
+
+        bad:
+        fprintf(stderr, "Failed to open/read %s\n", filename);
+        return NULL;
+}
+
+unsigned int file2shader(unsigned int type, char *filename)
+{
+        char *code = file2str(filename);
+        unsigned int id = glCreateShader(type);
+        glShaderSource(id, 1, (const char *const *)&code, NULL);
+        glCompileShader(id);
+        check_shader_errors(id, filename);
+        free(code);
+        return id;
+}
+
 // render a line of text optionally with a %d value in it
 void text(char *fstr, int value)
 {
@@ -18,6 +88,97 @@ void text(char *fstr, int value)
         text_y += bs * 125 / 100 + (fstr[strlen(fstr) - 1] == ' ' ? bs : 0);
 }
 
+void draw_setup()
+{
+        fprintf(stderr, "GLSL version on this system is %s\n", (char *)glGetString(GL_SHADING_LANGUAGE_VERSION));
+        unsigned int vertex = file2shader(GL_VERTEX_SHADER, "shaders/main.vert");
+        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, "shaders/main.frag");
+        main_prog_id = glCreateProgram();
+        glAttachShader(main_prog_id, vertex);
+        glAttachShader(main_prog_id, fragment);
+        glLinkProgram(main_prog_id);
+        check_program_errors(main_prog_id, "main");
+        glDeleteShader(vertex);
+        glDeleteShader(fragment);
+        glGenVertexArrays(1, &main_vao);
+        glGenBuffers(1, &main_vbo);
+}
+
+void vertex(float x, float y, float r, float g, float b)
+{
+        if (vbuf_n >= VBUFLEN - 5) return;
+        vbuf[vbuf_n++] = x;
+        vbuf[vbuf_n++] = y;
+        vbuf[vbuf_n++] = r;
+        vbuf[vbuf_n++] = g;
+        vbuf[vbuf_n++] = b;
+}
+
+void rect(float x, float y, float w, float h)
+{
+        vertex(x    , y    , color_r, color_g, color_b);
+        vertex(x + w, y    , color_r, color_g, color_b);
+        vertex(x    , y + h, color_r, color_g, color_b);
+        vertex(x    , y + h, color_r, color_g, color_b);
+        vertex(x + w, y    , color_r, color_g, color_b);
+        vertex(x + w, y + h, color_r, color_g, color_b);
+}
+
+void draw_start()
+{
+        vbuf_n = 0;
+        glClear(GL_COLOR_BUFFER_BIT);
+}
+
+void draw_end()
+{
+        glUseProgram(main_prog_id);
+
+        float near = -1.f;
+        float far = 1.f;
+        float x = 1.f / (win_x / 2.f);
+        float y = -1.f / (win_y / 2.f);
+        float z = -1.f / ((far - near) / 2.f);
+        float tz = -(far + near) / (far - near);
+        float ortho[] = {
+                x, 0, 0,  0,
+                0, y, 0,  0,
+                0, 0, z,  0,
+               -1, 1, tz, 1,
+        };
+        glUniformMatrix4fv(glGetUniformLocation(main_prog_id, "proj"), 1, GL_FALSE, ortho);
+
+        glBindVertexArray(main_vao);
+        glBindBuffer(GL_ARRAY_BUFFER, main_vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof vbuf, vbuf, GL_STATIC_DRAW);
+
+        // show GL where the position data is
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
+        glEnableVertexAttribArray(0);
+
+        // show GL where the color data is
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(2 * sizeof(float)));
+        glEnableVertexAttribArray(1); 
+
+        fprintf(stderr, "Drawing %d vertexes\n", vbuf_n / 5);
+        glDrawArrays(GL_TRIANGLES, 0, vbuf_n / 5);
+}
+
+// set the current draw color to the color assoc. with a shape
+void set_color_from_shape(int shape, int shade)
+{
+        color_r = MAX((colors[shape] >> 16 & 0xFF) + shade, 0) / 255.f;
+        color_g = MAX((colors[shape] >>  8 & 0xFF) + shade, 0) / 255.f;
+        color_b = MAX((colors[shape] >>  0 & 0xFF) + shade, 0) / 255.f;
+}
+
+void set_color(int r, int g, int b)
+{
+        color_r = r / 255.f;
+        color_g = g / 255.f;
+        color_b = b / 255.f;
+}
+
 void draw_menu()
 {
         if (state != MAIN_MENU && state != NUMBER_MENU) return;
@@ -26,12 +187,11 @@ void draw_menu()
         menu_pos = MIN(menu_pos, state == NUMBER_MENU ? 3 : 2);
         p = play; // just grab first player :)
 
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){
-                        p->held.x,
-                        p->held.y + p->box_w + bs2 + line_height * (menu_pos + 1),
-                        p->board_w,
-                        line_height });
+        set_color(0, 0, 0);
+        rect(p->held.x,
+             p->held.y + p->box_w + bs2 + line_height * (menu_pos + 1),
+             p->board_w,
+             line_height);
         text_x = p->held.x;
         text_y = p->held.y + p->box_w + bs2;
         if (state == MAIN_MENU)
@@ -57,13 +217,8 @@ void draw_particles()
         {
                 if (parts[i].r <= 0.5f)
                         continue;
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                SDL_RenderFillRect(renderer, &(SDL_Rect){
-                        parts[i].x,
-                        parts[i].y,
-                        parts[i].r,
-                        parts[i].r,
-                });
+                set_color(254, 254, 254);
+                rect(parts[i].x, parts[i].y, parts[i].r, parts[i].r);
                 parts[i].x += parts[i].vx;
                 parts[i].y += parts[i].vy;
                 parts[i].r *= 0.992f + (rand() % 400) * 0.00001f;
@@ -103,33 +258,24 @@ void draw_particles()
         }
 }
 
-// set the current draw color to the color assoc. with a shape
-void set_color_from_shape(int shape, int shade)
-{
-        int r = MAX((colors[shape] >> 16 & 0xFF) + shade, 0);
-        int g = MAX((colors[shape] >>  8 & 0xFF) + shade, 0);
-        int b = MAX((colors[shape] >>  0 & 0xFF) + shade, 0);
-        SDL_SetRenderDrawColor(renderer, r, g, b, 255);
-}
-
 // draw a single mino (square) of a shape
 void draw_mino(int x, int y, int shape, int outline, int part)
 {
         if (!part) return;
         int bw = MAX(1, outline ? bs / 10 : bs / 6);
         set_color_from_shape(shape, -50);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, bs, bs});
+        rect(x, y, bs, bs);
         set_color_from_shape(shape, outline ? -255 : 0);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){ // horizontal band
+        rect( // horizontal band
                         x + (part & 8 ? 0 : bw),
                         y + bw,
                         bs - (part & 8 ? 0 : bw) - (part & 2 ? 0 : bw),
-                        bs - bw - bw });
-        SDL_RenderFillRect(renderer, &(SDL_Rect){ // vertical band
+                        bs - bw - bw);
+        rect( // vertical band
                         x + (part & 32 ? 0 : bw),
                         y + (part & 1 ? 0 : bw),
                         bs - (part & 32 ? 0 : bw) - (part & 16 ? 0 : bw),
-                        bs - (part & 1 ? 0 : bw) - (part & 4 ? 0 : bw) });
+                        bs - (part & 1 ? 0 : bw) - (part & 4 ? 0 : bw));
 }
 
 #define CENTER 1
@@ -156,9 +302,9 @@ void draw_player()
         int y = p->board_y + bs * p->offs_y;
 
         // draw background, black boxes
-        SDL_SetRenderDrawColor(renderer, 16, 26, 24, 255);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){p->held.x, p->held.y, p->box_w, p->box_w});
-        SDL_RenderFillRect(renderer, &(SDL_Rect){x, y, p->board_w, bs * VHEIGHT});
+        set_color(16, 26, 24);
+        rect(p->held.x, p->held.y, p->box_w, p->box_w);
+        rect(x, y, p->board_w, bs * VHEIGHT);
 
         // find ghost piece position
         int ghost_y = p->it.y;
@@ -170,12 +316,11 @@ void draw_player()
         {
                 struct shadow shadow = shadows[p->it.rot][p->it.color];
                 int top = MAX(0, p->it.y + shadow.y - 5);
-                SDL_SetRenderDrawColor(renderer, 8, 13, 12, 255);
-                SDL_RenderFillRect(renderer, &(SDL_Rect){
-                        x + bs * (p->it.x + shadow.x),
-                        y + bs * top,
-                        bs * shadow.w,
-                        MAX(0, bs * (ghost_y - top + shadow.y - 5)) });
+                set_color(8, 13, 12);
+                rect(x + bs * (p->it.x + shadow.x),
+                     y + bs * top,
+                     bs * shadow.w,
+                     MAX(0, bs * (ghost_y - top + shadow.y - 5)));
         }
 
         // draw hard drop beam
@@ -187,9 +332,11 @@ void draw_player()
                 int rh = bs * (p->beam.y + shadow.y - 5);
                 int lossw = (1.f - ((1.f - loss) * (1.f - loss))) * rw;
                 int lossh = loss < .5f ? 0.f : (1.f - ((1.f - loss) * (1.f - loss))) * rh;
-                SDL_SetRenderDrawColor(renderer, 66, 74, 86, 255);
-                SDL_RenderFillRect(renderer, &(SDL_Rect){ (x + bs * (p->beam.x + shadow.x)) + lossw / 2,
-                                y + lossh, rw - lossw, rh - lossh});
+                set_color(66, 74, 86);
+                rect(x + bs * (p->beam.x + shadow.x) + lossw / 2,
+                     y + lossh,
+                     rw - lossw,
+                     rh - lossh);
         }
 
         // draw pieces on board

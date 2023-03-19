@@ -1,4 +1,5 @@
 gcc -std=c2x -Wall -pedantic \
+        -g \
         -I/usr/include/GL/ \
         -I/usr/include/SDL2 \
         -o tet tet.c \

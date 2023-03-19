@@ -18,7 +18,7 @@
 #define NPLAY 4
 #define NPARTS 100
 #define NFLOWS 20
-#define CTDN_TICKS 80
+#define CTDN_TICKS 48
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define SWAP(a,b) {int *x = &(a); int *y = &(b); int t = *x; *x = *y; *y = t;}

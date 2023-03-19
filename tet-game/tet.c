@@ -17,9 +17,13 @@
 int main()
 {
         setup();
+        draw_setup();
+        unsigned long long freq = SDL_GetPerformanceFrequency();
         for (;;)
         {
+                unsigned long long start = SDL_GetPerformanceCounter();
                 int joy_tick = 0;
+
                 while (SDL_PollEvent(&event)) switch (event.type)
                 {
                         case SDL_QUIT:                 exit(0);
@@ -34,11 +38,10 @@ int main()
                                         resize(event.window.data1, event.window.data2);
                                 break;
                 }
+
                 if (joy_tick == tick - 1) joy_setup();
 
-                glViewport(0, 0, win_x, win_y);
-                glClearColor(0.18f, 0.18f, 0.18f, 1.f);
-                glClear(GL_COLOR_BUFFER_BIT);
+                draw_start();
                 draw_menu();
 
                 for (p = play; p < play + nplay; p++)
@@ -48,11 +51,31 @@ int main()
                 }
 
                 draw_particles();
+                draw_end();
                 SDL_GL_SwapWindow(win);
-                SDL_Delay(10);
                 tick++;
+
+                // framerate stuff, cap to 60 fps
+                float diff = (SDL_GetPerformanceCounter() - start) / (float)freq * 1000.f;
+                if (diff < 16.6667f)
+                        SDL_Delay(16.6667f - diff);
+                diff = (SDL_GetPerformanceCounter() - start) / (float)freq * 1000.f;
+                //fprintf(stderr, "frame time %.2fms = %.1f fps\n", diff, 1000.f / diff);
         }
 }
+
+#ifndef __APPLE__
+void GLAPIENTRY
+MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
+                GLsizei length, const GLchar* message, const void* userParam)
+{
+        if (type != GL_DEBUG_TYPE_ERROR) return; // too much yelling
+        fprintf( stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
+                        ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
+                        type, severity, message );
+        exit(-7);
+}
+#endif
 
 // initial setup to get the window and rendering going
 void setup()
@@ -60,8 +83,6 @@ void setup()
         srand(time(NULL));
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO);
 
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
         win = SDL_CreateWindow("Tet", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
                 win_x, win_y, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
         if (!win) exit(fprintf(stderr, "%s\n", SDL_GetError()));
@@ -71,15 +92,15 @@ void setup()
         ctx = SDL_GL_CreateContext(win);
         if (!ctx) exit(fprintf(stderr, "Could not create GL context\n"));
 
-        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         SDL_GL_SetSwapInterval(1);
+        glClearColor(0.18f, 0.18f, 0.18f, 1.f);
 
-        renderer = SDL_CreateRenderer(win, -1, 0);
-        if (!renderer)
-        {
-                fprintf(stderr, "Unable to create renderer: %s\n", SDL_GetError());
-                exit(1);
-        }
+        #ifndef __APPLE__
+        glewExperimental = GL_TRUE;
+        glewInit();
+        glEnable(GL_DEBUG_OUTPUT);
+        glDebugMessageCallback(MessageCallback, 0);
+        #endif
 
         TTF_Init();
         resize(win_x, win_y);
@@ -262,7 +283,7 @@ void new_piece()
 void move(int dx, int dy, int gravity)
 {
         if (!gravity)
-                p->move_cooldown = p->move_cooldown ? 5 : 15;
+                p->move_cooldown = p->move_cooldown ? 4 : 9;
 
         int collision = collide(p->it.x + dx, p->it.y + dy, p->it.rot);
 
