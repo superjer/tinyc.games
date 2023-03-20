@@ -1,4 +1,6 @@
 #include "tet.h"
+#include "../common/tinyc.games/utils.c"
+#include "../common/tinyc.games/font.c"
 
 #define VBUFLEN 20000
 
@@ -9,82 +11,15 @@ float vbuf[VBUFLEN];
 int vbuf_n;
 float color_r, color_g, color_b;
 
-int check_shader_errors(GLuint shader, char *name)
-{
-        GLint success;
-        GLchar log[1024];
-        glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-        if (success) return 0;
-        glGetShaderInfoLog(shader, 1024, NULL, log);
-        fprintf(stderr, "ERROR in %s shader program: %s\n", name, log);
-        exit(1);
-        return 1;
-}
-
-int check_program_errors(GLuint shader, char *name)
-{
-        GLint success;
-        GLchar log[1024];
-        glGetProgramiv(shader, GL_LINK_STATUS, &success);
-        if (success) return 0;
-        glGetProgramInfoLog(shader, 1024, NULL, log);
-        fprintf(stderr, "ERROR in %s shader: %s\n", name, log);
-        exit(1);
-        return 1;
-}
-
-// please free() the returned string
-char *file2str(char *filename)
-{
-        FILE *f;
-
-        #if defined(_MSC_VER) && _MSC_VER >= 1400
-                if (fopen_s(&f, filename, "r"))
-                        f = NULL;
-        #else
-                f = fopen(filename, "r");
-        #endif
-
-        if (!f) goto bad;
-        fseek(f, 0, SEEK_END);
-        size_t sz = ftell(f);
-        rewind(f);
-        char *buf = calloc(sz + 1, sizeof *buf);
-        if (fread(buf, 1, sz, f) != sz) goto bad;
-        fclose(f);
-        return buf;
-
-        bad:
-        fprintf(stderr, "Failed to open/read %s\n", filename);
-        return NULL;
-}
-
-unsigned int file2shader(unsigned int type, char *filename)
-{
-        char *code = file2str(filename);
-        unsigned int id = glCreateShader(type);
-        glShaderSource(id, 1, (const char *const *)&code, NULL);
-        glCompileShader(id);
-        check_shader_errors(id, filename);
-        free(code);
-        return id;
-}
-
 // render a line of text optionally with a %d value in it
 void text(char *fstr, int value)
 {
-        if (!font || !fstr || !fstr[0]) return;
-        char msg[80];
-        snprintf(msg, 80, fstr, value);
-        SDL_Color color = (SDL_Color){180, 190, 185};
-        if (fstr[0] == ' ' && tick / 3 % 2) color = (SDL_Color){255, 255, 255};
-        SDL_Surface *msgsurf = TTF_RenderText_Blended(font, msg, color);
-        SDL_Texture *msgtex = SDL_CreateTextureFromSurface(renderer, msgsurf);
-        SDL_Rect fromrec = {0, 0, msgsurf->w, msgsurf->h};
-        SDL_Rect torec = {text_x, text_y, msgsurf->w, msgsurf->h};
-        SDL_RenderCopy(renderer, msgtex, &fromrec, &torec);
-        SDL_DestroyTexture(msgtex);
-        SDL_FreeSurface(msgsurf);
+        if (!fstr) return;
+        char str[100];
+        snprintf(str, 99, fstr, value);
+        font_begin(win_x, win_y);
+        font_add_text(str, text_x, text_y, 3);
+        font_end(1, 1, 1);
         text_y += bs * 125 / 100 + (fstr[strlen(fstr) - 1] == ' ' ? bs : 0);
 }
 
@@ -126,7 +61,7 @@ void rect(float x, float y, float w, float h)
 
 void draw_start()
 {
-        vbuf_n = 0;
+        glViewport(0, 0, win_x, win_y);
         glClear(GL_COLOR_BUFFER_BIT);
 }
 
@@ -160,8 +95,8 @@ void draw_end()
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(2 * sizeof(float)));
         glEnableVertexAttribArray(1); 
 
-        fprintf(stderr, "Drawing %d vertexes\n", vbuf_n / 5);
         glDrawArrays(GL_TRIANGLES, 0, vbuf_n / 5);
+        vbuf_n = 0;
 }
 
 // set the current draw color to the color assoc. with a shape
@@ -192,6 +127,8 @@ void draw_menu()
              p->held.y + p->box_w + bs2 + line_height * (menu_pos + 1),
              p->board_w,
              line_height);
+        draw_end();
+
         text_x = p->held.x;
         text_y = p->held.y + p->box_w + bs2;
         if (state == MAIN_MENU)
@@ -360,6 +297,8 @@ void draw_player()
 
         // draw held piece
         draw_shape(p->held.x, p->held.y, p->held.color, 0, CENTER);
+
+        draw_end();
 
         // draw scores etc
         text_x = p->held.x;

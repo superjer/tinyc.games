@@ -9,7 +9,9 @@
 #include "tet.h"
 
 // allows us to compile as single file:
+#include "../common/tinyc.games/utils.c"
 #include "../common/tinyc.games/audio.c"
+#include "../common/tinyc.games/font.c"
 #include "graphics.c"
 #include "input.c"
 
@@ -105,6 +107,7 @@ void setup()
         TTF_Init();
         resize(win_x, win_y);
         audio_init();
+        font_init();
 }
 
 unsigned garb_rand()

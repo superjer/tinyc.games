@@ -1,4 +1,5 @@
 gcc -std=c2x -Wall -pedantic \
+        -Wno-overlength-strings \
         -g \
         -I/usr/include/GL/ \
         -I/usr/include/SDL2 \
