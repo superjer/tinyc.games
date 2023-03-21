@@ -59,10 +59,12 @@ int main()
 
                 // framerate stuff, cap to 60 fps
                 float diff = (SDL_GetPerformanceCounter() - start) / (float)freq * 1000.f;
+                /*
                 if (diff < 16.6667f)
                         SDL_Delay(16.6667f - diff);
                 diff = (SDL_GetPerformanceCounter() - start) / (float)freq * 1000.f;
-                //fprintf(stderr, "frame time %.2fms = %.1f fps\n", diff, 1000.f / diff);
+                */
+                fprintf(stderr, "frame time %.2fms = %.1f fps\n", diff, 1000.f / diff);
         }
 }
 
@@ -94,7 +96,7 @@ void setup()
         ctx = SDL_GL_CreateContext(win);
         if (!ctx) exit(fprintf(stderr, "Could not create GL context\n"));
 
-        SDL_GL_SetSwapInterval(1);
+        SDL_GL_SetSwapInterval(0); // vsync?
         glClearColor(0.18f, 0.18f, 0.18f, 1.f);
 
         #ifndef __APPLE__
