@@ -30,7 +30,7 @@
 struct osn_context *osn_context;
 #define noise(x,y,z,scale) open_simplex_noise3(osn_context,(float)((x)-tscootx+0.5f)/(scale),(float)((y)+0.5f)/(scale),(float)((z)-tscootz+0.5f)/(scale))
 
-#include "timer.h"
+#include "timer.c"
 #include "vector.h"
 
 #define STON 34

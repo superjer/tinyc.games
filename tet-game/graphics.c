@@ -306,10 +306,10 @@ void draw_player()
         text("%d pts ", p->score);
         text("%d lines ", p->lines);
 
-        int secs = p->ticks / 60 % 60;
-        int mins = p->ticks / 60 / 60 % 60;
+        int secs = p->ticks / 120 % 60;
+        int mins = p->ticks / 120 / 60 % 60;
         char minsec[80];
-        sprintf(minsec, "%d:%02d.%02d ", mins, secs, p->ticks % 60 * 1000 / 600);
+        sprintf(minsec, "%d:%02d.%02d ", mins, secs, p->ticks % 120 * 1000 / 1200);
         text(minsec, 0);
         text(p->dev_name, 0);
         if (p->combo > 1) text("%d combo ", p->combo);
@@ -341,13 +341,14 @@ void draw_player()
 
 void reflow()
 {
+        float strength = 0.0005f * (1 + rand() % 10);
         for (int n = 0; n < NFLOWS; n++)
         {
                 flows[n].x = rand() % win_x;
                 flows[n].y = rand() % win_y;
                 flows[n].r = rand() % 100 + 100;
-                flows[n].vx = (rand() % 10 - 5) * 0.01f;
-                flows[n].vy = (rand() % 10 - 5) * 0.01f;
+                flows[n].vx = (rand() % 10 - 5) * strength;
+                flows[n].vy = (rand() % 10 - 5) * strength;
         }
 }
 
@@ -358,6 +359,7 @@ void resize(int x, int y)
         win_y = y;
         bs = MIN(win_x / (nplay * 22), win_y / 24);
         bs2 = bs / 2;
+        bs4 = bs / 4;
         line_height = bs * 125 / 100;
         int n = 0;
         for (p = play; p < play + nplay; p++, n++)

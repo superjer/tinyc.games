@@ -56,7 +56,7 @@ void hard()
 {
         for (; !collide(p->it.x, p->it.y + 1, p->it.rot); p->it.y++)
                 p->score++;
-        p->idle_time = 50;
+        p->idle_time = 100;
         p->beam = p->it;
         p->beam_tick = tick;
         p->offs_y += .25f;
@@ -192,6 +192,11 @@ int key_down()
                 case SDLK_z:   case SDLK_CAPSLOCK:  case SDLK_RETURN: spin(3); break;
                 case SDLK_x:   case SDLK_LSHIFT:    case SDLK_RSHIFT: spin(1); break;
                 case SDLK_TAB: case SDLK_BACKSLASH:                   hold();  break;
+
+                case SDLK_l:
+                        p->level++;
+                        p->lines += 10;
+                        break;
         }
 
         return 0;

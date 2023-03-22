@@ -14,58 +14,96 @@
 #include "../common/tinyc.games/font.c"
 #include "graphics.c"
 #include "input.c"
+#include "timer.c"
+
+int get_interval()
+{
+        static int then = 0;
+        int now = SDL_GetTicks();
+        int diff = now - then;
+        then = now;
+        return diff;
+}
 
 // the entry point and main game loop
 int main()
 {
+        float frame_times[10] = {0.f};
+        int frame_time_idx = 0;
         setup();
-        draw_setup();
-        unsigned long long freq = SDL_GetPerformanceFrequency();
+        float accum_msec = 0.f;
         for (;;)
         {
-                unsigned long long start = SDL_GetPerformanceCounter();
-                int joy_tick = 0;
+                accum_msec += (float)get_interval();
 
-                while (SDL_PollEvent(&event)) switch (event.type)
+                if (accum_msec < 7.3333f)
                 {
-                        case SDL_QUIT:                 exit(0);
-                        case SDL_KEYDOWN:              key_down();      break;
-                        case SDL_KEYUP:                key_up();        break;
-                        case SDL_CONTROLLERBUTTONDOWN: joy_down();      break;
-                        case SDL_CONTROLLERBUTTONUP:   joy_up();        break;
-                        case SDL_JOYDEVICEADDED:
-                        case SDL_JOYDEVICEREMOVED:     joy_tick = tick; break;
-                        case SDL_WINDOWEVENT:
-                                if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
-                                        resize(event.window.data1, event.window.data2);
-                                break;
+                        int sleep_for = 8 - (int)accum_msec;
+                        SDL_Delay(sleep_for);
+                        //fprintf(stderr, "Slept for %dms\n", sleep_for);
                 }
 
-                if (joy_tick == tick - 1) joy_setup();
+                accum_msec += (float)get_interval();
 
-                draw_start();
-                draw_menu();
-
-                for (p = play; p < play + nplay; p++)
+                for (; accum_msec > 8.3333f; accum_msec -= 8.3333f)
                 {
-                        update_player();
-                        draw_player();
+                        TIMECALL(do_events, ());
+                        TIMER(update_player);
+                        for (p = play; p < play + nplay; p++) update_player();
+                        accum_msec += (float)get_interval();
+                        // MAX_LOOPS?
                 }
 
-                draw_particles();
-                draw_end();
-                SDL_GL_SwapWindow(win);
+                TIMECALL(draw_start, ());
+                TIMECALL(draw_menu, ());
+                TIMER(draw_player);
+                for (p = play; p < play + nplay; p++) draw_player();
+                TIMECALL(draw_particles, ());
+                TIMECALL(draw_end, ());
+                TIMECALL(SDL_GL_SwapWindow, (win));
+
                 tick++;
 
-                // framerate stuff, cap to 60 fps
-                float diff = (SDL_GetPerformanceCounter() - start) / (float)freq * 1000.f;
-                /*
-                if (diff < 16.6667f)
-                        SDL_Delay(16.6667f - diff);
-                diff = (SDL_GetPerformanceCounter() - start) / (float)freq * 1000.f;
-                */
-                fprintf(stderr, "frame time %.2fms = %.1f fps\n", diff, 1000.f / diff);
+                unsigned long long now = SDL_GetPerformanceCounter();
+                static unsigned long long then;
+                float diff = (float)(now - then) / (float)SDL_GetPerformanceFrequency() * 1000.f;
+                frame_times[frame_time_idx++] = diff;
+                frame_time_idx %= 10;
+                float avg_diff = (frame_times[0] + frame_times[1] + frame_times[2] + frame_times[3]
+                                + frame_times[4] + frame_times[5] + frame_times[6] + frame_times[7]
+                                + frame_times[8] + frame_times[9]) / 10.f;
+                then = now;
+
+                if (frame_time_idx == 0)
+                {
+                        char timings_buf[8000];
+                        timer_print(timings_buf, 8000, true);
+                        fprintf(stderr, "%s", timings_buf);
+                        fprintf(stderr, "avg frame time %.2fms = %.1f fps\n", avg_diff, 1000.f / avg_diff);
+                }
         }
+}
+
+void do_events()
+{
+        static int joy_tick = 0;
+
+        while (SDL_PollEvent(&event)) switch (event.type)
+        {
+                case SDL_QUIT:                 exit(0);
+                case SDL_KEYDOWN:              key_down();      break;
+                case SDL_KEYUP:                key_up();        break;
+                case SDL_CONTROLLERBUTTONDOWN: joy_down();      break;
+                case SDL_CONTROLLERBUTTONUP:   joy_up();        break;
+                case SDL_JOYDEVICEADDED:
+                case SDL_JOYDEVICEREMOVED:     joy_tick = tick; break;
+                case SDL_WINDOWEVENT:
+                        if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
+                                resize(event.window.data1, event.window.data2);
+                        break;
+        }
+
+        if (joy_tick == tick - 1) joy_setup();
 }
 
 #ifndef __APPLE__
@@ -96,7 +134,7 @@ void setup()
         ctx = SDL_GL_CreateContext(win);
         if (!ctx) exit(fprintf(stderr, "Could not create GL context\n"));
 
-        SDL_GL_SetSwapInterval(0); // vsync?
+        SDL_GL_SetSwapInterval(1); // vsync?
         glClearColor(0.18f, 0.18f, 0.18f, 1.f);
 
         #ifndef __APPLE__
@@ -110,6 +148,7 @@ void setup()
         resize(win_x, win_y);
         audio_init();
         font_init();
+        draw_setup();
 }
 
 unsigned garb_rand()
@@ -288,7 +327,7 @@ void new_piece()
 void move(int dx, int dy, int gravity)
 {
         if (!gravity)
-                p->move_cooldown = p->move_cooldown ? 4 : 9;
+                p->move_cooldown = p->move_cooldown ? 8 : 18;
 
         int collision = collide(p->it.x + dx, p->it.y + dy, p->it.rot);
 
@@ -368,17 +407,28 @@ void update_player()
 
         for (int y = 0; y < BHEIGHT; y++)
                 if (p->row[y].offset > 0)
-                        p->row[y].offset = MAX(0, p->row[y].offset - bs2);
+                        p->row[y].offset = MAX(0, p->row[y].offset - bs4);
                 else
-                        p->row[y].offset = MIN(0, p->row[y].offset + bs2);
+                        p->row[y].offset = MIN(0, p->row[y].offset + bs4);
 
         if (p->shine_time > 0 && --p->shine_time == 0)
                 kill_lines();
 
-        if (p->dead_time > 0 && --p->dead_time == 0)
-                new_game();
+        if (p->dead_time > 0)
+        {
+                p->dead_time--;
+                int x = p->dead_time % BWIDTH;
+                int y = BHEIGHT - 1 - p->dead_time / BWIDTH;
+                if (p->row[y].col[x].part)
+                {
+                        new_particle(x, y, -1);
+                        p->row[y].col[x].part = 0;
+                }
+                if (p->dead_time == 0)
+                        new_game();
+        }
 
-        if (++p->idle_time >= (p->grounded ? 50 : speeds[MIN(MAX_SPEED, p->level)]))
+        if (++p->idle_time >= (p->grounded ? 100 : speeds[MIN(MAX_SPEED, p->level)]))
         {
                 move(0, 1, 1);
                 p->idle_time = 0;
@@ -392,7 +442,7 @@ void game_over()
 {
         memset(p->bag, 0, sizeof p->bag);
         memset(p->next, 0, sizeof p->next);
-        p->dead_time = 100;
+        p->dead_time = BHEIGHT * BWIDTH;
 }
 
 // check if a line has been completed and act accordingly
@@ -404,7 +454,7 @@ int increment_and_check_line(int y)
         p->reward = 0; // set up hovering reward number
         p->reward_x = p->board_x + bs * (p->it.x + 2);
         p->reward_y = p->board_y + bs * (p->it.y - 4);
-        p->shine_time = 20;
+        p->shine_time = 40;
         p->shiny_lines++;
 
         for (int i = 0; i < BWIDTH; i++)

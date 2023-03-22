@@ -16,9 +16,9 @@
 #define BAG_SZ 7   // bag size
 #define GARB_LVLS 4 // levels of queued garbage
 #define NPLAY 4
-#define NPARTS 100
+#define NPARTS 200
 #define NFLOWS 20
-#define CTDN_TICKS 48
+#define CTDN_TICKS 96
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define SWAP(a,b) {int *x = &(a); int *y = &(b); int t = *x; *x = *y; *y = t;}
@@ -101,10 +101,10 @@ float combo_bonus[] = {
 
 int rewards[] = {0, 100, 250, 500, 1000}; // points for clearing 0,1,2,3,4 lines
 
-int speeds[] = {50, 40, 35, 30, 26, 23, 20, 18, 16, 14, 12, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
+int speeds[] = {100, 80, 70, 60, 52, 46, 40, 35, 30, 26, 22, 18, 15, 12, 10, 8, 6, 5, 4, 3, 2};
 #define MAX_SPEED ((sizeof speeds / sizeof *speeds) - 1)
 
-char countdown_msg[][20] = {"           Go!", "           - 1 -", "           - 2 -", "           - 3 -"};
+char countdown_msg[][20] = {"        Go!", "       - 1 -", "       - 2 -", "       - 3 -"};
 
 struct piece { int x, y, rot, color; };
 struct spot { int color, part; };
@@ -161,7 +161,7 @@ struct particle flows[NFLOWS];
 enum state { MAIN_MENU = 0, NUMBER_MENU, ASSIGN, PLAY, GAMEOVER} state;
 int win_x = 1000;         // window size
 int win_y = 750;
-int bs, bs2;              // individual block size, and in half
+int bs, bs2, bs4;         // individual block size, in half, in quarters
 int tick;                 // counts up one per frame
 int nplay = 1;            // number of players
 int assign_me;            // who is getting an input device assigned?
@@ -178,6 +178,7 @@ SDL_Window *win;
 SDL_Renderer *renderer;
 TTF_Font *font;
 
+void do_events();
 void setup();
 void update_player();
 void move(int dx, int dy, int gravity);
