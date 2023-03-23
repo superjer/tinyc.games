@@ -1,6 +1,5 @@
 #pragma once
 #include <SDL.h>
-#include <SDL_ttf.h>
 
 #define GL3_PROTOTYPES 1
 
@@ -19,9 +18,7 @@
 #define NPARTS 200
 #define NFLOWS 20
 #define CTDN_TICKS 96
-#define MAX(a,b) ((a) > (b) ? (a) : (b))
-#define MIN(a,b) ((a) < (b) ? (a) : (b))
-#define SWAP(a,b) {int *x = &(a); int *y = &(b); int t = *x; *x = *y; *y = t;}
+#define SHOW_FPS 0
 
 // collision test results
 enum { NONE = 0, WALL, NORMAL };
@@ -136,6 +133,7 @@ struct player {
         int garbage[GARB_LVLS + 1];     // queued garbage, e.g. received from opponents
         int garbage_tick;               // keeps track of when to age garbage
         int garbage_remaining;          // how many lines of garbage remain to clear to win
+        int garbage_bits;               // fractions of garbage attached to each particle
         int top_garb;                   // highest position of garbage stack drawn
         int level;                      // difficultly level (lines/10)
         int countdown_time;             // ready-set-go countdown
@@ -148,13 +146,14 @@ struct player {
         int box_w;                      // width of hold box / preview box
         int ticks;                      // counts up while game is going
         int seed1, seed2;               // make garbage and bags fair
-        float offs_x, offs_y;
+        float shake_x, shake_y;         // amount the board is offset by shaking
+        int flash;                      // flashing from receiving garbage
         char *tspin;
         int device;                     // SDL's input device id
         char dev_name[80];              // input device "name"
 } play[NPLAY], *p;                      // one per player
 
-struct particle { float x, y, r, vx, vy; int opponent; };
+struct particle { float x, y, r, vx, vy; int opponent, bits; };
 struct particle parts[NPARTS];
 struct particle flows[NFLOWS];
 
@@ -176,7 +175,6 @@ SDL_GLContext ctx;
 SDL_Event event;
 SDL_Window *win;
 SDL_Renderer *renderer;
-TTF_Font *font;
 
 void do_events();
 void setup();
@@ -188,3 +186,4 @@ void new_game();
 int is_solid_part(int shape, int rot, int i, int j);
 int is_tspin_part(int shape, int rot, int i, int j);
 int collide(int x, int y, int rot);
+void update_particles();

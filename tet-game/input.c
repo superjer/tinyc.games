@@ -59,7 +59,7 @@ void hard()
         p->idle_time = 100;
         p->beam = p->it;
         p->beam_tick = tick;
-        p->offs_y += .25f;
+        p->shake_y += .25f;
         audio_tone(TRIANGLE, A1, E3, 5, 5, 5, 90);
 }
 
@@ -189,9 +189,9 @@ int key_down()
                 case SDLK_d:   case SDLK_RIGHT:                       right(); break;
 
                 case SDLK_w:   case SDLK_UP:                          hard();  break;
-                case SDLK_z:   case SDLK_CAPSLOCK:  case SDLK_RETURN: spin(3); break;
-                case SDLK_x:   case SDLK_LSHIFT:    case SDLK_RSHIFT: spin(1); break;
-                case SDLK_TAB: case SDLK_BACKSLASH:                   hold();  break;
+                case SDLK_z:   case SDLK_CAPSLOCK:  case SDLK_COMMA:  spin(3); break;
+                case SDLK_x:   case SDLK_LSHIFT:    case SDLK_PERIOD: spin(1); break;
+                case SDLK_TAB: case SDLK_SLASH:                       hold();  break;
 
                 case SDLK_l:
                         p->level++;

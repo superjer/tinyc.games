@@ -1,5 +1,7 @@
 #pragma once
 
+#include <math.h>
+
 #define FONT_CH_W 8
 #define FONT_CH_H 12
 #define FONT_PITCH 128
@@ -174,10 +176,11 @@ void font_begin(int w, int h)
         font_buf_p = font_buf;
 }
 
-void font_add_text(char *s, int inx, int iny, float scale)
+void font_add_text(char *s, int inx, int iny, float height)
 {
         int x = inx;
         int y = iny;
+        float scale = height / 8.f;
 
         if (!scale)
                 scale = roundf((font_screenw < font_screenh ? font_screenw : font_screenh) / 250.f);

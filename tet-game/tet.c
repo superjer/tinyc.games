@@ -39,7 +39,7 @@ int main()
                 if (accum_msec < 7.3333f)
                 {
                         int sleep_for = 8 - (int)accum_msec;
-                        SDL_Delay(sleep_for);
+                        TIMECALL(SDL_Delay, (sleep_for));
                         //fprintf(stderr, "Slept for %dms\n", sleep_for);
                 }
 
@@ -51,6 +51,7 @@ int main()
                         TIMER(update_player);
                         for (p = play; p < play + nplay; p++) update_player();
                         accum_msec += (float)get_interval();
+                        TIMECALL(update_particles, ());
                         // MAX_LOOPS?
                 }
 
@@ -69,17 +70,18 @@ int main()
                 float diff = (float)(now - then) / (float)SDL_GetPerformanceFrequency() * 1000.f;
                 frame_times[frame_time_idx++] = diff;
                 frame_time_idx %= 10;
-                float avg_diff = (frame_times[0] + frame_times[1] + frame_times[2] + frame_times[3]
-                                + frame_times[4] + frame_times[5] + frame_times[6] + frame_times[7]
-                                + frame_times[8] + frame_times[9]) / 10.f;
                 then = now;
 
-                if (frame_time_idx == 0)
+                if (SHOW_FPS && frame_time_idx == 0)
                 {
+                        float sum = 0.f;
                         char timings_buf[8000];
                         timer_print(timings_buf, 8000, true);
                         fprintf(stderr, "%s", timings_buf);
-                        fprintf(stderr, "avg frame time %.2fms = %.1f fps\n", avg_diff, 1000.f / avg_diff);
+                        for (int i = 0; i < 10; i++)
+                                sum += frame_times[i];
+                        fprintf(stderr, "avg frame time %.2fms = %.1f fps\n",
+                                        sum / 10.f, 10000.f / sum);
                 }
         }
 }
@@ -134,7 +136,7 @@ void setup()
         ctx = SDL_GL_CreateContext(win);
         if (!ctx) exit(fprintf(stderr, "Could not create GL context\n"));
 
-        SDL_GL_SetSwapInterval(1); // vsync?
+        SDL_GL_SetSwapInterval(0); // vsync?
         glClearColor(0.18f, 0.18f, 0.18f, 1.f);
 
         #ifndef __APPLE__
@@ -144,7 +146,6 @@ void setup()
         glDebugMessageCallback(MessageCallback, 0);
         #endif
 
-        TTF_Init();
         resize(win_x, win_y);
         audio_init();
         font_init();
@@ -192,7 +193,7 @@ void receive_garbage()
         }
 }
 
-void new_particle(int x, int y, int opponent)
+void new_particle(int x, int y, int opponent, int garbage_bits)
 {
         parts[npart++] = (struct particle){
                 p->board_x + x * bs,
@@ -201,6 +202,7 @@ void new_particle(int x, int y, int opponent)
                 (rand() % 10 - 5) * 0.02f,
                 (rand() % 30 + 30) * 0.02f,
                 opponent,
+                garbage_bits,
         };
         if (npart >= NPARTS) npart = 0;
 }
@@ -214,16 +216,14 @@ void kill_lines()
         p->combo++;
         p->reward = combo_bonus[MIN(MAX_COMBO, p->combo)] * rewards[p->shiny_lines];
         p->score += p->reward;
-        p->shiny_lines = 0;
         int sendable = p->reward / 400; // garbage to send
+        int garbage_bits = sendable * 12 / p->shiny_lines;
+        printf("sendable: %d    lines: %d    garbage_per: %d\n",
+                        sendable, p->shiny_lines, garbage_bits);
+        p->shiny_lines = 0;
 
         if (sendable && nplay > 1 && !garbage_race)
-        {
                 do opponent = rand() % nplay; while (play + opponent == p);
-                play[opponent].garbage[GARB_LVLS - 1] += sendable;
-                play[opponent].garbage_tick = tick;
-        }
-
 
         // clean up sliced pieces
         for (int y = 0; y < BHEIGHT; y++)
@@ -231,7 +231,7 @@ void kill_lines()
                 p->row[y].offset = 0;
                 if (p->row[y].fullness == 10)
                         for (int x = 0; x < BWIDTH; x++)
-                                new_particle(x, y, opponent);
+                                new_particle(x, y, opponent, garbage_bits);
 
                 if (y > 0 && p->row[y - 1].fullness == 10)
                         for (int x = 0; x < BWIDTH; x++)
@@ -361,14 +361,14 @@ void move(int dx, int dy, int gravity)
         }
         else if (collision == WALL)
         {
-                if (dx == -1 && tick - p->last_dx_tick < 8)
+                if (dx == -1 && tick - p->last_dx_tick < 16)
                 {
-                        p->offs_x -= .20f;
+                        p->shake_x -= .25f;
                         audio_tone(TRIANGLE, C2, C2, 25, 5, 5, 25);
                 }
-                if (dx ==  1 && tick - p->last_dx_tick < 8)
+                if (dx ==  1 && tick - p->last_dx_tick < 16)
                 {
-                        p->offs_x += .20f;
+                        p->shake_x += .25f;
                         audio_tone(TRIANGLE, E2, C2, 15, 5, 5, 15);
                 }
         }
@@ -421,7 +421,7 @@ void update_player()
                 int y = BHEIGHT - 1 - p->dead_time / BWIDTH;
                 if (p->row[y].col[x].part)
                 {
-                        new_particle(x, y, -1);
+                        new_particle(x, y, -1, 0);
                         p->row[y].col[x].part = 0;
                 }
                 if (p->dead_time == 0)
@@ -436,6 +436,16 @@ void update_player()
 
         if (tick - p->garbage_tick > (garbage_race ? 6000 : 600))
                 age_garbage();
+
+        // update shaky offsets
+        if (p->shake_x < .01f && p->shake_x > -.01f) p->shake_x = .0f;
+        if (p->shake_y < .01f && p->shake_y > -.01f) p->shake_y = .0f;
+        if (p->shake_x) p-> shake_x *= .98f;
+        if (p->shake_y) p-> shake_y *= .98f;
+
+        // decrease flash
+        p->flash--;
+        CLAMP(0, p->flash, 18);
 }
 
 void game_over()
@@ -550,4 +560,85 @@ int collide(int x, int y, int rot)
                 }
 
         return ret;
+}
+
+void update_particles()
+{
+        for (int i = 0; i < NPARTS; i++)
+        {
+                struct particle *q = parts + i;
+                if (q->r <= 0.1f)
+                        continue;
+                q->x += q->vx;
+                q->y += q->vy;
+                q->r *= 0.992f + (rand() % 400) * 0.00001f;
+
+                struct player *o = q->opponent < 0 ? NULL :
+                        play + q->opponent;
+
+                // get contribution from flow nodes
+                float flow_vx = 0.f;
+                float flow_vy = 0.f;
+                for (int n = 0; n < NFLOWS; n++)
+                {
+                        float xdiff = flows[n].x - q->x;
+                        float ydiff = flows[n].y - q->y;
+                        float distsq = xdiff * xdiff + ydiff * ydiff;
+                        if (distsq > flows[n].r * flows[n].r)
+                                continue;
+                        flow_vx += flows[n].vx;
+                        flow_vy += flows[n].vy;
+                }
+
+                // get contribution from homing in on opponent
+                float targ_x = 0.f;
+                float targ_y = 0.f;
+                float homing_vx = 0.f;
+                float homing_vy = 0.f;
+                if (o)
+                {
+                        int a = o->top_garb;
+                        int b = o->board_y + bs * VHEIGHT;
+                        targ_x = o->board_x - 3 * bs2;
+                        targ_y = rand() % (b - a + 1) + a;
+                        homing_vx = (targ_x - q->x) * 0.003f;
+                        homing_vy = (targ_y - q->y) * 0.003f;
+                }
+
+                float normal_r = q->r / bs;
+                if (o && q->r && normal_r < 0.7f + (i % 3) * 0.2f) // particle has an opponent target
+                {
+                        q->vx *= 0.95f + normal_r * 0.05f;
+                        q->vy *= 0.95f + normal_r * 0.05f;
+                        float mod = normal_r > 0.6f ? 0.9f :
+                                    normal_r > 0.5f ? 0.7f :
+                                    normal_r > 0.4f ? 0.5f :
+                                    normal_r > 0.3f ? 0.3f : 0.1f;
+                        q->vx += flow_vx * mod + homing_vx * (1.f - mod);
+                        q->vy += flow_vy * mod + homing_vy * (1.f - mod);
+                }
+                else if (normal_r > 0.8f) // particle still just falling softly
+                {
+                        q->vy *= 0.82f;
+                }
+                else
+                {
+                        q->vx += flow_vx;
+                        q->vy += flow_vy;
+                }
+
+                if (o && fabsf(q->x - targ_x) < bs
+                      && fabsf(q->y - targ_y) < bs)
+                {
+                        q->r = 0.f;
+                        o->flash += 50;
+                        o->garbage_bits += q->bits;
+                        if (o->garbage_bits >= 120)
+                        {
+                                o->garbage[GARB_LVLS - 1]++;
+                                o->garbage_tick = tick;
+                                o->garbage_bits -= 120;
+                        }
+                }
+        }
 }

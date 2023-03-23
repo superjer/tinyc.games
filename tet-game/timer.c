@@ -1,6 +1,8 @@
 #define TIMER_NAMES \
+        X(SDL_Delay), \
         X(do_events), \
         X(update_player), \
+        X(update_particles), \
         X(draw_start), \
         X(draw_menu), \
         X(draw_player), \

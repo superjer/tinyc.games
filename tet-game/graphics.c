@@ -18,7 +18,7 @@ void text(char *fstr, int value)
         char str[100];
         snprintf(str, 99, fstr, value);
         font_begin(win_x, win_y);
-        font_add_text(str, text_x, text_y, 3);
+        font_add_text(str, text_x, text_y, 3 * bs / 4);
         font_end(1, 1, 1);
         text_y += bs * 125 / 100 + (fstr[strlen(fstr) - 1] == ' ' ? bs : 0);
 }
@@ -156,42 +156,6 @@ void draw_particles()
                         continue;
                 set_color(254, 254, 254);
                 rect(parts[i].x, parts[i].y, parts[i].r, parts[i].r);
-                parts[i].x += parts[i].vx;
-                parts[i].y += parts[i].vy;
-                parts[i].r *= 0.992f + (rand() % 400) * 0.00001f;
-                int opponent = parts[i].opponent;
-
-                if(opponent >= 0 && parts[i].r < 0.9 * bs)
-                {
-                        int a = play[opponent].top_garb;
-                        int b = play[opponent].board_y + bs * VHEIGHT;
-                        float targ_x = play[opponent].board_x - 3 * bs2;
-                        float targ_y = rand() % (b - a + 1) + a;
-                        float ideal_vec_x = (targ_x - parts[i].x) * 0.0005f;
-                        float ideal_vec_y = (targ_y - parts[i].y) * 0.0005f;
-                        parts[i].vx *= 0.99f;
-                        parts[i].vy *= 0.99f;
-                        parts[i].vx += ideal_vec_x;
-                        parts[i].vy += ideal_vec_y;
-                        if (fabsf(parts[i].x - targ_x) < bs
-                                        && fabsf(parts[i].y - targ_y) < bs)
-                                parts[i].r = 0.f;
-                }
-                else if (parts[i].r > 0.8 * bs)
-                {
-                        parts[i].vy *= 0.82f;
-                }
-                else for (int n = 0; n < NFLOWS; n++)
-                {
-                        float xdiff = flows[n].x - parts[i].x;
-                        float ydiff = flows[n].y - parts[i].y;
-                        float distsq = xdiff * xdiff + ydiff * ydiff;
-                        if (distsq < flows[n].r * flows[n].r)
-                        {
-                                parts[i].vx += flows[n].vx;
-                                parts[i].vy += flows[n].vy;
-                        }
-                }
         }
 }
 
@@ -235,8 +199,8 @@ void draw_player()
 {
         if (state == MAIN_MENU || state == NUMBER_MENU) return;
 
-        int x = p->board_x + bs * p->offs_x;
-        int y = p->board_y + bs * p->offs_y;
+        int x = p->board_x + bs * p->shake_x;
+        int y = p->board_y + bs * p->shake_y;
 
         // draw background, black boxes
         set_color(16, 26, 24);
@@ -282,6 +246,20 @@ void draw_player()
                                 p->row[j].col[i].color, 0, p->row[j].col[i].part);
 
         // draw queued garbage
+        p->top_garb = y + bs * VHEIGHT;
+        int garb_height = 0;
+        for (int i = 0; i < GARB_LVLS; i++)
+                for (int j = 0; j < p->garbage[i]; j++)
+                {
+                        draw_mino(x - 3 * bs2, (p->top_garb -= bs), (3 - i) + 9, 0, '@');
+                        garb_height++;
+                }
+        if (p->flash > 8)
+        {
+                int flash_sq = p->flash * p->flash;
+                set_color(flash_sq, flash_sq, flash_sq);
+                rect(x - 3 * bs2 - bs4, p->top_garb - bs4, bs + bs4 + bs4, garb_height * bs + bs2);
+        }
         p->top_garb = y + bs * VHEIGHT;
         for (int i = 0; i < GARB_LVLS; i++)
                 for (int j = 0; j < p->garbage[i]; j++)
@@ -331,12 +309,6 @@ void draw_player()
                 text(p >= play + assign_me ? "Press button to join" : p->dev_name, 0);
 
         if (state == GAMEOVER) text("Game over", 0);
-
-        // update bouncy offsets
-        if (p->offs_x < .01f && p->offs_x > -.01f) p->offs_x = .0f;
-        if (p->offs_y < .01f && p->offs_y > -.01f) p->offs_y = .0f;
-        if (p->offs_x) p-> offs_x *= .98f;
-        if (p->offs_y) p-> offs_y *= .98f;
 }
 
 void reflow()
@@ -374,6 +346,4 @@ void resize(int x, int y)
                 p->preview_y = p->board_y;
         }
         reflow();
-        if (font) TTF_CloseFont(font);
-        font = TTF_OpenFont("../common/res/LiberationSans-Regular.ttf", bs);
 }
