@@ -1,5 +1,3 @@
-Make particles hit bar exactly
-Delay garbage until particles hit
 Sparkly particles
 
 Sound for dead_time
@@ -12,6 +10,10 @@ Co-op mode
 Changing colors
 
 Text centering / named params
+
+audio_tone:
+  volume
+  pitch effects
 
 Game over
  * singleplayer: top out
