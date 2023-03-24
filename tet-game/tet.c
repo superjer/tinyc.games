@@ -190,6 +190,7 @@ void receive_garbage()
                         }
 
                 if (garbage_race) gap = garb_rand() % 10;
+                audio_tone(SQUARE, A1, D1, 50, 5, 50, 200);
         }
 }
 
@@ -218,8 +219,6 @@ void kill_lines()
         p->score += p->reward;
         int sendable = p->reward / 400; // garbage to send
         int garbage_bits = sendable * 12 / p->shiny_lines;
-        printf("sendable: %d    lines: %d    garbage_per: %d\n",
-                        sendable, p->shiny_lines, garbage_bits);
         p->shiny_lines = 0;
 
         if (sendable && nplay > 1 && !garbage_race)
@@ -444,8 +443,7 @@ void update_player()
         if (p->shake_y) p-> shake_y *= .98f;
 
         // decrease flash
-        p->flash--;
-        CLAMP(0, p->flash, 18);
+        p->flash = CLAMP(0, p->flash - 1, 18);
 }
 
 void game_over()
@@ -562,6 +560,11 @@ int collide(int x, int y, int rot)
         return ret;
 }
 
+int in_rect(int x, int y, int left, int top, int width, int height)
+{
+        return x >= left && x <= left + width && y >= top && y <= top + height;
+}
+
 void update_particles()
 {
         for (int i = 0; i < NPARTS; i++)
@@ -595,31 +598,35 @@ void update_particles()
                 float targ_y = 0.f;
                 float homing_vx = 0.f;
                 float homing_vy = 0.f;
+                float dist = 1000.f;
                 if (o)
                 {
-                        int a = o->top_garb;
-                        int b = o->board_y + bs * VHEIGHT;
                         targ_x = o->board_x - 3 * bs2;
-                        targ_y = rand() % (b - a + 1) + a;
-                        homing_vx = (targ_x - q->x) * 0.003f;
-                        homing_vy = (targ_y - q->y) * 0.003f;
+                        targ_y = CLAMP(o->top_garb - bs, q->y, o->board_y + bs * VHEIGHT);
+                        homing_vx = (targ_x - q->x);
+                        homing_vy = (targ_y - q->y);
+                        dist = sqrtf(homing_vx * homing_vx + homing_vy * homing_vy);
+                        homing_vx /= dist;
+                        homing_vy /= dist;
                 }
 
                 float normal_r = q->r / bs;
-                if (o && q->r && normal_r < 0.7f + (i % 3) * 0.2f) // particle has an opponent target
+                if (o && q->r && normal_r < .65f + (i % 9) * .07f) // particle has an opponent target
                 {
-                        q->vx *= 0.95f + normal_r * 0.05f;
-                        q->vy *= 0.95f + normal_r * 0.05f;
-                        float mod = normal_r > 0.6f ? 0.9f :
-                                    normal_r > 0.5f ? 0.7f :
-                                    normal_r > 0.4f ? 0.5f :
-                                    normal_r > 0.3f ? 0.3f : 0.1f;
-                        q->vx += flow_vx * mod + homing_vx * (1.f - mod);
-                        q->vy += flow_vy * mod + homing_vy * (1.f - mod);
+                        printf("dist = %.1f\n", dist);
+                        if (dist < bs * 4 || normal_r < .5f)
+                        {
+                                q->vx *= .97f;
+                                q->vy *= .97f;
+                        }
+                        float t = (dist < bs * 4) ? (dist / (bs * 6)) :
+                                    .75f;
+                        q->vx += flow_vx * t + homing_vx * (1.f - t);
+                        q->vy += flow_vy * t + homing_vy * (1.f - t);
                 }
-                else if (normal_r > 0.8f) // particle still just falling softly
+                else if (!o && normal_r > .8f) // particle still just falling softly
                 {
-                        q->vy *= 0.82f;
+                        q->vy *= .82f;
                 }
                 else
                 {
@@ -627,18 +634,19 @@ void update_particles()
                         q->vy += flow_vy;
                 }
 
-                if (o && fabsf(q->x - targ_x) < bs
-                      && fabsf(q->y - targ_y) < bs)
+                if (o && in_rect(q->x + q->r * .5f, q->y + q->r * .5f, targ_x, targ_y - bs2, bs, bs))
                 {
                         q->r = 0.f;
                         o->flash += 50;
                         o->garbage_bits += q->bits;
                         if (o->garbage_bits >= 120)
                         {
+                                audio_tone(SQUARE, G3, G4, 15, 15, 15, 100);
                                 o->garbage[GARB_LVLS - 1]++;
                                 o->garbage_tick = tick;
                                 o->garbage_bits -= 120;
                         }
+                        audio_tone(SQUARE, G4, C6, 5, 10, 5, 20);
                 }
         }
 }

@@ -3,7 +3,7 @@
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define SWAP(a,b) {int *x = &(a); int *y = &(b); int t = *x; *x = *y; *y = t;}
-#define CLAMP(lo,x,hi) {if ((x)<(lo)) (x)=(lo); else if ((x)>(hi)) (x)=(hi);}
+#define CLAMP(lo,x,hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))
 
 int check_shader_errors(GLuint shader, char *name)
 {
