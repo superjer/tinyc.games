@@ -66,6 +66,6 @@ void timer_print(char *buf, size_t n, bool show_all)
                 float pct = 100.f * (float)timer_times[i] / sum;
                 if ((show_all && secs > 0.f) || pct >= 0.1f || secs >= 0.01f)
                         p += snprintf(p, n - (p-buf),
-                                "%6.1f  %2.0f%%  %s\n", secs, pct, timernamesprint[i]);
+                                "%6.3f  %2.0f%%  %s\n", secs, pct, timernamesprint[i]);
         }
 }

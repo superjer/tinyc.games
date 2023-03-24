@@ -4,6 +4,7 @@
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define SWAP(a,b) {int *x = &(a); int *y = &(b); int t = *x; *x = *y; *y = t;}
 #define CLAMP(lo,x,hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))
+#define MOD(a,b) (((a) % (b) + (b)) % (b))
 
 int check_shader_errors(GLuint shader, char *name)
 {
