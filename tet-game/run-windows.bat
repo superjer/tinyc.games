@@ -10,4 +10,4 @@ echo %CC%
 
 set PATH=%PATH%;%SDL%\lib\%ARCH%
 
-%CC% -DSDL_MAIN_HANDLED -I%SDL%\include -L%SDL%\lib\%ARCH% -lSDL2 -run tet.c
+%CC% -DSDL_MAIN_HANDLED -I%SDL%\include -L%SDL%\lib\%ARCH% -lSDL2 -lGL -run tet.c
