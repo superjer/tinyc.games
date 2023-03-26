@@ -12,10 +12,12 @@
 #include <GL/glew.h>
 #endif
 
-#define WINSZ 1200
+#define WINSZ 800
 
 int win_x = WINSZ;
 int win_y = WINSZ;
+int x;
+int seed;
 
 SDL_GLContext ctx;
 SDL_Event event;
@@ -147,9 +149,6 @@ float remap(float val, float fromlo, float fromhi, float tolo, float tohi)
         return val;
 }
 
-int x;
-int seed = 0;
-
 float get_height(int x, int y)
 {
         float val = noise(x, y, 200, seed, 4);
@@ -209,14 +208,51 @@ void draw_verts()
         for (int y = 0; y < WINSZ; y++)
         {
                 float h;
-                float smoothness = remap(noise(x, y, 500, seed, 1), .55f, 1.f, 0.f, 20.f);
+                int x2 = x;
+                int y2 = y;
+
+                // wacky spiral rotation
+                {
+                        int originx = 300;
+                        int originy = 300;
+                        int tx = x2 - originx;
+                        int ty = y2 - originy;
+                        float dist = sqrtf(tx * tx + ty * ty) / 400.f;
+                        if (dist < 1.f)
+                        {
+                                float ang =  2.f * (1.f - dist) * (1.f - dist) * (1.f - dist)
+                                        * remap(noise(x, y, 108, seed, 3), .5f, 1.f, 0.f, 10.f);
+                                x2 = originx + tx * cosf(ang) - ty * sinf(ang);
+                                y2 = originy + tx * sinf(ang) + ty * cosf(ang);
+                        }
+                }
+
+                // wacky spiral rotation reverse!
+                {
+                        int originx = 500;
+                        int originy = 500;
+                        int tx = x2 - originx;
+                        int ty = y2 - originy;
+                        float dist = sqrtf(tx * tx + ty * ty) / 400.f;
+                        if (dist < 1.f)
+                        {
+                                float ang = -2.f * (1.f - dist) * (1.f - dist) * (1.f - dist)
+                                        * remap(noise(x, y, 112, seed, 3), .5f, 1.f, 0.f, 10.f);
+                                x2 = originx + tx * cosf(ang) - ty * sinf(ang);
+                                y2 = originy + tx * sinf(ang) + ty * cosf(ang);
+                        }
+                }
+
+                float smoothness = remap(noise(x2, y2, 500, seed, 1), .55f, 1.f, 0.f, 1.f);
                 if (smoothness > 0.f)
-                        h = (get_height(x + smoothness, y + smoothness)
-                           + get_height(x - smoothness, y + smoothness)
-                           + get_height(x + smoothness, y - smoothness)
-                           + get_height(x - smoothness, y - smoothness)) * .25f;
+                {
+                        h = (get_height(x2 + smoothness, y2 + smoothness)
+                           + get_height(x2 - smoothness, y2 + smoothness)
+                           + get_height(x2 + smoothness, y2 - smoothness)
+                           + get_height(x2 - smoothness, y2 - smoothness)) * .25f;
+                }
                 else
-                        h = get_height(x, y);
+                        h = get_height(x2, y2);
 
                 if (h > .7f)
                 {
@@ -288,6 +324,13 @@ void draw_actual()
         glEnableVertexAttribArray(1);
 
         glDrawArrays(GL_POINTS, 0, WINSZ);
+        
+        // defeat double or triple buffering
+        TIMECALL(SDL_GL_SwapWindow, (win));
+        glDrawArrays(GL_POINTS, 0, WINSZ);
+        TIMECALL(SDL_GL_SwapWindow, (win));
+        glDrawArrays(GL_POINTS, 0, WINSZ);
+
         vbuf_n = 0;
 }
 
@@ -336,6 +379,9 @@ MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
 // initial setup to get the window and rendering going
 void setup()
 {
+        srand(time(NULL));
+        seed = rand();
+
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO);
 
         win = SDL_CreateWindow("Gridless Noise Test", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
@@ -344,6 +390,7 @@ void setup()
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         ctx = SDL_GL_CreateContext(win);
         if (!ctx) exit(fprintf(stderr, "Could not create GL context\n"));
 
