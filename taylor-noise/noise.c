@@ -12,7 +12,7 @@
 #include <GL/glew.h>
 #endif
 
-#define WINSZ 800
+#define WINSZ 1600
 
 int win_x = WINSZ;
 int win_y = WINSZ;
@@ -80,7 +80,7 @@ float noise(int x, int y, int sz, int seed, int samples)
 {
         // no negative numbers!
         sz &= 0x00ffffff;
-        //sz /= 2;
+        sz /= 2;
         x += 0x10000000;
         y += 0x01000000;
         if (x <= sz) x = sz + 1;
@@ -154,6 +154,15 @@ float get_height(int x, int y)
         float val = noise(x, y, 200, seed, 4);
         float denom = 1.f;
 
+        float oceaniness = remap(noise(x, y, 2030, seed, 1), .5f, .6f, 0.f, 1.f);
+        if (oceaniness > 0.f && val > 0.46f)
+        {
+                float ocean_val = .2f * val;
+                float ocean_val2 = val * (1.f - oceaniness) + ocean_val * oceaniness;
+                float ocean_blend = remap(val, 0.46f, 0.49f, 0.f, 1.f);
+                val = val * (1.f - ocean_blend) + ocean_val2 * ocean_blend;
+        }
+
         if (val < .48f)
         {
                 float flippy = remap(noise(x, y, 2008, seed, 1), .65f, .68f, 0.f, 1.f);
@@ -213,15 +222,15 @@ void draw_verts()
 
                 // wacky spiral rotation
                 {
-                        int originx = 300;
-                        int originy = 300;
+                        int originx = 600;
+                        int originy = 600;
                         int tx = x2 - originx;
                         int ty = y2 - originy;
-                        float dist = sqrtf(tx * tx + ty * ty) / 400.f;
+                        float dist = sqrtf(tx * tx + ty * ty) / 600.f;
                         if (dist < 1.f)
                         {
                                 float ang =  2.f * (1.f - dist) * (1.f - dist) * (1.f - dist)
-                                        * remap(noise(x, y, 108, seed, 3), .5f, 1.f, 0.f, 10.f);
+                                        * remap(noise(x, y, 1080, seed, 3), .5f, 1.f, 0.f, 10.f);
                                 x2 = originx + tx * cosf(ang) - ty * sinf(ang);
                                 y2 = originy + tx * sinf(ang) + ty * cosf(ang);
                         }
@@ -229,22 +238,22 @@ void draw_verts()
 
                 // wacky spiral rotation reverse!
                 {
-                        int originx = 500;
-                        int originy = 500;
+                        int originx = 1000;
+                        int originy = 1000;
                         int tx = x2 - originx;
                         int ty = y2 - originy;
-                        float dist = sqrtf(tx * tx + ty * ty) / 400.f;
+                        float dist = sqrtf(tx * tx + ty * ty) / 600.f;
                         if (dist < 1.f)
                         {
                                 float ang = -2.f * (1.f - dist) * (1.f - dist) * (1.f - dist)
-                                        * remap(noise(x, y, 112, seed, 3), .5f, 1.f, 0.f, 10.f);
+                                        * remap(noise(x, y, 1120, seed, 3), .5f, 1.f, 0.f, 10.f);
                                 x2 = originx + tx * cosf(ang) - ty * sinf(ang);
                                 y2 = originy + tx * sinf(ang) + ty * cosf(ang);
                         }
                 }
 
                 float smoothness = remap(noise(x2, y2, 500, seed, 1), .55f, 1.f, 0.f, 1.f);
-                if (smoothness > 0.f)
+                if (0 && smoothness > 0.f)
                 {
                         h = (get_height(x2 + smoothness, y2 + smoothness)
                            + get_height(x2 - smoothness, y2 + smoothness)
