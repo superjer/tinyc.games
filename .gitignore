@@ -6,7 +6,7 @@ tet-game/tet
 valet-game/valet
 zel-game/bin
 zel-game/zel
-taylor-noise/noise
+noise-demo/noise_demo
 Debug
 x64
 .vs

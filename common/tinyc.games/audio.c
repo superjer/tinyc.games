@@ -4,6 +4,9 @@
 // 2. Call audioinit() before playing sound
 // 3. Play tones with audio_tone()
 
+#ifndef TINY_C_GAMES_AUDIO_
+#define TINY_C_GAMES_AUDIO_
+
 #include <math.h>
 #include <SDL_audio.h>
 #include "audio.h"
@@ -82,3 +85,5 @@ void audio_init()
         else
                 SDL_PauseAudioDevice(id, 0);
 }
+
+#endif

@@ -1,6 +1,17 @@
-#pragma once
+#ifndef TINY_C_GAMES_FONT_
+#define TINY_C_GAMES_FONT_
 
 #include <math.h>
+
+#define GL3_PROTOTYPES 1
+
+#ifdef __APPLE__
+#include <OpenGL/gl3.h>
+#else
+#include <GL/glew.h>
+#endif
+
+#include "utils.c"
 
 #define FONT_CH_W 8
 #define FONT_CH_H 12
@@ -280,3 +291,5 @@ void font_end(float r, float g, float b)
         glUniform3f(glGetUniformLocation(font_prog_id, "incolor"), r, g, b);
         glDrawArrays(GL_TRIANGLES, 0, n);
 }
+
+#endif

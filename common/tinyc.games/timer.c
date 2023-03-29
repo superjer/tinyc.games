@@ -1,3 +1,6 @@
+#ifndef TINY_C_GAMES_TIMER_
+#define TINY_C_GAMES_TIMER_
+
 #include <stdio.h>
 #include <stdbool.h>
 #include <SDL2/SDL.h>
@@ -69,3 +72,5 @@ void timer_print(char *buf, size_t n, bool show_all)
                                 "%6.3f  %2.0f%%  %s\n", secs, pct, timernamesprint[i]);
         }
 }
+
+#endif
