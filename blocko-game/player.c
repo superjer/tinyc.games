@@ -256,7 +256,7 @@ void update_player(struct player *p, int real)
         if (real)
         {
                 zoom_amt *= zooming ? 0.9f : 1.2f;
-                CLAMP(zoom_amt, 0.25f, 1.0f);
+                zoom_amt = CLAMP(zoom_amt, 0.25f, 1.0f);
         }
 }
 

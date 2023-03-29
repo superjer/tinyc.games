@@ -26,10 +26,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "../common/nothings/stb_image.h"
 
-#include "../common/smcameron/open-simplex-noise.c"
-struct osn_context *osn_context;
-#define noise(x,y,z,scale) open_simplex_noise3(osn_context,(float)((x)-tscootx+0.5f)/(scale),(float)((y)+0.5f)/(scale),(float)((z)-tscootz+0.5f)/(scale))
-
 #include "timer.c"
 #include "vector.h"
 
@@ -105,11 +101,6 @@ struct osn_context *osn_context;
 #define GLOQLEN 10000
 
 #define SHADOW_SZ 4096
-
-#define CLAMP(v, l, u) { if (v < l) v = l; else if (v > u) v = u; }
-#define ICLAMP(v, l, u) ((v < l) ? l : (v > u) ? u : v)
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 #define true 1
 #define false 0
@@ -205,8 +196,6 @@ unsigned dumb_rand(unsigned *seed) { return (*seed = (1103515245 * *seed + 12345
 #define SEED2(a,b)     (world_seed ^ ((a) << 4) ^ ((b) << 8))
 #define SEED3(a,b,c)   (world_seed ^ ((a) << 4) ^ ((b) << 8) ^ ((c) << 12))
 #define SEED4(a,b,c,d) (world_seed ^ ((a) << 4) ^ ((b) << 8) ^ ((c) << 12) ^ ((d) << 16))
-
-float lerp(float t, float a, float b) { return a + t * (b - a); }
 
 unsigned int vbo[VAOS], vao[VAOS];
 size_t vbo_len[VAOS];

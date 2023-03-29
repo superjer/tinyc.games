@@ -40,7 +40,6 @@ float get_height(int x, int y)
         //val += (zigzag(val, 100) - .5f) * .02f;
         float denom = 1.f;
 
-        /*
         float oceaniness = remap(noise(x, y, 2030, seed, 1), .5f, .6f, 0.f, 1.f);
         if (oceaniness > 0.f && val > 0.46f)
         {
@@ -60,43 +59,13 @@ float get_height(int x, int y)
                         val = val2 * flippy + val * (1.f - flippy);
                 }
         }
-        */
 
-        float plateuness = remap(noise(x, y, 1200, seed, 1), .50f, .55f, 0.f, 1.f);
-        if (plateuness > 0.f)
+        float plateauness = remap(noise(x, y, 1200, seed, 1), .50f, .55f, 0.f, 1.f);
+        if (plateauness > 0.f)
         {
-                int x2 = x;
-                int y2 = y;
-                /*
-                // spiralize plateau heights
-                {
-                        int originx = x2 / 512 + 256;
-                        int originy = y2 / 512 + 256;
-                        int tx = x2 - originx;
-                        int ty = y2 - originy;
-                        float dist = sqrtf(tx * tx + ty * ty) / 256.f;
-                        if (dist < 1.f)
-                        {
-                                float ang = .7f * (1.f - dist) * (1.f - dist) * (1.f - dist);
-                                x2 = originx + tx * cosf(ang) - ty * sinf(ang);
-                                y2 = originy + tx * sinf(ang) + ty * cosf(ang);
-                        }
-                }
-                */
-
-                float T1 = remap(noise(x2, y2, 700, seed, 8), 0.f, 1.f, .47f, .51f);
-                float T2 = T1 + remap(noise(x2, y2, 212, seed, 2), 0.f, 1.f, -.02f, .12f);
-                float T3 = T2 + remap(noise(x2, y2, 274, seed, 2), 0.f, 1.f, -.02f, .12f);
-                /*
-                T1 = roundf(T1 * 10.f) / 10.f;
-                T2 = roundf(T2 * 10.f) / 10.f;
-                T3 = roundf(T3 * 10.f) / 10.f;
-                */
-                /*
-                T1 = .47f;
-                T2 = .50f;
-                T3 = .54f;
-                */
+                float T1 = remap(noise(x, y, 700, seed, 8), 0.f, 1.f, .47f, .51f);
+                float T2 = T1 + remap(noise(x, y, 212, seed, 2), 0.f, 1.f, -.02f, .12f);
+                float T3 = T2 + remap(noise(x, y, 274, seed, 2), 0.f, 1.f, -.02f, .12f);
                 float shelf_val = val;
                 if (shelf_val <= .48f)
                         shelf_val = excl_remap(shelf_val, .46f, .48f, .46f       , T1         );
@@ -112,10 +81,9 @@ float get_height(int x, int y)
                         shelf_val = excl_remap(shelf_val, .64f, .70f, T3         , T3 + .0005f);
                 else
                         shelf_val = excl_remap(shelf_val, .70f,  1.f, T3 + .0005f, 1.f        );
-                val = lerp(plateuness, val, shelf_val);
+                val = lerp(plateauness, val, shelf_val);
         }
 
-        /*
         float deepiness = remap(noise(x, y, 1150, seed, 1), .52f, .62f, 0.f, 1.f);
         if (deepiness > 0.f)
         {
@@ -126,27 +94,24 @@ float get_height(int x, int y)
                         deep_val = remap(deep_val, 0.f, .44f, 0.f, .2f);
                 val = deep_val * deepiness + val * (1.f - deepiness);
         }
-        */
 
-        float intensity_med = CLAMP(0.f, remap(noise(x, y, 370, seed, 3) - .5f, -.5f, .5f, -12.f, 8.f), 1.f) * .5f;
+        float intensity_med = CLAMP(remap(noise(x, y, 370, seed, 3) - .5f, -.5f, .5f, -12.f, 8.f), 0.f, 1.f) * .5f;
         if (intensity_med > 0.f)
         {
                 val += noise(x, y, 100, seed, 3) * intensity_med;
                 denom += intensity_med;
         }
 
-        /*
-        float intensity_sm = CLAMP(0.f, remap(noise(x, y, 100, seed, 3) - .5f, -.5f, .5f, -12.f, 8.f), 1.f) * .5f;
+        float intensity_sm = CLAMP(remap(noise(x, y, 100, seed, 3) - .5f, -.5f, .5f, -12.f, 8.f), 0.f, 1.f) * .5f;
         if (intensity_sm > 0.f)
         {
                 val += noise(x, y, 100, seed, 3) * intensity_sm;
                 denom += intensity_sm;
         }
 
-        float intensity_xs = CLAMP(-1.f, remap(noise(x, y, 80, seed, 3) - .5f, -.5f, .5f, -8.f, 8.f), 0.f) * .05f;
+        float intensity_xs = CLAMP(remap(noise(x, y, 80, seed, 3) - .5f, -.5f, .5f, -8.f, 8.f), -1.f, 0.f) * .05f;
         val += noise(x, y, 16, seed, 3) * intensity_xs;
         denom += intensity_xs;
-        */
 
         val /= denom;
         m->x = x;
@@ -161,7 +126,6 @@ float get_filtered_height(int x, int y)
         int y2 = y;
 
         // wacky spiral rotation
-        /*
         {
                 int originx = 600;
                 int originy = 600;
@@ -192,11 +156,9 @@ float get_filtered_height(int x, int y)
                         y2 = originy + tx * sinf(ang) + ty * cosf(ang);
                 }
         }
-        */
 
         float h = get_height(x2, y2);
 
-        /*
         float smoothness = remap(noise(x2, y2, 500, seed, 1), .55f, 1.f, 0.f, 1.f);
         if (smoothness > 0.f)
         {
@@ -208,7 +170,6 @@ float get_filtered_height(int x, int y)
                 smooth_h /= 48.f;
                 h = lerp(smoothness, h, smooth_h);
         }
-        */
 
         return h;
 }

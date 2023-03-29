@@ -1,4 +1,5 @@
 #include "blocko.h"
+#include "../common/tinyc.games/utils.c"
 
 int is_framebuffer_incomplete()
 {
@@ -294,7 +295,7 @@ void draw_stuff()
         glUniform3f(glGetUniformLocation(prog_id, "view_pos"), eye0, eye1, eye2);
 
         {
-                float m = ICLAMP(night_amt * 2.f, 0.f, 1.f);
+                float m = CLAMP(night_amt * 2.f, 0.f, 1.f);
                 glUniform1f(glGetUniformLocation(prog_id, "sharpness"), m*m*m*(m*(m*6.f-15.f)+10.f));
 
                 float r = lerp(night_amt, DAY_R, NIGHT_R);
@@ -309,8 +310,8 @@ void draw_stuff()
         TIMER(rings)
         int x0 = (eye0 - BS * CHUNKW2) / (BS * CHUNKW);
         int z0 = (eye2 - BS * CHUNKW2) / (BS * CHUNKD);
-        CLAMP(x0, 0, VAOW - 2);
-        CLAMP(z0, 0, VAOD - 2);
+        x0 = CLAMP(x0, 0, VAOW - 2);
+        x0 = CLAMP(z0, 0, VAOD - 2);
         int x1 = x0 + 1;
         int z1 = z0 + 1;
 

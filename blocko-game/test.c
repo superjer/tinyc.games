@@ -1,4 +1,5 @@
 #include "blocko.h"
+#include "../common/tinyc.games/utils.c"
 
 #define GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX    0x9048
 #define GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX  0x9049
@@ -14,9 +15,9 @@ int in_test_area(int x, int y, int z)
 
 void build_test_area()
 {
-        int tx = test_area_x = ICLAMP(player[0].pos.x / BS - TEST_AREA_SZ/2, 0, TILESW - TEST_AREA_SZ);
-        int ty = test_area_y = ICLAMP(player[0].pos.y / BS + 1             , 0, TILESH - 10          );
-        int tz = test_area_z = ICLAMP(player[0].pos.z / BS - TEST_AREA_SZ/2, 0, TILESD - TEST_AREA_SZ);
+        int tx = test_area_x = CLAMP(player[0].pos.x / BS - TEST_AREA_SZ/2, 0, TILESW - TEST_AREA_SZ);
+        int ty = test_area_y = CLAMP(player[0].pos.y / BS + 1             , 0, TILESH - 10          );
+        int tz = test_area_z = CLAMP(player[0].pos.z / BS - TEST_AREA_SZ/2, 0, TILESD - TEST_AREA_SZ);
 
         show_light_values = true;
 

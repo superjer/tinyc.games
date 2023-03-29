@@ -15,19 +15,19 @@
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define SWAP(a,b) {int *x = &(a); int *y = &(b); int t = *x; *x = *y; *y = t;}
-#define CLAMP(lo,x,hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))
+#define CLAMP(x,lo,hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))
 #define MOD(a,b) (((a) % (b) + (b)) % (b))
 
 // lerp between values a and b, t = 0..1
 float lerp(float t, float a, float b)
 {
-        return a * (1.f - t) + b * t;
+        return a + t * (b - a);
 }
 
 // remap a value in the range fromlo..fromhi to tolo..tohi with clamping
 float remap(float val, float fromlo, float fromhi, float tolo, float tohi)
 {
-        val = CLAMP(fromlo, val, fromhi);
+        val = CLAMP(val, fromlo, fromhi);
         val = (val - fromlo) / (fromhi - fromlo);
         val = val * (tohi - tolo) + tolo;
         return val;

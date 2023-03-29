@@ -17,7 +17,8 @@
 #include "light.c"
 #include "player.c"
 #include "test.c"
-#include "terrain.c"
+#include "chunker.c"
+#include "../common/tinyc.games/taylor_noise.c"
 
 //prototypes
 void startup();
@@ -46,18 +47,13 @@ int main()
                         printf("%s", timings_buf);
                         if (TERRAIN_THREAD)
                                 new_game();
-                        else
-                                create_hmap();
                         main_loop();
                 }
 
                 #pragma omp section
                 { // worker thread for terrain generation
                         if (TERRAIN_THREAD)
-                        {
-                                create_hmap();
                                 chunk_builder();
-                        }
                 }
         }
 }
@@ -97,7 +93,7 @@ void main_loop()
         int ticks = SDL_GetTicks();
         accumulated_elapsed += ticks - last_ticks;
         last_ticks = ticks;
-        CLAMP(accumulated_elapsed, 0, interval * 3 - 1);
+        accumulated_elapsed = CLAMP(accumulated_elapsed, 0, interval * 3 - 1);
 
         if (!regulated) accumulated_elapsed = interval;
 
@@ -125,7 +121,7 @@ void main_loop()
 
 void startup()
 {
-        open_simplex_noise(world_seed, &osn_context);
+        noise_setup();
 
         tiles = calloc(TILESD * TILESH * TILESW, sizeof *tiles);
         sunlight = calloc(TILESD * TILESH * TILESW, sizeof *sunlight);
