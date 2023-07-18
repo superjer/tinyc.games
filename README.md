@@ -42,9 +42,16 @@ A quick hack to make Zel into more of a 2D platformer. Very rough around the edg
 2. Open a game folder and run run-mac.sh
 
 ### Linux
-1. Install tcc, SDL2-dev, and GLEW-dev. E.g. for Debian/Ubuntu:
-
+1. Install tcc, SDL2-dev, and GLEW-dev.
+  - Debian/Ubuntu: 
+    ```
     sudo apt install tcc libsdl2-dev libsdl2-ttf-dev libglew-dev
+    ```
+  - Fedora:
+    ```
+    sudo dnf copr enable lantw44/tcc
+    sudo dnf install gcc tcc SDL2-devel SDL2_ttf-devel glew-devel
+    ```
 
 2. Open a game folder and run run-linux.sh
 
