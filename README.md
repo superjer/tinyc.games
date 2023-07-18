@@ -43,7 +43,7 @@ A quick hack to make Zel into more of a 2D platformer. Very rough around the edg
 
 ### Linux
 1. Install tcc, SDL2-dev, and GLEW-dev.
-  - Debian/Ubuntu: 
+  - Debian/Ubuntu:
     ```
     sudo apt install tcc libsdl2-dev libsdl2-ttf-dev libglew-dev
     ```

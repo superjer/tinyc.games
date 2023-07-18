@@ -25,6 +25,7 @@ void new_game();
 void main_loop();
 void update_world();
 
+#undef main
 #ifdef _WIN32
 int WinMain()
 #else

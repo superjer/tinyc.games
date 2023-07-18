@@ -1,4 +1,5 @@
 blocko-game/bin
+blocko-game/bin.exe
 blocko-game/*.dll
 flappy-game/flappy
 maker-game/maker
