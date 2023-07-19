@@ -16,6 +16,8 @@ uniform sampler2DShadow shadow_map;
 uniform vec3 day_color;
 uniform vec3 glo_color;
 uniform vec3 fog_color;
+uniform float fog_lo;
+uniform float fog_hi;
 uniform vec3 light_pos;
 uniform vec3 view_pos;
 uniform float sharpness;
@@ -23,7 +25,7 @@ uniform bool shadow_mapping;
 
 void main(void)
 {
-    float fog = smoothstep(10000, 100000, eyedist);
+    float fog = smoothstep(fog_lo, fog_hi, length(view_pos.xz - world_pos.xz));
     float il = illum + 0.1 * smoothstep(1000, 0, eyedist);
 
     vec3 sky;

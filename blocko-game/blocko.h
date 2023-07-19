@@ -69,8 +69,8 @@ struct osn_context *osn_context;
 #define CHUNKD 16                  // ^
 #define CHUNKW2 (CHUNKW/2)
 #define CHUNKD2 (CHUNKD/2)
-#define VAOW 32                    // how many VAOs wide
-#define VAOD 32                    // how many VAOs deep
+#define VAOW 64                    // how many VAOs wide
+#define VAOD 64                    // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
 #define TILESW (CHUNKW*VAOW)       // total level width, height
 #define TILESH 160                 // ^
@@ -83,9 +83,9 @@ struct osn_context *osn_context;
 #define PLYR_SPD_R (4*SCALE)       // units per frame
 #define PLYR_SPD_S (1*SCALE)       // units per frame
 #define EYEDOWN 10                 // how far down are the eyes from the top of the head
-#define STARTPX (TILESW*BS2)       // starting position within start screen
+#define STARTPX (577*BS)           // starting position within start screen
 #define STARTPY 0                  // ^
-#define STARTPZ (TILESD*BS2)       // ^
+#define STARTPZ (734*BS)           // ^
 #define NR_PLAYERS 1
 #define JUMP_BUFFER_FRAMES 6
 #define GRAV_JUMP 0
@@ -321,13 +321,13 @@ unsigned int shadow_prog_id;
 //globals
 int frame = 0;
 int pframe = 0;
-unsigned world_seed = 300;
+unsigned world_seed = 160659;
 int noisy = false;
 int vsync = false;
 int show_fresh_updates = false;
 int show_light_values = false;
 int show_shadow_map = false;
-int help_layer = 1;
+int help_layer = 0;
 int polys = 0;
 int shadow_polys = 0;
 int sunq_outta_room = 0;
@@ -335,13 +335,13 @@ int gloq_outta_room = 0;
 int omp_threads = 0;
 int lock_culling = false;
 int frustum_culling = true;
-float draw_dist = 160.f;
+float draw_dist = 320.f;
 int zooming = false;
 float zoom_amt = 1.f;
 float fast = 1.f;
 int regulated = true;
 int antialiasing = false;
-int shadow_mapping = false;
+int shadow_mapping = true;
 int speedy_sun = false;
 int reverse_sun = false;
 float sun_pitch = 0.3f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down

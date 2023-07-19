@@ -112,13 +112,14 @@ void key_move(int down)
                         break;
                 case SDLK_c: // change view distance
                         if (down) {
-                                draw_dist += draw_dist > 639.f ? 96.f :
-                                             draw_dist > 383.f ? 64.f :
-                                             draw_dist > 287.f ? 32.f :
-                                             draw_dist > 191.f ? 24.f :
-                                                                 16.f;
-                                if (draw_dist > VAOW * 16.f)
-                                        draw_dist = 80.f;
+                                if (draw_dist < 320.f)
+                                        draw_dist = 320.f;
+                                else if (draw_dist < 640.f)
+                                        draw_dist = 640.f;
+                                else if (draw_dist < 1024.f)
+                                        draw_dist = 1024.f;
+                                else
+                                        draw_dist = 160.f;
                                 fprintf(stderr, "draw_dist: %f\n", draw_dist);
                         }
                         break;

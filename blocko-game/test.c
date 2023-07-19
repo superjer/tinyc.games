@@ -141,10 +141,17 @@ void debrief()
                 font_end(1, 1, 1);
         }
 
+        if (help_layer == 0 && pframe < 200)
+        {
+                font_begin(screenw, screenh);
+                font_add_text("Press H for help", screenw * 0.45f, screenh/2.f, 0);
+                font_end(1, .5f, 1);
+        }
+
         if (help_layer == 1)
         {
-                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nE          \nZ   \nH                  \nPress G for more";
-                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nPlace Light\nZoom\nHide this help text";
+                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nE          \nZ   \nC            \nH                  \nPress G for more";
+                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nPlace Light\nZoom\nDraw Distance\nHide this help text";
                 font_begin(screenw, screenh);
                 font_add_text(h1, screenw/100.f, screenh/4.f, 0);
                 font_end(1, 0.5, 1);

@@ -313,6 +313,8 @@ void draw_stuff()
                 glUniform3f(glGetUniformLocation(prog_id, "day_color"), r, g, b);
                 glUniform3f(glGetUniformLocation(prog_id, "glo_color"), 0.92f, 0.83f, 0.69f);
                 glUniform3f(glGetUniformLocation(prog_id, "fog_color"), fog_r, fog_g, fog_b);
+                glUniform1f(glGetUniformLocation(prog_id, "fog_lo"), draw_dist * BS * 0.667f);
+                glUniform1f(glGetUniformLocation(prog_id, "fog_hi"), draw_dist * BS * 1.000f);
         }
 
         // determine which chunks to send to gl

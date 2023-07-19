@@ -88,6 +88,9 @@ void main_loop()
         if (!TERRAIN_THREAD)
         {
                 chunk_builder();
+                chunk_builder();
+                chunk_builder();
+                chunk_builder();
                 if (frame == 0)
                         new_game();
         }
@@ -137,10 +140,10 @@ void startup()
 
 void new_game()
 {
-        while(just_gen_len < 1)
+        while(just_gen_len < 4)
                 SDL_Delay(1); // wait for worker thread build first chunk
 
-        printf("1st chunk generated, ready to start game\n");
+        printf("1st 4 chunks generated, ready to start game\n");
 
         recalc_gndheight(STARTPX/BS, STARTPZ/BS);
         move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
