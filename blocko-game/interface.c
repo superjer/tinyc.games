@@ -36,6 +36,7 @@ void key_move(int down)
                         jump(down);
                         break;
 
+                // place a light
                 case SDLK_e:
                         player[0].lighting = down;
                         break;
@@ -108,6 +109,18 @@ void key_move(int down)
                         break;
                 case SDLK_m: // do shadow mapping
                         if (!down) shadow_mapping = !shadow_mapping;
+                        break;
+                case SDLK_c: // change view distance
+                        if (down) {
+                                draw_dist += draw_dist > 639.f ? 96.f :
+                                             draw_dist > 383.f ? 64.f :
+                                             draw_dist > 287.f ? 32.f :
+                                             draw_dist > 191.f ? 24.f :
+                                                                 16.f;
+                                if (draw_dist > VAOW * 16.f)
+                                        draw_dist = 80.f;
+                                fprintf(stderr, "draw_dist: %f\n", draw_dist);
+                        }
                         break;
                 case SDLK_F1: // do frustum culling
                         if (down) frustum_culling = !frustum_culling;
