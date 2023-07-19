@@ -5,11 +5,9 @@
 
 int in_test_area(int x, int y, int z)
 {
-        if (test_area_x == -1) return false;
-
-        return (x >= test_area_x && x < test_area_x + TEST_AREA_SZ &&
-                y == test_area_y &&
-                z >= test_area_z && z < test_area_z + TEST_AREA_SZ);
+        return fabsf(x - player[0].pos.x / BS) < 16 &&
+               floorf(y - player[0].pos.y / BS) == 0 &&
+               fabsf(z - player[0].pos.z / BS) < 16;
 }
 
 void build_test_area()

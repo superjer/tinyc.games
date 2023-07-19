@@ -12,6 +12,7 @@
 #include "collision.c"
 #include "draw.c"
 #include "font.c"
+#include "cursor.c"
 #include "glsetup.c"
 #include "interface.c"
 #include "light.c"
@@ -41,6 +42,7 @@ int main()
                 { // main thread
                         TIMECALL(glsetup, ());
                         TIMECALL(font_init, ());
+                        TIMECALL(cursor_init, ());
                         TIMECALL(sun_init, ());
                         char timings_buf[8000];
                         timer_print(timings_buf, 8000, true);

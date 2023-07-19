@@ -95,14 +95,8 @@ void key_move(int down)
                 case SDLK_n: // night mode on/off
                         if (down) reverse_sun = !reverse_sun;
                         break;
-                case SDLK_l: // show light values whereever
-                        if (down && place_x >= 0)
-                        {
-                                show_light_values = true;
-                                test_area_x = place_x - TEST_AREA_SZ / 2;
-                                test_area_y = place_y;
-                                test_area_z = place_z - TEST_AREA_SZ / 2;
-                        }
+                case SDLK_l: // toggle light values
+                        if (down) show_light_values = !show_light_values;
                         break;
                 case SDLK_p: // speed of the sun
                         if (down) speedy_sun = !speedy_sun;

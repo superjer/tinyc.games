@@ -367,6 +367,9 @@ void font_begin(int w, int h);
 void font_add_text(char *s, int inx, int iny, float scale);
 void font_end(float r, float g, float b);
 
+// cursor.c protos
+void cursor(int w, int h);
+
 // atmosphere.c protos
 void sun_draw(float *proj, float *view, float time_of_day, unsigned int texid);
 

@@ -547,7 +547,7 @@ void draw_stuff()
 
                         if (show_light_values && in_test_area(x, y, z))
                         {
-                                int f = GLO_(x, y, z) + PNG0;
+                                int f = MAX(GLO_(x, y, z), SUN_(x, y, z)) + PNG0;
                                 int ty = y;
                                 float lit = 1.f;
                                 if (IS_OPAQUE(x, y, z))
@@ -555,8 +555,8 @@ void draw_stuff()
                                         ty = y - 1;
                                         lit = 0.1f;
                                 }
-                                *w++ = (struct vbufv){ f,    UP, m, ty+0.9f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
-                                *w++ = (struct vbufv){ f,  DOWN, m, ty-0.1f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
+                                *w++ = (struct vbufv){ f,    UP, m, ty+0.99f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
+                                *w++ = (struct vbufv){ f,  DOWN, m, ty-0.01f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
                         }
                 }
 
@@ -580,6 +580,8 @@ void draw_stuff()
                         glDrawArrays(GL_POINTS, 0, VBOLEN_(myx, myz));
                 }
         }
+
+        if (mouselook) cursor(screenw, screenh);
 
         debrief();
 

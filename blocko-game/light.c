@@ -144,7 +144,14 @@ void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
                 int y_ = (y == 0) ? 0 : y - 1;
                 int z_ = (z == 0) ? 0 : z - 1;
 
-                CORN_(x, y, z) = 0.008f * (
+                CORN_(x, y, z) = 0.030f * MAX(
+                                MAX(
+                                        MAX(SUN_(x_, y_, z_), SUN_(x , y_, z_)),
+                                        MAX(SUN_(x_, y , z_), SUN_(x , y , z_))
+                                ), MAX(
+                                        MAX(SUN_(x_, y_, z ), SUN_(x , y_, z )),
+                                        MAX(SUN_(x_, y , z ), SUN_(x , y , z ))
+                                )) + 0.001f * (
                                 SUN_(x_, y_, z_) + SUN_(x , y_, z_) + SUN_(x_, y , z_) + SUN_(x , y , z_) +
                                 SUN_(x_, y_, z ) + SUN_(x , y_, z ) + SUN_(x_, y , z ) + SUN_(x , y , z ));
                 KORN_(x, y, z) = 0.008f * (

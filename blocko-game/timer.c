@@ -15,6 +15,7 @@
         X(swapwindow), \
         X(glsetup), \
         X(font_init), \
+        X(cursor_init), \
         X(sun_init), \
         X(scoot),
 
