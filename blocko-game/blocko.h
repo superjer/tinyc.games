@@ -300,7 +300,7 @@ struct player player[NR_PLAYERS] = {{
         .pos.w = PLYR_W,
         .pos.h = PLYR_H,
         .pos.d = PLYR_W,
-        .yaw = 3.1415926535 * 0.5f,
+        .yaw = PI * 0.5f,
         .grav = GRAV_ZERO,
 }};
 struct player camplayer;
@@ -344,7 +344,8 @@ int antialiasing = false;
 int shadow_mapping = true;
 int speedy_sun = false;
 int reverse_sun = false;
-float sun_pitch = 0.3f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down
+float sun_pitch = .6f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down
+float sun_yaw = PI * -.3f;
 char alert[800]; // only for debugging
 
 int mouselook = true;
@@ -371,7 +372,7 @@ void font_end(float r, float g, float b);
 void cursor(int w, int h);
 
 // atmosphere.c protos
-void sun_draw(float *proj, float *view, float time_of_day, unsigned int texid);
+void sun_draw(float *proj, float *view, float pitch, float yaw, unsigned int texid);
 
 // player.c protos
 void lerp_camera(float t, struct player *a, struct player *b);

@@ -43,14 +43,15 @@ void sun_init()
         glEnableVertexAttribArray(1);
 }
 
-void sun_draw(float *proj, float *view, float sun_pitch, unsigned int texid)
+void sun_draw(float *proj, float *view, float pitch, float yaw, unsigned int texid)
 {
-        float a = sun_pitch;
+        float a = pitch;
+        float b = yaw;
         float model[] = {
-                cosf(a), -sinf(a), 0, 0,
-                sinf(a),  cosf(a), 0, 0,
-                      0,       0, 1, 0,
-                      0,       0, 0, 1,
+                -cosf(a) * sinf(b), -sinf(a), -cosf(a) * cosf(b), 0,
+                -sinf(a) * sinf(b),  cosf(a), -sinf(a) * cosf(b), 0,
+                          -cosf(b),        0,            sinf(b), 0,
+                                0,         0,                  0, 1,
         };
 
         glEnable(GL_BLEND);

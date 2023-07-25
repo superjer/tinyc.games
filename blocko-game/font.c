@@ -180,7 +180,7 @@ void font_add_text(char *s, int inx, int iny, float scale)
         int y = iny;
 
         if (!scale)
-                scale = roundf((font_screenw < font_screenh ? font_screenw : font_screenh) / 250.f);
+                scale = MIN(roundf(font_screenw / 600.f), roundf(font_screenh / 400.f));
 
         for (; *s && font_buf_p < font_buf_limit; s++)
         {

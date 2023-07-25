@@ -135,14 +135,14 @@ void debrief()
                 font_end(1, 1, 1);
 
                 font_begin(screenw, screenh);
-                font_add_text(timings_buf, 0.80f * screenw, 0, 2);
+                font_add_text(timings_buf, 0.80f * screenw, 0, 0);
                 font_end(1, 1, 1);
         }
 
         if (help_layer == 0 && pframe < 200)
         {
                 font_begin(screenw, screenh);
-                font_add_text("Press H for help", screenw * 0.45f, screenh/2.f, 0);
+                font_add_text("Press H for help", 20, screenh - 40, 0);
                 font_end(1, .5f, 1);
         }
 

@@ -48,16 +48,9 @@ void cursor(int w, int h)
 {
         cursor_screenw = w;
         cursor_screenh = h;
-        cursor_buf_p = cursor_buf;
-
         int w2 = w/2;
         int h2 = h/2;
-        cursor_rect(w2 - 25, h2 -  1, w2 -  9, h2 +  1);
-        cursor_rect(w2 +  9, h2 -  1, w2 + 25, h2 +  1);
-        cursor_rect(w2 -  1, h2 - 25, w2 +  1, h2 -  9);
-        cursor_rect(w2 -  1, h2 +  9, w2 +  1, h2 + 25);
-
-        int n = (cursor_buf_p - cursor_buf);
+        int n;
 
         glDisable(GL_BLEND);
         glDisable(GL_DEPTH_TEST);
@@ -77,6 +70,34 @@ void cursor(int w, int h)
                -1, 1, tz, 1,
         };
         glUniformMatrix4fv(glGetUniformLocation(cursor_prog_id, "proj"), 1, GL_FALSE, ortho);
+
+        cursor_buf_p = cursor_buf;
+
+        cursor_rect(w2 - 25 + 1, h2 -  1 + 1, w2 -  9 + 1, h2 +  1 + 1);
+        cursor_rect(w2 +  9 + 1, h2 -  1 + 1, w2 + 25 + 1, h2 +  1 + 1);
+        cursor_rect(w2 -  1 + 1, h2 - 25 + 1, w2 +  1 + 1, h2 -  9 + 1);
+        cursor_rect(w2 -  1 + 1, h2 +  9 + 1, w2 +  1 + 1, h2 + 25 + 1);
+
+        n = cursor_buf_p - cursor_buf;
+
+        glBindVertexArray(cursor_vao);
+        glBindBuffer(GL_ARRAY_BUFFER, cursor_vbo);
+        glBufferData(GL_ARRAY_BUFFER, n * sizeof *cursor_buf, cursor_buf, GL_STATIC_DRAW);
+
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), 0);
+        glEnableVertexAttribArray(0);
+
+        glUniform3f(glGetUniformLocation(cursor_prog_id, "incolor"), .1f, .1f, .1f);
+        glDrawArrays(GL_TRIANGLES, 0, n);
+
+        cursor_buf_p = cursor_buf;
+
+        cursor_rect(w2 - 25, h2 -  1, w2 -  9, h2 +  1);
+        cursor_rect(w2 +  9, h2 -  1, w2 + 25, h2 +  1);
+        cursor_rect(w2 -  1, h2 - 25, w2 +  1, h2 -  9);
+        cursor_rect(w2 -  1, h2 +  9, w2 +  1, h2 + 25);
+
+        n = cursor_buf_p - cursor_buf;
 
         glBindVertexArray(cursor_vao);
         glBindBuffer(GL_ARRAY_BUFFER, cursor_vbo);

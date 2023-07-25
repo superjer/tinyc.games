@@ -124,28 +124,27 @@ void draw_stuff()
                 float f[3];
 
                 float moon_pitch = sun_pitch + PI;
-                if (moon_pitch < 0) moon_pitch += TAU;
+                if (moon_pitch >= TAU) moon_pitch -= TAU;
 
-                float quantized_sun_pitch = quantize(sun_pitch);
-                float quantized_moon_pitch = quantize(moon_pitch);
-                float yaw = 3.1415926535 * -0.5f;
-                float dist2sun = (TILESW / 4) * BS;
-                sun_pos.x = roundf(camplayer.pos.x / BS) * BS + dist2sun * sinf(-yaw) * cosf(quantized_sun_pitch);
+                float quantized_sun_pitch = sun_pitch; //quantize(sun_pitch);
+                float quantized_moon_pitch = moon_pitch; //quantize(moon_pitch);
+                float dist2sun = (TILESH / 4) * BS;
+                sun_pos.x = camplayer.pos.x + dist2sun * sinf(-sun_yaw) * cosf(quantized_sun_pitch);
                 sun_pos.y = 100 * BS - dist2sun * sinf(quantized_sun_pitch);
-                sun_pos.z = roundf(camplayer.pos.z / BS) * BS + dist2sun * cosf(-yaw) * cosf(quantized_sun_pitch);
+                sun_pos.z = camplayer.pos.z - dist2sun * cosf(-sun_yaw) * cosf(quantized_sun_pitch);
 
-                moon_pos.x = roundf(camplayer.pos.x / BS) * BS + dist2sun * sinf(-yaw) * cosf(quantized_moon_pitch);
+                moon_pos.x = camplayer.pos.x + dist2sun * sinf(-sun_yaw) * cosf(quantized_moon_pitch);
                 moon_pos.y = 100 * BS - dist2sun * sinf(quantized_moon_pitch);
-                moon_pos.z = roundf(camplayer.pos.z / BS) * BS + dist2sun * cosf(-yaw) * cosf(quantized_moon_pitch);
+                moon_pos.z = camplayer.pos.z - dist2sun * cosf(-sun_yaw) * cosf(quantized_moon_pitch);
 
                 if (sun_pitch < PI)
                 {
-                        lookit(view_mtrx, f, sun_pos.x, sun_pos.y, sun_pos.z, quantized_sun_pitch, yaw);
+                        lookit(view_mtrx, f, sun_pos.x, sun_pos.y, sun_pos.z, quantized_sun_pitch, sun_yaw);
                         translate(view_mtrx, -sun_pos.x, -sun_pos.y, -sun_pos.z);
                 }
                 else
                 {
-                        lookit(view_mtrx, f, moon_pos.x, moon_pos.y, moon_pos.z, quantized_moon_pitch, yaw);
+                        lookit(view_mtrx, f, moon_pos.x, moon_pos.y, moon_pos.z, quantized_moon_pitch, sun_yaw);
                         translate(view_mtrx, -moon_pos.x, -moon_pos.y, -moon_pos.z);
                 }
 
@@ -257,7 +256,7 @@ void draw_stuff()
         float view_mtrx[16];
         lookit(view_mtrx, f, eye0, eye1, eye2, camplayer.pitch, camplayer.yaw);
 
-        sun_draw(proj_mtrx, view_mtrx, sun_pitch, shadow_tex_id);
+        sun_draw(proj_mtrx, view_mtrx, sun_pitch, sun_yaw, shadow_tex_id);
 
         // find where we are pointing at
         rayshot(eye0, eye1, eye2, f[0], f[1], f[2]);
@@ -307,7 +306,7 @@ void draw_stuff()
                 float m = ICLAMP(night_amt * 2.f, 0.f, 1.f);
                 glUniform1f(glGetUniformLocation(prog_id, "sharpness"), m*m*m*(m*(m*6.f-15.f)+10.f));
 
-                float r = lerp(night_amt, DAY_R, NIGHT_R);
+                float r = lerp(night_amt * night_amt, DAY_R, NIGHT_R);
                 float g = lerp(night_amt, DAY_G, NIGHT_G);
                 float b = lerp(night_amt, DAY_B, NIGHT_B);
                 glUniform3f(glGetUniformLocation(prog_id, "day_color"), r, g, b);
