@@ -121,30 +121,39 @@ void draw_stuff()
                 glUseProgram(shadow_prog_id);
                 // view matrix
                 float view_mtrx[16];
-                float f[3];
 
                 float moon_pitch = sun_pitch + PI;
                 if (moon_pitch >= TAU) moon_pitch -= TAU;
 
-                float quantized_sun_pitch = sun_pitch; //quantize(sun_pitch);
-                float quantized_moon_pitch = moon_pitch; //quantize(moon_pitch);
-                float dist2sun = (TILESH) * BS;
-                sun_pos.x = camplayer.pos.x + dist2sun * sinf(-sun_yaw) * cosf(quantized_sun_pitch);
-                sun_pos.y = 100 * BS - dist2sun * sinf(quantized_sun_pitch);
-                sun_pos.z = camplayer.pos.z - dist2sun * cosf(-sun_yaw) * cosf(quantized_sun_pitch);
+                float dist2sun = TILESH * BS;
 
-                moon_pos.x = camplayer.pos.x + dist2sun * sinf(-sun_yaw) * cosf(quantized_moon_pitch);
-                moon_pos.y = 100 * BS - dist2sun * sinf(quantized_moon_pitch);
-                moon_pos.z = camplayer.pos.z - dist2sun * cosf(-sun_yaw) * cosf(quantized_moon_pitch);
+                float f[3] = {
+                        camplayer.pos.x,
+                        100 * BS,
+                        camplayer.pos.z,
+                };
+
+                sun_pos.x = f[0] + dist2sun * (cosf(sun_pitch) * cosf(sun_yaw));
+                sun_pos.y = f[1] + dist2sun * (cosf(sun_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(sun_pitch) * sinf(sun_roll));
+                sun_pos.z = f[2] + dist2sun * (cosf(sun_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(sun_pitch) * cosf(sun_roll));
+
+                moon_pos.x = f[0] + dist2sun * (cosf(moon_pitch) * cosf(sun_yaw));
+                moon_pos.y = f[1] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(moon_pitch) * sinf(sun_roll));
+                moon_pos.z = f[2] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(moon_pitch) * cosf(sun_roll));
+
+                /*
+                T_((int)(sun_pos.x / BS), (int)(sun_pos.y / BS), (int)(sun_pos.z / BS)) = GRAS;
+                T_((int)(moon_pos.x / BS), (int)(moon_pos.y / BS), (int)(moon_pos.z / BS)) = GRAN;
+                */
 
                 if (sun_pitch < PI)
                 {
-                        lookit(view_mtrx, f, sun_pos.x, sun_pos.y, sun_pos.z, quantized_sun_pitch, sun_yaw);
+                        lookit(view_mtrx, f, sun_pos.x, sun_pos.y, sun_pos.z, NO_PITCH, 0.f);
                         translate(view_mtrx, -sun_pos.x, -sun_pos.y, -sun_pos.z);
                 }
                 else
                 {
-                        lookit(view_mtrx, f, moon_pos.x, moon_pos.y, moon_pos.z, quantized_moon_pitch, sun_yaw);
+                        lookit(view_mtrx, f, moon_pos.x, moon_pos.y, moon_pos.z, NO_PITCH, 0.f);
                         translate(view_mtrx, -moon_pos.x, -moon_pos.y, -moon_pos.z);
                 }
 

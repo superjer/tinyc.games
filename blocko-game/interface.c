@@ -139,10 +139,19 @@ void key_move(int down)
                         if (!down) show_shadow_map = !show_shadow_map;
                         break;
 
+                /*
                 case SDLK_LEFT:  if (down) scoot(-1,  0); break;
                 case SDLK_RIGHT: if (down) scoot( 1,  0); break;
                 case SDLK_DOWN:  if (down) scoot( 0, -1); break;
                 case SDLK_UP:    if (down) scoot( 0,  1); break;
+                */
+
+                case SDLK_LEFT:     if (down) sun_yaw   -= .1f; break;
+                case SDLK_RIGHT:    if (down) sun_yaw   += .1f; break;
+                case SDLK_DOWN:     if (down) sun_pitch -= .1f; break;
+                case SDLK_UP:       if (down) sun_pitch += .1f; break;
+                case SDLK_PAGEDOWN: if (down) sun_roll  -= .1f; break;
+                case SDLK_PAGEUP:   if (down) sun_roll  += .1f; break;
         }
 }
 

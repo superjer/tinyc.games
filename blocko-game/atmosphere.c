@@ -75,13 +75,17 @@ void sun_init()
 
 void sun_draw(float *proj, float *view, float pitch, float yaw, float roll, unsigned int texid)
 {
-        float a = pitch;
-        float b = yaw;
+        float cosa = cosf(pitch);
+        float sina = sinf(pitch);
+        float cosb = cosf(yaw);
+        float sinb = sinf(yaw);
+        float cosc = cosf(roll);
+        float sinc = sinf(roll);
         float model[] = {
-                -cosf(a) * sinf(b), -sinf(a), -cosf(a) * cosf(b), 0,
-                -sinf(a) * sinf(b),  cosf(a), -sinf(a) * cosf(b), 0,
-                          -cosf(b),        0,            sinf(b), 0,
-                                0,         0,                  0, 1,
+                cosa * cosb,       cosa * sinb * cosc + sina * sinc,      cosa * sinb * sinc - sina * cosc,       0,
+                sina * cosb,       sina * sinb * cosc - cosa * sinc,      sina * sinb * sinc + cosa * cosc,       0,
+                      -sinb,              cosb * cosc              ,             cosb * sinc              ,       0,
+                          0,                                      0,                                     0,       1,
         };
 
         glEnable(GL_BLEND);

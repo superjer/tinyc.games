@@ -345,9 +345,9 @@ int antialiasing = false;
 int shadow_mapping = true;
 int speedy_sun = false;
 int reverse_sun = false;
-float sun_pitch = .6f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down
-float sun_yaw = PI * -.4f;
-float sun_roll = 0.f;
+float sun_pitch = .3f; //.6f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down
+float sun_yaw = .3f;
+float sun_roll = -1.3f;
 char alert[800]; // only for debugging
 
 int mouselook = true;

@@ -48,12 +48,28 @@ void mat4_print(float *a)
         printf("%4.4f %4.4f %4.4f %4.4f\n", a[ 3], a[ 7], a[11], a[15]);
 }
 
+#define NO_PITCH FLT_MAX
+
+// create a view matrix by point+angle or point to point
 void lookit(float *out_matrix, float *f, float eye0, float eye1, float eye2,
                 float pitch, float yaw)
 {
-        f[0] = cosf(pitch) * sinf(yaw);
-        f[1] = sinf(pitch);
-        f[2] = cosf(pitch) * cosf(yaw);
+        if (pitch == NO_PITCH)
+        {
+                f[0] -= eye0;
+                f[1] -= eye1;
+                f[2] -= eye2;
+                float dist = sqrtf(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
+                f[0] /= dist;
+                f[1] /= dist;
+                f[2] /= dist;
+        }
+        else
+        {
+                f[0] = cosf(pitch) * sinf(yaw);
+                f[1] = sinf(pitch);
+                f[2] = cosf(pitch) * cosf(yaw);
+        }
         float wing0, wing1, wing2;
         wing0 = -cosf(yaw);
         wing1 = 0;
@@ -80,10 +96,10 @@ void lookit(float *out_matrix, float *f, float eye0, float eye1, float eye2,
         u1 = zz2*f[0] - zz0*f[2];
         u2 = zz0*f[1] - zz1*f[0];
         float buf[] = {
-                s0, u0,-f[0], 0,
-                s1, u1,-f[1], 0,
-                s2, u2,-f[2], 0,
-                 0,  0,    0, 1
+                s0, u0, -f[0], 0,
+                s1, u1, -f[1], 0,
+                s2, u2, -f[2], 0,
+                 0,  0,     0, 1
         };
         memcpy(out_matrix, buf, sizeof buf);
 }
