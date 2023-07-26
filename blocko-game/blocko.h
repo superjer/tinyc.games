@@ -314,7 +314,9 @@ SDL_Window *win;
 
 GLuint material_tex_id;
 GLuint shadow_tex_id;
+GLuint shadow2_tex_id;
 GLuint shadow_fbo;
+GLuint shadow2_fbo;
 
 unsigned int prog_id;
 unsigned int shadow_prog_id;

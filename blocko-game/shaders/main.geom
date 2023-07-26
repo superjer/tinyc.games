@@ -16,6 +16,7 @@ flat out float alpha;
 out vec2 uv;
 flat out float eyedist;
 out vec4 shadow_pos;
+out vec4 shadow2_pos;
 out vec4 world_pos;
 flat out vec3 normal;
 
@@ -23,6 +24,7 @@ uniform mat4 model;
 uniform mat4 view;
 uniform mat4 proj;
 uniform mat4 shadow_space;
+uniform mat4 shadow2_space;
 uniform float BS;
 
 void main(void) // geometry
@@ -88,6 +90,7 @@ void main(void) // geometry
     gl_Position = gl_in[0].gl_Position + mvp * a;
     world_pos = world_pos_vs[0] + a;
     shadow_pos = shadow_space * world_pos;
+    shadow2_pos = shadow2_space * world_pos;
     uv = vec2(1,0);
     illum = (0.1 + illum_vs[0].x) * sidel;
     glow = (0.1 + glow_vs[0].x) * sidel;
@@ -96,6 +99,7 @@ void main(void) // geometry
     gl_Position = gl_in[0].gl_Position + mvp * b;
     world_pos = world_pos_vs[0] + b;
     shadow_pos = shadow_space * world_pos;
+    shadow2_pos = shadow2_space * world_pos;
     uv = vec2(0,0);
     illum = (0.1 + illum_vs[0].y) * sidel;
     glow = (0.1 + glow_vs[0].y) * sidel;
@@ -104,6 +108,7 @@ void main(void) // geometry
     gl_Position = gl_in[0].gl_Position + mvp * c;
     world_pos = world_pos_vs[0] + c;
     shadow_pos = shadow_space * world_pos;
+    shadow2_pos = shadow2_space * world_pos;
     uv = vec2(1,1);
     illum = (0.1 + illum_vs[0].z) * sidel;
     glow = (0.1 + glow_vs[0].z) * sidel;
@@ -112,6 +117,7 @@ void main(void) // geometry
     gl_Position = gl_in[0].gl_Position + mvp * d;
     world_pos = world_pos_vs[0] + d;
     shadow_pos = shadow_space * world_pos;
+    shadow2_pos = shadow2_space * world_pos;
     uv = vec2(0,1);
     illum = (0.1 + illum_vs[0].w) * sidel;
     glow = (0.1 + glow_vs[0].w) * sidel;

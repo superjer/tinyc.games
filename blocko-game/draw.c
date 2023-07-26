@@ -92,6 +92,7 @@ void draw_stuff()
                 0, 0, 0, 1,
         };
         float shadow_space[16];
+        float shadow2_space[16];
 
         glDisable(GL_MULTISAMPLE);
 
@@ -99,9 +100,9 @@ void draw_stuff()
         memcpy(model_mtrx, identity_mtrx, sizeof identity_mtrx);
 
         // make shadow map
-        if (shadow_mapping)
+        if (shadow_mapping) for(int s = 0; s < 2; s++)
         {
-                glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo);
+                glBindFramebuffer(GL_FRAMEBUFFER, s == 0 ? shadow_fbo : shadow2_fbo);
                 if (is_framebuffer_incomplete()) goto fb_is_bad;
 
                 glViewport(0, 0, SHADOW_SZ, SHADOW_SZ);
@@ -125,7 +126,7 @@ void draw_stuff()
                 float moon_pitch = sun_pitch + PI;
                 if (moon_pitch >= TAU) moon_pitch -= TAU;
 
-                float dist2sun = TILESH * BS;
+                float dist2sun = TILESW * BS;
 
                 float f[3] = {
                         camplayer.pos.x,
@@ -158,10 +159,11 @@ void draw_stuff()
                 }
 
                 // proj matrix
-                float snear = 10.f; // TODO find closest possible block
-                float sfar = dist2sun + 9000.f;
-                float x = 1.f / (6000 / 2.f);
-                float y = -1.f / (6000 / 2.f);
+                float snear = (s == 0 ? 10.f : 80.f);
+                float sfar = dist2sun + (s == 0 ? 9000.f : 72000.f);
+                float mag = (s == 0 ? 3000.f : 24000.f);
+                float x = 1.f / mag;
+                float y = -1.f / mag;
                 float z = -1.f / ((sfar - snear) / 2.f);
                 float tz = -(sfar + snear) / (sfar - snear);
                 float ortho_mtrx[] = {
@@ -181,14 +183,18 @@ void draw_stuff()
                 glUniform1f(glGetUniformLocation(shadow_prog_id, "BS"), BS);
 
                 float bias_mtrx[] = {
-                        0.5,   0,   0, 1,
-                          0, 0.5,   0, 1,
-                          0,   0, 0.5, 1,
-                        0.5, 0.5, 0.5, 1,
+                        .5f,   0,   0, 1.f,
+                          0, .5f,   0, 1.f,
+                          0,   0, .5f, 1.f,
+                        .5f, .5f, .5f, 1.f,
                 };
                 float tmp_mtrx[16];
                 mat4_multiply(tmp_mtrx, ortho_mtrx, view_mtrx);
-                mat4_multiply(shadow_space, bias_mtrx, tmp_mtrx);
+
+                if (s == 0)
+                        mat4_multiply(shadow_space, bias_mtrx, tmp_mtrx);
+                else
+                        mat4_multiply(shadow2_space, bias_mtrx, tmp_mtrx);
 
                 for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
                 {
@@ -270,11 +276,17 @@ void draw_stuff()
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, shadow_tex_id);
         glUniform1i(glGetUniformLocation(prog_id, "shadow_map"), 1);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, shadow2_tex_id);
+        glUniform1i(glGetUniformLocation(prog_id, "shadow2_map"), 2);
+
         glUniform1i(glGetUniformLocation(prog_id, "shadow_mapping"), shadow_mapping);
 
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, proj_mtrx);
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, translated_view_mtrx);
         glUniformMatrix4fv(glGetUniformLocation(prog_id, "shadow_space"), 1, GL_FALSE, shadow_space);
+        glUniformMatrix4fv(glGetUniformLocation(prog_id, "shadow2_space"), 1, GL_FALSE, shadow2_space);
 
         glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
 
