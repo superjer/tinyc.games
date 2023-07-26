@@ -170,6 +170,24 @@ void debrief()
                 font_end(1, 1, 1);
         }
 
+        // compass
+        {
+                char compass_buf[10] = {0};
+                snprintf(compass_buf, 10, "Yaw: %d", (int)(player[0].yaw / PI * 180.f));
+
+                font_begin(screenw, screenh);
+                font_add_text(compass_buf, screenw/2.f, 0.f, 0);
+                font_end(1, 1, 1);
+
+                static char dir[][4] = {
+                        "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW", "N",
+                };
+                int idx = (int)floorf((player[0].yaw + PI / 16.f) / (PI / 8.f));
+                font_begin(screenw, screenh);
+                font_add_text(dir[idx], screenw/2.f, screenh/20.f, 0);
+                font_end(1, 1, 1);
+        }
+
         // for debugging only
         if (alert[0])
         {

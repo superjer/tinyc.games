@@ -228,6 +228,7 @@ struct vbufv wbuf[VERTEX_BUFLEN + 1000]; // water buffer
 struct vbufv *w_limit = wbuf + VERTEX_BUFLEN;
 struct vbufv *w = wbuf;
 
+float night_amt;
 float fog_r, fog_g, fog_b;
 
 unsigned char *tiles;
@@ -345,7 +346,8 @@ int shadow_mapping = true;
 int speedy_sun = false;
 int reverse_sun = false;
 float sun_pitch = .6f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down
-float sun_yaw = PI * -.3f;
+float sun_yaw = PI * -.4f;
+float sun_roll = 0.f;
 char alert[800]; // only for debugging
 
 int mouselook = true;
@@ -372,7 +374,8 @@ void font_end(float r, float g, float b);
 void cursor(int w, int h);
 
 // atmosphere.c protos
-void sun_draw(float *proj, float *view, float pitch, float yaw, unsigned int texid);
+void do_atmos_colors();
+void sun_draw(float *proj, float *view, float pitch, float yaw, float roll, unsigned int texid);
 
 // player.c protos
 void lerp_camera(float t, struct player *a, struct player *b);
@@ -387,7 +390,7 @@ int in_test_area(int x, int y, int z);
 void build_test_area();
 void debrief();
 
-// light.c protos
+// blocklight.c protos
 void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light);
 void glo_enqueue(int x, int y, int z, int base, unsigned char incoming_light);
 int step_sunlight();

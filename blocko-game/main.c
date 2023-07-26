@@ -15,7 +15,7 @@
 #include "cursor.c"
 #include "glsetup.c"
 #include "interface.c"
-#include "light.c"
+#include "blocklight.c"
 #include "player.c"
 #include "test.c"
 #include "terrain.c"
@@ -190,10 +190,11 @@ void update_world()
         if (sun_pitch > TAU) sun_pitch -= TAU;
         if (sun_pitch < 0.f) sun_pitch += TAU;
 
+        /*
         sun_yaw += .333f * speed * (reverse_sun ? -1 : 1);
         if (sun_yaw > TAU) sun_yaw -= TAU;
         if (sun_yaw < 0.f) sun_yaw += TAU;
-
+        */
 }
 
 void move_to_ground(float *inout, int x, int y, int z)

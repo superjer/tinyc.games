@@ -3,6 +3,36 @@
 unsigned int sun_prog_id;
 GLuint sun_vbo, sun_vao;
 
+void do_atmos_colors()
+{
+        if (sun_pitch < PI) // in the day, linearly change the sky color
+        {
+                night_amt = fmodf(sun_pitch + 3*PI2, TAU) / TAU;
+                if (night_amt > 0.5f) night_amt = 1.f - night_amt;
+                night_amt *= 2.f;
+        }
+        else // at night change via cubic-sine so that it's mostly dark all night
+        {
+                night_amt = 1.f + sinf(sun_pitch);  //  0 to  1
+                night_amt *= night_amt * night_amt; //  0 to  1
+                night_amt *= -0.5f;                 //-.5 to  0
+                night_amt += 1.f;                   //  1 to .5
+        }
+
+        if (night_amt > 0.5f)
+        {
+                fog_r = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_R, FOG_NIGHT_R);
+                fog_g = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_G, FOG_NIGHT_G);
+                fog_b = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_B, FOG_NIGHT_B);
+        }
+        else
+        {
+                fog_r = lerp(2.f*night_amt, FOG_DAY_R, FOG_DUSK_R);
+                fog_g = lerp(2.f*night_amt, FOG_DAY_G, FOG_DUSK_G);
+                fog_b = lerp(2.f*night_amt, FOG_DAY_B, FOG_DUSK_B);
+        }
+}
+
 void sun_init()
 {
         unsigned int vertex = file2shader(GL_VERTEX_SHADER, "shaders/sun.vert");
@@ -43,7 +73,7 @@ void sun_init()
         glEnableVertexAttribArray(1);
 }
 
-void sun_draw(float *proj, float *view, float pitch, float yaw, unsigned int texid)
+void sun_draw(float *proj, float *view, float pitch, float yaw, float roll, unsigned int texid)
 {
         float a = pitch;
         float b = yaw;

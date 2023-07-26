@@ -150,15 +150,15 @@ void mouse_move()
 {
         if (!mouselook) return;
 
-        float pitchlimit = 3.1415926535 * 0.5 - 0.001;
         player[0].yaw += event.motion.xrel * 0.001;
         player[0].pitch += event.motion.yrel * 0.001;
 
-        if (player[0].pitch > pitchlimit)
-                player[0].pitch = pitchlimit;
+        if (player[0].yaw >= TAU) player[0].yaw -= TAU;
+        if (player[0].yaw < 0.f) player[0].yaw += TAU;
 
-        if (player[0].pitch < -pitchlimit)
-                player[0].pitch = -pitchlimit;
+        float limit = 3.1415926535 * 0.5 - 0.001;
+        if (player[0].pitch > limit) player[0].pitch = limit;
+        if (player[0].pitch < -limit) player[0].pitch = -limit;
 }
 
 void mouse_button(int down)

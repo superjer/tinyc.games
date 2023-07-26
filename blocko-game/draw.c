@@ -128,7 +128,7 @@ void draw_stuff()
 
                 float quantized_sun_pitch = sun_pitch; //quantize(sun_pitch);
                 float quantized_moon_pitch = moon_pitch; //quantize(moon_pitch);
-                float dist2sun = (TILESH / 4) * BS;
+                float dist2sun = (TILESH) * BS;
                 sun_pos.x = camplayer.pos.x + dist2sun * sinf(-sun_yaw) * cosf(quantized_sun_pitch);
                 sun_pos.y = 100 * BS - dist2sun * sinf(quantized_sun_pitch);
                 sun_pos.z = camplayer.pos.z - dist2sun * cosf(-sun_yaw) * cosf(quantized_sun_pitch);
@@ -201,33 +201,7 @@ void draw_stuff()
                 glDisable(GL_POLYGON_OFFSET_FILL);
         }
 
-        float night_amt;
-        if (sun_pitch < PI) // in the day, linearly change the sky color
-        {
-                night_amt = fmodf(sun_pitch + 3*PI2, TAU) / TAU;
-                if (night_amt > 0.5f) night_amt = 1.f - night_amt;
-                night_amt *= 2.f;
-        }
-        else // at night change via cubic-sine so that it's mostly dark all night
-        {
-                night_amt = 1.f + sinf(sun_pitch);  //  0 to  1
-                night_amt *= night_amt * night_amt; //  0 to  1
-                night_amt *= -0.5f;                 //-.5 to  0
-                night_amt += 1.f;                   //  1 to .5
-        }
-
-        if (night_amt > 0.5f)
-        {
-                fog_r = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_R, FOG_NIGHT_R);
-                fog_g = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_G, FOG_NIGHT_G);
-                fog_b = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_B, FOG_NIGHT_B);
-        }
-        else
-        {
-                fog_r = lerp(2.f*night_amt, FOG_DAY_R, FOG_DUSK_R);
-                fog_g = lerp(2.f*night_amt, FOG_DAY_G, FOG_DUSK_G);
-                fog_b = lerp(2.f*night_amt, FOG_DAY_B, FOG_DUSK_B);
-        }
+        do_atmos_colors();
 
         glViewport(0, 0, screenw, screenh);
         glClearColor(fog_r, fog_g, fog_b, 1.f);
@@ -256,7 +230,7 @@ void draw_stuff()
         float view_mtrx[16];
         lookit(view_mtrx, f, eye0, eye1, eye2, camplayer.pitch, camplayer.yaw);
 
-        sun_draw(proj_mtrx, view_mtrx, sun_pitch, sun_yaw, shadow_tex_id);
+        sun_draw(proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll, shadow_tex_id);
 
         // find where we are pointing at
         rayshot(eye0, eye1, eye2, f[0], f[1], f[2]);
