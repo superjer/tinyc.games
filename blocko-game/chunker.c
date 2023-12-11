@@ -47,7 +47,8 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
                         solid_depth++;
 
-                             if (y < 60)   TT_(x, y, z) = STON;
+                             if (y < 50)   TT_(x, y, z) = GRAN;
+                        else if (y < 64)   TT_(x, y, z) = STON;
                         else if (y < 77)   TT_(x, y, z) = solid_depth == 1 ? GRAS : DIRT;
                         else if (y < 115)  TT_(x, y, z) = solid_depth == 1 ? SAND : STON;
                         else               TT_(x, y, z) = HARD;

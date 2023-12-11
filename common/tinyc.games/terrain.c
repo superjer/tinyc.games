@@ -5,7 +5,7 @@
 #include "utils.c"
 
 int get_height_hit, get_height_miss;
-int seed;
+int seed = 104;
 
 float zigzag(float val, int zags)
 {
@@ -36,7 +36,7 @@ float get_height(int x, int y)
         // legend
         if (x < 20 && y < 640) return (y - 240) / 20 / 20.f;
 
-        float val = noise(x, y, 200, seed, 1);
+        float val = noise(x, y, 400, seed, 1);
         //val += (zigzag(val, 100) - .5f) * .02f;
         float denom = 1.f;
 
@@ -135,7 +135,7 @@ float get_filtered_height(int x, int y)
                 if (dist < 1.f)
                 {
                         float ang =  .7f * (1.f - dist) * (1.f - dist) * (1.f - dist)
-                                * remap(noise(x, y, 1080, seed, 3), .5f, 1.f, 0.f, 10.f);
+                                * remap(noise(x, y, 1080, seed, 3), .5f, 1.f, 2.f, 10.f);
                         x2 = originx + tx * cosf(ang) - ty * sinf(ang);
                         y2 = originy + tx * sinf(ang) + ty * cosf(ang);
                 }
@@ -151,7 +151,7 @@ float get_filtered_height(int x, int y)
                 if (dist < 1.f)
                 {
                         float ang = -.7f * (1.f - dist) * (1.f - dist) * (1.f - dist)
-                                * remap(noise(x, y, 1120, seed, 3), .5f, 1.f, 0.f, 10.f);
+                                * remap(noise(x, y, 1120, seed, 3), .5f, 1.f, 2.f, 10.f);
                         x2 = originx + tx * cosf(ang) - ty * sinf(ang);
                         y2 = originy + tx * sinf(ang) + ty * cosf(ang);
                 }

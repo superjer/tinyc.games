@@ -1,3 +1,6 @@
+# change to directory of this script
+cd "${0%/*}"
+
 gcc -std=c2x -Wall -pedantic \
         -g \
         -Wno-overlength-strings \

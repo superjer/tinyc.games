@@ -208,7 +208,7 @@ MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
 void setup()
 {
         srand(time(NULL));
-        seed = 103; //rand();
+        //seed = rand();
 
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO);
 
