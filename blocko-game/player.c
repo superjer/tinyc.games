@@ -86,6 +86,10 @@ int move_player(struct player *p, int velx, int vely, int velz)
 
 void update_player(struct player *p, int real)
 {
+        int zoomzip = false;
+        if (!zooming && zoom_amt < 1.f)
+                zoomzip = true;
+
         if (real && p->pos.y > TILESH*BS + 6000) // fell too far
         {
                 player[0].pos.x = STARTPX;
@@ -216,6 +220,7 @@ void update_player(struct player *p, int real)
         }
 
         float fwdx = sin(p->yaw);
+        float fwdy = sin(p->pitch);
         float fwdz = cos(p->yaw);
 
         p->vel.x = fwdx * p->fvel + fwdz * p->rvel;
@@ -234,7 +239,7 @@ void update_player(struct player *p, int real)
                 p->grav = GRAV_FLOAT;
 
         //gravity
-        if (!p->ground || p->grav < GRAV_ZERO)
+        if ((!p->ground || p->grav < GRAV_ZERO) && zoom_amt > .999f)
         {
                 float fall_dist = gravity[p->grav] / (p->wet ? 3 : 1);
                 if (!move_player(p, 0, fall_dist, 0))
@@ -255,8 +260,12 @@ void update_player(struct player *p, int real)
         //zooming
         if (real)
         {
-                zoom_amt *= zooming ? 0.9f : 1.2f;
-                CLAMP(zoom_amt, 0.25f, 1.0f);
+                if (zoomzip)
+                {
+                        move_player(p, fwdx * 300.f, fwdy * 300.f, fwdz * 300.f);
+                }
+                zoom_amt *= zooming ? 0.9f : 1.1f;
+                CLAMP(zoom_amt, 0.1f, 1.0f);
         }
 }
 
