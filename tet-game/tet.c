@@ -214,15 +214,21 @@ void kill_lines()
 
         p->lines += p->shiny_lines;
         p->level = p->lines / 10;
-        p->combo++;
         p->reward = combo_bonus[MIN(MAX_COMBO, p->combo)] * rewards[p->shiny_lines];
+        p->combo++;
+        if (p->tspin == TSPIN_FULL)
+                p->reward *= 2;
         p->score += p->reward;
         int sendable = p->reward / 400; // garbage to send
         int garbage_bits = sendable * 12 / p->shiny_lines;
         p->shiny_lines = 0;
 
         if (sendable && nplay > 1 && !garbage_race)
-                do opponent = rand() % nplay; while (play + opponent == p);
+        {
+                opponent = rand() % (nplay - 1);
+                if (play + opponent >= p)
+                        opponent++;
+        }
 
         // clean up sliced pieces
         for (int y = 0; y < BHEIGHT; y++)
@@ -433,7 +439,7 @@ void update_player()
                 p->idle_time = 0;
         }
 
-        if (tick - p->garbage_tick > (garbage_race ? 6000 : 600))
+        if (tick - p->garbage_tick > (garbage_race ? 6000 : 400))
                 age_garbage();
 
         // update shaky offsets
@@ -502,11 +508,11 @@ void bake()
 
         p->it.color = 0;
         p->hold_uses = 0;
-        p->tspin = "";
+        p->tspin = TSPIN_NONE;
 
         if (stuck && tsum >= 21)
         {
-                p->tspin = "T-SPIN!";
+                p->tspin = TSPIN_FULL;
                 audio_tone(SQUARE, F2, F2, 2, 2, 2, 2);
                 audio_tone(SQUARE, D4, D4, 2, 3, 1, 1);
                 audio_tone(SINE, C5, C5, 20, 5, 1, 1);
@@ -514,7 +520,7 @@ void bake()
         }
         else if (stuck && tsum == 12)
         {
-                p->tspin = "T-SPIN MINI";
+                p->tspin = TSPIN_MINI;
                 audio_tone(SQUARE, F2, F2, 2, 2, 2, 2);
                 audio_tone(SQUARE, D4, D4, 2, 3, 1, 1);
         }
@@ -574,7 +580,11 @@ void update_particles()
                         continue;
                 q->x += q->vx;
                 q->y += q->vy;
-                q->r *= 0.992f + (rand() % 400) * 0.00001f;
+
+                if (q->r < 2.f)
+                        q->r *= 0.996f + (rand() % 800) * 0.001f;
+                else
+                        q->r *= 0.992f + (rand() % 400) * 0.00001f;
 
                 struct player *o = q->opponent < 0 ? NULL :
                         play + q->opponent;
@@ -613,7 +623,6 @@ void update_particles()
                 float normal_r = q->r / bs;
                 if (o && q->r && normal_r < .65f + (i % 9) * .07f) // particle has an opponent target
                 {
-                        printf("dist = %.1f\n", dist);
                         if (dist < bs * 4 || normal_r < .5f)
                         {
                                 q->vx *= .97f;

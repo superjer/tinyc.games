@@ -15,13 +15,15 @@
 #define BAG_SZ 7   // bag size
 #define GARB_LVLS 4 // levels of queued garbage
 #define NPLAY 4
-#define NPARTS 200
+#define NPARTS 1000
 #define NFLOWS 20
 #define CTDN_TICKS 96
 #define SHOW_FPS 0
 
 // collision test results
 enum { NONE = 0, WALL, NORMAL };
+
+enum { TSPIN_NONE = 0, TSPIN_FULL, TSPIN_MINI };
 
 // Bits in each letter indicate which sides connect when drawing
 // A 1000001    - up
@@ -148,7 +150,7 @@ struct player {
         int seed1, seed2;               // make garbage and bags fair
         float shake_x, shake_y;         // amount the board is offset by shaking
         int flash;                      // flashing from receiving garbage
-        char *tspin;
+        int tspin;
         int device;                     // SDL's input device id
         char dev_name[80];              // input device "name"
 } play[NPLAY], *p;                      // one per player

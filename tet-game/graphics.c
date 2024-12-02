@@ -2,7 +2,7 @@
 #include "../common/tinyc.games/utils.c"
 #include "../common/tinyc.games/font.c"
 
-#define VBUFLEN 20000
+#define VBUFLEN 40000
 
 unsigned main_prog_id;
 GLuint main_vao;
@@ -96,6 +96,8 @@ void draw_end()
         glEnableVertexAttribArray(1); 
 
         glDrawArrays(GL_TRIANGLES, 0, vbuf_n / 5);
+        if (vbuf_n > VBUFLEN * 3 / 4)
+                fprintf(stderr, "vbuf fullness (%d/%d)\n", vbuf_n, VBUFLEN);
         vbuf_n = 0;
 }
 
@@ -150,11 +152,11 @@ void draw_menu()
 
 void draw_particles()
 {
+        set_color(254, 254, 254);
         for (int i = 0; i < NPARTS; i++)
         {
                 if (parts[i].r <= 0.5f)
                         continue;
-                set_color(254, 254, 254);
                 rect(parts[i].x, parts[i].y, parts[i].r, parts[i].r);
         }
 }
@@ -291,7 +293,10 @@ void draw_player()
         text(minsec, 0);
         text(p->dev_name, 0);
         if (p->combo > 1) text("%d combo ", p->combo);
-        text(p->tspin, 0);
+        if (p->tspin == TSPIN_FULL)
+                text("T-SPIN", 0);
+        else if (p->tspin == TSPIN_MINI)
+                text("T-SPIN MINI", 0);
 
         if (p->reward)
         {
