@@ -1,9 +1,9 @@
 #pragma once
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #define GL3_PROTOTYPES 1
 
-#ifdef __APPLE__
+#ifdef SDL_PLATFORM_APPLE
 #include <OpenGL/gl3.h>
 #else
 #include <GL/glew.h>

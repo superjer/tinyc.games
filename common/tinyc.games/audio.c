@@ -5,7 +5,7 @@
 // 3. Play tones with audio_tone()
 
 #include <math.h>
-#include <SDL_audio.h>
+#include <SDL3/SDL_audio.h>
 #include "audio.h"
 
 void audio_tone(int shape, int note_lo, int note_hi,
@@ -25,7 +25,7 @@ void audio_tone(int shape, int note_lo, int note_hi,
         };
 }
 
-static void mix_audio(void *unused, unsigned char *stream, int len)
+static void SDLCALL mix_audio(void *unused, unsigned char *stream, int len)
 {
         short *out = (short*)stream;
 
@@ -66,19 +66,21 @@ static void mix_audio(void *unused, unsigned char *stream, int len)
         }
 }
 
+void SDLCALL mix_audio_wrapper(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount)
+{
+        if (additional_amount > 0) {
+                Uint8 *data = SDL_stack_alloc(Uint8, additional_amount);
+                if (data) {
+                        mix_audio(userdata, data, additional_amount);
+                        SDL_PutAudioStreamData(stream, data, additional_amount);
+                        SDL_stack_free(data);
+                }
+        }
+}
+
 void audio_init()
 {
-        SDL_AudioDeviceID id;
-        SDL_AudioSpec actual, desired = {
-                .freq = 44100,
-                .format = AUDIO_S16LSB,
-                .channels = 1,
-                .samples = 512,
-                .callback = mix_audio,
-        };
-        id = SDL_OpenAudioDevice(NULL, 0, &desired, &actual, SDL_AUDIO_ALLOW_ANY_CHANGE);
-        if (!id)
-                fprintf(stderr, "Unable to open audio: %s\n", SDL_GetError());
-        else
-                SDL_PauseAudioDevice(id, 0);
+        const SDL_AudioSpec spec = { SDL_AUDIO_S16, 2, 44100 };
+        SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, mix_audio_wrapper, NULL);
+        SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(stream));
 }

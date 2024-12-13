@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <SDL3/SDL_main.h>
 #define SDL_DISABLE_IMMINTRIN_H // why do I need this again? For mac? For win??
 #include "tet.h"
 
@@ -92,23 +93,22 @@ void do_events()
 
         while (SDL_PollEvent(&event)) switch (event.type)
         {
-                case SDL_QUIT:                 exit(0);
-                case SDL_KEYDOWN:              key_down();      break;
-                case SDL_KEYUP:                key_up();        break;
-                case SDL_CONTROLLERBUTTONDOWN: joy_down();      break;
-                case SDL_CONTROLLERBUTTONUP:   joy_up();        break;
-                case SDL_JOYDEVICEADDED:
-                case SDL_JOYDEVICEREMOVED:     joy_tick = tick; break;
-                case SDL_WINDOWEVENT:
-                        if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
-                                resize(event.window.data1, event.window.data2);
+                case SDL_EVENT_QUIT:                 exit(0);
+                case SDL_EVENT_KEY_DOWN:              key_down();      break;
+                case SDL_EVENT_KEY_UP:                key_up();        break;
+                case SDL_EVENT_GAMEPAD_BUTTON_DOWN: joy_down();      break;
+                case SDL_EVENT_GAMEPAD_BUTTON_UP:   joy_up();        break;
+                case SDL_EVENT_JOYSTICK_ADDED:
+                case SDL_EVENT_JOYSTICK_REMOVED:     joy_tick = tick; break;
+                case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                        resize(event.window.data1, event.window.data2);
                         break;
         }
 
         if (joy_tick == tick - 1) joy_setup();
 }
 
-#ifndef __APPLE__
+#ifndef SDL_PLATFORM_APPLE
 void GLAPIENTRY
 MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
                 GLsizei length, const GLchar* message, const void* userParam)
@@ -125,10 +125,9 @@ MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
 void setup()
 {
         srand(time(NULL));
-        SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO);
+        SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);
 
-        win = SDL_CreateWindow("Tet", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                win_x, win_y, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
+        win = SDL_CreateWindow("Tet", win_x, win_y, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
         if (!win) exit(fprintf(stderr, "%s\n", SDL_GetError()));
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
@@ -139,7 +138,7 @@ void setup()
         SDL_GL_SetSwapInterval(0); // vsync?
         glClearColor(0.18f, 0.18f, 0.18f, 1.f);
 
-        #ifndef __APPLE__
+        #ifndef SDL_PLATFORM_APPLE
         glewExperimental = GL_TRUE;
         glewInit();
         glEnable(GL_DEBUG_OUTPUT);
