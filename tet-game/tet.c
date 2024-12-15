@@ -44,11 +44,11 @@ int main()
                         //fprintf(stderr, "Slept for %dms\n", sleep_for);
                 }
 
-                accum_msec += (float)get_interval();
+                TIMECALL(do_events, ());
 
+                accum_msec += (float)get_interval();
                 for (; accum_msec > 8.3333f; accum_msec -= 8.3333f)
                 {
-                        TIMECALL(do_events, ());
                         TIMER(update_player);
                         for (p = play; p < play + nplay; p++) update_player();
                         accum_msec += (float)get_interval();
@@ -89,23 +89,23 @@ int main()
 
 void do_events()
 {
-        static int joy_tick = 0;
-
         while (SDL_PollEvent(&event)) switch (event.type)
         {
-                case SDL_EVENT_QUIT:                 exit(0);
-                case SDL_EVENT_KEY_DOWN:              key_down();      break;
-                case SDL_EVENT_KEY_UP:                key_up();        break;
-                case SDL_EVENT_GAMEPAD_BUTTON_DOWN: joy_down();      break;
-                case SDL_EVENT_GAMEPAD_BUTTON_UP:   joy_up();        break;
-                case SDL_EVENT_JOYSTICK_ADDED:
-                case SDL_EVENT_JOYSTICK_REMOVED:     joy_tick = tick; break;
+                case SDL_EVENT_QUIT:                exit(0);
+                case SDL_EVENT_KEY_DOWN:            key_down();       break;
+                case SDL_EVENT_KEY_UP:              key_up();         break;
+                case SDL_EVENT_GAMEPAD_BUTTON_DOWN: joy_down();       break;
+                case SDL_EVENT_GAMEPAD_BUTTON_UP:   joy_up();         break;
+
+                case SDL_EVENT_GAMEPAD_ADDED:       gamepad_add();    break;
+                case SDL_EVENT_GAMEPAD_REMOVED:     gamepad_remove(); break;
+                case SDL_EVENT_KEYBOARD_ADDED:      kebbard_add();    break;
+                case SDL_EVENT_KEYBOARD_REMOVED:    kebbard_remove(); break;
+
                 case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                         resize(event.window.data1, event.window.data2);
                         break;
         }
-
-        if (joy_tick == tick - 1) joy_setup();
 }
 
 #ifndef SDL_PLATFORM_APPLE
@@ -126,6 +126,7 @@ void setup()
 {
         srand(time(NULL));
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);
+        SDL_SetGamepadEventsEnabled(true);
 
         win = SDL_CreateWindow("Tet", win_x, win_y, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
         if (!win) exit(fprintf(stderr, "%s\n", SDL_GetError()));

@@ -151,6 +151,7 @@ struct player {
         float shake_x, shake_y;         // amount the board is offset by shaking
         int flash;                      // flashing from receiving garbage
         int tspin;
+        int device_type;                // 'L'/'R' = keyboard or 'G' = gamepad
         int device;                     // SDL's input device id
         char dev_name[80];              // input device "name"
 } play[NPLAY], *p;                      // one per player
@@ -160,8 +161,8 @@ struct particle parts[NPARTS];
 struct particle flows[NFLOWS];
 
 enum state { MAIN_MENU = 0, NUMBER_MENU, ASSIGN, PLAY, GAMEOVER} state;
-int win_x = 1000;         // window size
-int win_y = 750;
+int win_x = 2000;         // window size
+int win_y = 1500;
 int bs, bs2, bs4;         // individual block size, in half, in quarters
 int tick;                 // counts up one per frame
 int nplay = 1;            // number of players
@@ -170,6 +171,7 @@ int menu_pos;             // current position in menu
 int text_x, text_y;       // position of text drawing
 int line_height;          // text line height
 int garbage_race;
+bool do_new_game;
 int npart;
 int seed;
 

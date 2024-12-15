@@ -283,7 +283,8 @@ void draw_player()
         // draw scores etc
         text_x = p->held.x;
         text_y = p->held.y + p->box_w + bs2;
-        text("%d pts ", p->score);
+        if (!garbage_race)
+                text("%d pts ", p->score);
         text("%d lines ", p->lines);
 
         int secs = p->ticks / 120 % 60;
@@ -311,7 +312,7 @@ void draw_player()
                 text(countdown_msg[p->countdown_time / CTDN_TICKS], 0);
 
         if (state == ASSIGN)
-                text(p >= play + assign_me ? "Press button to join" : p->dev_name, 0);
+                text(p->device == -1 ? "Press button to join" : p->dev_name, 0);
 
         if (state == GAMEOVER) text("Game over", 0);
 }
