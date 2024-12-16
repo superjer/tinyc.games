@@ -160,7 +160,7 @@ struct particle { float x, y, r, vx, vy; int opponent, bits; };
 struct particle parts[NPARTS];
 struct particle flows[NFLOWS];
 
-enum state { MAIN_MENU = 0, NUMBER_MENU, ASSIGN, PLAY, GAMEOVER} state;
+enum state { MAIN_MENU = 0, NUMBER_MENU, PAUSE_MENU, MAX_MENU, ASSIGN, PLAY, GAMEOVER} state;
 int win_x = 2000;         // window size
 int win_y = 1500;
 int bs, bs2, bs4;         // individual block size, in half, in quarters

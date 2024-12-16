@@ -118,21 +118,20 @@ void set_color(int r, int g, int b)
 
 void draw_menu()
 {
-        if (state != MAIN_MENU && state != NUMBER_MENU) return;
+        if (state > MAX_MENU) return;
 
         menu_pos = MAX(menu_pos, 0);
         menu_pos = MIN(menu_pos, state == NUMBER_MENU ? 3 : 2);
         p = play; // just grab first player :)
+        text_x = win_x / 3;
+        text_y = win_y / 3;
 
+        set_color(60, 60, 60);
+        rect(text_x - bs2, text_y - bs2, p->board_w + bs, line_height * 5 + bs);
         set_color(0, 0, 0);
-        rect(p->held.x,
-             p->held.y + p->box_w + bs2 + line_height * (menu_pos + 1),
-             p->board_w,
-             line_height);
+        rect(text_x, text_y + line_height * (menu_pos + 1), p->board_w, line_height);
         draw_end();
 
-        text_x = p->held.x;
-        text_y = p->held.y + p->box_w + bs2;
         if (state == MAIN_MENU)
         {
                 text("Main Menu"        , 0);
@@ -147,6 +146,13 @@ void draw_menu()
                 text("2"                , 0);
                 text("3"                , 0);
                 text("4"                , 0);
+        }
+        else if (state == PAUSE_MENU)
+        {
+                text("Pause Menu"          , 0);
+                text("Resume"              , 0);
+                text("Reassign controllers", 0);
+                text("Quit"                , 0);
         }
 }
 

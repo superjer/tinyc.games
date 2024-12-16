@@ -161,13 +161,39 @@ int menu_input(int key_or_button)
                                 state = NUMBER_MENU;
                                 menu_pos = 0;
                         }
-                        else
+                        else if (state == NUMBER_MENU)
                         {
                                 nplay = menu_pos + 1;
                                 resize(win_x, win_y);
                                 unassign_all();
                                 state = ASSIGN;
                                 do_new_game = true;
+                                menu_pos = 0;
+                        }
+                        else if (state == PAUSE_MENU)
+                        {
+                                if (menu_pos == 0)
+                                        state = PLAY;
+                                else if (menu_pos == 1)
+                                {
+                                        unassign_all();
+                                        state = ASSIGN;
+                                }
+                                else if (menu_pos == 2)
+                                        state = MAIN_MENU;
+                                menu_pos = 0;
+                        }
+                        break;
+                case SDL_GAMEPAD_BUTTON_EAST:
+                        if (state == NUMBER_MENU)
+                        {
+                                state = MAIN_MENU;
+                                menu_pos = 0;
+                        }
+                        else if (state == PAUSE_MENU)
+                        {
+                                state = PLAY;
+                                menu_pos = 0;
                         }
                         break;
         }
@@ -221,10 +247,12 @@ int assign(int device_type, int device)
 // handle a key press from a player
 int key_down()
 {
-        if (event.key.repeat)                           return 0;
-        if (state == MAIN_MENU || state == NUMBER_MENU) return menu_input(event.key.key);
-        if (state == GAMEOVER)                          return (state = MAIN_MENU);
-        if (state == ASSIGN)                            return assign(device_from_key(), event.key.which);
+        if (event.key.repeat)    return 0;
+        if (state < MAX_MENU)    return menu_input(event.key.key);
+        if (state == GAMEOVER)   return (state = MAIN_MENU);
+        if (state == ASSIGN)     return assign(device_from_key(), event.key.which);
+
+        if (event.key.key == SDLK_ESCAPE) return (state = PAUSE_MENU);
 
         set_player_from_device(device_from_key(), event.key.which);
 
@@ -240,11 +268,6 @@ int key_down()
                 case SDLK_Z:   case SDLK_CAPSLOCK:  case SDLK_COMMA:  spin(3); break;
                 case SDLK_X:   case SDLK_LSHIFT:    case SDLK_PERIOD: spin(1); break;
                 case SDLK_TAB: case SDLK_SLASH:                       hold();  break;
-
-                case SDLK_L:
-                        p->level++;
-                        p->lines += 10;
-                        break;
         }
 
         return 0;
@@ -263,11 +286,14 @@ void key_up()
         }
 }
 
-int joy_down()
+int btn_down()
 {
         if (state == ASSIGN) return assign('G', event.gbutton.which);
         if (state == GAMEOVER) return (state = MAIN_MENU);
-        if (state == MAIN_MENU || state == NUMBER_MENU) return menu_input(event.gbutton.button);
+        if (state < MAX_MENU) return menu_input(event.gbutton.button);
+
+        if (event.gbutton.button == SDL_GAMEPAD_BUTTON_START) return (state = PAUSE_MENU);
+
         set_player_from_device('G', event.gbutton.which);
 
         if (p->it.color) switch(event.gbutton.button)
@@ -283,7 +309,7 @@ int joy_down()
         return 0;
 }
 
-void joy_up()
+void btn_up()
 {
         if (state == ASSIGN) return;
         set_player_from_device('G', event.gbutton.which);

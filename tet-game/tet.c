@@ -57,9 +57,9 @@ int main()
                 }
 
                 TIMECALL(draw_start, ());
-                TIMECALL(draw_menu, ());
                 TIMER(draw_player);
                 for (p = play; p < play + nplay; p++) draw_player();
+                TIMECALL(draw_menu, ());
                 TIMECALL(draw_particles, ());
                 TIMECALL(draw_end, ());
                 TIMECALL(SDL_GL_SwapWindow, (win));
@@ -94,8 +94,8 @@ void do_events()
                 case SDL_EVENT_QUIT:                exit(0);
                 case SDL_EVENT_KEY_DOWN:            key_down();       break;
                 case SDL_EVENT_KEY_UP:              key_up();         break;
-                case SDL_EVENT_GAMEPAD_BUTTON_DOWN: joy_down();       break;
-                case SDL_EVENT_GAMEPAD_BUTTON_UP:   joy_up();         break;
+                case SDL_EVENT_GAMEPAD_BUTTON_DOWN: btn_down();       break;
+                case SDL_EVENT_GAMEPAD_BUTTON_UP:   btn_up();         break;
 
                 case SDL_EVENT_GAMEPAD_ADDED:       gamepad_add();    break;
                 case SDL_EVENT_GAMEPAD_REMOVED:     gamepad_remove(); break;
