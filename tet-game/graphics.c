@@ -150,9 +150,9 @@ void draw_menu()
         else if (state == PAUSE_MENU)
         {
                 text("Pause Menu"          , 0);
-                text("Resume"              , 0);
+                text("Resume game"         , 0);
                 text("Reassign controllers", 0);
-                text("Quit"                , 0);
+                text("End game"            , 0);
         }
 }
 
@@ -276,6 +276,41 @@ void draw_player()
         // draw falling piece & ghost
         draw_shape(x + bs * p->it.x, y + bs * (ghost_y - 5), p->it.color, p->it.rot, OUTLINE);
         draw_shape(x + bs * p->it.x, y + bs * (p->it.y - 5), p->it.color, p->it.rot, 0);
+
+        // draw row crash
+        if (p->crash_time > 0 && p->row[p->crash_row].offset < bs * 2)
+        {
+                p->crash_time = MIN(p->crash_time, 10);
+                set_color(255, 255, 255);
+                int h = MAX(2, p->row[p->crash_row].offset);
+                int w = 200 - p->crash_time * 20;
+                int crash_x = x + bs * 5;
+                int crash_y = y + (p->crash_row - BHEIGHT + VHEIGHT + 1) * bs - h;
+                rect(x - w,
+                     crash_y,
+                     p->board_w + w * 2,
+                     h);
+
+                if (p->crash_time == 5) 
+                {
+                        audio_tone(SQUARE, A0, C1, 100, 20, 40, 1000);
+                        audio_tone(SQUARE, D1, F1, 60, 20, 40, 300);
+                        audio_tone(SQUARE, G1, B1, 20, 20, 40, 100);
+                        p->shake_y += .04f;
+                        for (int i = 0; i < NPARTS; i++)
+                        {
+                                int xx = parts[i].x - crash_x;
+                                int yy = (parts[i].y - crash_y + bs4) * 3;
+                                int distsq = xx * xx + yy * yy;
+                                int maxdistsq = (bs * 10) * (bs * 10); 
+                                if (distsq >= maxdistsq)
+                                        continue;
+                                float dist = sqrtf((float)distsq);
+                                parts[i].vx += (xx / dist) * (bs * 10 - dist) * 0.008f;
+                                parts[i].vy += (yy / dist) * (bs * 10 - dist) * 0.008f;
+                        }
+                }
+        }
 
         // draw next pieces
         for (int n = 0; n < 5; n++)

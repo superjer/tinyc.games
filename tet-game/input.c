@@ -71,18 +71,6 @@ void hold()
         reset_fall();
 }
 
-void kebbard_add()
-{
-        int id = event.kdevice.which;
-        printf("Keyboard %d added - \"%s\"\n", id, SDL_GetKeyboardNameForID(id));
-}
-
-void kebbard_remove()
-{
-        int id = event.kdevice.which;
-        printf("Keyboard %d removed\n", id);
-}
-
 void gamepad_add()
 {
         int id = event.gdevice.which;
@@ -184,7 +172,8 @@ int menu_input(int key_or_button)
                                 menu_pos = 0;
                         }
                         break;
-                case SDL_GAMEPAD_BUTTON_EAST:
+                case SDLK_ESCAPE:
+                case SDL_GAMEPAD_BUTTON_START:
                         if (state == NUMBER_MENU)
                         {
                                 state = MAIN_MENU;
@@ -197,6 +186,10 @@ int menu_input(int key_or_button)
                         }
                         break;
         }
+
+        for (int i = 0; i < nplay; i++)
+                play[i].countdown_time = 4 * CTDN_TICKS;
+
         return 0;
 }
 

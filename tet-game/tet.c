@@ -2,15 +2,9 @@
 //
 // Tet is tiny implementation of a fully-featured Tetris clone.
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-#include <SDL3/SDL_main.h>
-#define SDL_DISABLE_IMMINTRIN_H // why do I need this again? For mac? For win??
 #include "tet.h"
 
 // allows us to compile as single file:
-#include "../common/tinyc.games/utils.c"
 #include "../common/tinyc.games/audio.c"
 #include "../common/tinyc.games/font.c"
 #include "graphics.c"
@@ -99,8 +93,6 @@ void do_events()
 
                 case SDL_EVENT_GAMEPAD_ADDED:       gamepad_add();    break;
                 case SDL_EVENT_GAMEPAD_REMOVED:     gamepad_remove(); break;
-                case SDL_EVENT_KEYBOARD_ADDED:      kebbard_add();    break;
-                case SDL_EVENT_KEYBOARD_REMOVED:    kebbard_remove(); break;
 
                 case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                         resize(event.window.data1, event.window.data2);
@@ -251,6 +243,12 @@ void kill_lines()
         {
                 if (p->row[y].fullness != 10) continue;
 
+                if (p->combo > 2)
+                {
+                        p->crash_row = y;
+                        p->crash_time = 1000;
+                }
+
                 if (p->row[y].special) p->garbage_remaining--;
 
                 for (int j = y; j > 0; j--)
@@ -394,6 +392,8 @@ void update_player()
                         return;
         }
 
+        if (p->crash_time > 0) p->crash_time--;
+
         p->ticks++;
 
         while (!p->it.color && !p->shine_time && !p->dead_time)
@@ -413,7 +413,7 @@ void update_player()
         for (int y = 0; y < BHEIGHT; y++)
                 if (p->row[y].offset > 0)
                         p->row[y].offset = MAX(0, p->row[y].offset - bs4);
-                else
+                else if (p->row[y].offset < 0)
                         p->row[y].offset = MIN(0, p->row[y].offset + bs4);
 
         if (p->shine_time > 0 && --p->shine_time == 0)
@@ -621,7 +621,7 @@ void update_particles()
                 }
 
                 float normal_r = q->r / bs;
-                if (o && q->r && normal_r < .65f + (i % 9) * .07f) // particle has an opponent target
+                if (o && q->r && normal_r < .45f + (i % 3) * .07f) // particle has an opponent target
                 {
                         if (dist < bs * 4 || normal_r < .5f)
                         {

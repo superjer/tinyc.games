@@ -1,5 +1,10 @@
 #pragma once
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#define SDL_DISABLE_IMMINTRIN_H // why do I need this again? For mac? For win??
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
 #define GL3_PROTOTYPES 1
 
@@ -8,6 +13,8 @@
 #else
 #include <GL/glew.h>
 #endif
+
+#include "../common/tinyc.games/utils.c"
 
 #define BWIDTH 10  // board width, height
 #define BHEIGHT 25
@@ -154,6 +161,8 @@ struct player {
         int device_type;                // 'L'/'R' = keyboard or 'G' = gamepad
         int device;                     // SDL's input device id
         char dev_name[80];              // input device "name"
+        int crash_row;                  // row that just crashed into the ground from falling
+        int crash_time;                 // countdown timer for crash animation
 } play[NPLAY], *p;                      // one per player
 
 struct particle { float x, y, r, vx, vy; int opponent, bits; };
