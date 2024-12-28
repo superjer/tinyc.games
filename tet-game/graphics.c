@@ -93,7 +93,7 @@ void draw_end()
 
         // show GL where the color data is
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(2 * sizeof(float)));
-        glEnableVertexAttribArray(1); 
+        glEnableVertexAttribArray(1);
 
         glDrawArrays(GL_TRIANGLES, 0, vbuf_n / 5);
         if (vbuf_n > VBUFLEN * 3 / 4)
@@ -291,7 +291,7 @@ void draw_player()
                      p->board_w + w * 2,
                      h);
 
-                if (p->crash_time == 5) 
+                if (p->crash_time == 5 && p->combo >= 2)
                 {
                         audio_tone(SQUARE, A0, C1, 100, 20, 40, 1000);
                         audio_tone(SQUARE, D1, F1, 60, 20, 40, 300);
@@ -302,7 +302,7 @@ void draw_player()
                                 int xx = parts[i].x - crash_x;
                                 int yy = (parts[i].y - crash_y + bs4) * 3;
                                 int distsq = xx * xx + yy * yy;
-                                int maxdistsq = (bs * 10) * (bs * 10); 
+                                int maxdistsq = (bs * 10) * (bs * 10);
                                 if (distsq >= maxdistsq)
                                         continue;
                                 float dist = sqrtf((float)distsq);

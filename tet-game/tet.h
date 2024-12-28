@@ -15,6 +15,7 @@
 #endif
 
 #include "../common/tinyc.games/utils.c"
+#include "music.c"
 
 #define BWIDTH 10  // board width, height
 #define BHEIGHT 25

@@ -307,7 +307,7 @@ if(p->vel.x < -PLYR_SPD)
         //shorten jumps
         if(!p->jumping && p->grav < GRAV_ZERO)
         {
-                p->grav += 4; 
+                p->grav += 4;
                 if(p->grav > GRAV_ZERO) // don't start falling right away
                         p->grav = GRAV_ZERO;
         }

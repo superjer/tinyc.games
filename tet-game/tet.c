@@ -9,6 +9,7 @@
 #include "../common/tinyc.games/font.c"
 #include "graphics.c"
 #include "input.c"
+#include "music.c"
 #include "timer.c"
 
 int get_interval()
@@ -56,6 +57,7 @@ int main()
                 TIMECALL(draw_menu, ());
                 TIMECALL(draw_particles, ());
                 TIMECALL(draw_end, ());
+                TIMECALL(update_music, ());
                 TIMECALL(SDL_GL_SwapWindow, (win));
 
                 tick++;
@@ -142,6 +144,7 @@ void setup()
         audio_init();
         font_init();
         draw_setup();
+        music_setup();
 }
 
 unsigned garb_rand()

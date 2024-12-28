@@ -16,14 +16,18 @@ void audio_tone(int shape, int note_lo, int note_hi,
 
         envs[rand() % NUM_ENVS] = (struct envelope){
                 .shape      = shape,
-                .start_freq = music_notes[note].frequency,
-                .volume     = 1.0 + 0.08 * music_notes[note].wavelength,
+                .start_freq = NOTE2FREQ(note),
+                .volume     = shape == NOISE ? 0.2 : NOTE2VOL(note),
                 .attack     = (attack                            ) / 1000.f,
                 .decay      = (attack + decay                    ) / 1000.f,
                 .sustain    = (attack + decay + sustain          ) / 1000.f,
                 .release    = (attack + decay + sustain + release) / 1000.f,
         };
 }
+
+int stream_pos = 0;
+int prev_pos = 0;
+int music_pos = 0;
 
 static void SDLCALL mix_audio(void *unused, unsigned char *stream, int len)
 {
@@ -32,6 +36,20 @@ static void SDLCALL mix_audio(void *unused, unsigned char *stream, int len)
         for (int j = 0; j < len/2; j++)
         {
                 int samp = 0;
+                stream_pos += 2;
+
+                if (stream_pos - prev_pos == 10000)
+                {
+                        for (int i = music_pos*2; i <= music_pos*2+1; i++)
+                        {
+                                if (!music[i].shape) continue;
+
+                                envs[rand() % NUM_ENVS] = music[i];
+                                printf("music env: music[%d] shape=%d\n", i, music[i].shape);
+                        }
+                        prev_pos = stream_pos;
+                        music_pos = (music_pos + 1) % (NUM_MUS/2);
+                }
 
                 for (int n = 0; n < NUM_ENVS; n++)
                 {
@@ -52,11 +70,25 @@ static void SDLCALL mix_audio(void *unused, unsigned char *stream, int len)
                         else if (t <= e->sustain) ;
                         else if (t <= e->release) veloc *= (e->release - t) / (e->release - e->sustain);
 
+                        if (e->shape == NOISE)
+                        {
+                                if (e->noisectr-- <= 0)
+                                {
+                                        double r = (double)rand() / (double)RAND_MAX;
+                                        e->noisectr  = wl * r * 100000 + 1;
+                                        e->noisesign = e->noisesign < 0 ? 1 : -1;
+                                        e->noiseval  = 1.0;
+                                }
+                                e->noiseval *= 0.995;
+                        }
+
                         switch (e->shape)
                         {
                                 case SINE:     samp += veloc * sin(frac * freq * 6.28318531);                      break;
                                 case SQUARE:   samp += frac > wl2 ? veloc : -veloc;                                break;
                                 case TRIANGLE: samp += (4 * freq * (frac > wl2 ? (wl - frac) : frac) - 1) * veloc; break;
+                                case NOISE:    samp += (e->noisesign * e->noiseval) * veloc;                       break;
+                                default:
                         }
                 }
 
@@ -76,6 +108,7 @@ void SDLCALL mix_audio_wrapper(void *userdata, SDL_AudioStream *stream, int addi
                         SDL_stack_free(data);
                 }
         }
+        //printf("TICK:%d - stream_pos0: %d, stream_pos1: %d\n", tick, stream_pos0, stream_pos1);
 }
 
 void audio_init()

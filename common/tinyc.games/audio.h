@@ -1,8 +1,12 @@
 #pragma once
 
 #define NUM_ENVS 20
+#define NUM_MUS (32*4*2) // 32 beats/measure, 4 measures, 2 channels
 
-enum shape {SINE, SQUARE, TRIANGLE};
+#define NOTE2FREQ(note) (music_notes[note].frequency)
+#define NOTE2VOL(note) (1.0 + 0.08 * music_notes[note].wavelength)
+
+enum shape {NOSHAPE, SINE, SQUARE, TRIANGLE, NOISE};
 
 struct envelope {
         enum shape shape;
@@ -13,7 +17,7 @@ struct envelope {
 	double noiseval;
 	int    noisectr;
 	int    noisesign;
-} envs[NUM_ENVS];
+} envs[NUM_ENVS], music[NUM_MUS];
 
 enum notes {
         A0, As0, B0, C1, Cs1, D1, Ds1, E1, F1, Fs1, G1, Gs1,

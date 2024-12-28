@@ -94,8 +94,8 @@ void main(void)
 
         if (shadow2_pos.x >= 0.0 && shadow2_pos.x <= 0.1) { unshadow = max(unshadow, 1.0 - (shadow2_pos.x * 10.0)); }
         if (shadow2_pos.x >= 0.9 && shadow2_pos.x <= 1.0) { unshadow = max(unshadow, (shadow2_pos.x - 0.9) * 10.0); }
-        if (shadow2_pos.y >= 0.0 && shadow2_pos.y <= 0.1) { unshadow = max(unshadow, 1.0 - (shadow2_pos.y * 10.0)); } 
-        if (shadow2_pos.y >= 0.9 && shadow2_pos.y <= 1.0) { unshadow = max(unshadow, (shadow2_pos.y - 0.9) * 10.0); } 
+        if (shadow2_pos.y >= 0.0 && shadow2_pos.y <= 0.1) { unshadow = max(unshadow, 1.0 - (shadow2_pos.y * 10.0)); }
+        if (shadow2_pos.y >= 0.9 && shadow2_pos.y <= 1.0) { unshadow = max(unshadow, (shadow2_pos.y - 0.9) * 10.0); }
 
         float s0 = 0.6 + 0.4 * sharpness;
         float s1 = 0.3 + 0.7 * (1-sharpness);

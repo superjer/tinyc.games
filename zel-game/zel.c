@@ -74,7 +74,7 @@ enum enemytypes { // these match their positions in sprites.bmp
 enum dir {NORTH, WEST, EAST, SOUTH};
 enum doors {WALL, LOCKED, SHUTTER, MAXWALL=SHUTTER, DOOR, HOLE, ENTRY, MAXDOOR};
 
-int pct(int chance) { return rand() % 100 < chance; } 
+int pct(int chance) { return rand() % 100 < chance; }
 
 #include "ow_gen.c"
 #include "level_data.c"

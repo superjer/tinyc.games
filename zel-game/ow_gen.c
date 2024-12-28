@@ -125,7 +125,7 @@ void print_orooms()
         for (i = 0; i < oX; i++) for (j = 0; j < oY; j++)
         {
                 if (i == 0 || j == 0) continue;
-                if (i % 2 == 0 && j % 2 == 0) continue; 
+                if (i % 2 == 0 && j % 2 == 0) continue;
                 if (out[j * pH - 0][i * pW - 1] == '@') continue;
                 if (out[j * pH - 2][i * pW - 1] == '@') continue;
                 if (out[j * pH - 1][i * pW - 0] == '@') continue;
@@ -207,7 +207,6 @@ void cook_squares_again()
         {
                 if (oroom[i][j].open_r + oroom[i][j].open_d + oroom[i][j + 1].open_r + oroom[i + 1][j].open_d >= 3)
                         oroom[i][j].open_r = oroom[i][j].open_d = oroom[i][j + 1].open_r = oroom[i + 1][j].open_d = 1;
-                        
         }
 
         // open doors on screen edges that are not an obstacle
@@ -227,14 +226,14 @@ void cook_squares_again()
                     #   |   #   |   #i-1|i  #
                     #   |   #   |   #j  |j  #
                     +===+===+===+===+===+===+
-                                     i-1 
+                                     i-1
                                      j+1
                 */
                 if (j < oY - 1
                                 && oroom[i - 1][j].open_r && oroom[i - 1][j + 1].open_r
                                 && (oroom[i - 1][j].open_d || oroom[i][j].open_d))
                         oroom[i - 1][j].open_d = oroom[i][j].open_d = true;
-                        
+
                 if (i < oX - 1
                                 && oroom[i][j - 1].open_d && oroom[i + 1][j - 1].open_d
                                 && (oroom[i][j - 1].open_r || oroom[i][j].open_r))
