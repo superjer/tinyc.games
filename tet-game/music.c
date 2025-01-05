@@ -3,25 +3,6 @@
 #include "tet.h"
 #include "../common/tinyc.games/audio.h"
 
-int roll[NUM_MUS] = {
-C2, 0, 0, 0, 0, 0, 0, 0,
-C2, 0, 0, 0, 0, 0, 0, 0,
-C2, 0, 0, 0, 0, 0, 0, 0,
-F2, 0, 0, 0, 0, 0, 0, 0,
-D2, 0, 0, 0, 0, 0, 0, 0,
-D2, 0, 0, 0, 0, 0, 0, 0,
-D2, 0, 0, 0, 0, 0, 0, 0,
-A2, 0, 0, 0, 0, 0, 0, 0,
-F2, 0, 0, 0, 0, 0, 0, 0,
-F2, 0, 0, 0, 0, 0, 0, 0,
-F2, 0, 0, 0, 0, 0, 0, 0,
-A2, 0, 0, 0, 0, 0, 0, 0,
-A1, 0, 0, 0, 0, 0, 0, 0,
-A1, 0, 0, 0, 0, 0, 0, 0,
-A1, 0, 0, 0, 0, 0, 0, 0,
-B1, 0, 0, 0, 0, 0, 0, 0,
-};
-
 enum CHORDS {
         _None,
         _M,
@@ -59,40 +40,53 @@ enum CHORDS {
 
 struct chord {
         char name[8];
-        int bits;
-               //                     1   1
-} chord[] = {  //    1   3  5   7v 9  1   3
-        { "None",  0b0000000000000000000000 },
-        { "",      0b1000100100000000000000 },
-        { "11",    0b0000000000100010010000 },
-        { "13",    0b0000000000101000100001 },
-        { "13b9",  0b0000000000100100100001 },
-        { "13x",   0b0000000000100010010001 },
-        { "6",     0b1000100101000000000000 },
-        { "7",     0b1000100100100000000000 },
-        { "7b9",   0b0000100100100100000000 },
-        { "7sus",  0b1000010100100000000000 },
-        { "9",     0b0000100100100010000000 },
-        { "9b5",   0b0000101000100010000000 },
-        { "9s5",   0b0000100010100010000000 },
-        { "M7",    0b1000100100010000000000 },
-        { "M9",    0b0000100100010010000000 },
-        { "add2",  0b1010100100000000000000 },
-        { "aug",   0b1000100010000000000000 },
-        { "dim",   0b1001001000000000000000 },
-        { "dim7",  0b1001001001000000000000 },
-        { "m",     0b1001000100000000000000 },
-        { "m6",    0b1001000101000000000000 },
-        { "m7",    0b1001000100100000000000 },
-        { "m7b5",  0b1001001000100000000000 },
-        { "m9",    0b0001000100100010000000 },
-        { "sus",   0b1000010100000000000000 },
-        { "/3",    0b0000100100001000000000 },
-        { "/5",    0b0000000100001000100000 },
-        { "dim/b3",0b0001001000001000000000 },
-        { "4/1",   0b1000010001001000000000 },
-        { "5/1",   0b1010000100010000000000 },
-        { "5/2",   0b0010000100010010000000 },
+        union {
+                struct {
+                        int _1, _2, _b3, _3, _s3, _b5, _5, _s5, _6, _b7, _7, _8, _b9, _9, _b11, _11, _13;
+                };
+                int n[17];
+        };
+} chord[] = {
+#define _ 1
+        { .name="None" },
+        { .name="",       ._1=_, ._3=_, ._5=_ },
+        { .name="11",     ._b7=_, ._9=_, ._11=_ },
+        { .name="13",     ._b7=_, ._8=_, ._b11=_, ._13=_ },
+        { .name="13b9",   ._b7=_, ._b9=_, ._b11=_, ._13=_ },
+        { .name="13x",    ._b7=_, ._9=_, ._11=_, ._13=_ },
+        { .name="6",      ._1=_, ._3=_, ._5=_, ._6=_ },
+        { .name="7",      ._1=_, ._3=_, ._5=_, ._b7=_ },
+        { .name="7b9",    ._3=_, ._5=_, ._b7=_, ._b9=_ },
+        { .name="7sus",   ._1=_, ._s3=_, ._5=_, ._b7=_ },
+        { .name="9",      ._3=_, ._5=_, ._b7=_, ._9=_ },
+        { .name="9b5",    ._3=_, ._b5=_, ._b7=_, ._9=_ },
+        { .name="9s5",    ._3=_, ._s5=_, ._b7=_, ._9=_ },
+        { .name="M7",     ._1=_, ._3=_, ._5=_, ._7=_ },
+        { .name="M9",     ._3=_, ._5=_, ._7=_, ._9=_ },
+        { .name="add2",   ._1=_, ._2=_, ._3=_, ._5=_ },
+        { .name="aug",    ._1=_, ._3=_, ._s5=_ },
+        { .name="dim",    ._1=_, ._b3=_, ._b5=_ },
+        { .name="dim7",   ._1=_, ._b3=_, ._b5=_, ._6=_ },
+        { .name="m",      ._1=_, ._b3=_, ._5=_ },
+        { .name="m6",     ._1=_, ._b3=_, ._5=_, ._6=_ },
+        { .name="m7",     ._1=_, ._b3=_, ._5=_, ._b7=_ },
+        { .name="m7b5",   ._1=_, ._b3=_, ._b5=_, ._b7=_ },
+        { .name="m9",     ._b3=_, ._5=_, ._b7=_, ._9=_ },
+        { .name="sus",    ._1=_, ._s3=_, ._5=_ },
+        { .name="/3",     ._3=_, ._5=_, ._8=_ },
+        { .name="/5",     ._5=_, ._8=_, ._b11=_ },
+        { .name="dim/b3", ._b3=_, ._b5=_, ._8=_ },
+        { .name="4/1",    ._1=_, ._s3=_, ._6=_, ._8=_ },
+        { .name="5/1",    ._1=_, ._2=_, ._5=_, ._7=_ },
+        { .name="5/2",    ._2=_, ._5=_, ._7=_, ._9=_ },
+#undef _
+};
+
+struct chord major_scale = {
+        ._1=0, ._2=2, ._b3=3, ._3=4, ._s3=5, ._b5=6, ._5=7, ._s5=8, ._6=9, ._b7=10, ._7=11, ._8=12, ._b9=13, ._9=14, ._b11=16, ._11=17, ._13=21
+};
+struct chord mixolydian_scale = {
+        ._1=0, ._2=2, ._b3=3, ._3=4, ._s3=5, ._b5=6, ._5=7, ._s5=8, ._6=9, ._b7=9, ._7=10, ._8=12, ._b9=13, ._9=14, ._b11=16, ._11=17, ._13=21
 };
 
 enum romans {
@@ -177,7 +171,7 @@ char notenames[][8] = {
         "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
 };
 
-void play_chord()
+void play_chord(bool actually_play, int *ch, int *dist)
 {
         static int prev_node = Z_I;
         int n;
@@ -200,71 +194,202 @@ void play_chord()
                         nflav++;
         int flav = rand() % nflav;
 
-        int ch = chordnode[n].flavor[flav];
-        int dist = chordnode[n].distance;
+        *ch = chordnode[n].flavor[flav];
+        *dist = chordnode[n].distance;
 
         fprintf(stderr, "Playing a %s%s chord...\n",
-                notenames[dist], chord[ch].name);
+                notenames[*dist], chord[*ch].name);
 
-        int low_disti = 0;
-        for (int i = 0; i < 22; i++)
+        if (actually_play)
         {
-                if (chord[ch].bits & (1 << (22-i)))
+                int first = 1;
+                #define MAYBE_PLAY(n) \
+                        if (chord[*ch].n) { \
+                                audio_tone(SQUARE, C3 + *dist + major_scale.n, C3 + major_scale.n, 10, 50, 350, 600); \
+                                if (first) \
+                                        audio_tone(SQUARE, C1 + *dist + major_scale.n, C1 + major_scale.n, 10, 50, 350, 600); \
+                                first = 0; \
+                        }
+                MAYBE_PLAY(_1);
+                MAYBE_PLAY(_2);
+                MAYBE_PLAY(_b3);
+                MAYBE_PLAY(_3);
+                MAYBE_PLAY(_s3);
+                MAYBE_PLAY(_b5);
+                MAYBE_PLAY(_5);
+                MAYBE_PLAY(_s5);
+                MAYBE_PLAY(_6);
+                MAYBE_PLAY(_b7);
+                MAYBE_PLAY(_7);
+                MAYBE_PLAY(_8);
+                MAYBE_PLAY(_b9);
+                MAYBE_PLAY(_9);
+                MAYBE_PLAY(_b11);
+                MAYBE_PLAY(_11);
+                MAYBE_PLAY(_13);
+                #undef MAYBE_PLAY
+        }
+}
+
+void music_beat0_chord(int m, int b)
+{
+        int ch;
+        int dist;
+        play_chord(false, &ch, &dist);
+        int c = 1;
+        for (int i = 0; i < 17; i++)
+        {
+                if (chord[ch].n[i]) {
+                        music[m][b][c] = (struct envelope){
+                                .shape      = SQUARE,
+                                .start_freq = NOTE2FREQ(C3 + dist + major_scale.n[i]),
+                                .volume     = NOTE2VOL(C3 + dist + major_scale.n[i]) * 0.4,
+                                .attack     =  100 / 1000.f,
+                                .decay      =  120 / 1000.f,
+                                .sustain    = 3200 / 1000.f,
+                                .release    = 3500 / 1000.f,
+                        };
+                        if (c == 1)
+                                music[m][b][0] = (struct envelope){
+                                .shape      = SQUARE,
+                                .start_freq = NOTE2FREQ(C2 + dist + major_scale.n[i]),
+                                .volume     = NOTE2VOL(C2 + dist + major_scale.n[i]) * 1.0,
+                                .attack     =  100 / 1000.f,
+                                .decay      =  120 / 1000.f,
+                                .sustain    = 3200 / 1000.f,
+                                .release    = 3500 / 1000.f,
+                        };
+                        c++;
+                }
+        }
+
+        int j = 0;
+        if (b == 0) for (; b < 32; b += 4)
+        {
+                int r;
+                if (b % 16 != 0)
                 {
-                        if (!low_disti)
-                                low_disti = dist + i;
-                        int note = C2 + dist + i - (low_disti > 8 ? 12 : 0);
-                        audio_tone(SQUARE, note, note, 10, 50, 150, 400);
+                        r = rand() % 5;
+                        if (r <= 1)
+                                continue;
+                        if (r <= 2 && b % 8 == 4)
+                                continue;
+                }
+
+                r = rand() % 5;
+                if (r <= 1)
+                        ;
+                else if (r == 2)
+                        j += 1;
+                else if (r == 3)
+                        j += 2;
+                else if (r == 4)
+                        j = rand() % 10;
+
+                int syncho = rand() % 20;
+                if (syncho == 0)
+                        syncho = -4;
+                else if (syncho == 1)
+                        syncho = 4;
+                else
+                        syncho = 0;
+                for (int i = 0; i < 10; i++)
+                {
+                        int bb = b + syncho;
+                        int mm = m;
+                        if (bb < 0)
+                        {
+                                bb += NUM_BEAT;
+                                mm--;
+                                if (mm < 0) mm = NUM_MEAS-1;
+                        }
+                        if (chord[ch].n[j]) {
+                                music[mm][bb][5] = (struct envelope){
+                                        .shape      = SQUARE,
+                                        .start_freq = NOTE2FREQ(C3 + dist + major_scale.n[j]),
+                                        .volume     = NOTE2VOL(C3 + dist + major_scale.n[j]),
+                                        .attack     =   50 / 1000.f,
+                                        .decay      =  100 / 1000.f,
+                                        .sustain    =  300 / 1000.f,
+                                        .release    =  400 / 1000.f,
+                                };
+                                if (rand()%2 == 0)
+                                                music[mm][bb+1][5] = music[mm][bb][5];
+                                break;
+                        }
+                        j = (j + 1) % 10;
+                }
+        }
+        /*
+        #define ISN(b, x) \
+                music[m][b][5] = (struct envelope){ \
+                        .shape      = SQUARE, \
+                        .start_freq = NOTE2FREQ(C3 + dist + major_scale.x), \
+                        .volume     = NOTE2VOL(C3 + dist + major_scale.x), \
+                        .attack     =   50 / 1000.f, \
+                        .decay      =  100 / 1000.f, \
+                        .sustain    =  300 / 1000.f, \
+                        .release    =  400 / 1000.f, \
+                };
+        ISN(8, _5)
+        ISN(16, _3)
+        ISN(24, _1)
+        #undef ISN
+        */
+} 
+
+void music_setup()
+{
+        for (int m = 0; m < NUM_MEAS; m++)
+        {
+                for (int b = 0; b < NUM_BEAT; b++)
+                {
+                        if (b == 0)
+                                music_beat0_chord(m, b);
+
+                        if (b % 4 == 0)
+                                music[m][b][6] = (struct envelope){
+                                        .shape      = NOISE,
+                                        .start_freq = NOTE2FREQ(A5) * 5,
+                                        .volume     = 0.6,
+                                        .attack     =   1 / 1000.f,
+                                        .decay      =   2 / 1000.f,
+                                        .sustain    =  40 / 1000.f,
+                                        .release    =  50 / 1000.f,
+                                };
+
+                        if (b % 16 == 0)
+                                music[m][b][7] = (struct envelope){
+                                        .shape      = NOISE,
+                                        .start_freq = NOTE2FREQ(A2),
+                                        .volume     = 1.2,
+                                        .attack     =   1 / 1000.f,
+                                        .decay      =  50 / 1000.f,
+                                        .sustain    =  50 / 1000.f,
+                                        .release    = 600 / 1000.f,
+                                };
+
+                        if (b % 16 == 8)
+                                music[m][b][7] = (struct envelope){
+                                        .shape      = NOISE,
+                                        .start_freq = NOTE2FREQ(A5) * 3,
+                                        .volume     = 0.6,
+                                        .attack     =  10 / 1000.f,
+                                        .decay      =  50 / 1000.f,
+                                        .sustain    =  60 / 1000.f,
+                                        .release    = 600 / 1000.f,
+                                };
                 }
         }
 }
 
-void music_setup()
-{
-        /*
-        for (int i = 0; i < NUM_MUS / 2; i++)
-        {
-                if (roll[i])
-                        music[i*2] = (struct envelope){
-                                .shape      = SQUARE,
-                                .start_freq = NOTE2FREQ(roll[i]),
-                                .volume     = NOTE2VOL(roll[i]),
-                                .attack     =  40 / 1000.f,
-                                .decay      =  80 / 1000.f,
-                                .sustain    = 200 / 1000.f,
-                                .release    = 500 / 1000.f,
-                        };
-
-                if (i % 16 == 0)
-                        music[i*2+1] = (struct envelope){
-                                .shape      = NOISE,
-                                .start_freq = NOTE2FREQ(A1),
-                                .volume     = 0.6,
-                                .attack     =   1 / 1000.f,
-                                .decay      =  50 / 1000.f,
-                                .sustain    =  50 / 1000.f,
-                                .release    = 600 / 1000.f,
-                        };
-
-                if (i % 16 == 8)
-                        music[i*2+1] = (struct envelope){
-                                .shape      = NOISE,
-                                .start_freq = NOTE2FREQ(A5) * 2,
-                                .volume     = 0.6,
-                                .attack     =  10 / 1000.f,
-                                .decay      =  50 / 1000.f,
-                                .sustain    =  60 / 1000.f,
-                                .release    = 600 / 1000.f,
-                        };
-        }
-        */
-}
-
 void update_music()
 {
+        /*
         for (int i = 0; i < NUM_MUS; i++)
         {
                 if (music[i].shape == SQUARE)
                         music[i].start_freq *= 1.001;
         }
+        */
 }

@@ -12,7 +12,7 @@ void audio_tone(int shape, int note_lo, int note_hi,
                 double attack, double decay, double sustain, double release)
 {
         int note = note_lo + rand() % (note_hi - note_lo + 1);
-        if (note < A0 || note > C6) return;
+        if (note < C0 || note > B5) return;
 
         envs[rand() % NUM_ENVS] = (struct envelope){
                 .shape      = shape,
@@ -27,7 +27,8 @@ void audio_tone(int shape, int note_lo, int note_hi,
 
 int stream_pos = 0;
 int prev_pos = 0;
-int music_pos = 0;
+int music_meas = 0;
+int music_beat = 0;
 
 static void SDLCALL mix_audio(void *unused, unsigned char *stream, int len)
 {
@@ -40,15 +41,21 @@ static void SDLCALL mix_audio(void *unused, unsigned char *stream, int len)
 
                 if (stream_pos - prev_pos == 10000)
                 {
-                        for (int i = music_pos*2; i <= music_pos*2+1; i++)
+                        for (int i = 0; i <= NUM_CHAN; i++)
                         {
-                                if (!music[i].shape) continue;
+                                struct envelope *menv = music[music_meas][music_beat] + i;
+                                if (!menv->shape) continue;
 
-                                envs[rand() % NUM_ENVS] = music[i];
-                                printf("music env: music[%d] shape=%d\n", i, music[i].shape);
+                                envs[rand() % NUM_ENVS] = *menv;
+                                printf("music env: measure=%d, beat=%d, channel=%d [position=%d] shape=%d\n",
+                                       music_meas, music_beat, i, stream_pos, menv->shape);
                         }
                         prev_pos = stream_pos;
-                        music_pos = (music_pos + 1) % (NUM_MUS/2);
+                        if (++music_beat >= NUM_BEAT)
+                        {
+                                music_beat = 0;
+                                music_meas = (music_meas+1) % NUM_MEAS;
+                        }
                 }
 
                 for (int n = 0; n < NUM_ENVS; n++)

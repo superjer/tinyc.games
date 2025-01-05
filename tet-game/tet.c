@@ -658,7 +658,7 @@ void update_particles()
                                 o->garbage_tick = tick;
                                 o->garbage_bits -= 120;
                         }
-                        audio_tone(SQUARE, G4, C6, 5, 10, 5, 20);
+                        audio_tone(SQUARE, G4, B5, 5, 10, 5, 20);
                 }
         }
 }

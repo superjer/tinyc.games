@@ -1,7 +1,9 @@
 #pragma once
 
 #define NUM_ENVS 20
-#define NUM_MUS (32*4*2) // 32 beats/measure, 4 measures, 2 channels
+#define NUM_BEAT 32
+#define NUM_MEAS 4
+#define NUM_CHAN 8
 
 #define NOTE2FREQ(note) (music_notes[note].frequency)
 #define NOTE2VOL(note) (1.0 + 0.08 * music_notes[note].wavelength)
@@ -17,15 +19,15 @@ struct envelope {
 	double noiseval;
 	int    noisectr;
 	int    noisesign;
-} envs[NUM_ENVS], music[NUM_MUS];
+} envs[NUM_ENVS], music[NUM_MEAS][NUM_BEAT][NUM_CHAN];
 
 enum notes {
-        A0, As0, B0, C1, Cs1, D1, Ds1, E1, F1, Fs1, G1, Gs1,
-        A1, As1, B1, C2, Cs2, D2, Ds2, E2, F2, Fs2, G2, Gs2,
-        A2, As2, B2, C3, Cs3, D3, Ds3, E3, F3, Fs3, G3, Gs3,
-        A3, As3, B3, C4, Cs4, D4, Ds4, E4, F4, Fs4, G4, Gs4,
-        A4, As4, B4, C5, Cs5, D5, Ds5, E5, F5, Fs5, G5, Gs5,
-        A5, As5, B5, C6,
+        C0, Cs0, D0, Ds0, E0, F0, Fs0, G0, Gs0, A0, As0, B0,
+        C1, Cs1, D1, Ds1, E1, F1, Fs1, G1, Gs1, A1, As1, B1,
+        C2, Cs2, D2, Ds2, E2, F2, Fs2, G2, Gs2, A2, As2, B2,
+        C3, Cs3, D3, Ds3, E3, F3, Fs3, G3, Gs3, A3, As3, B3,
+        C4, Cs4, D4, Ds4, E4, F4, Fs4, G4, Gs4, A4, As4, B4,
+        C5, Cs5, D5, Ds5, E5, F5, Fs5, G5, Gs5, A5, As5, B5,
 };
 
 struct {
@@ -34,6 +36,15 @@ struct {
         double frequency;
         double wavelength;
 } music_notes[] = {
+        {"C",  0,   16.35 , 20.810},
+        {"C#", 0,   17.32 , 19.642},
+        {"D",  0,   18.35 , 18.540},
+        {"D#", 0,   19.45 , 17.500},
+        {"E",  0,   20.60 , 16.518},
+        {"F",  0,   21.83 , 15.590},
+        {"F#", 0,   23.12 , 14.716},
+        {"G",  0,   24.50 , 13.890},
+        {"G#", 0,   25.96 , 13.110},
         {"A" , 0,   27.500, 12.374}, // Piano low
         {"A#", 0,   29.135, 11.680},
         {"B" , 0,   30.868, 11.024},

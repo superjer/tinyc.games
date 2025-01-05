@@ -242,7 +242,8 @@ int key_down()
 {
         if (event.key.repeat)    return 0;
 
-        if (event.key.key == SDLK_M) play_chord();
+        int ch, dist;
+        if (event.key.key == SDLK_M) play_chord(true, &ch, &dist);
 
         if (state < MAX_MENU)    return menu_input(event.key.key);
         if (state == GAMEOVER)   return (state = MAIN_MENU);
