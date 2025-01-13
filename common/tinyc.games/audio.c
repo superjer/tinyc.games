@@ -14,7 +14,7 @@ void audio_tone(int shape, int note_lo, int note_hi,
         int note = note_lo + rand() % (note_hi - note_lo + 1);
         if (note < C0 || note > B5) return;
 
-        envs[rand() % NUM_ENVS] = (struct envelope){
+        envs[next_env++] = (struct envelope){
                 .shape      = shape,
                 .start_freq = NOTE2FREQ(note),
                 .volume     = shape == NOISE ? 0.2 : NOTE2VOL(note),
@@ -23,6 +23,7 @@ void audio_tone(int shape, int note_lo, int note_hi,
                 .sustain    = (attack + decay + sustain          ) / 1000.f,
                 .release    = (attack + decay + sustain + release) / 1000.f,
         };
+        if (next_env >= NUM_ENVS) next_env = 0;
 }
 
 int stream_pos = 0;
@@ -46,9 +47,11 @@ static void SDLCALL mix_audio(void *unused, unsigned char *stream, int len)
                                 struct envelope *menv = music[music_meas][music_beat] + i;
                                 if (!menv->shape) continue;
 
-                                envs[rand() % NUM_ENVS] = *menv;
-                                printf("music env: measure=%d, beat=%d, channel=%d [position=%d] shape=%d\n",
-                                       music_meas, music_beat, i, stream_pos, menv->shape);
+                                if (music_on)
+                                        envs[next_env++] = *menv;
+                                if (next_env >= NUM_ENVS) next_env = 0;
+                                //printf("music env: measure=%d, beat=%d, channel=%d [position=%d] shape=%d\n",
+                                //       music_meas, music_beat, i, stream_pos, menv->shape);
                         }
                         prev_pos = stream_pos;
                         if (++music_beat >= NUM_BEAT)
@@ -123,4 +126,10 @@ void audio_init()
         const SDL_AudioSpec spec = { SDL_AUDIO_S16, 2, 44100 };
         SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, mix_audio_wrapper, NULL);
         SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(stream));
+}
+
+int music_toggle()
+{
+        music_on = !music_on;
+        return music_on;
 }

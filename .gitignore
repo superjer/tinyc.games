@@ -10,4 +10,5 @@ zel-game/zel
 Debug
 .vs
 .DS_Store
+.ccls-cache
 tags

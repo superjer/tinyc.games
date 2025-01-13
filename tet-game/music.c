@@ -197,8 +197,8 @@ void play_chord(bool actually_play, int *ch, int *dist)
         *ch = chordnode[n].flavor[flav];
         *dist = chordnode[n].distance;
 
-        fprintf(stderr, "Playing a %s%s chord...\n",
-                notenames[*dist], chord[*ch].name);
+        //fprintf(stderr, "Playing a %s%s chord...\n",
+        //        notenames[*dist], chord[*ch].name);
 
         if (actually_play)
         {
@@ -240,14 +240,14 @@ void music_beat0_chord(int m, int b)
         for (int i = 0; i < 17; i++)
         {
                 if (chord[ch].n[i]) {
-                        music[m][b][c] = (struct envelope){
+                        music[m][b+c*4][c] = (struct envelope){
                                 .shape      = SQUARE,
                                 .start_freq = NOTE2FREQ(C3 + dist + major_scale.n[i]),
                                 .volume     = NOTE2VOL(C3 + dist + major_scale.n[i]) * 0.4,
                                 .attack     =  100 / 1000.f,
                                 .decay      =  120 / 1000.f,
-                                .sustain    = 3200 / 1000.f,
-                                .release    = 3500 / 1000.f,
+                                .sustain    =  600 / 1000.f,
+                                .release    =  800 / 1000.f,
                         };
                         if (c == 1)
                                 music[m][b][0] = (struct envelope){
@@ -256,8 +256,8 @@ void music_beat0_chord(int m, int b)
                                 .volume     = NOTE2VOL(C2 + dist + major_scale.n[i]) * 1.0,
                                 .attack     =  100 / 1000.f,
                                 .decay      =  120 / 1000.f,
-                                .sustain    = 3200 / 1000.f,
-                                .release    = 3500 / 1000.f,
+                                .sustain    =  600 / 1000.f,
+                                .release    =  800 / 1000.f,
                         };
                         c++;
                 }

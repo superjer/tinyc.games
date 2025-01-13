@@ -110,6 +110,10 @@ struct {
         {"B" , 5,  987.767,  0.345},
 };
 
+int next_env = 0;
+bool music_on = true;
+
 void audio_init();
 void audio_tone(int shape, int note_lo, int note_hi,
                 double attack, double decay, double sustain, double release);
+int music_toggle();
