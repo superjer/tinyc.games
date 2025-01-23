@@ -1,6 +1,6 @@
-#include "tet.h"
-#include "../common/tinyc.games/utils.c"
-#include "../common/tinyc.games/font.c"
+#include "tet.c"
+#ifndef TET_GRAPHICS_C_INCLUDED
+#define TET_GRAPHICS_C_INCLUDED
 
 #define VBUFLEN 40000
 
@@ -394,3 +394,5 @@ void resize(int x, int y)
         }
         reflow();
 }
+
+#endif // TET_GRAPHICS_C_INCLUDED

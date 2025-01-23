@@ -2,11 +2,29 @@
 //
 // Tet is tiny implementation of a fully-featured Tetris clone.
 
-#include "tet.h"
+#ifndef TET_C_INCLUDED
+#define TET_C_INCLUDED
 
-// allows us to compile as single file:
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#define SDL_DISABLE_IMMINTRIN_H // why do I need this again? For mac? For win??
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+
+#define GL3_PROTOTYPES 1
+
+#ifdef SDL_PLATFORM_APPLE
+#include <OpenGL/gl3.h>
+#else
+#include <GL/glew.h>
+#endif
+
+// compile as a single translation unit
+#include "../common/tinyc.games/utils.c"
 #include "../common/tinyc.games/audio.c"
 #include "../common/tinyc.games/font.c"
+#include "defs.c"
 #include "graphics.c"
 #include "input.c"
 #include "music.c"
@@ -309,6 +327,91 @@ void reset_fall()
         p->it.rot = 0;
 }
 
+int get_deepest()
+{
+        int deepest = 0;
+        for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++)
+        {
+                if (!is_solid_part(p->it.color, p->it.rot, i, j))
+                        continue;
+                if (j + p->it.y > deepest)
+                        deepest = j + p->it.y;
+        }
+        return deepest;
+}
+
+bool overhanging()
+{
+        for (int i = 0; i < 4; i++)
+        {
+                for (int j = 1; j < 4; j++)
+                {
+                        if (is_solid_part(p->it.color, p->it.rot, i, j-1)
+                            && !is_solid_part(p->it.color, p->it.rot, i, j))
+                        {
+                                int world_i = i + p->it.x;
+                                int world_j = j + p->it.y;
+
+                                if (world_i < 0 || world_i >= BWIDTH || world_j < 0 || world_j >= BHEIGHT)
+                                        continue;
+                                if (p->row[world_j].col[world_i].color == 0)
+                                {
+                                        return true;
+                                }
+                        }
+                }
+        }
+        return false;
+}
+
+void lightning_piece()
+{
+        reset_fall();
+        struct piece candidates[15*7*4] = {0};
+        int deepest = 0;
+        int n = 0;
+
+        for (p->it.color = 1; p->it.color <= 7; p->it.color++)
+        {
+                for (p->it.rot = 0; p->it.rot < 4; p->it.rot++)
+                {
+                        for (p->it.x = -1; p->it.x < 9; p->it.x++)
+                        {
+                                for (p->it.y = 0; p->it.y < BHEIGHT; p->it.y++)
+                                {
+                                        if (collide(p->it.x, p->it.y, p->it.rot))
+                                                break;
+                                        if (overhanging())
+                                                continue;
+                                        int depth = get_deepest();
+                                        if (deepest > depth)
+                                                continue;
+                                        if (deepest < depth)
+                                        {
+                                                deepest = depth;
+                                                n = 0;
+                                        }
+                                        candidates[n++] = p->it;
+                                }
+                        }
+                }
+        }
+
+        if (n == 0) fprintf(stderr, "No deepest?!\n");
+        do {
+                p->it = candidates[rand() % n];
+        } while (p->it.color == 4 && rand()%100 != 0); // line piece
+        p->it.y = 0;
+
+        int nudges[3] = {0};
+        n = 1;
+        if (!collide(p->it.x-1, p->it.y, p->it.rot))
+                nudges[n++] = -1;
+        if (!collide(p->it.x+1, p->it.y, p->it.rot))
+                nudges[n++] = 1;
+        p->it.x += nudges[rand() % n];
+}
+
 // pick a new next piece from the bag, and put the old one in play
 void new_piece()
 {
@@ -400,17 +503,29 @@ void update_player()
         p->ticks++;
 
         while (!p->it.color && !p->shine_time && !p->dead_time)
-                new_piece();
+                if (lightning_round)
+                        lightning_piece();
+                else
+                        new_piece();
 
         p->grounded = collide(p->it.x, p->it.y + 1, p->it.rot);
 
         if (p->move_cooldown) p->move_cooldown--;
-
         if (p->move_cooldown < 2)
         {
-                if (p->left)  move(-1, 0, 0);
-                if (p->right) move( 1, 0, 0);
-                if (p->down)  move( 0, 1, 0);
+                if (lightning_round)
+                {
+                        if (p->left)       { move(-1, 0, 0); hard(); }
+                        else if (p->right) { move( 1, 0, 0); hard(); }
+                        p->left = 0;
+                        p->right = 0;
+                }
+                else
+                {
+                        if (p->left)  move(-1, 0, 0);
+                        if (p->right) move( 1, 0, 0);
+                        if (p->down)  move( 0, 1, 0);
+                }
         }
 
         for (int y = 0; y < BHEIGHT; y++)
@@ -436,10 +551,13 @@ void update_player()
                         new_game();
         }
 
-        if (++p->idle_time >= (p->grounded ? 100 : speeds[MIN(MAX_SPEED, p->level)]))
+        if (!lightning_round || p->grounded)
         {
-                move(0, 1, 1);
-                p->idle_time = 0;
+                if (++p->idle_time >= (p->grounded ? 100 : speeds[MIN(MAX_SPEED, p->level)]))
+                {
+                        move(0, 1, 1);
+                        p->idle_time = 0;
+                }
         }
 
         if (tick - p->garbage_tick > (garbage_race ? 6000 : 400))
@@ -662,3 +780,5 @@ void update_particles()
                 }
         }
 }
+
+#endif // TET_C_INCLUDED

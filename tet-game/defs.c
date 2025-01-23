@@ -1,21 +1,6 @@
-#pragma once
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-#define SDL_DISABLE_IMMINTRIN_H // why do I need this again? For mac? For win??
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_main.h>
-
-#define GL3_PROTOTYPES 1
-
-#ifdef SDL_PLATFORM_APPLE
-#include <OpenGL/gl3.h>
-#else
-#include <GL/glew.h>
-#endif
-
-#include "../common/tinyc.games/utils.c"
-#include "music.c"
+#include "tet.c"
+#ifndef TET_DEFS_C_INCLUDED
+#define TET_DEFS_C_INCLUDED
 
 #define BWIDTH 10  // board width, height
 #define BHEIGHT 25
@@ -184,6 +169,7 @@ int garbage_race;
 bool do_new_game;
 int npart;
 int seed;
+int lightning_round;
 
 SDL_GLContext ctx;
 SDL_Event event;
@@ -201,3 +187,5 @@ int is_solid_part(int shape, int rot, int i, int j);
 int is_tspin_part(int shape, int rot, int i, int j);
 int collide(int x, int y, int rot);
 void update_particles();
+
+#endif // TET_DEFS_C_INCLUDED

@@ -1,7 +1,6 @@
-#pragma once
-
-#include "tet.h"
-#include "../common/tinyc.games/audio.h"
+#include "tet.c"
+#ifndef TET_MUSIC_C_INCLUDED
+#define TET_MUSIC_C_INCLUDED
 
 enum CHORDS {
         _None,
@@ -393,3 +392,5 @@ void update_music()
         }
         */
 }
+
+#endif // TET_MUSIC_C_INCLUDED

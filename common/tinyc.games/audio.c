@@ -1,12 +1,13 @@
 // tinyc.games audio - copyright 2023 Jer Wilson
 //
 // 1. Add SDL_INIT_AUDIO to your SDL_Init()
-// 2. Call audioinit() before playing sound
+// 2. Call audio_init() before playing sound
 // 3. Play tones with audio_tone()
 
+#include <stdlib.h>
 #include <math.h>
 #include <SDL3/SDL_audio.h>
-#include "audio.h"
+#include "audio_defs.c"
 
 void audio_tone(int shape, int note_lo, int note_hi,
                 double attack, double decay, double sustain, double release)
@@ -98,11 +99,11 @@ static void SDLCALL mix_audio(void *unused, unsigned char *stream, int len)
                                 case SQUARE:   samp += frac > wl2 ? veloc : -veloc;                                break;
                                 case TRIANGLE: samp += (4 * freq * (frac > wl2 ? (wl - frac) : frac) - 1) * veloc; break;
                                 case NOISE:    samp += (e->noisesign * e->noiseval) * veloc;                       break;
-                                default:
+                                default:       ;
                         }
                 }
 
-                out[j] = samp >  32767 ?  32768 :
+                out[j] = samp >  32767 ?  32767 :
                          samp < -32767 ? -32767 :
                          samp;
         }
