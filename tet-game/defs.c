@@ -5,6 +5,28 @@
 #define BWIDTH 10  // board width, height
 #define BHEIGHT 25
 #define VHEIGHT 20 // visible height
+
+/*   |<-------->| <- BWIDTH
+
+     *----------*
+     |          |   0
+     |  Invis-  |   1
+     |   ible   |   2
+     |          |   3
+     |__________|   4                _
+     |          |   5                ^
+     |   X      |   6                |
+     |   XX     |   7                |
+     |    X     |   8                | <- VHEIGHT
+     |          |   9                |
+     .   Play   .   .                .
+     .   Area   .   .                .
+     |          |  22                |
+     | X    X   |  23                |
+     |XXX XXX   |  24 <- BHEIGHT     v
+     *----------*                    -
+*/
+
 #define BAG_SZ 7   // bag size
 #define GARB_LVLS 4 // levels of queued garbage
 #define NPLAY 4
