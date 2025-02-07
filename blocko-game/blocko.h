@@ -62,7 +62,6 @@ struct osn_context *osn_context;
 #define TERRAIN_THREAD 1           // whether to put terrain generation in its own thread
 #endif
 
-#define SCALE 3                    // x magnification
 #define W 1920                     // window width, height
 #define H 1000                     // ^
 #define CHUNKW 16                  // chunk size (vao size)
@@ -75,14 +74,14 @@ struct osn_context *osn_context;
 #define TILESW (CHUNKW*VAOW)       // total level width, height
 #define TILESH 160                 // ^
 #define TILESD (CHUNKD*VAOD)       // ^
-#define BS (20*SCALE)              // block size
+#define BS 1000                    // block size
 #define BS2 (BS/2)                 // block size in half
-#define PLYR_W (14*SCALE)          // physical width and height of the player
-#define PLYR_H (36*SCALE)          // ^
-#define PLYR_SPD (2*SCALE)         // units per frame
-#define PLYR_SPD_R (4*SCALE)       // units per frame
-#define PLYR_SPD_S (1*SCALE)       // units per frame
-#define EYEDOWN 10                 // how far down are the eyes from the top of the head
+#define PLYR_W 700                 // physical width and height of the player
+#define PLYR_H 1800                // ^
+#define PLYR_SPD 100                 // units per frame
+#define PLYR_SPD_R 200              // units per frame (running)
+#define PLYR_SPD_S 50               // units per frame (sneaking)
+#define EYEDOWN 500                 // how far down are the eyes from the top of the head
 #define STARTPX (577*BS)           // starting position within start screen
 #define STARTPY 0                  // ^
 #define STARTPZ (734*BS)           // ^

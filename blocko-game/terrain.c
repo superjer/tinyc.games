@@ -327,7 +327,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         if (p191 > 0.2f) while (RANDP(95))
         {
                 char leaves = RANDBOOL ? RLEF : YLEF;
-                float radius = RANDF(1.f, 4.f);
+                float radius = RANDF(3.f, 6.f);
                 int x = xlo + CHUNKW/2 + RANDI(-5, 5);
                 int z = zlo + CHUNKD/2 + RANDI(-5, 5);
                 for (int y = 10; y < TILESH-2; y++)
@@ -339,14 +339,14 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                                 break;
 
                         int yy = y;
-                        for (; yy >= y - (int)RANDI(3, 8); yy--)
+                        for (; yy >= y - (int)RANDI(5, 7); yy--) // height
                                 TT_(x, yy, z) = WOOD;
 
                         int ymax = yy + RANDI(2, 4);
 
                         for (int i = x-3; i <= x+3; i++) for (int j = yy-3; j <= ymax; j++) for (int k = z-3; k <= z+3; k++)
                         {
-                                float dist = (i-x) * (i-x) + (j-yy) * (j-yy) + (k-z) * (k-z);
+                                float dist = (i-x) * (i-x) + (j-yy) * (j-yy) * 4.f + (k-z) * (k-z);
                                 if (TT_(i, j, k) == OPEN && dist < radius * radius)
                                         TT_(i, j, k) = leaves;
                         }
