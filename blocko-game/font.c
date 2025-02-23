@@ -1,4 +1,6 @@
-#include "blocko.h"
+#include "blocko.c"
+#ifndef BLOCKO_FONT_C_INCLUDED
+#define BLOCKO_FONT_C_INCLUDED
 
 #define FONT_CH_W 8
 #define FONT_CH_H 12
@@ -152,8 +154,8 @@ void font_init()
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        unsigned int vertex = file2shader(GL_VERTEX_SHADER, "shaders/font.vert");
-        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, "shaders/font.frag");
+        unsigned int vertex = file2shader(GL_VERTEX_SHADER, TINYC_DIR "/blocko-game/shaders/font.vert");
+        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/blocko-game/shaders/font.frag");
 
         font_prog_id = glCreateProgram();
         glAttachShader(font_prog_id, vertex);
@@ -277,3 +279,5 @@ void font_end(float r, float g, float b)
         glUniform3f(glGetUniformLocation(font_prog_id, "incolor"), r, g, b);
         glDrawArrays(GL_TRIANGLES, 0, n);
 }
+
+#endif // BLOCKO_FONT_C_INCLUDED

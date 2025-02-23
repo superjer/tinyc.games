@@ -1,4 +1,6 @@
-#include "blocko.h"
+#include "blocko.c"
+#ifndef BLOCKO_TERRAIN_C_INCLUDED
+#define BLOCKO_TERRAIN_C_INCLUDED
 
 float hmap[TILESW][TILESD];
 float hmap2[TILESW][TILESD];
@@ -466,3 +468,4 @@ void chunk_builder()
                 return;
 } }
 
+#endif // BLOCKO_TERRAIN_C_INCLUDED

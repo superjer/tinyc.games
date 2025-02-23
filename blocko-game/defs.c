@@ -1,37 +1,6 @@
-#pragma once
-
-#ifndef NO_OMPH
-        #include <omp.h>
-#else
-        #define omp_get_num_threads() 0
-        #define omp_set_nested(n)
-#endif
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-#include <math.h>
-#include <stdbool.h>
-#define GL3_PROTOTYPES 1
-
-#ifdef __APPLE__
-#include <OpenGL/gl3.h>
-#else
-#include <GL/glew.h>
-#endif
-
-#define SDL_DISABLE_IMMINTRIN_H
-#include <SDL.h>
-#define STBI_NO_SIMD
-#define STB_IMAGE_IMPLEMENTATION
-#include "../common/nothings/stb_image.h"
-
-#include "../common/smcameron/open-simplex-noise.c"
-struct osn_context *osn_context;
-#define noise(x,y,z,scale) open_simplex_noise3(osn_context,(float)((x)-tscootx+0.5f)/(scale),(float)((y)+0.5f)/(scale),(float)((z)-tscootz+0.5f)/(scale))
-
-#include "timer.c"
-#include "vector.h"
+#include "blocko.c"
+#ifndef BLOCKO_DEFS_C_INCLUDED
+#define BLOCKO_DEFS_C_INCLUDED
 
 #define STON 34
 #define ORE  35
@@ -408,3 +377,5 @@ void move_to_ground(float *inout, int x, int y, int z);
 void recalc_gndheight(int x, int z);
 void scoot(int x, int z);
 void apply_scoot();
+
+#endif // BLOCKO_DEFS_C_INCLUDED

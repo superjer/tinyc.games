@@ -1,4 +1,6 @@
-#include "blocko.h"
+#include "blocko.c"
+#ifndef BLOCKO_TEST_C_INCLUDED
+#define BLOCKO_TEST_C_INCLUDED
 
 #define GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX    0x9048
 #define GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX  0x9049
@@ -196,3 +198,5 @@ void debrief()
                 font_end(1, 0.5, 0);
         }
 }
+
+#endif // BLOCKO_TEST_C_INCLUDED

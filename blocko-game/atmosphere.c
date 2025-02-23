@@ -1,4 +1,6 @@
-#include "blocko.h"
+#include "blocko.c"
+#ifndef BLOCKO_ATMOSPHERE_C_INCLUDED
+#define BLOCKO_ATMOSPHERE_C_INCLUDED
 
 unsigned int sun_prog_id;
 GLuint sun_vbo, sun_vao;
@@ -35,8 +37,8 @@ void do_atmos_colors()
 
 void sun_init()
 {
-        unsigned int vertex = file2shader(GL_VERTEX_SHADER, "shaders/sun.vert");
-        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, "shaders/sun.frag");
+        unsigned int vertex = file2shader(GL_VERTEX_SHADER, TINYC_DIR "/blocko-game/shaders/sun.vert");
+        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/blocko-game/shaders/sun.frag");
 
         sun_prog_id = glCreateProgram();
         glAttachShader(sun_prog_id, vertex);
@@ -107,3 +109,5 @@ void sun_draw(float *proj, float *view, float pitch, float yaw, float roll, unsi
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         glDrawArrays(GL_TRIANGLE_STRIP, 4, 4);
 }
+
+#endif // BLOCKO_ATMOSPHERE_C_INCLUDED

@@ -1,4 +1,6 @@
-#include "blocko.h"
+#include "blocko.c"
+#ifndef BLOCKO_PLAYER_C_INCLUDED
+#define BLOCKO_PLAYER_C_INCLUDED
 
 int gravity[] = { -333, -283, -233, -200, -167, -133, -100, -83, -67, -50,
                    -40,  -30,  -20,  -10,    0,    8,   16,  24,  32,  40,
@@ -260,3 +262,4 @@ void update_player(struct player *p, int real)
         }
 }
 
+#endif // BLOCKO_PLAYER_C_INCLUDED

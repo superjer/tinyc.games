@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <memory.h>
+#include <float.h>
 
 // Our unfortunate matrix storage:
 //

@@ -1,4 +1,6 @@
-#include "blocko.h"
+#include "blocko.c"
+#ifndef BLOCKO_BLOCKLIGHT_C_INCLUDED
+#define BLOCKO_BLOCKLIGHT_C_INCLUDED
 
 void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
 {
@@ -352,3 +354,4 @@ void remove_glolight(int px, int py, int pz)
                 remove_glolight(recur_list[i].x, recur_list[i].y, recur_list[i].z);
 }
 
+#endif // BLOCKO_BLOCKLIGHT_C_INCLUDED

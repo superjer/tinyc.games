@@ -1,4 +1,4 @@
-// Tet -- http://tinyc.games -- (c) 2023 Jer Wilson
+// Tet -- http://tinyc.games -- (c) 2025 Jer Wilson
 //
 // Tet is tiny implementation of a fully-featured Tetris clone.
 

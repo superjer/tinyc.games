@@ -35,7 +35,10 @@ FetchContent_MakeAvailable(glew)
 #include_directories(${GLEW_INCLUDE_DIRS})
 
 find_package(OpenGL REQUIRED)
+find_package(OpenMP REQUIRED)
 
 add_executable(tet tet-game/tet.c)
+add_executable(blocko blocko-game/blocko.c)
 
 target_link_libraries(tet PRIVATE SDL3::SDL3 m libglew_static OpenGL::GL)
+target_link_libraries(blocko PRIVATE OpenMP::OpenMP_C SDL3::SDL3 m libglew_static OpenGL::GL)

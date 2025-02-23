@@ -1,4 +1,6 @@
-#include "blocko.h"
+#include "blocko.c"
+#ifndef BLOCKO_DRAW_C_INCLUDED
+#define BLOCKO_DRAW_C_INCLUDED
 
 int is_framebuffer_incomplete()
 {
@@ -584,3 +586,4 @@ void draw_stuff()
         TIMER();
 }
 
+#endif // BLOCKO_DRAW_C_INCLUDED

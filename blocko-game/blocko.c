@@ -1,4 +1,4 @@
-// Blocko -- http://tinyc.games -- (c) 2020 Jer Wilson
+// Blocko -- http://tinyc.games -- (c) 2025 Jer Wilson
 //
 // Blocko is a 1st-person block building game using OpenGL via GLEW.
 //
@@ -6,8 +6,47 @@
 //   http://tinyc.games
 //   https://github.com/superjer/tinyc.games
 
-#include "blocko.h"
+#ifndef BLOCKO_C_INCLUDED
+#define BLOCKO_C_INCLUDED
 
+#ifndef NO_OMPH
+        #include <omp.h>
+#else
+        #define omp_get_num_threads() 0
+        #define omp_set_nested(n)
+#endif
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <math.h>
+#include <stdbool.h>
+#define GL3_PROTOTYPES 1
+
+#ifdef SDL_PLATFORM_APPLE
+#include <OpenGL/gl3.h>
+#else
+#include <GL/glew.h>
+#endif
+
+#define SDL_DISABLE_IMMINTRIN_H
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+
+#define STBI_NO_SIMD
+#define STB_IMAGE_IMPLEMENTATION
+#include "../common/nothings/stb_image.h"
+
+#include "../common/smcameron/open-simplex-noise.c"
+struct osn_context *osn_context;
+#define noise(x,y,z,scale) open_simplex_noise3(osn_context,(float)((x)-tscootx+0.5f)/(scale),(float)((y)+0.5f)/(scale),(float)((z)-tscootz+0.5f)/(scale))
+
+#define TINYC_DIR ".."
+#include "../build/config.h"
+
+#include "timer.c"
+#include "vector.c"
+#include "defs.c"
 #include "atmosphere.c"
 #include "collision.c"
 #include "draw.c"
@@ -71,19 +110,14 @@ void main_loop()
 
         while (SDL_PollEvent(&event)) switch (event.type)
         {
-                case SDL_QUIT:            exit(0);
-                case SDL_KEYDOWN:         key_move(1);       break;
-                case SDL_KEYUP:           key_move(0);       break;
-                case SDL_MOUSEMOTION:     mouse_move();      break;
-                case SDL_MOUSEBUTTONDOWN: mouse_button(1);   break;
-                case SDL_MOUSEBUTTONUP:   mouse_button(0);   break;
-                case SDL_WINDOWEVENT:
-                        switch (event.window.event)
-                        {
-                                case SDL_WINDOWEVENT_SIZE_CHANGED:
-                                        resize();
-                                        break;
-                        }
+                case SDL_EVENT_QUIT:            exit(0);
+                case SDL_EVENT_KEY_DOWN:         key_move(1);       break;
+                case SDL_EVENT_KEY_UP:           key_move(0);       break;
+                case SDL_EVENT_MOUSE_MOTION:     mouse_move();      break;
+                case SDL_EVENT_MOUSE_BUTTON_DOWN: mouse_button(1);   break;
+                case SDL_EVENT_MOUSE_BUTTON_UP:   mouse_button(0);   break;
+                case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                        resize();
                         break;
         }
 
@@ -274,3 +308,5 @@ void apply_scoot()
                 chunk_scootz = future_scootz;
         }
 }
+
+#endif // BLOCKO_C_INCLUDED

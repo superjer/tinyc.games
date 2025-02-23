@@ -1,4 +1,6 @@
-#include "blocko.h"
+#include "blocko.c"
+#ifndef BLOCKO_GLSETUP_C_INCLUDED
+#define BLOCKO_GLSETUP_C_INCLUDED
 
 SDL_GLContext ctx;
 
@@ -67,12 +69,12 @@ void load_shaders()
 {
         printf("GLSL version on this system is %s\n", (char *)glGetString(GL_SHADING_LANGUAGE_VERSION));
 
-        unsigned int vertex          = file2shader(GL_VERTEX_SHADER,   "shaders/main.vert");
-        unsigned int geometry        = file2shader(GL_GEOMETRY_SHADER, "shaders/main.geom");
-        unsigned int fragment        = file2shader(GL_FRAGMENT_SHADER, "shaders/main.frag");
-        unsigned int shadow_vertex   = file2shader(GL_VERTEX_SHADER,   "shaders/shadow.vert");
-        unsigned int shadow_geometry = file2shader(GL_GEOMETRY_SHADER, "shaders/shadow.geom");
-        unsigned int shadow_fragment = file2shader(GL_FRAGMENT_SHADER, "shaders/shadow.frag");
+        unsigned int vertex          = file2shader(GL_VERTEX_SHADER,   TINYC_DIR "/blocko-game/shaders/main.vert");
+        unsigned int geometry        = file2shader(GL_GEOMETRY_SHADER, TINYC_DIR "/blocko-game/shaders/main.geom");
+        unsigned int fragment        = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/blocko-game/shaders/main.frag");
+        unsigned int shadow_vertex   = file2shader(GL_VERTEX_SHADER,   TINYC_DIR "/blocko-game/shaders/shadow.vert");
+        unsigned int shadow_geometry = file2shader(GL_GEOMETRY_SHADER, TINYC_DIR "/blocko-game/shaders/shadow.geom");
+        unsigned int shadow_fragment = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/blocko-game/shaders/shadow.frag");
 
         prog_id = glCreateProgram();
         glAttachShader(prog_id, vertex);
@@ -96,7 +98,7 @@ void load_shaders()
         glDeleteShader(shadow_fragment);
 }
 
-#ifndef __APPLE__
+#ifndef SDL_PLATFORM_APPLE
 void GLAPIENTRY
 MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
                 GLsizei length, const GLchar* message, const void* userParam)
@@ -115,8 +117,7 @@ void glsetup()
         SDL_Init(SDL_INIT_VIDEO);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
-        win = SDL_CreateWindow("Blocko", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-                W, H, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
+        win = SDL_CreateWindow("Blocko", W, H, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
         if (!win) exit(fprintf(stderr, "%s\n", SDL_GetError()));
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
@@ -127,9 +128,9 @@ void glsetup()
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
         SDL_GL_SetSwapInterval(vsync);
 
-        SDL_SetRelativeMouseMode(SDL_TRUE);
+        SDL_SetWindowRelativeMouseMode(win, true);
 
-        #ifndef __APPLE__
+        #ifndef SDL_PLATFORM_APPLE
         glewExperimental = GL_TRUE;
         glewInit();
         glEnable(GL_DEBUG_OUTPUT);
@@ -142,42 +143,42 @@ void glsetup()
 
         unsigned char *texels;
         char *files[] = {
-                "res/grass_top.png",
-                "res/grass_side.png",
-                "res/dirt.png",
-                "res/grass_grow1_top.png",
-                "res/grass_grow2_top.png",
-                "res/stone.png",
-                "res/sand.png",
-                "res/water.png",      //  7
-                "res/water2.png",
-                "res/water3.png",
-                "res/water4.png",
-                "res/ore.png",        // 11
-                "res/ore_hint.png",   // 12
-                "res/hard.png",       // 13
-                "res/wood_side.png",  // 14
-                "res/granite.png",    // 15
+                TINYC_DIR "/blocko-game/assets/grass_top.png",
+                TINYC_DIR "/blocko-game/assets/grass_side.png",
+                TINYC_DIR "/blocko-game/assets/dirt.png",
+                TINYC_DIR "/blocko-game/assets/grass_grow1_top.png",
+                TINYC_DIR "/blocko-game/assets/grass_grow2_top.png",
+                TINYC_DIR "/blocko-game/assets/stone.png",
+                TINYC_DIR "/blocko-game/assets/sand.png",
+                TINYC_DIR "/blocko-game/assets/water.png",      //  7
+                TINYC_DIR "/blocko-game/assets/water2.png",
+                TINYC_DIR "/blocko-game/assets/water3.png",
+                TINYC_DIR "/blocko-game/assets/water4.png",
+                TINYC_DIR "/blocko-game/assets/ore.png",        // 11
+                TINYC_DIR "/blocko-game/assets/ore_hint.png",   // 12
+                TINYC_DIR "/blocko-game/assets/hard.png",       // 13
+                TINYC_DIR "/blocko-game/assets/wood_side.png",  // 14
+                TINYC_DIR "/blocko-game/assets/granite.png",    // 15
                 // transparent:
-                "res/leaves_red.png", // 16
-                "res/leaves_gold.png",// 17
-                "res/mushlite.png",   // 18
-                "res/0.png",          // 19 see #define PNG0 in blocko.h!
-                "res/1.png",
-                "res/2.png",
-                "res/3.png",
-                "res/4.png",
-                "res/5.png",
-                "res/6.png",
-                "res/7.png",
-                "res/8.png",
-                "res/9.png",
-                "res/A.png",
-                "res/B.png",
-                "res/C.png",
-                "res/D.png",
-                "res/E.png",
-                "res/F.png",
+                TINYC_DIR "/blocko-game/assets/leaves_red.png", // 16
+                TINYC_DIR "/blocko-game/assets/leaves_gold.png",// 17
+                TINYC_DIR "/blocko-game/assets/mushlite.png",   // 18
+                TINYC_DIR "/blocko-game/assets/0.png",          // 19 see #define PNG0 in blocko.h!
+                TINYC_DIR "/blocko-game/assets/1.png",
+                TINYC_DIR "/blocko-game/assets/2.png",
+                TINYC_DIR "/blocko-game/assets/3.png",
+                TINYC_DIR "/blocko-game/assets/4.png",
+                TINYC_DIR "/blocko-game/assets/5.png",
+                TINYC_DIR "/blocko-game/assets/6.png",
+                TINYC_DIR "/blocko-game/assets/7.png",
+                TINYC_DIR "/blocko-game/assets/8.png",
+                TINYC_DIR "/blocko-game/assets/9.png",
+                TINYC_DIR "/blocko-game/assets/A.png",
+                TINYC_DIR "/blocko-game/assets/B.png",
+                TINYC_DIR "/blocko-game/assets/C.png",
+                TINYC_DIR "/blocko-game/assets/D.png",
+                TINYC_DIR "/blocko-game/assets/E.png",
+                TINYC_DIR "/blocko-game/assets/F.png",
                 ""
         };
 
@@ -281,3 +282,5 @@ void glsetup()
         glReadBuffer(GL_NONE);
         glBindFramebuffer(GL_FRAMEBUFFER, 0); // <- even need this?
 }
+
+#endif // BLOCKO_GLSETUP_C_INCLUDED

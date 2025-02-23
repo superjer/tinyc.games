@@ -1,4 +1,6 @@
-#include "blocko.h"
+#include "blocko.c"
+#ifndef BLOCKO_INTERFACE_C_INCLUDED
+#define BLOCKO_INTERFACE_C_INCLUDED
 
 void resize()
 {
@@ -18,18 +20,18 @@ void key_move(int down)
 {
         if (event.key.repeat) return;
 
-        switch (event.key.keysym.sym)
+        switch (event.key.key)
         {
                 // continuous movement stuff
-                case SDLK_w:      player[0].goingf = down;
+                case SDLK_W:      player[0].goingf = down;
                         if (down) player[0].cooldownf += 10; // detect double tap
                         break;
-                case SDLK_s:      player[0].goingb   = down; break;
-                case SDLK_a:      player[0].goingl   = down; break;
-                case SDLK_d:      player[0].goingr   = down; break;
+                case SDLK_S:      player[0].goingb   = down; break;
+                case SDLK_A:      player[0].goingl   = down; break;
+                case SDLK_D:      player[0].goingr   = down; break;
                 case SDLK_LSHIFT: player[0].sneaking = down; break;
                 case SDLK_LCTRL:  player[0].running  = down; break;
-                case SDLK_z:      zooming            = down; break;
+                case SDLK_Z:      zooming            = down; break;
 
                 // instantaneous movement
                 case SDLK_SPACE:
@@ -37,44 +39,44 @@ void key_move(int down)
                         break;
 
                 // place a light
-                case SDLK_e:
+                case SDLK_E:
                         player[0].lighting = down;
                         break;
 
                 // menu stuff
                 case SDLK_ESCAPE:
-                        SDL_SetRelativeMouseMode(SDL_FALSE);
+                        SDL_SetWindowRelativeMouseMode(win, false);
                         mouselook = false;
                         break;
 
                 // debug stuff
-                case SDLK_q: // go up alot
+                case SDLK_Q: // go up alot
                         if (!down)
                         {
                                 player[0].pos.y -= 1000;
                                 player[0].grav = GRAV_ZERO;
                         }
                         break;
-                case SDLK_f: // go fast
+                case SDLK_F: // go fast
                         if (down)
                                 fast = (fast == 1.f) ? 8.f : 1.f;
                         break;
-                case SDLK_h: // show help
+                case SDLK_H: // show help
                         if (down)
                                 help_layer = (help_layer == 1) ? 0 : 1;
                         break;
-                case SDLK_g: // show help
+                case SDLK_G: // show help
                         if (down)
                                 help_layer = (help_layer == 2) ? 0 : 2;
                         break;
-                case SDLK_r: // toggle phys step regulation
+                case SDLK_R: // toggle phys step regulation
                         if (down)
                         {
                                 regulated = !regulated;
                                 fprintf(stderr, "%s\n", regulated ? "regulated" : "unregulated");
                         }
                         break;
-                case SDLK_v: // toggle vsync
+                case SDLK_V: // toggle vsync
                         if (down)
                         {
                                 vsync = !vsync;
@@ -89,22 +91,22 @@ void key_move(int down)
                                 fprintf(stderr, "%s\n", antialiasing ? "antialiasing" : "no antialiasing");
                         }
                         break;
-                case SDLK_t: // build lighting testing area
+                case SDLK_T: // build lighting testing area
                         if (down) build_test_area();
                         break;
-                case SDLK_n: // night mode on/off
+                case SDLK_N: // night mode on/off
                         if (down) reverse_sun = !reverse_sun;
                         break;
-                case SDLK_l: // toggle light values
+                case SDLK_L: // toggle light values
                         if (down) show_light_values = !show_light_values;
                         break;
-                case SDLK_p: // speed of the sun
+                case SDLK_P: // speed of the sun
                         if (down) speedy_sun = !speedy_sun;
                         break;
-                case SDLK_m: // do shadow mapping
+                case SDLK_M: // do shadow mapping
                         if (!down) shadow_mapping = !shadow_mapping;
                         break;
-                case SDLK_c: // change view distance
+                case SDLK_C: // change view distance
                         if (down) {
                                 if (draw_dist < 320.f)
                                         draw_dist = 320.f;
@@ -176,7 +178,7 @@ void mouse_button(int down)
         {
                 if (down)
                 {
-                        SDL_SetRelativeMouseMode(SDL_TRUE);
+                        SDL_SetWindowRelativeMouseMode(win, true);
                         mouselook = true;
                 }
         }
@@ -194,3 +196,4 @@ void mouse_button(int down)
         }
 }
 
+#endif // BLOCKO_INTERFACE_C_INCLUDED

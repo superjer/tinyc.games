@@ -1,4 +1,6 @@
-#include "blocko.h"
+#include "blocko.c"
+#ifndef BLOCKO_CURSOR_C_INCLUDED
+#define BLOCKO_CURSOR_C_INCLUDED
 
 unsigned int cursor_prog_id;
 GLuint cursor_vbo, cursor_vao;
@@ -12,8 +14,8 @@ float *cursor_buf_p = cursor_buf;
 
 void cursor_init()
 {
-        unsigned int vertex = file2shader(GL_VERTEX_SHADER, "shaders/cursor.vert");
-        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, "shaders/cursor.frag");
+        unsigned int vertex = file2shader(GL_VERTEX_SHADER, TINYC_DIR "/blocko-game/shaders/cursor.vert");
+        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/blocko-game/shaders/cursor.frag");
 
         cursor_prog_id = glCreateProgram();
         glAttachShader(cursor_prog_id, vertex);
@@ -109,3 +111,5 @@ void cursor(int w, int h)
         glUniform3f(glGetUniformLocation(cursor_prog_id, "incolor"), .9f, .9f, .9f);
         glDrawArrays(GL_TRIANGLES, 0, n);
 }
+
+#endif // BLOCKO_CURSOR_C_INCLUDED

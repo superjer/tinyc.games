@@ -1,4 +1,6 @@
-#include "blocko.h"
+#include "blocko.c"
+#ifndef BLOCKO_COLLISION_C_INCLUDED
+#define BLOCKO_COLLISION_C_INCLUDED
 
 int legit_tile(int x, int y, int z)
 {
@@ -47,3 +49,4 @@ int world_collide(struct box box, int wet)
         return 0;
 }
 
+#endif // BLOCKO_COLLISION_C_INCLUDED
