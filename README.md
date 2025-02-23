@@ -34,28 +34,31 @@ A quick hack to make Zel into more of a 2D platformer. Very rough around the edg
 
 Use CMake
 
-### Windows
-1. TCC, SDL2, and GLEW are already included!
-2. Open a game folder and run run-windows.bat
-3. For OpenGL games you will need the Windows SDK from Microsoft
-
-### Mac
-1. Install clang by typing "clang" in Terminal and clicking the Install button.
-2. Open a game folder and run run-mac.sh
-
 ### Linux
-1. Install tcc, SDL2-dev, and GLEW-dev.
-  - Debian/Ubuntu:
+1. Create a build directory here
     ```
-    sudo apt install tcc libsdl2-dev libsdl2-ttf-dev libglew-dev
-    ```
-  - Fedora:
-    ```
-    sudo dnf copr enable lantw44/tcc
-    sudo dnf install gcc tcc SDL2-devel SDL2_ttf-devel glew-devel
+    mkdir build
+    cd build
     ```
 
-2. Open a game folder and run run-linux.sh
+2. Run CMake to fetch libraries and create build scripts
+    ```
+    cmake ..
+    ```
+
+3. Build!
+    ```
+    cmake --build .                   # build all games
+    cmake --build . --target=blocko   # build only blocko
+    ```
+
+4. Run, for example, blocko
+    ```
+    ./blocko
+    ```
+
+### Mac, Windows
+CMake is supposed to be cross-platform and should work on Mac and Windows. Specific instructions coming soon.
 
 ## Next?
 

@@ -1,6 +1,6 @@
 #include "zel.c"
-#ifndef ENEMY_PIG_C
-#define ENEMY_PIG_C
+#ifndef ZEL_ENEMY_PIG_C
+#define ZEL_ENEMY_PIG_C
 #define e (enemy[n])
 
 void update_pig(int n)
@@ -43,4 +43,4 @@ void update_pig(int n)
 }
 
 #undef e
-#endif
+#endif // ZEL_ENEMY_PIG_C

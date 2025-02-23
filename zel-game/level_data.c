@@ -1,6 +1,6 @@
 #include "zel.c"
-#ifndef LEVEL_DATA_C
-#define LEVEL_DATA_C
+#ifndef ZEL_LEVEL_DATA_C
+#define ZEL_LEVEL_DATA_C
 
 #define ____ OPEN
 
@@ -157,4 +157,4 @@ struct room {
 }};
 
 #undef I
-#endif
+#endif // ZEL_LEVEL_DATA_C

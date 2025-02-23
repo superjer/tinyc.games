@@ -1,6 +1,6 @@
 #include "zel.c"
-#ifndef ENEMY_PUFF_C
-#define ENEMY_PUFF_C
+#ifndef ZEL_ENEMY_PUFF_C
+#define ZEL_ENEMY_PUFF_C
 #define e (enemy[n])
 
 void update_puff(int n)
@@ -10,4 +10,4 @@ void update_puff(int n)
 }
 
 #undef e
-#endif
+#endif // ZEL_ENEMY_PUFF_C

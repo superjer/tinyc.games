@@ -1,6 +1,6 @@
 #include "zel.c"
-#ifndef ENEMY_BOARD_C
-#define ENEMY_BOARD_C
+#ifndef ZEL_ENEMY_BOARD_C
+#define ZEL_ENEMY_BOARD_C
 #define e (enemy[n])
 
 void update_board(int n)
@@ -45,4 +45,4 @@ void update_board(int n)
 }
 
 #undef e
-#endif
+#endif // ZEL_ENEMY_BOARD_C

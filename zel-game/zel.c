@@ -1,4 +1,4 @@
-// Zel -- http://tinyc.games -- (c) 2020 Jer Wilson
+// Zel -- http://tinyc.games -- (c) 2025 Jer Wilson
 //
 // Zel is a "tiny" adventure game with lots of content. I'll admit it's pushing
 // the boundaries of what a "tiny" game should be.
@@ -10,8 +10,11 @@
 #include <stdlib.h>
 #include <time.h>
 #define SDL_DISABLE_IMMINTRIN_H
-#include <SDL.h>
-#include <SDL_ttf.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+
+#define TINYC_DIR ".."
+#include "../build/config.h"
 
 #define SCALE 3                    // 3x magnification
 #define W (300*SCALE)              // window width, height
@@ -136,7 +139,6 @@ SDL_Surface *surf;
 SDL_Texture *spritetex;
 SDL_Texture *tiletex;
 SDL_Texture *edgetex[20];
-TTF_Font *font;
 
 //prototypes
 void setup();
@@ -171,9 +173,9 @@ int main()
         {
                 while(SDL_PollEvent(&event)) switch(event.type)
                 {
-                        case SDL_QUIT:    exit(0);
-                        case SDL_KEYDOWN: key_move(1); break;
-                        case SDL_KEYUP:   key_move(0); break;
+                        case SDL_EVENT_QUIT:    exit(0);
+                        case SDL_EVENT_KEY_DOWN: key_move(1); break;
+                        case SDL_EVENT_KEY_UP:   key_move(0); break;
                 }
 
                 update_player(0);
@@ -191,30 +193,26 @@ void setup()
         srand(time(NULL));
 
         SDL_Init(SDL_INIT_VIDEO);
-        SDL_Window *win = SDL_CreateWindow("Zel",
-                SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, W, H, SDL_WINDOW_SHOWN);
-        renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_PRESENTVSYNC);
+        SDL_Window *win = SDL_CreateWindow("Zel", W, H, 0);
+        renderer = SDL_CreateRenderer(win, NULL);
         if(!renderer) exit(fprintf(stderr, "Could not create SDL renderer\n"));
 
         for(int i = 0; i < MAXDOOR; i++)
         {
                 char xfile[80];
-                sprintf(xfile, "res/room-%d.bmp", i);
+                sprintf(xfile, TINYC_DIR "/zel-game/assets/room-%d.bmp", i);
                 surf = SDL_LoadBMP(xfile);
-                SDL_SetColorKey(surf, 1, 0xffff00);
+                SDL_SetSurfaceColorKey(surf, 1, 0xffff00);
                 edgetex[i] = SDL_CreateTextureFromSurface(renderer, surf);
         }
 
-        surf = SDL_LoadBMP("res/sprites.bmp");
-        SDL_SetColorKey(surf, 1, 0xffff00);
+        surf = SDL_LoadBMP(TINYC_DIR "/zel-game/assets/sprites.bmp");
+        SDL_SetSurfaceColorKey(surf, 1, 0xffff00);
         spritetex = SDL_CreateTextureFromSurface(renderer, surf);
 
-        surf = SDL_LoadBMP("res/tiles.bmp");
-        SDL_SetColorKey(surf, 1, 0xffff00);
+        surf = SDL_LoadBMP(TINYC_DIR "/zel-game/assets/tiles.bmp");
+        SDL_SetSurfaceColorKey(surf, 1, 0xffff00);
         tiletex = SDL_CreateTextureFromSurface(renderer, surf);
-
-        TTF_Init();
-        font = TTF_OpenFont("../common/fonts/LiberationSans-Regular.ttf", 42);
 }
 
 void enter_dungeon()
@@ -250,13 +248,13 @@ void key_move(int down)
 
         if (down)
         {
-                if(event.key.keysym.sym == SDLK_UP || event.key.keysym.sym == SDLK_DOWN)
+                if(event.key.key == SDLK_UP || event.key.key == SDLK_DOWN)
                         player[0].ylast = 1;
                 else
                         player[0].ylast = 0;
         }
 
-        switch (event.key.keysym.sym)
+        switch (event.key.key)
         {
                 case SDLK_UP:
                         player[0].vel.y -= amt;
@@ -277,11 +275,11 @@ void key_move(int down)
                 case SDLK_SPACE:
                         if (down) drawclip = !drawclip;
                         break;
-                case SDLK_n:
+                case SDLK_N:
                         if (down) noclip = !noclip;
                         break;
-                case SDLK_z:
-                case SDLK_x:
+                case SDLK_Z:
+                case SDLK_X:
                         if(player[0].state == PL_NORMAL)
                         {
                                 player[0].state = PL_STAB;
@@ -535,4 +533,4 @@ int block_collide(int bx, int by, SDL_Rect plyr)
         return 0;
 }
 
-#endif
+#endif // ZEL_C

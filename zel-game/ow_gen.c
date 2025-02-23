@@ -1,6 +1,6 @@
 #include "zel.c"
-#ifndef OW_GEN_C
-#define OW_GEN_C
+#ifndef ZEL_OW_GEN_C
+#define ZEL_OW_GEN_C
 
 #define sX DUNW // overworld screens across (srooms)
 #define sY DUNH // overworld screens down
@@ -848,4 +848,4 @@ void ow_gen()
         print_utf8out();
 }
 
-#endif
+#endif // ZEL_OW_GEN_C
