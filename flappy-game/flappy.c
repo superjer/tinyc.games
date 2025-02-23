@@ -104,7 +104,7 @@ void setup()
         }
 
         TTF_Init();
-        font = TTF_OpenFont("../common/res/LiberationMono-Regular.ttf", 42);
+        font = TTF_OpenFont("../common/fonts/LiberationMono-Regular.ttf", 42);
 }
 
 //start a new game

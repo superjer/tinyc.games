@@ -26,8 +26,8 @@ void text(char *fstr, int value)
 void draw_setup()
 {
         fprintf(stderr, "GLSL version on this system is %s\n", (char *)glGetString(GL_SHADING_LANGUAGE_VERSION));
-        unsigned int vertex = file2shader(GL_VERTEX_SHADER, "shaders/main.vert");
-        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, "shaders/main.frag");
+        unsigned int vertex = file2shader(GL_VERTEX_SHADER, TINYC_DIR "/tet-game/shaders/main.vert");
+        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/tet-game/shaders/main.frag");
         main_prog_id = glCreateProgram();
         glAttachShader(main_prog_id, vertex);
         glAttachShader(main_prog_id, fragment);

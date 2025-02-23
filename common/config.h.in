@@ -1,0 +1,2 @@
+#undef TINYC_DIR
+#define TINYC_DIR "@CMAKE_CURRENT_SOURCE_DIR@"

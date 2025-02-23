@@ -214,7 +214,7 @@ void setup()
         tiletex = SDL_CreateTextureFromSurface(renderer, surf);
 
         TTF_Init();
-        font = TTF_OpenFont("../common/res/LiberationSans-Regular.ttf", 42);
+        font = TTF_OpenFont("../common/fonts/LiberationSans-Regular.ttf", 42);
 }
 
 void enter_dungeon()

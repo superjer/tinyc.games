@@ -32,6 +32,8 @@ A quick hack to make Zel into more of a 2D platformer. Very rough around the edg
 
 ## How do I do it?
 
+Use CMake
+
 ### Windows
 1. TCC, SDL2, and GLEW are already included!
 2. Open a game folder and run run-windows.bat
