@@ -14,16 +14,21 @@ set(ONLY_LIBS ON)
 set(SDL_TEST_LIBRARY OFF)
 set(glew-cmake_BUILD_SHARED OFF)
 
-find_package(SDL3 QUIET)
-if (NOT SDL3_FOUND)
-  message(STATUS "SDL3 not found, fetching from github")
-  FetchContent_Declare(
-    SDL3
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG release-3.2.4
-  )
-  FetchContent_MakeAvailable(SDL3)
-endif()
+message(STATUS "fetching SDL3 from github")
+FetchContent_Declare(
+  SDL3
+  GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+  GIT_TAG release-3.2.4
+)
+FetchContent_MakeAvailable(SDL3)
+
+message(STATUS "fetching SDL3_ttf from github")
+FetchContent_Declare(
+  SDL3_ttf
+  GIT_REPOSITORY https://github.com/libsdl-org/SDL_ttf.git
+  GIT_TAG prerelease-3.1.2
+)
+FetchContent_MakeAvailable(SDL3_ttf)
 
 message(STATUS "fetching glew-cmake from github")
 FetchContent_Declare(
@@ -37,8 +42,10 @@ FetchContent_MakeAvailable(glew)
 find_package(OpenGL REQUIRED)
 find_package(OpenMP REQUIRED)
 
+add_executable(flappy flappy-game/flappy.c)
 add_executable(tet tet-game/tet.c)
 add_executable(blocko blocko-game/blocko.c)
 
+target_link_libraries(flappy PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
 target_link_libraries(tet PRIVATE SDL3::SDL3 m libglew_static OpenGL::GL)
 target_link_libraries(blocko PRIVATE OpenMP::OpenMP_C SDL3::SDL3 m libglew_static OpenGL::GL)
