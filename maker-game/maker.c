@@ -1,4 +1,4 @@
-// Maker -- http://tinyc.games -- (c) 2020 Jer Wilson
+// Maker -- http://tinyc.games -- (c) 2025 Jer Wilson
 //
 // Maker is 2D platformer with level editing built in, so you can "make" levels.
 
@@ -6,8 +6,11 @@
 #include <stdlib.h>
 #include <time.h>
 #define SDL_DISABLE_IMMINTRIN_H
-#include <SDL.h>
-#include <SDL_ttf.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+
+#define TINYC_DIR ".."
+#include "../build/config.h"
 
 #define SCALE 3                    // x magnification
 #define W (300*SCALE)              // window width, height
@@ -53,8 +56,8 @@ int tiles[TILESH][TILESW];
 struct point { int x, y; };
 
 struct player {
-        SDL_Rect pos;
-        SDL_Rect hitbox;
+        SDL_FRect pos;
+        SDL_FRect hitbox;
         struct point vel;
         int goingl;
         int goingr;
@@ -73,7 +76,7 @@ struct player {
 } player[NR_PLAYERS];
 
 struct enemy {
-        SDL_Rect pos;
+        SDL_FRect pos;
         struct point vel;
         int reel;
         int reeldir;
@@ -99,7 +102,6 @@ SDL_Event event;
 SDL_Renderer *renderer;
 SDL_Surface *surf;
 SDL_Texture *sprites;
-TTF_Font *font;
 
 //prototypes
 void setup();
@@ -112,9 +114,9 @@ void update_player();
 void update_enemies();
 int move_player(int velx, int vely);
 void squishy_move();
-int collide(SDL_Rect plyr, SDL_Rect block);
-int block_collide(int bx, int by, SDL_Rect plyr);
-int world_collide(SDL_Rect plyr);
+int collide(SDL_FRect plyr, SDL_FRect block);
+int block_collide(int bx, int by, SDL_FRect plyr);
+int world_collide(SDL_FRect plyr);
 void draw_stuff();
 void draw_clipping_boxes();
 void text(char *fstr, int value, int height);
@@ -130,10 +132,10 @@ int main()
         {
                 while(SDL_PollEvent(&event)) switch(event.type)
                 {
-                        case SDL_QUIT:        exit(0);
-                        case SDL_KEYDOWN:     key_move(1);  break;
-                        case SDL_KEYUP:       key_move(0);  break;
-                        case SDL_MOUSEMOTION: mouse_move(); break;
+                        case SDL_EVENT_QUIT:        exit(0);
+                        case SDL_EVENT_KEY_DOWN:     key_move(1);  break;
+                        case SDL_EVENT_KEY_UP:       key_move(0);  break;
+                        case SDL_EVENT_MOUSE_MOTION: mouse_move(); break;
                 }
 
                 update_player();
@@ -150,39 +152,35 @@ void setup()
         srand(time(NULL));
 
         SDL_Init(SDL_INIT_VIDEO);
-        SDL_Window *win = SDL_CreateWindow("Maker",
-                SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, W, H, SDL_WINDOW_SHOWN);
-        renderer = SDL_CreateRenderer(win, -1, SDL_RENDERER_PRESENTVSYNC);
+        SDL_Window *win = SDL_CreateWindow("Maker", W, H, 0);
+        renderer = SDL_CreateRenderer(win, NULL);
         if(!renderer) exit(fprintf(stderr, "Could not create SDL renderer\n"));
 
-        surf = SDL_LoadBMP("res/sprites.bmp");
-        SDL_SetColorKey(surf, 1, 0xffff00);
+        surf = SDL_LoadBMP(TINYC_DIR "/maker-game/assets/sprites.bmp");
+        SDL_SetSurfaceColorKey(surf, 1, 0xffff00);
         sprites = SDL_CreateTextureFromSurface(renderer, surf);
-
-        TTF_Init();
-        font = TTF_OpenFont("../common/fonts/LiberationSans-Regular.ttf", 42);
 }
 
 void key_move(int down)
 {
         if(event.key.repeat) return;
 
-        switch(event.key.keysym.sym)
+        switch(event.key.key)
         {
                 case SDLK_LEFT:
-                case SDLK_a:
+                case SDLK_A:
                         player[0].goingl = down;
                         if(down) player[0].dir = WEST;
                         break;
                 case SDLK_RIGHT:
-                case SDLK_d:
+                case SDLK_D:
                         player[0].goingr = down;
                         if(down) player[0].dir = EAST;
                         break;
                 case SDLK_SPACE:
-                case SDLK_z:
-                case SDLK_j:
-                case SDLK_k:
+                case SDLK_Z:
+                case SDLK_J:
+                case SDLK_K:
                         if(player[0].state == PL_NORMAL
                                 && player[0].ground
                                 && down)
@@ -244,7 +242,7 @@ void load_level()
                 //find a good spawn position
                 int x = rand()%TILESW;
                 int y = rand()%TILESH;
-                enemy[i].pos = (SDL_Rect){BS*x, BS*y + BS2, BS, BS2};
+                enemy[i].pos = (SDL_FRect){BS*x, BS*y + BS2, BS, BS2};
         }
 }
 
@@ -323,7 +321,7 @@ if(p->vel.x < -PLYR_SPD)
         }
 
         //detect ground
-        SDL_Rect foot = (SDL_Rect){p->pos.x, p->pos.y + p->pos.h, p->pos.w, 1};
+        SDL_FRect foot = (SDL_FRect){p->pos.x, p->pos.y + p->pos.h, p->pos.w, 1};
         p->ground = world_collide(foot);
 
         if(p->ground)
@@ -397,7 +395,7 @@ void update_enemies()
                                 break;
                 }
 
-                SDL_Rect newpos = enemy[i].pos;
+                SDL_FRect newpos = enemy[i].pos;
                 if(enemy[i].reel)
                 {
                         enemy[i].reel--;
@@ -436,7 +434,7 @@ void update_enemies()
 }
 
 //collide a rect with nearby world tiles
-int world_collide(SDL_Rect plyr)
+int world_collide(SDL_FRect plyr)
 {
         for(int i = 0; i < 3; i++) for(int j = 0; j < 2; j++)
         {
@@ -465,7 +463,7 @@ int move_player(int velx, int vely)
 
         while(velx || vely)
         {
-                SDL_Rect testpos = player[0].pos;
+                SDL_FRect testpos = player[0].pos;
                 int amt;
 
                 if(!velx || last_was_x && vely)
@@ -512,7 +510,7 @@ int legit_tile(int x, int y)
 }
 
 //collide a rect with a rect
-int collide(SDL_Rect plyr, SDL_Rect block)
+int collide(SDL_FRect plyr, SDL_FRect block)
 {
         int xcollide = block.x + block.w >= plyr.x && block.x < plyr.x + plyr.w;
         int ycollide = block.y + block.h >= plyr.y && block.y < plyr.y + plyr.h;
@@ -520,13 +518,13 @@ int collide(SDL_Rect plyr, SDL_Rect block)
 }
 
 //collide a rect with a block
-int block_collide(int bx, int by, SDL_Rect plyr)
+int block_collide(int bx, int by, SDL_FRect plyr)
 {
         if(!legit_tile(bx, by))
                 return 0;
 
         if(tiles[by][bx] <= LASTSOLID)
-                return collide(plyr, (SDL_Rect){BS*bx, BS*by, BS, BS});
+                return collide(plyr, (SDL_FRect){BS*bx, BS*by, BS, BS});
 
         return 0;
 }
@@ -534,8 +532,8 @@ int block_collide(int bx, int by, SDL_Rect plyr)
 //draw everything in the game on the screen
 void draw_stuff()
 {
-        SDL_Rect src;
-        SDL_Rect dest = {0, 0, W, H};
+        SDL_FRect src;
+        SDL_FRect dest = {0, 0, W, H};
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
 
         //draw level tiles
@@ -544,9 +542,9 @@ void draw_stuff()
         {
                 int t = tiles[y][x];
                 if(t != OPEN && t != CLIP)
-                        SDL_RenderCopy(renderer, sprites,
-                                &(SDL_Rect){20*(t%15), 20*(t/15), 20, 20},
-                                &(SDL_Rect){BS*x, BS*y, BS, BS});
+                        SDL_RenderTexture(renderer, sprites,
+                                &(SDL_FRect){20*(t%15), 20*(t/15), 20, 20},
+                                &(SDL_FRect){BS*x, BS*y, BS, BS});
         }
 
         //draw enemies
@@ -564,7 +562,7 @@ void draw_stuff()
                                 break;
                 }
 
-                src = (SDL_Rect){0+20*enemy[i].frame, enemy[i].type*20, 20, 20};
+                src = (SDL_FRect){0+20*enemy[i].frame, enemy[i].type*20, 20, 20};
                 dest = enemy[i].pos;
                 dest.y -= BS2;
                 dest.h += BS2;
@@ -573,11 +571,11 @@ void draw_stuff()
                 {
                         int f = 4 - enemy[i].freeze;
                         if(f < 0) f = 0;
-                        src = (SDL_Rect){100+20*f, 140, 20, 20};
+                        src = (SDL_FRect){100+20*f, 140, 20, 20};
                 }
                 else if(enemy[i].type == PUFF)
                 {
-                        src = (SDL_Rect){100+20*enemy[i].frame, 140, 20, 20};
+                        src = (SDL_FRect){100+20*enemy[i].frame, 140, 20, 20};
                         if(frame%8 == 0 && ++enemy[i].frame > 4)
                                 enemy[i].alive = 0;
                 }
@@ -589,7 +587,7 @@ void draw_stuff()
                         dest.y += (rand()%3 - 1) * SCALE;
                 }
 
-                SDL_RenderCopy(renderer, sprites, &src, &dest);
+                SDL_RenderTexture(renderer, sprites, &src, &dest);
         }
 
         //draw players
@@ -612,7 +610,7 @@ void draw_stuff()
                                 player[i].frame != 4)
                         animframe = 0;
 
-                src = (SDL_Rect){20+20*animframe, 60+20*player[0].dir, 20, 20};
+                src = (SDL_FRect){20+20*animframe, 60+20*player[0].dir, 20, 20};
                 dest = player[i].pos;
                 dest.y -= BS - PLYR_H;
                 dest.x -= (BS - PLYR_W) / 2;
@@ -620,7 +618,7 @@ void draw_stuff()
                 dest.h = BS;
 
                 if(!player[i].stun || (frame/2)%2)
-                        SDL_RenderCopy(renderer, sprites, &src, &dest);
+                        SDL_RenderTexture(renderer, sprites, &src, &dest);
 
                 if(animframe == 5)
                 {
@@ -641,19 +639,19 @@ void draw_stuff()
                                 case WEST:  dest.x -= BS - retract; break;
                                 case SOUTH: dest.y += BS - retract; break;
                         }
-                        SDL_RenderCopy(renderer, sprites, &src, &dest);
+                        SDL_RenderTexture(renderer, sprites, &src, &dest);
                 }
         }
 
         //draw health
         int hp = player[0].hp;
-        dest = (SDL_Rect){10, 10, SCALE*10, SCALE*10};
-        src = (SDL_Rect){290, 140, 10, 10};
+        dest = (SDL_FRect){10, 10, SCALE*10, SCALE*10};
+        src = (SDL_FRect){290, 140, 10, 10};
         for(int hc = 20; hc > 0; hc -= 4)
         {
                 src.y = 140 + 10 * (hp > 4 ? 4 :
                                     hp < 0 ? 0 : hp);
-                SDL_RenderCopy(renderer, sprites, &src, &dest);
+                SDL_RenderTexture(renderer, sprites, &src, &dest);
                 hp -= 4;
                 dest.x += SCALE*10;
         }
@@ -661,12 +659,12 @@ void draw_stuff()
         if(drawclip) draw_clipping_boxes();
 
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        SDL_Rect pos = player[0].pos;
+        SDL_FRect pos = player[0].pos;
         if(player[0].ground)
-                SDL_RenderFillRect(renderer, &(SDL_Rect){pos.x, pos.y+PLYR_H, PLYR_W, 16});
+                SDL_RenderFillRect(renderer, &(SDL_FRect){pos.x, pos.y+PLYR_H, PLYR_W, 16});
 
         SDL_SetRenderDrawColor(renderer, 255, 127, 0, 127);
-        SDL_RenderFillRect(renderer, &(SDL_Rect){BS*cblockx+1, BS*cblocky+1, BS-1, BS-1});
+        SDL_RenderFillRect(renderer, &(SDL_FRect){BS*cblockx+1, BS*cblocky+1, BS-1, BS-1});
 
         SDL_RenderPresent(renderer);
 }
@@ -679,7 +677,7 @@ void draw_clipping_boxes()
         {
                 int t = tiles[y][x];
                 if(t <= LASTSOLID)
-                        SDL_RenderFillRect(renderer, &(SDL_Rect){BS*x+1, BS*y+1, BS-1, BS-1});
+                        SDL_RenderFillRect(renderer, &(SDL_FRect){BS*x+1, BS*y+1, BS-1, BS-1});
         }
 }
 #endif
