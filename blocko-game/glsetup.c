@@ -34,7 +34,7 @@ char *file2str(char *filename)
         FILE *f;
 
         #if defined(_MSC_VER) && _MSC_VER >= 1400
-                if (fopen_s(&f, filename, "r"))
+                if (fopen_s(&f, filename, "rb"))
                         f = NULL;
         #else
                 f = fopen(filename, "r");
@@ -50,7 +50,7 @@ char *file2str(char *filename)
         return buf;
 
         bad:
-        fprintf(stderr, "Failed to open/read %s\n", filename);
+        fprintf(stderr, __FILE__ " Failed to open/read %s\n", filename);
         return NULL;
 }
 

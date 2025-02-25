@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.11)
 project(TinyCGames C)
 
 configure_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/common/config.h.in
-  ${CMAKE_CURRENT_BINARY_DIR}/config.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/common/build-config.h.in
+  ${CMAKE_CURRENT_BINARY_DIR}/build-config.h
   @ONLY
 )
 
@@ -39,6 +39,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glew)
 #include_directories(${GLEW_INCLUDE_DIRS})
 
+find_library(MATH_LIBRARY m)
 find_package(OpenGL REQUIRED)
 find_package(OpenMP REQUIRED)
 
@@ -48,8 +49,41 @@ add_executable(blocko blocko-game/blocko.c)
 add_executable(maker maker-game/maker.c)
 add_executable(zel zel-game/zel.c)
 
+target_include_directories(flappy PRIVATE ${CMAKE_BINARY_DIR})
+target_include_directories(tet PRIVATE ${CMAKE_BINARY_DIR})
+target_include_directories(blocko PRIVATE ${CMAKE_BINARY_DIR})
+target_include_directories(maker PRIVATE ${CMAKE_BINARY_DIR})
+target_include_directories(zel PRIVATE ${CMAKE_BINARY_DIR})
+
 target_link_libraries(flappy PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
-target_link_libraries(tet PRIVATE SDL3::SDL3 m libglew_static OpenGL::GL)
-target_link_libraries(blocko PRIVATE OpenMP::OpenMP_C SDL3::SDL3 m libglew_static OpenGL::GL)
+target_link_libraries(tet PRIVATE SDL3::SDL3 libglew_static OpenGL::GL)
+target_link_libraries(blocko PRIVATE OpenMP::OpenMP_C SDL3::SDL3 libglew_static OpenGL::GL)
 target_link_libraries(maker PRIVATE SDL3::SDL3)
-target_link_libraries(zel PRIVATE SDL3::SDL3 m)
+target_link_libraries(zel PRIVATE SDL3::SDL3)
+
+if(MATH_LIBRARY)
+    target_link_libraries(tet PUBLIC ${MATH_LIBRARY})
+    target_link_libraries(blocko PUBLIC ${MATH_LIBRARY})
+    target_link_libraries(zel PUBLIC ${MATH_LIBRARY})
+endif()
+
+macro(copy_dlls target)
+    if(WIN32)
+        add_custom_command(
+            TARGET ${target} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy $<TARGET_FILE:SDL3::SDL3-shared> ${CMAKE_BINARY_DIR}
+            VERBATIM
+        )
+        add_custom_command(
+            TARGET ${target} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy $<TARGET_FILE:SDL3_ttf::SDL3_ttf-shared> ${CMAKE_BINARY_DIR}
+            VERBATIM
+        )
+    endif()
+endmacro()
+
+copy_dlls(flappy)
+copy_dlls(tet)
+copy_dlls(blocko)
+copy_dlls(maker)
+copy_dlls(zel)

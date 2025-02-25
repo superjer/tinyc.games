@@ -10,7 +10,7 @@
 #include <SDL3/SDL_main.h>
 
 #define TINYC_DIR ".."
-#include "../build/config.h"
+#include "build-config.h"
 
 #define SCALE 3                    // x magnification
 #define W (300*SCALE)              // window width, height

@@ -16,15 +16,15 @@
 #define GRG2 46
 #define GRAS 47
 
+#define RLEF 60
+#define YLEF 61
+
 #define BARR 64
 
 #define LASTSOLID (BARR+1) // everything less than here is solid
 #define OPEN 75            // empty space
 #define WATR 76
 #define LITE 77
-
-#define RLEF 81
-#define YLEF 82
 
 
 #ifndef TERRAIN_THREAD

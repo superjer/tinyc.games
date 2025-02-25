@@ -154,8 +154,8 @@ void font_init()
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        unsigned int vertex = file2shader(GL_VERTEX_SHADER, "../common/tinyc.games/shaders/font.vert");
-        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, "../common/tinyc.games/shaders/font.frag");
+        unsigned int vertex = file2shader(GL_VERTEX_SHADER, TINYC_DIR "/common/tinyc.games/shaders/font.vert");
+        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/common/tinyc.games/shaders/font.frag");
 
         font_prog_id = glCreateProgram();
         glAttachShader(font_prog_id, vertex);

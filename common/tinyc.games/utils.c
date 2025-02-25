@@ -35,7 +35,7 @@ char *file2str(char *filename)
         FILE *f;
 
         #if defined(_MSC_VER) && _MSC_VER >= 1400
-                if (fopen_s(&f, filename, "r"))
+                if (fopen_s(&f, filename, "rb"))
                         f = NULL;
         #else
                 f = fopen(filename, "r");

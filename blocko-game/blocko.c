@@ -42,7 +42,7 @@ struct osn_context *osn_context;
 #define noise(x,y,z,scale) open_simplex_noise3(osn_context,(float)((x)-tscootx+0.5f)/(scale),(float)((y)+0.5f)/(scale),(float)((z)-tscootz+0.5f)/(scale))
 
 #define TINYC_DIR ".."
-#include "../build/config.h"
+#include "build-config.h"
 
 #include "timer.c"
 #include "vector.c"
@@ -65,12 +65,7 @@ void new_game();
 void main_loop();
 void update_world();
 
-#undef main
-#ifdef _WIN32
-int WinMain()
-#else
 int main()
-#endif
 {
         omp_set_nested(1); // needed or omp won't parallelize chunk gen
         startup();
