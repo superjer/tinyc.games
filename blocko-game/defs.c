@@ -278,13 +278,12 @@ struct point sun_pos;
 struct point moon_pos;
 
 SDL_Event event;
-SDL_Window *win;
 
-GLuint material_tex_id;
-GLuint shadow_tex_id;
-GLuint shadow2_tex_id;
-GLuint shadow_fbo;
-GLuint shadow2_fbo;
+unsigned int material_tex_id;
+unsigned int shadow_tex_id;
+unsigned int shadow2_tex_id;
+unsigned int shadow_fbo;
+unsigned int shadow2_fbo;
 
 unsigned int prog_id;
 unsigned int shadow_prog_id;
@@ -332,7 +331,7 @@ int nr_chunks_generated = 0;
 int chunk_gen_ticks = 0;
 
 // glsetup.c protos
-int check_program_errors(GLuint shader, char *name);
+int check_program_errors(unsigned int shader, char *name);
 unsigned int file2shader(unsigned int type, char *filename);
 
 // font.c protos

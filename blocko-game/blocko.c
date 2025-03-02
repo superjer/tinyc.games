@@ -23,15 +23,12 @@
 #include <stdbool.h>
 #define GL3_PROTOTYPES 1
 
-#ifdef SDL_PLATFORM_APPLE
-#include <OpenGL/gl3.h>
-#else
-#include <GL/glew.h>
-#endif
-
 #define SDL_DISABLE_IMMINTRIN_H
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <SDL3/SDL_vulkan.h>
+#define TCGVK_SKIP_MAIN
+#include "../common/tinyc.games/vulkan/main.c"
 
 #define STBI_NO_SIMD
 #define STB_IMAGE_IMPLEMENTATION
@@ -99,16 +96,22 @@ int main()
         }
 }
 
+void shutdown(int code)
+{
+        vulkan_shutdown();
+        exit(code);
+}
+
 void main_loop()
 { for (;;) {
         apply_scoot();
 
         while (SDL_PollEvent(&event)) switch (event.type)
         {
-                case SDL_EVENT_QUIT:            exit(0);
-                case SDL_EVENT_KEY_DOWN:         key_move(1);       break;
-                case SDL_EVENT_KEY_UP:           key_move(0);       break;
-                case SDL_EVENT_MOUSE_MOTION:     mouse_move();      break;
+                case SDL_EVENT_QUIT:              shutdown(0);
+                case SDL_EVENT_KEY_DOWN:          key_move(1);       break;
+                case SDL_EVENT_KEY_UP:            key_move(0);       break;
+                case SDL_EVENT_MOUSE_MOTION:      mouse_move();      break;
                 case SDL_EVENT_MOUSE_BUTTON_DOWN: mouse_button(1);   break;
                 case SDL_EVENT_MOUSE_BUTTON_UP:   mouse_button(0);   break;
                 case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:

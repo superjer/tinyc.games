@@ -8,9 +8,9 @@
 #define FONT_LINES 128
 #define FONT_BUFLEN 16000
 
-GLuint font_tex_id;
+int font_tex_id;
 unsigned int font_prog_id;
-GLuint font_vbo, font_vao;
+int font_vbo, font_vao;
 
 int font_screenw;
 int font_screenh;
@@ -146,27 +146,27 @@ void font_init()
                 font_kerning[(a << 8) | b] = overlap - 3;
         }
 
-        glGenTextures(1, &font_tex_id);
-        glBindTexture(GL_TEXTURE_2D, font_tex_id);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, FONT_PITCH, FONT_LINES, 0, GL_RED, GL_UNSIGNED_BYTE, font_data);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        //glGenTextures(1, &font_tex_id);
+        //glBindTexture(GL_TEXTURE_2D, font_tex_id);
+        //glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, FONT_PITCH, FONT_LINES, 0, GL_RED, GL_UNSIGNED_BYTE, font_data);
+        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        unsigned int vertex = file2shader(GL_VERTEX_SHADER, TINYC_DIR "/blocko-game/shaders/font.vert");
-        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/blocko-game/shaders/font.frag");
+        //unsigned int vertex = file2shader(GL_VERTEX_SHADER, TINYC_DIR "/blocko-game/shaders/font.vert");
+        //unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/blocko-game/shaders/font.frag");
 
-        font_prog_id = glCreateProgram();
-        glAttachShader(font_prog_id, vertex);
-        glAttachShader(font_prog_id, fragment);
-        glLinkProgram(font_prog_id);
-        check_program_errors(font_prog_id, "font");
-        glDeleteShader(vertex);
-        glDeleteShader(fragment);
+        //font_prog_id = glCreateProgram();
+        //glAttachShader(font_prog_id, vertex);
+        //glAttachShader(font_prog_id, fragment);
+        //glLinkProgram(font_prog_id);
+        //check_program_errors(font_prog_id, "font");
+        //glDeleteShader(vertex);
+        //glDeleteShader(fragment);
 
-        glGenVertexArrays(1, &font_vao);
-        glGenBuffers(1, &font_vbo);
+        //glGenVertexArrays(1, &font_vao);
+        //glGenBuffers(1, &font_vbo);
 }
 
 void font_begin(int w, int h)
@@ -240,11 +240,11 @@ void font_end(float r, float g, float b)
 {
         int n = (font_buf_p - font_buf);
 
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDisable(GL_DEPTH_TEST);
-        glDisable(GL_CULL_FACE);
-        glUseProgram(font_prog_id);
+        //glEnable(GL_BLEND);
+        //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        //glDisable(GL_DEPTH_TEST);
+        //glDisable(GL_CULL_FACE);
+        //glUseProgram(font_prog_id);
 
         float near = -100.f;
         float far = 100.f;
@@ -258,26 +258,26 @@ void font_end(float r, float g, float b)
                 0, 0, z,  0,
                -1, 1, tz, 1,
         };
-        glUniformMatrix4fv(glGetUniformLocation(font_prog_id, "proj"), 1, GL_FALSE, ortho);
+        //glUniformMatrix4fv(glGetUniformLocation(font_prog_id, "proj"), 1, GL_FALSE, ortho);
 
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, font_tex_id);
-        glUniform1i(glGetUniformLocation(font_prog_id, "tex"), 2);
+        //glActiveTexture(GL_TEXTURE2);
+        //glBindTexture(GL_TEXTURE_2D, font_tex_id);
+        //glUniform1i(glGetUniformLocation(font_prog_id, "tex"), 2);
 
-        glBindVertexArray(font_vao);
-        glBindBuffer(GL_ARRAY_BUFFER, font_vbo);
-        glBufferData(GL_ARRAY_BUFFER, n * sizeof *font_buf, font_buf, GL_STATIC_DRAW);
+        //glBindVertexArray(font_vao);
+        //glBindBuffer(GL_ARRAY_BUFFER, font_vbo);
+        //glBufferData(GL_ARRAY_BUFFER, n * sizeof *font_buf, font_buf, GL_STATIC_DRAW);
 
-        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
-        glEnableVertexAttribArray(0);
+        //glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
+        //glEnableVertexAttribArray(0);
 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glUniform3f(glGetUniformLocation(font_prog_id, "incolor"), 0, 0, 0);
-        glDrawArrays(GL_TRIANGLES, 0, n);
+        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        //glUniform3f(glGetUniformLocation(font_prog_id, "incolor"), 0, 0, 0);
+        //glDrawArrays(GL_TRIANGLES, 0, n);
 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glUniform3f(glGetUniformLocation(font_prog_id, "incolor"), r, g, b);
-        glDrawArrays(GL_TRIANGLES, 0, n);
+        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        //glUniform3f(glGetUniformLocation(font_prog_id, "incolor"), r, g, b);
+        //glDrawArrays(GL_TRIANGLES, 0, n);
 }
 
 #endif // BLOCKO_FONT_C_INCLUDED

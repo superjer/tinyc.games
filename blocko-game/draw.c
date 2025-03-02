@@ -2,23 +2,23 @@
 #ifndef BLOCKO_DRAW_C_INCLUDED
 #define BLOCKO_DRAW_C_INCLUDED
 
-int is_framebuffer_incomplete()
-{
-        int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-        switch (status)
-        {
-                case GL_FRAMEBUFFER_COMPLETE:
-                        return 0;
-                case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
-                        printf("framebuffer status: %d incomplete attachment\n", status); return 1;
-                case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
-                        printf("framebuffer status: %d missing attachment\n", status); return 1;
-                case GL_FRAMEBUFFER_UNSUPPORTED:
-                        printf("framebuffer status: %d unsupported\n", status); return 1;
-                default:
-                        printf("framebuffer status: %d (unknown)\n", status); return 1;
-        }
-}
+//int is_framebuffer_incomplete()
+//{
+//        int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+//        switch (status)
+//        {
+//                case GL_FRAMEBUFFER_COMPLETE:
+//                        return 0;
+//                case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+//                        printf("framebuffer status: %d incomplete attachment\n", status); return 1;
+//                case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+//                        printf("framebuffer status: %d missing attachment\n", status); return 1;
+//                case GL_FRAMEBUFFER_UNSUPPORTED:
+//                        printf("framebuffer status: %d unsupported\n", status); return 1;
+//                default:
+//                        printf("framebuffer status: %d (unknown)\n", status); return 1;
+//        }
+//}
 
 int sorter(const void * _a, const void * _b)
 {
@@ -96,7 +96,7 @@ void draw_stuff()
         float shadow_space[16];
         float shadow2_space[16];
 
-        glDisable(GL_MULTISAMPLE);
+        //glDisable(GL_MULTISAMPLE);
 
         float model_mtrx[16];
         memcpy(model_mtrx, identity_mtrx, sizeof identity_mtrx);
@@ -104,24 +104,24 @@ void draw_stuff()
         // make shadow map
         if (shadow_mapping) for(int s = 0; s < 2; s++)
         {
-                glBindFramebuffer(GL_FRAMEBUFFER, s == 0 ? shadow_fbo : shadow2_fbo);
-                if (is_framebuffer_incomplete()) goto fb_is_bad;
+                //glBindFramebuffer(GL_FRAMEBUFFER, s == 0 ? shadow_fbo : shadow2_fbo);
+                //if (is_framebuffer_incomplete()) goto fb_is_bad;
 
-                glViewport(0, 0, SHADOW_SZ, SHADOW_SZ);
-                glClear(GL_DEPTH_BUFFER_BIT);
+                //glViewport(0, 0, SHADOW_SZ, SHADOW_SZ);
+                //glClear(GL_DEPTH_BUFFER_BIT);
 
-                glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                glEnable(GL_DEPTH_TEST);
-                glDepthFunc(GL_LEQUAL);
-                glDepthMask(GL_TRUE);
-                glEnable(GL_CULL_FACE);
-                glCullFace(GL_FRONT);
-                glEnable(GL_POLYGON_OFFSET_FILL);
-                glPolygonOffset(4.f, 4.f);
+                //glEnable(GL_BLEND);
+                //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                //glEnable(GL_DEPTH_TEST);
+                //glDepthFunc(GL_LEQUAL);
+                //glDepthMask(GL_TRUE);
+                //glEnable(GL_CULL_FACE);
+                //glCullFace(GL_FRONT);
+                //glEnable(GL_POLYGON_OFFSET_FILL);
+                //glPolygonOffset(4.f, 4.f);
 
-                //render shadows here
-                glUseProgram(shadow_prog_id);
+                ////render shadows here
+                //glUseProgram(shadow_prog_id);
                 // view matrix
                 float view_mtrx[16];
 
@@ -179,10 +179,10 @@ void draw_stuff()
                 if (!lock_culling)
                         mat4_multiply(shadow_pv_mtrx, ortho_mtrx, view_mtrx);
 
-                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "proj"), 1, GL_FALSE, ortho_mtrx);
-                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "view"), 1, GL_FALSE, view_mtrx);
-                glUniform1i(glGetUniformLocation(shadow_prog_id, "tarray"), 0);
-                glUniform1f(glGetUniformLocation(shadow_prog_id, "BS"), BS);
+                //glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "proj"), 1, GL_FALSE, ortho_mtrx);
+                //glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "view"), 1, GL_FALSE, view_mtrx);
+                //glUniform1i(glGetUniformLocation(shadow_prog_id, "tarray"), 0);
+                //glUniform1f(glGetUniformLocation(shadow_prog_id, "BS"), BS);
 
                 float bias_mtrx[] = {
                         .5f,   0,   0, 1.f,
@@ -204,28 +204,28 @@ void draw_stuff()
                         int passes_vis_test = chunk_in_frustum(shadow_pv_mtrx, i, j) && chunk_in_range(i, j);
                         if (!frustum_culling || passes_vis_test)
                         {
-                                glBindVertexArray(VAO_(i, j));
+                                //glBindVertexArray(VAO_(i, j));
                                 model_mtrx[12] = i * BS * CHUNKW;
                                 model_mtrx[14] = j * BS * CHUNKD;
-                                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "model"), 1, GL_FALSE, model_mtrx);
-                                glDrawArrays(GL_POINTS, 0, VBOLEN_(i, j));
+                                //glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "model"), 1, GL_FALSE, model_mtrx);
+                                //glDrawArrays(GL_POINTS, 0, VBOLEN_(i, j));
                                 shadow_polys += VBOLEN_(i, j);
                         }
                 }
 
-                fb_is_bad:
-                glBindFramebuffer(GL_FRAMEBUFFER, 0);
-                glDisable(GL_POLYGON_OFFSET_FILL);
+                fb_is_bad: ;
+                //glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                //glDisable(GL_POLYGON_OFFSET_FILL);
         }
 
         do_atmos_colors();
 
-        glViewport(0, 0, screenw, screenh);
-        glClearColor(fog_r, fog_g, fog_b, 1.f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        //glViewport(0, 0, screenw, screenh);
+        //glClearColor(fog_r, fog_g, fog_b, 1.f);
+        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         if (antialiasing)
-                glEnable(GL_MULTISAMPLE);
+                ;//glEnable(GL_MULTISAMPLE);
 
         // compute proj matrix
         float near = 8.f;
@@ -261,56 +261,56 @@ void draw_stuff()
         if (!lock_culling)
                 mat4_multiply(proj_view_mtrx, proj_mtrx, translated_view_mtrx);
 
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LEQUAL);
-        glDepthMask(GL_TRUE);
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
+        //glEnable(GL_BLEND);
+        //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        //glEnable(GL_DEPTH_TEST);
+        //glDepthFunc(GL_LEQUAL);
+        //glDepthMask(GL_TRUE);
+        //glEnable(GL_CULL_FACE);
+        //glCullFace(GL_BACK);
 
-        glUseProgram(prog_id);
+        //glUseProgram(prog_id);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, material_tex_id);
-        glUniform1i(glGetUniformLocation(prog_id, "tarray"), 0);
+        //glActiveTexture(GL_TEXTURE0);
+        //glBindTexture(GL_TEXTURE_2D_ARRAY, material_tex_id);
+        //glUniform1i(glGetUniformLocation(prog_id, "tarray"), 0);
 
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, shadow_tex_id);
-        glUniform1i(glGetUniformLocation(prog_id, "shadow_map"), 1);
+        //glActiveTexture(GL_TEXTURE1);
+        //glBindTexture(GL_TEXTURE_2D, shadow_tex_id);
+        //glUniform1i(glGetUniformLocation(prog_id, "shadow_map"), 1);
 
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, shadow2_tex_id);
-        glUniform1i(glGetUniformLocation(prog_id, "shadow2_map"), 2);
+        //glActiveTexture(GL_TEXTURE2);
+        //glBindTexture(GL_TEXTURE_2D, shadow2_tex_id);
+        //glUniform1i(glGetUniformLocation(prog_id, "shadow2_map"), 2);
 
-        glUniform1i(glGetUniformLocation(prog_id, "shadow_mapping"), shadow_mapping);
+        //glUniform1i(glGetUniformLocation(prog_id, "shadow_mapping"), shadow_mapping);
 
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, proj_mtrx);
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, translated_view_mtrx);
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "shadow_space"), 1, GL_FALSE, shadow_space);
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "shadow2_space"), 1, GL_FALSE, shadow2_space);
+        //glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, proj_mtrx);
+        //glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, translated_view_mtrx);
+        //glUniformMatrix4fv(glGetUniformLocation(prog_id, "shadow_space"), 1, GL_FALSE, shadow_space);
+        //glUniformMatrix4fv(glGetUniformLocation(prog_id, "shadow2_space"), 1, GL_FALSE, shadow2_space);
 
-        glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
+        //glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
 
         if (sun_pitch < PI)
-                glUniform3f(glGetUniformLocation(prog_id, "light_pos"), sun_pos.x, sun_pos.y, sun_pos.z);
+                ;//glUniform3f(glGetUniformLocation(prog_id, "light_pos"), sun_pos.x, sun_pos.y, sun_pos.z);
         else
-                glUniform3f(glGetUniformLocation(prog_id, "light_pos"), moon_pos.x, moon_pos.y, moon_pos.z);
+                ;//glUniform3f(glGetUniformLocation(prog_id, "light_pos"), moon_pos.x, moon_pos.y, moon_pos.z);
 
-        glUniform3f(glGetUniformLocation(prog_id, "view_pos"), eye0, eye1, eye2);
+        //glUniform3f(glGetUniformLocation(prog_id, "view_pos"), eye0, eye1, eye2);
 
         {
                 float m = ICLAMP(night_amt * 2.f, 0.f, 1.f);
-                glUniform1f(glGetUniformLocation(prog_id, "sharpness"), m*m*m*(m*(m*6.f-15.f)+10.f));
+                //glUniform1f(glGetUniformLocation(prog_id, "sharpness"), m*m*m*(m*(m*6.f-15.f)+10.f));
 
                 float r = lerp(night_amt * night_amt, DAY_R, NIGHT_R);
                 float g = lerp(night_amt, DAY_G, NIGHT_G);
                 float b = lerp(night_amt, DAY_B, NIGHT_B);
-                glUniform3f(glGetUniformLocation(prog_id, "day_color"), r, g, b);
-                glUniform3f(glGetUniformLocation(prog_id, "glo_color"), 0.92f, 0.83f, 0.69f);
-                glUniform3f(glGetUniformLocation(prog_id, "fog_color"), fog_r, fog_g, fog_b);
-                glUniform1f(glGetUniformLocation(prog_id, "fog_lo"), draw_dist * BS * 0.667f);
-                glUniform1f(glGetUniformLocation(prog_id, "fog_hi"), draw_dist * BS * 1.000f);
+                //glUniform3f(glGetUniformLocation(prog_id, "day_color"), r, g, b);
+                //glUniform3f(glGetUniformLocation(prog_id, "glo_color"), 0.92f, 0.83f, 0.69f);
+                //glUniform3f(glGetUniformLocation(prog_id, "fog_color"), fog_r, fog_g, fog_b);
+                //glUniform1f(glGetUniformLocation(prog_id, "fog_lo"), draw_dist * BS * 0.667f);
+                //glUniform1f(glGetUniformLocation(prog_id, "fog_hi"), draw_dist * BS * 1.000f);
         }
 
         // determine which chunks to send to gl
@@ -420,9 +420,9 @@ void draw_stuff()
                 int myz = stale[my].z;
                 model_mtrx[12] = myx * BS * CHUNKW;
                 model_mtrx[14] = myz * BS * CHUNKD;
-                glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, model_mtrx);
-                glBindVertexArray(VAO_(myx, myz));
-                glDrawArrays(GL_POINTS, 0, VBOLEN_(myx, myz));
+                //glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, model_mtrx);
+                //glBindVertexArray(VAO_(myx, myz));
+                //glDrawArrays(GL_POINTS, 0, VBOLEN_(myx, myz));
                 polys += VBOLEN_(myx, myz);
         }
 
@@ -447,8 +447,8 @@ void draw_stuff()
                 if (ungenerated)
                         continue; // don't bother with ungenerated chunks
 
-                glBindVertexArray(VAO_(myx, myz));
-                glBindBuffer(GL_ARRAY_BUFFER, VBO_(myx, myz));
+                //glBindVertexArray(VAO_(myx, myz));
+                //glBindBuffer(GL_ARRAY_BUFFER, VBO_(myx, myz));
                 v = vbuf; // reset vertex buffer pointer
                 w = wbuf; // same for water buffer
 
@@ -565,24 +565,26 @@ void draw_stuff()
                 VBOLEN_(myx, myz) = v - vbuf;
                 polys += VBOLEN_(myx, myz);
                 TIMER(glBufferData)
-                glBufferData(GL_ARRAY_BUFFER, VBOLEN_(myx, myz) * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
+                //glBufferData(GL_ARRAY_BUFFER, VBOLEN_(myx, myz) * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
                 if (my < 4) // draw the newly buffered verts
                 {
                         TIMER(glDrawArrays)
                         model_mtrx[12] = myx * BS * CHUNKW;
                         model_mtrx[13] = 0.f;
                         model_mtrx[14] = myz * BS * CHUNKD;
-                        glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, model_mtrx);
-                        glDrawArrays(GL_POINTS, 0, VBOLEN_(myx, myz));
+                        //glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, model_mtrx);
+                        //glDrawArrays(GL_POINTS, 0, VBOLEN_(myx, myz));
                 }
         }
+
+        vulkan_present();
 
         if (mouselook) cursor(screenw, screenh);
 
         debrief();
 
         TIMER(swapwindow);
-        SDL_GL_SwapWindow(win);
+        //SDL_GL_SwapWindow(win);
         TIMER();
 }
 

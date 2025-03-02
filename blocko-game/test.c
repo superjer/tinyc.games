@@ -2,8 +2,8 @@
 #ifndef BLOCKO_TEST_C_INCLUDED
 #define BLOCKO_TEST_C_INCLUDED
 
-#define GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX    0x9048
-#define GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX  0x9049
+//#define GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX    0x9048
+//#define GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX  0x9049
 
 int in_test_area(int x, int y, int z)
 {
@@ -62,8 +62,8 @@ void debrief()
 {
         static unsigned last_ticks = 0;
         static unsigned last_frame = 0;
-        static GLint total_kb = 0;
-        static GLint avail_kb = 0;
+        static int total_kb = 0;
+        static int avail_kb = 0;
         unsigned ticks = SDL_GetTicks();
         static char buf[8000];
         static char timings_buf[8000];
@@ -73,13 +73,13 @@ void debrief()
                 float elapsed = ((float)ticks - last_ticks);
                 float frames = frame - last_frame;
 
-                if (GLEW_NVX_gpu_memory_info) {
-                        p += snprintf(p, 8000 - (p-buf),
-                                      "vmem %0.0fm used of %0.0fm (%0.0f%% free)\n",
-                                      (float)(total_kb - avail_kb) / 1000.f,
-                                      (float)(total_kb)            / 1000.f,
-                                      ((float)avail_kb / total_kb) * 100.f);
-                }
+                //if (GLEW_NVX_gpu_memory_info) {
+                //        p += snprintf(p, 8000 - (p-buf),
+                //                      "vmem %0.0fm used of %0.0fm (%0.0f%% free)\n",
+                //                      (float)(total_kb - avail_kb) / 1000.f,
+                //                      (float)(total_kb)            / 1000.f,
+                //                      ((float)avail_kb / total_kb) * 100.f);
+                //}
 
                 p += snprintf(p, 8000 - (p-buf),
                                 "%d omp, %0.2f chunk/s\n",
@@ -104,10 +104,10 @@ void debrief()
                                         "Out of room in the glo queue (%d times)\n", gloq_outta_room);
                 gloq_outta_room = 0;
 
-                if (GLEW_NVX_gpu_memory_info) {
-                        glGetIntegerv(GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &total_kb);
-                        glGetIntegerv(GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &avail_kb);
-                }
+                //if (GLEW_NVX_gpu_memory_info) {
+                //        glGetIntegerv(GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &total_kb);
+                //        glGetIntegerv(GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &avail_kb);
+                //}
 
                 last_ticks = ticks;
                 last_frame = frame;

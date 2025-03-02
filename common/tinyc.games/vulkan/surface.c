@@ -1,10 +1,12 @@
 #include "main.c"
-#include <SDL3/SDL.h>
 
 SDL_Window *createVulkanWindow(int width, int height, const char *title){
-        SDL_Window *window = SDL_CreateWindow("Vulkan Demo", width, height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
-        if (!window) exit(fprintf(stderr, "%s\n", SDL_GetError()));
-
+        SDL_Window *window = SDL_CreateWindow(title, width, height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
+        if (!window)
+        {
+                fprintf(stderr, "could not create SDL window: %s\n", SDL_GetError());
+                exit(-1);
+        }
 	return window;
 }
 

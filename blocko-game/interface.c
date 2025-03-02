@@ -45,7 +45,7 @@ void key_move(int down)
 
                 // menu stuff
                 case SDLK_ESCAPE:
-                        SDL_SetWindowRelativeMouseMode(win, false);
+                        SDL_SetWindowRelativeMouseMode(vk.window, false);
                         mouselook = false;
                         break;
 
@@ -178,7 +178,7 @@ void mouse_button(int down)
         {
                 if (down)
                 {
-                        SDL_SetWindowRelativeMouseMode(win, true);
+                        SDL_SetWindowRelativeMouseMode(vk.window, true);
                         mouselook = true;
                 }
         }
