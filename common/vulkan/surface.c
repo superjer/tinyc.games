@@ -1,23 +1,20 @@
 #include "main.c"
+#include <SDL3/SDL.h>
 
-GLFWwindow *createVulkanWindow(int width, int height, const char *title){
-	glfwWindowHint(GLFW_CLIENT_API,GLFW_NO_API);
-	glfwWindowHint(GLFW_RESIZABLE,GLFW_FALSE);
-	GLFWwindow *window = glfwCreateWindow(width, height, title, VK_NULL_HANDLE, VK_NULL_HANDLE);
-
-	const GLFWvidmode *vidMode = glfwGetVideoMode(glfwGetPrimaryMonitor());
-	glfwSetWindowPos(window, (vidMode->width - width) / 2, (vidMode->height - height) / 2);
+SDL_Window *createVulkanWindow(int width, int height, const char *title){
+        SDL_Window *window = SDL_CreateWindow("Vulkan Demo", width, height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
+        if (!window) exit(fprintf(stderr, "%s\n", SDL_GetError()));
 
 	return window;
 }
 
-void deleteWindow(GLFWwindow *pWindow){
-	glfwDestroyWindow(pWindow);
+void deleteWindow(SDL_Window *pWindow){
+	SDL_DestroyWindow(pWindow);
 }
 
-VkSurfaceKHR createSurface(GLFWwindow *pWindow, VkInstance *pInstance){
+VkSurfaceKHR createSurface(SDL_Window *pWindow, VkInstance *pInstance){
 	VkSurfaceKHR surface;
-	glfwCreateWindowSurface(*pInstance, pWindow, VK_NULL_HANDLE, &surface);
+        SDL_Vulkan_CreateSurface(pWindow, *pInstance, NULL, &surface);
 	return surface;
 }
 
@@ -66,9 +63,9 @@ VkPresentModeKHR getBestPresentMode(VkSurfaceKHR *pSurface, VkPhysicalDevice *pP
 	return bestPresentMode;
 }
 
-VkExtent2D getBestSwapchainExtent(VkSurfaceCapabilitiesKHR *pSurfaceCapabilities, GLFWwindow *window){
+VkExtent2D getBestSwapchainExtent(VkSurfaceCapabilitiesKHR *pSurfaceCapabilities, SDL_Window *window){
 	int FramebufferWidth = 0, FramebufferHeight = 0;
-	glfwGetFramebufferSize(window, &FramebufferWidth, &FramebufferHeight);
+	SDL_GetWindowSizeInPixels(window, &FramebufferWidth, &FramebufferHeight);
 
 	VkExtent2D bestSwapchainExtent;
 

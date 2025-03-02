@@ -19,8 +19,7 @@ VkInstance createInstance(){
 	};
 
 	uint32_t extensionNumber = 0;
-	const char *const *extensions = glfwGetRequiredInstanceExtensions(&extensionNumber);
-	//const char *const *extensions = SDL_Vulkan_GetInstanceExtensions(&extensionNumber);
+	const char *const *extensions = SDL_Vulkan_GetInstanceExtensions(&extensionNumber);
 
 	VkInstanceCreateInfo instanceCreateInfo = {
 		VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,

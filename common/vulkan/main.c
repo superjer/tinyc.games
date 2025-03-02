@@ -1,16 +1,17 @@
 #ifndef VULKAN_DEMO_MAIN_C
 #define VULKAN_DEMO_MAIN_C
 
-#include "stdio.h"
-#include "stdlib.h"
-#include "string.h"
-#include "limits.h"
-#include "time.h"
-#include "math.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <limits.h>
+#include <time.h>
+#include <math.h>
 
-#include "vulkan/vulkan.h"
-#define GLFW_INCLUDE_VULKAN
-#include "GLFW/glfw3.h"
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+#include <SDL3/SDL_vulkan.h>
+#include <vulkan/vulkan.h>
 
 #include "instance.c"
 #include "physical.c"
@@ -38,7 +39,7 @@ struct vk {
         drawAndPresentQueues graphicsQueueMode;
         VkQueue drawingQueue;
         VkQueue presentingQueue;
-        GLFWwindow *window;
+        SDL_Window *window;
         VkSurfaceKHR surface;
         VkSurfaceCapabilitiesKHR surfaceCapabilities;
         VkSurfaceFormatKHR bestSurfaceFormat;
@@ -54,7 +55,7 @@ struct vk {
 } vk;
 
 int main(){
-	glfwInit();
+        SDL_Init(SDL_INIT_VIDEO);
 
 	vk.instance = createInstance();
 
@@ -160,7 +161,6 @@ int main(){
 	deletePhysicalDevices(&vk.physicalDevices);
 	deleteInstance(&vk.instance);
 
-	glfwTerminate();
 	return 0;
 }
 

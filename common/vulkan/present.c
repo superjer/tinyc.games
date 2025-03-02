@@ -1,9 +1,15 @@
 #include "main.c"
 
-void presentImage(VkDevice *pDevice, GLFWwindow *window, VkCommandBuffer *pCommandBuffers, VkFence *pFrontFences, VkFence *pBackFences, VkSemaphore *pWaitSemaphores, VkSemaphore *pSignalSemaphores, VkSwapchainKHR *pSwapchain, VkQueue *pDrawingQueue, VkQueue *pPresentingQueue, uint32_t maxFrames){
+void presentImage(VkDevice *pDevice, SDL_Window *window, VkCommandBuffer *pCommandBuffers, VkFence *pFrontFences, VkFence *pBackFences, VkSemaphore *pWaitSemaphores, VkSemaphore *pSignalSemaphores, VkSwapchainKHR *pSwapchain, VkQueue *pDrawingQueue, VkQueue *pPresentingQueue, uint32_t maxFrames){
 	uint32_t currentFrame = 0;
-	while (!glfwWindowShouldClose(window)){
-		glfwPollEvents();
+        SDL_Event event;
+        bool running = true;
+
+	while (running) {
+                while (SDL_PollEvent(&event)) {
+                        if (event.type == SDL_EVENT_QUIT)
+                                running = false;
+                }
 
 		vkWaitForFences(*pDevice, 1, &pFrontFences[currentFrame], VK_TRUE, UINT64_MAX);
 		uint32_t imageIndex = 0;
