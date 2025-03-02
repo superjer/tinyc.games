@@ -1,29 +1,33 @@
-#version 330 core
-out vec4 color;
+#version 450
 
-flat in float tex;
-in float illum;
-in float glow;
-flat in float alpha;
-in vec2 uv;
-flat in float eyedist;
-in vec4 shadow_pos;
-in vec4 shadow2_pos;
-in vec4 world_pos;
-flat in vec3 normal;
+layout (location = 0) out vec4 color;
 
-uniform sampler2DArray tarray;
-uniform sampler2DShadow shadow_map;
-uniform sampler2DShadow shadow2_map;
-uniform vec3 day_color;
-uniform vec3 glo_color;
-uniform vec3 fog_color;
-uniform float fog_lo;
-uniform float fog_hi;
-uniform vec3 light_pos;
-uniform vec3 view_pos;
-uniform float sharpness;
-uniform bool shadow_mapping;
+layout (location = 0) flat in float tex;
+layout (location = 1) in float illum;
+layout (location = 2) in float glow;
+layout (location = 3) flat in float alpha;
+layout (location = 4) in vec2 uv;
+layout (location = 5) flat in float eyedist;
+layout (location = 6) in vec4 shadow_pos;
+layout (location = 7) in vec4 shadow2_pos;
+layout (location = 8) in vec4 world_pos;
+layout (location = 9) flat in vec3 normal;
+
+layout(set = 0, binding = 0) uniform sampler2DArray tarray;
+layout(set = 0, binding = 1) uniform sampler2DShadow shadow_map;
+layout(set = 0, binding = 2) uniform sampler2DShadow shadow2_map;
+
+layout(set = 0, binding = 3) uniform UBO {
+    vec3 day_color;
+    vec3 glo_color;
+    vec3 fog_color;
+    float fog_lo;
+    float fog_hi;
+    vec3 light_pos;
+    vec3 view_pos;
+    float sharpness;
+    bool shadow_mapping;
+} ubo;
 
 float rand(vec2 co)
 {
@@ -37,15 +41,15 @@ float rand2(vec2 co)
 
 void main(void)
 {
-    float fog = smoothstep(fog_lo, fog_hi, length(view_pos.xz - world_pos.xz));
+    float fog = smoothstep(ubo.fog_lo, ubo.fog_hi, length(ubo.view_pos.xz - world_pos.xz));
     float il = illum + 0.1 * smoothstep(1000, 0, eyedist);
 
     vec3 sky;
-    if (shadow_mapping)
+    if (ubo.shadow_mapping)
     {
-        vec3 light_dir = normalize(light_pos - world_pos.xyz);
+        vec3 light_dir = normalize(ubo.light_pos - world_pos.xyz);
         float diff = max(dot(light_dir, normal), 0.0);
-        vec3 view_dir = normalize(view_pos - world_pos.xyz);
+        vec3 view_dir = normalize(ubo.view_pos - world_pos.xyz);
         vec3 halfway_dir = normalize(light_dir + view_dir);
         float spec = pow(max(dot(normal, halfway_dir), 0), 16);
         float unshadow;
@@ -97,19 +101,21 @@ void main(void)
         if (shadow2_pos.y >= 0.0 && shadow2_pos.y <= 0.1) { unshadow = max(unshadow, 1.0 - (shadow2_pos.y * 10.0)); }
         if (shadow2_pos.y >= 0.9 && shadow2_pos.y <= 1.0) { unshadow = max(unshadow, (shadow2_pos.y - 0.9) * 10.0); }
 
-        float s0 = 0.6 + 0.4 * sharpness;
-        float s1 = 0.3 + 0.7 * (1-sharpness);
-        sky = vec3(s1 * il + s0 * unshadow * (diff + spec)) * day_color;
+        float s0 = 0.6 + 0.4 * ubo.sharpness;
+        float s1 = 0.3 + 0.7 * (1 - ubo.sharpness);
+        sky = vec3(s1 * il + s0 * unshadow * (diff + spec)) * ubo.day_color;
     }
     else
     {
-        sky = vec3(il) * day_color;
+        sky = vec3(il) * ubo.day_color;
     }
 
-    vec3 glo = vec3(glow * glo_color);
+    vec3 glo = vec3(glow * ubo.glo_color);
     vec3 unsky = vec3(1 - sky.r, 1 - sky.g, 1 - sky.b);
     vec4 combined = vec4(sky + glo * unsky, alpha);
     vec4 c = texture(tarray, vec3(uv, tex)) * combined;
+
     if (c.a < 0.01) discard;
-    color = mix(c, vec4(fog_color, 1), fog);
+
+    color = mix(c, vec4(ubo.fog_color, 1), fog);
 }
