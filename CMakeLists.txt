@@ -59,18 +59,26 @@ endif()
 add_custom_target(shaders
 	COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders)
 
-add_custom_target(triangle.vert.spv
-	COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/blocko-game/shaders/triangle.vert -o ${CMAKE_BINARY_DIR}/shaders/triangle.vert.spv)
-
-add_custom_target(triangle.frag.spv
-	COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/blocko-game/shaders/triangle.frag -o ${CMAKE_BINARY_DIR}/shaders/triangle.frag.spv)
-
-add_dependencies(
-  blocko
-	shaders
-	triangle.vert.spv
-	triangle.frag.spv
+set(SHADER_FILES
+  blocko-game/shaders/triangle.vert
+  blocko-game/shaders/triangle.frag
+  blocko-game/shaders/main.vert
+  blocko-game/shaders/main.frag
+  blocko-game/shaders/main.geom
 )
+
+foreach(SHADER ${SHADER_FILES})
+  get_filename_component(SHADER_NAME ${SHADER} NAME)
+  set(COMPILED_SHADER ${CMAKE_BINARY_DIR}/shaders/${SHADER_NAME}.spv)
+  add_custom_target(
+    ${SHADER_NAME}.spv
+    COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/${SHADER} -o ${COMPILED_SHADER}
+    COMMENT "Compiling shader: ${SHADER}"
+  )
+  list(APPEND COMPILED_SHADERS ${SHADER_NAME}.spv)
+endforeach()
+
+add_dependencies(blocko ${COMPILED_SHADERS})
 
 if(WIN32)
   macro(copy_dlls target)
