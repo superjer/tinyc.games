@@ -33,10 +33,14 @@ add_custom_target(shaders
 add_custom_target(triangle_vertex.spv
 	COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/shaders/triangle.vert -o ${CMAKE_BINARY_DIR}/shaders/triangle_vertex.spv)
 
+add_custom_target(triangle_geometry.spv
+	COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/shaders/triangle.geom -o ${CMAKE_BINARY_DIR}/shaders/triangle_geometry.spv)
+
 add_custom_target(triangle_fragment.spv
 	COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/shaders/triangle.frag -o ${CMAKE_BINARY_DIR}/shaders/triangle_fragment.spv)
 
 add_dependencies(vulkan-triangle
 	shaders
 	triangle_vertex.spv
+	triangle_geometry.spv
 	triangle_fragment.spv)

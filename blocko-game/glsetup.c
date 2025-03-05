@@ -115,7 +115,7 @@ char *file2str(char *filename)
 void glsetup()
 {
         vulkan_startup();
-        vulkan_make_pipeline();
+        vulkan_make_pipeline("shaders/triangle.vert.spv", "shaders/triangle.geom.spv", "shaders/triangle.frag.spv");
         vulkan_record_commands();
         //SDL_Init(SDL_INIT_VIDEO);
         //SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);

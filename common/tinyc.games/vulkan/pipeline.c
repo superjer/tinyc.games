@@ -20,27 +20,13 @@ void deletePipelineLayout(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout){
 	vkDestroyPipelineLayout(*pDevice, *pPipelineLayout, VK_NULL_HANDLE);
 }
 
-VkPipelineShaderStageCreateInfo configureVertexShaderStageCreateInfo(VkShaderModule *pVertexShaderModule, const char *entryName){
-	VkPipelineShaderStageCreateInfo vertexShaderStageCreateInfo = {
-		VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-		VK_NULL_HANDLE,
-		0,
-		VK_SHADER_STAGE_VERTEX_BIT,
-		*pVertexShaderModule,
-		entryName,
-		VK_NULL_HANDLE
-	};
-
-	return vertexShaderStageCreateInfo;
-}
-
-VkPipelineShaderStageCreateInfo configureFragmentShaderStageCreateInfo(VkShaderModule *pFragmentShaderModule, const char *entryName){
+VkPipelineShaderStageCreateInfo configureShaderStageCreateInfo(VkShaderStageFlagBits bits, VkShaderModule *shaderModule, const char *entryName){
 	VkPipelineShaderStageCreateInfo fragmentShaderStageCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 		VK_NULL_HANDLE,
 		0,
-		VK_SHADER_STAGE_FRAGMENT_BIT,
-		*pFragmentShaderModule,
+		bits,
+		*shaderModule,
 		entryName,
 		VK_NULL_HANDLE
 	};
@@ -67,7 +53,7 @@ VkPipelineInputAssemblyStateCreateInfo configureInputAssemblyStateCreateInfo(){
 		VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
 		VK_NULL_HANDLE,
 		0,
-		VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+		VK_PRIMITIVE_TOPOLOGY_POINT_LIST, // was TRIANGLE
 		VK_FALSE
 	};
 
@@ -195,12 +181,13 @@ VkPipelineColorBlendStateCreateInfo configureColorBlendStateCreateInfo(VkPipelin
 	return colorBlendStateCreateInfo;
 }
 
-VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout, VkShaderModule *pVertexShaderModule, VkShaderModule *pFragmentShaderModule, VkRenderPass *pRenderPass, VkExtent2D *pExtent){
+VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout, VkShaderModule *pVertexShaderModule, VkShaderModule *pGeometryShaderModule, VkShaderModule *pFragmentShaderModule, VkRenderPass *pRenderPass, VkExtent2D *pExtent){
 	char entryName[] = "main";
 
 	VkPipelineShaderStageCreateInfo shaderStageCreateInfo[] = {
-		configureVertexShaderStageCreateInfo(pVertexShaderModule, entryName),
-		configureFragmentShaderStageCreateInfo(pFragmentShaderModule, entryName)
+		configureShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, pVertexShaderModule, entryName),
+		configureShaderStageCreateInfo(VK_SHADER_STAGE_GEOMETRY_BIT, pGeometryShaderModule, entryName),
+		configureShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, pFragmentShaderModule, entryName)
 	};
 	VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = configureVertexInputStateCreateInfo();
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = configureInputAssemblyStateCreateInfo();
@@ -216,7 +203,7 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 		VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
 		VK_NULL_HANDLE,
 		0,
-		2,
+		3,
 		shaderStageCreateInfo,
 		&vertexInputStateCreateInfo,
 		&inputAssemblyStateCreateInfo,

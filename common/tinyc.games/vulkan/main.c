@@ -121,35 +121,52 @@ int vulkan_startup()
         vk.backFences = createEmptyFences(vk.swapchainImageCount);
 }
 
-void vulkan_make_pipeline()
+void vulkan_make_pipeline(char *vert, char *geom, char *frag)
 {
 	uint32_t vertexShaderSize = 0;
-	char vertexShaderFileName[] = "shaders/triangle.vert.spv";
-	char *vertexShaderCode = getShaderCode(vertexShaderFileName, &vertexShaderSize);
+	char *vertexShaderCode = getShaderCode(vert, &vertexShaderSize);
 	if (vertexShaderCode == VK_NULL_HANDLE){
-		fprintf(stderr, "vertex shader %s not found\n", vertexShaderFileName);
-                goto vertex_shader_fail;
+		fprintf(stderr, "vertex shader %s not found\n", vert);
+                goto vert_shader_fail;
 	}
 	VkShaderModule vertexShaderModule = createShaderModule(&vk.device, vertexShaderCode, vertexShaderSize);
 
+	uint32_t geometryShaderSize = 0;
+	char *geometryShaderCode = getShaderCode(geom, &geometryShaderSize);
+	if (geometryShaderCode == VK_NULL_HANDLE){
+		fprintf(stderr, "geometry shader %s not found\n", geom);
+                goto geom_shader_fail;
+	}
+	VkShaderModule geometryShaderModule = createShaderModule(&vk.device, geometryShaderCode, geometryShaderSize);
+
 	uint32_t fragmentShaderSize = 0;
-	char fragmentShaderFileName[] = "shaders/triangle.frag.spv";
-	char *fragmentShaderCode = getShaderCode(fragmentShaderFileName, &fragmentShaderSize);
+	char *fragmentShaderCode = getShaderCode(frag, &fragmentShaderSize);
 	if(fragmentShaderCode == VK_NULL_HANDLE){
-		fprintf(stderr, "fragment shader %s not found\n", fragmentShaderFileName);
+		fprintf(stderr, "fragment shader %s not found\n", frag);
                 goto frag_shader_fail;
 	}
 	VkShaderModule fragmentShaderModule = createShaderModule(&vk.device, fragmentShaderCode, fragmentShaderSize);
 
 	vk.pipelineLayout = createPipelineLayout(&vk.device);
-	vk.graphicsPipeline = createGraphicsPipeline(&vk.device, &vk.pipelineLayout, &vertexShaderModule, &fragmentShaderModule, &vk.renderPass, &vk.bestSwapchainExtent);
+	vk.graphicsPipeline = createGraphicsPipeline(
+                &vk.device,
+                &vk.pipelineLayout,
+                &vertexShaderModule,
+                &geometryShaderModule,
+                &fragmentShaderModule,
+                &vk.renderPass,
+                &vk.bestSwapchainExtent
+        );
 
 	deleteShaderModule(&vk.device, &fragmentShaderModule);
 	deleteShaderCode(&fragmentShaderCode);
         frag_shader_fail:
+	deleteShaderModule(&vk.device, &geometryShaderModule);
+	deleteShaderCode(&geometryShaderCode);
+        geom_shader_fail:
 	deleteShaderModule(&vk.device, &vertexShaderModule);
 	deleteShaderCode(&vertexShaderCode);
-        vertex_shader_fail:
+        vert_shader_fail:
         return;
 }
 
@@ -258,7 +275,7 @@ void vulkan_shutdown()
 int main()
 {
         vulkan_startup();
-        vulkan_make_pipeline();
+        vulkan_make_pipeline("shaders/triangle_vertex.spv", "shaders/triangle_geometry.spv", "shaders/triangle_fragment.spv");
         vulkan_record_commands();
 
         SDL_Event event;

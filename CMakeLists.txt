@@ -61,6 +61,7 @@ add_custom_target(shaders
 
 set(SHADER_FILES
   blocko-game/shaders/triangle.vert
+  blocko-game/shaders/triangle.geom
   blocko-game/shaders/triangle.frag
   blocko-game/shaders/main.vert
   blocko-game/shaders/main.frag
