@@ -98,6 +98,7 @@ int main()
 
 void shutdown(int code)
 {
+        exit(code);
         vulkan_shutdown();
         exit(code);
 }

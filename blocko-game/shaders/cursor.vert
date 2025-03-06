@@ -1,9 +1,11 @@
-#version 330 core
-layout (location = 0) in vec4 pos;
+#version 450
+layout(location = 0) in vec2 pos;
 
-uniform mat4 proj;
+layout(push_constant) uniform PushConstants {
+    mat4 proj;
+    vec3 incolor;
+} pc;
 
-void main()
-{
-    gl_Position = proj * vec4(pos.xy, 0.0, 1.0);
+void main() {
+    gl_Position = pc.proj * vec4(pos, 0.0, 1.0);
 }

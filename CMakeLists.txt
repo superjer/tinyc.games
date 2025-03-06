@@ -66,6 +66,8 @@ set(SHADER_FILES
   blocko-game/shaders/main.vert
   blocko-game/shaders/main.frag
   blocko-game/shaders/main.geom
+  blocko-game/shaders/cursor.vert
+  blocko-game/shaders/cursor.frag
 )
 
 foreach(SHADER ${SHADER_FILES})

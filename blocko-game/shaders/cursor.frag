@@ -1,9 +1,11 @@
-#version 330 core
-out vec3 color;
+#version 450
+layout(location = 0) out vec3 color;
 
-uniform vec3 incolor;
+layout(push_constant) uniform PushConstants {
+    mat4 proj;
+    vec3 incolor;
+} pc;
 
-void main()
-{
-    color = incolor;
+void main() {
+    color = pc.incolor;
 }

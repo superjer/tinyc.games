@@ -1,14 +1,19 @@
 #include "main.c"
 
 VkPipelineLayout createPipelineLayout(VkDevice *pDevice){
+        VkPushConstantRange pushConstantRange = {0};
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        pushConstantRange.offset = 0;
+        pushConstantRange.size = 128;
+
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		VK_NULL_HANDLE,
 		0,
 		0,
 		VK_NULL_HANDLE,
-		0,
-		VK_NULL_HANDLE
+		1,
+		&pushConstantRange
 	};
 
 	VkPipelineLayout pipelineLayout;
@@ -34,26 +39,29 @@ VkPipelineShaderStageCreateInfo configureShaderStageCreateInfo(VkShaderStageFlag
 	return fragmentShaderStageCreateInfo;
 }
 
-VkPipelineVertexInputStateCreateInfo configureVertexInputStateCreateInfo(){
+VkPipelineVertexInputStateCreateInfo configureVertexInputStateCreateInfo(
+        int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
+        int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs){
+
 	VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
 		VK_NULL_HANDLE,
 		0,
-		0,
-		VK_NULL_HANDLE,
-		0,
-		VK_NULL_HANDLE
+		bindingDescCount,
+		bindingDescs,
+		attributeDescCount,
+		attributeDescs
 	};
 
 	return vertexInputStateCreateInfo;
 }
 
-VkPipelineInputAssemblyStateCreateInfo configureInputAssemblyStateCreateInfo(){
+VkPipelineInputAssemblyStateCreateInfo configureInputAssemblyStateCreateInfo(VkPrimitiveTopology primTop){
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
 		VK_NULL_HANDLE,
 		0,
-		VK_PRIMITIVE_TOPOLOGY_POINT_LIST, // was TRIANGLE
+		primTop, // VK_PRIMITIVE_TOPOLOGY_POINT_LIST, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
 		VK_FALSE
 	};
 
@@ -181,16 +189,25 @@ VkPipelineColorBlendStateCreateInfo configureColorBlendStateCreateInfo(VkPipelin
 	return colorBlendStateCreateInfo;
 }
 
-VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout, VkShaderModule *pVertexShaderModule, VkShaderModule *pGeometryShaderModule, VkShaderModule *pFragmentShaderModule, VkRenderPass *pRenderPass, VkExtent2D *pExtent){
+VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout, VkShaderModule *pVertexShaderModule, VkShaderModule *pGeometryShaderModule, VkShaderModule *pFragmentShaderModule, VkRenderPass *pRenderPass, VkExtent2D *pExtent,
+        int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
+        int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs
+){
 	char entryName[] = "main";
 
-	VkPipelineShaderStageCreateInfo shaderStageCreateInfo[] = {
-		configureShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, pVertexShaderModule, entryName),
-		configureShaderStageCreateInfo(VK_SHADER_STAGE_GEOMETRY_BIT, pGeometryShaderModule, entryName),
-		configureShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, pFragmentShaderModule, entryName)
-	};
-	VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = configureVertexInputStateCreateInfo();
-	VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = configureInputAssemblyStateCreateInfo();
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfo[3] = {0};
+        int i = 0;
+        shaderStageCreateInfo[i++] = configureShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, pVertexShaderModule, entryName);
+        if (pGeometryShaderModule)
+                shaderStageCreateInfo[i++] = configureShaderStageCreateInfo(VK_SHADER_STAGE_GEOMETRY_BIT, pGeometryShaderModule, entryName);
+        shaderStageCreateInfo[i++] = configureShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, pFragmentShaderModule, entryName);
+
+	VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = configureVertexInputStateCreateInfo(
+                bindingDescCount, bindingDescs, attributeDescCount, attributeDescs
+        );
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = configureInputAssemblyStateCreateInfo(
+		pGeometryShaderModule ? VK_PRIMITIVE_TOPOLOGY_POINT_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
+        );
 	VkViewport viewport = configureViewport(pExtent);
 	VkRect2D scissor = configureScissor(pExtent, 0, 0, 0, 0);
 	VkPipelineViewportStateCreateInfo viewportStateCreateInfo = configureViewportStateCreateInfo(&viewport, &scissor);
@@ -203,7 +220,7 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 		VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
 		VK_NULL_HANDLE,
 		0,
-		3,
+		i,
 		shaderStageCreateInfo,
 		&vertexInputStateCreateInfo,
 		&inputAssemblyStateCreateInfo,

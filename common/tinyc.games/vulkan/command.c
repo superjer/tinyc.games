@@ -17,16 +17,16 @@ void deleteCommandPool(VkDevice *pDevice, VkCommandPool *pCommandPool){
 	vkDestroyCommandPool(*pDevice, *pCommandPool, VK_NULL_HANDLE);
 }
 
-VkCommandBuffer *createCommandBuffers(VkDevice *pDevice, VkCommandPool *pCommandPool, uint32_t commandBufferNumber){
+VkCommandBuffer *createCommandBuffers(VkDevice *pDevice, VkCommandPool *pCommandPool, uint32_t commandBufferCount){
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = {
 		VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
 		VK_NULL_HANDLE,
 		*pCommandPool,
 		VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-		commandBufferNumber
+		commandBufferCount
 	};
 
-	VkCommandBuffer *commandBuffers = (VkCommandBuffer *)malloc(commandBufferNumber * sizeof(VkCommandBuffer));
+	VkCommandBuffer *commandBuffers = (VkCommandBuffer *)malloc(commandBufferCount * sizeof(VkCommandBuffer));
 	vkAllocateCommandBuffers(*pDevice, &commandBufferAllocateInfo, commandBuffers);
 	return commandBuffers;
 }
