@@ -111,25 +111,13 @@ char *file2str(char *filename)
 //}
 //#endif
 
-int glsetup_pipe;
-
-void callback(VkCommandBuffer cmdbuf)
-{
-        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[glsetup_pipe].pipeline);
-        vkCmdDraw(cmdbuf, 3, 1, 0, 0);
-
-        cursor_record(cmdbuf);
-}
-
 //initial setup to get the window and rendering going
 void glsetup()
 {
         vulkan_startup();
 
-        glsetup_pipe = vulkan_make_pipeline("shaders/triangle.vert.spv", "shaders/triangle.geom.spv", "shaders/triangle.frag.spv",
+        triangle_pipe = vulkan_make_pipeline("shaders/triangle.vert.spv", "shaders/triangle.geom.spv", "shaders/triangle.frag.spv",
                                         0, NULL, 0, NULL);
-        cursor_init();
-        vulkan_record_commands(callback);
 
         //SDL_Init(SDL_INIT_VIDEO);
         //SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);

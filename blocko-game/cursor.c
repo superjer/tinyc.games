@@ -45,7 +45,7 @@ void cursor_rect(int x0, int y0, int x1, int y1)
         *cursor_buf_p++ = y1;
 }
 
-void cursor_record(VkCommandBuffer cmdbuf)
+void cursor(VkCommandBuffer cmdbuf)
 {
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[cursor_pipe].pipeline);
 
@@ -162,48 +162,6 @@ void cursor_init()
                 "shaders/cursor.vert.spv", NULL, "shaders/cursor.frag.spv",
                 1, &bindingDesc, 1, &attributeDesc
         );
-
-        //unsigned int vertex = file2shader(GL_VERTEX_SHADER, TINYC_DIR "/blocko-game/shaders/cursor.vert");
-        //unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/blocko-game/shaders/cursor.frag");
-
-        //cursor_prog_id = glCreateProgram();
-        //glAttachShader(cursor_prog_id, vertex);
-        //glAttachShader(cursor_prog_id, fragment);
-        //glLinkProgram(cursor_prog_id);
-        //check_program_errors(cursor_prog_id, "cursor");
-        //glDeleteShader(vertex);
-        //glDeleteShader(fragment);
-
-        //glGenVertexArrays(1, &cursor_vao);
-        //glGenBuffers(1, &cursor_vbo);
-}
-
-void cursor(int w, int h)
-{
-        cursor_screenw = w;
-        cursor_screenh = h;
-        int w2 = w/2;
-        int h2 = h/2;
-        int n;
-
-        //glDisable(GL_BLEND);
-        //glDisable(GL_DEPTH_TEST);
-        //glDisable(GL_CULL_FACE);
-        //glUseProgram(cursor_prog_id);
-
-        float near = -100.f;
-        float far = 100.f;
-        float x = 1.f / (w / 2.f);
-        float y = -1.f / (h / 2.f);
-        float z = -1.f / ((far - near) / 2.f);
-        float tz = -(far + near) / (far - near);
-        float ortho[] = {
-                x, 0, 0,  0,
-                0, y, 0,  0,
-                0, 0, z,  0,
-               -1, 1, tz, 1,
-        };
-        //glUniformMatrix4fv(glGetUniformLocation(cursor_prog_id, "proj"), 1, GL_FALSE, ortho);
 }
 
 #endif // BLOCKO_CURSOR_C_INCLUDED

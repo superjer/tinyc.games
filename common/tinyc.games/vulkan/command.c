@@ -4,7 +4,7 @@ VkCommandPool createCommandPool(VkDevice *pDevice, uint32_t queueFamilyIndex){
 	VkCommandPoolCreateInfo commandPoolCreateInfo = {
 		VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
 		VK_NULL_HANDLE,
-		0,
+                VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
 		queueFamilyIndex
 	};
 

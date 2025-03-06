@@ -87,6 +87,8 @@ float quantize(float p)
 //draw everything in the game on the screen
 void draw_stuff()
 {
+        vulkan_acquire_next();
+
         float identity_mtrx[] = {
                 1, 0, 0, 0,
                 0, 1, 0, 0,
@@ -577,14 +579,17 @@ void draw_stuff()
                 }
         }
 
-        vulkan_present();
+        // FIXME temp triangle draw
+        VkCommandBuffer cmdbuf = vk.commandBuffers[vk.imageIndex];
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[triangle_pipe].pipeline);
+        vkCmdDraw(cmdbuf, 3, 1, 0, 0);
 
-        if (mouselook) cursor(screenw, screenh);
+        if (mouselook) cursor(cmdbuf);
 
         debrief();
 
         TIMER(swapwindow);
-        //SDL_GL_SwapWindow(win);
+        vulkan_submit();
         TIMER();
 }
 

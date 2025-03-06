@@ -59,6 +59,9 @@ struct vk {
         VkSemaphore *signalSemaphores;
         VkFence *frontFences;
         VkFence *backFences;
+        uint32_t imageIndex;
+        uint32_t currentFrame;
+
 
         int pipelineCount;
         struct pipeline {
@@ -198,81 +201,88 @@ int vulkan_make_pipeline(char *vert, char *geom, char *frag,
         return vk.pipelineCount++;
 }
 
-void vulkan_record_commands(void (*drawCallback)(VkCommandBuffer))
+void vulkan_start_recording(uint32_t imageIndex)
 {
-        // we're not actually going to use 8, this is just an upper bound
-        VkCommandBufferBeginInfo commandBufferBeginInfos[8] = {0};
-        VkRenderPassBeginInfo renderPassBeginInfos[8] = {0};
+        int i = imageIndex;
 
+        // we're not actually going to use 8, this is just an upper bound
+        VkCommandBufferBeginInfo commandBufferBeginInfo;
+        VkRenderPassBeginInfo renderPassBeginInfo;
         VkRect2D renderArea = {
                 {0, 0},
                 {vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height}
         };
         VkClearValue clearValue = {0.0f, 0.2f, 0.8f, 0.0f};
 
-        for (uint32_t i = 0; i < vk.swapchainImageCount; i++){
-                commandBufferBeginInfos[i].sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-                commandBufferBeginInfos[i].pNext = VK_NULL_HANDLE;
-                commandBufferBeginInfos[i].flags = 0;
-                commandBufferBeginInfos[i].pInheritanceInfo = VK_NULL_HANDLE;
+        commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        commandBufferBeginInfo.pNext = VK_NULL_HANDLE;
+        commandBufferBeginInfo.flags = 0;
+        commandBufferBeginInfo.pInheritanceInfo = VK_NULL_HANDLE;
 
-                renderPassBeginInfos[i].sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-                renderPassBeginInfos[i].pNext = VK_NULL_HANDLE;
-                renderPassBeginInfos[i].renderPass = vk.renderPass;
-                renderPassBeginInfos[i].framebuffer = vk.framebuffers[i];
-                renderPassBeginInfos[i].renderArea = renderArea;
-                renderPassBeginInfos[i].clearValueCount = 1;
-                renderPassBeginInfos[i].pClearValues = &clearValue;
+        renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassBeginInfo.pNext = VK_NULL_HANDLE;
+        renderPassBeginInfo.renderPass = vk.renderPass;
+        renderPassBeginInfo.framebuffer = vk.framebuffers[i];
+        renderPassBeginInfo.renderArea = renderArea;
+        renderPassBeginInfo.clearValueCount = 1;
+        renderPassBeginInfo.pClearValues = &clearValue;
 
-                vkBeginCommandBuffer(vk.commandBuffers[i], &commandBufferBeginInfos[i]);
-                vkCmdBeginRenderPass(vk.commandBuffers[i], &renderPassBeginInfos[i], VK_SUBPASS_CONTENTS_INLINE);
-                drawCallback(vk.commandBuffers[i]);
-                vkCmdEndRenderPass(vk.commandBuffers[i]);
-                vkEndCommandBuffer(vk.commandBuffers[i]);
-        }
+        vkResetCommandBuffer(vk.commandBuffers[i], 0);
+        vkBeginCommandBuffer(vk.commandBuffers[i], &commandBufferBeginInfo);
+        vkCmdBeginRenderPass(vk.commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 }
 
-void vulkan_present()
+void vulkan_finish_recording(uint32_t imageIndex)
 {
-        static uint32_t currentFrame = 0;
+        int i = imageIndex;
+        vkCmdEndRenderPass(vk.commandBuffers[i]);
+        vkEndCommandBuffer(vk.commandBuffers[i]);
+}
 
-        vkWaitForFences(vk.device, 1, &vk.frontFences[currentFrame], VK_TRUE, UINT64_MAX);
-        uint32_t imageIndex = 0;
-        vkAcquireNextImageKHR(vk.device, vk.swapchain, UINT64_MAX, vk.waitSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
-        if(vk.backFences[imageIndex] != VK_NULL_HANDLE){
-                vkWaitForFences(vk.device, 1, &vk.backFences[imageIndex], VK_TRUE, UINT64_MAX);
+void vulkan_acquire_next()
+{
+        vkWaitForFences(vk.device, 1, &vk.frontFences[vk.currentFrame], VK_TRUE, UINT64_MAX);
+        vkAcquireNextImageKHR(vk.device, vk.swapchain, UINT64_MAX, vk.waitSemaphores[vk.currentFrame], VK_NULL_HANDLE, &vk.imageIndex);
+        if(vk.backFences[vk.imageIndex] != VK_NULL_HANDLE){
+                vkWaitForFences(vk.device, 1, &vk.backFences[vk.imageIndex], VK_TRUE, UINT64_MAX);
         }
-        vk.backFences[imageIndex] = vk.frontFences[currentFrame];
+        vk.backFences[vk.imageIndex] = vk.frontFences[vk.currentFrame];
+
+        vulkan_start_recording(vk.imageIndex);
+}
+
+void vulkan_submit()
+{
+        vulkan_finish_recording(vk.imageIndex);
 
         VkPipelineStageFlags pipelineStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-
         VkSubmitInfo submitInfo = {
                 VK_STRUCTURE_TYPE_SUBMIT_INFO,
                 VK_NULL_HANDLE,
                 1,
-                &vk.waitSemaphores[currentFrame],
+                &vk.waitSemaphores[vk.currentFrame],
                 &pipelineStage,
                 1,
-                &vk.commandBuffers[imageIndex],
+                &vk.commandBuffers[vk.imageIndex],
                 1,
-                &vk.signalSemaphores[currentFrame]
+                &vk.signalSemaphores[vk.currentFrame]
         };
-        vkResetFences(vk.device, 1, &vk.frontFences[currentFrame]);
-        vkQueueSubmit(vk.drawingQueue, 1, &submitInfo, vk.frontFences[currentFrame]);
+        vkResetFences(vk.device, 1, &vk.frontFences[vk.currentFrame]);
+        vkQueueSubmit(vk.drawingQueue, 1, &submitInfo, vk.frontFences[vk.currentFrame]);
 
         VkPresentInfoKHR presentInfo = {
                 VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
                 VK_NULL_HANDLE,
                 1,
-                &vk.signalSemaphores[currentFrame],
+                &vk.signalSemaphores[vk.currentFrame],
                 1,
                 &vk.swapchain,
-                &imageIndex,
+                &vk.imageIndex,
                 VK_NULL_HANDLE
         };
         vkQueuePresentKHR(vk.presentingQueue, &presentInfo);
 
-        currentFrame = (currentFrame + 1) % vk.maxFrames;
+        vk.currentFrame = (vk.currentFrame + 1) % vk.maxFrames;
 }
 
 void vulkan_shutdown()
@@ -317,7 +327,6 @@ int main()
                 "shaders/triangle_fragment.spv",
                 0, NULL, 0, NULL
         );
-        vulkan_record_commands(myDrawCallback);
 
         SDL_Event event;
         bool running = true;
@@ -327,7 +336,9 @@ int main()
                         if (event.type == SDL_EVENT_QUIT)
                                 running = false;
                 }
-                vulkan_present();
+                vulkan_acquire_next();
+                myDrawCallback(vk.commandBuffers[vk.imageIndex]);
+                vulkan_submit();
         }
 
         vulkan_shutdown();

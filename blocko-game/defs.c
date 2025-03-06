@@ -318,6 +318,7 @@ float sun_pitch = .3f; //.6f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down
 float sun_yaw = .3f;
 float sun_roll = -1.3f;
 char alert[800]; // only for debugging
+int triangle_pipe; // for vulkan demo triangle
 
 int mouselook = true;
 int target_x, target_y, target_z;
@@ -340,7 +341,7 @@ void font_add_text(char *s, int inx, int iny, float scale);
 void font_end(float r, float g, float b);
 
 // cursor.c protos
-void cursor(int w, int h);
+void cursor(VkCommandBuffer cmdbuf);
 
 // atmosphere.c protos
 void do_atmos_colors();
