@@ -37,8 +37,8 @@
 #define CHUNKD 16                  // ^
 #define CHUNKW2 (CHUNKW/2)
 #define CHUNKD2 (CHUNKD/2)
-#define VAOW 64                    // how many VAOs wide
-#define VAOD 64                    // how many VAOs deep
+#define VAOW 32                    // how many VAOs wide
+#define VAOD 32                    // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
 #define TILESW (CHUNKW*VAOW)       // total level width, height
 #define TILESH 160                 // ^
@@ -68,7 +68,7 @@
 #define SOUTH 5
 #define DOWN  6
 
-#define VERTEX_BUFLEN 100000
+#define VERTEX_BUFLEN 16384
 #define SUNQLEN 10000
 #define GLOQLEN 10000
 
@@ -174,19 +174,63 @@ unsigned dumb_rand(unsigned *seed) { return (*seed = (1103515245 * *seed + 12345
 #define SEED3(a,b,c)   (world_seed ^ ((a) << 4) ^ ((b) << 8) ^ ((c) << 12))
 #define SEED4(a,b,c,d) (world_seed ^ ((a) << 4) ^ ((b) << 8) ^ ((c) << 12) ^ ((d) << 16))
 
+#define ALIGN_UP(n, alignment) (((n) + (alignment) - 1) & ~((alignment) - 1))
+
 float lerp(float t, float a, float b) { return a + t * (b - a); }
+
+struct allocation {
+        VkDeviceMemory mem;
+        VkBuffer buf;
+        VkBufferCreateInfo buf_info;
+};
+
+VkBuffer world_buf[VAOS];
+VkBufferCreateInfo world_buf_info;
+VkDeviceMemory world_mem[VAOW];
+VkMemoryAllocateInfo world_mem_info;
+size_t world_aligned_sz;
+VkBuffer main_buffer;
+VkDeviceMemory main_memory;
+VkDescriptorSetLayout main_descriptor_set_layout;
+
+struct main_ubo {
+    float model[16];      // mat4
+    float view[16];       // mat4
+    float proj[16];       // mat4
+    float shadow_space[16];   // mat4
+    float shadow2_space[16];  // mat4
+    float bs;             // float
+    float padding1[3];    // Padding to align to 16 bytes
+
+    float day_color[3];   // vec3
+    float padding2;       // Padding
+    float glo_color[3];   // vec3
+    float padding3;
+    float fog_color[3];   // vec3
+    float padding4;
+    float fog_lo;         // float
+    float fog_hi;         // float
+    float light_pos[3];   // vec3
+    float padding5;
+    float view_pos[3];    // vec3
+    float padding6;
+    float sharpness;      // float
+    int shadow_mapping;   // bool (as int)
+    float padding7[2];    // Padding
+};
 
 unsigned int vbo[VAOS], vao[VAOS];
 size_t vbo_len[VAOS];
 
-struct vbufv { // vertex buffer vertex
-        float tex;
-        float orient;
-        float x, y, z;
-        float illum0, illum1, illum2, illum3;
-        float glow0, glow1, glow2, glow3;
-        float alpha;
-};
+struct vbufv {
+    float tex;     // Location 0
+    float orient;  // Location 1
+    _Alignas(16) float x, y, z;  // Location 2 (vec3, needs 16-byte alignment)
+    _Alignas(16) float illum0, illum1, illum2, illum3; // Location 3 (vec4)
+    _Alignas(16) float glow0, glow1, glow2, glow3;  // Location 4 (vec4)
+    float alpha;   // Location 5
+    float padding[3]; // Padding to maintain alignment
+} ShaderInput;
 
 struct vbufv vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding
 struct vbufv *v_limit = vbuf + VERTEX_BUFLEN;
@@ -341,6 +385,7 @@ void font_add_text(char *s, int inx, int iny, float scale);
 void font_end(float r, float g, float b);
 
 // cursor.c protos
+VkBuffer vulkan_fill_buffer(void *buf, size_t sz);
 void cursor(VkCommandBuffer cmdbuf);
 
 // atmosphere.c protos

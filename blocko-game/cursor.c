@@ -13,21 +13,6 @@ float *cursor_buf_p = cursor_buf;
 
 int cursor_pipe;
 
-uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
-        VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(*vk.bestPhysicalDevice, &memProperties);
-
-        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-                if ((typeFilter & (1 << i)) && 
-                        (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-                        return i; // Found a suitable memory type
-                }
-        }
-
-        fprintf(stderr, "Failed to find a suitable memory type!\n");
-        exit(EXIT_FAILURE);
-}
-
 void cursor_rect(int x0, int y0, int x1, int y1)
 {
         *cursor_buf_p++ = x0;
@@ -45,61 +30,93 @@ void cursor_rect(int x0, int y0, int x1, int y1)
         *cursor_buf_p++ = y1;
 }
 
-void cursor(VkCommandBuffer cmdbuf)
+uint32_t find_memory_type(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(*vk.bestPhysicalDevice, &memProperties);
+
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+                if ((typeFilter & (1 << i)) && 
+                        (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+                        return i;
+                }
+        }
+
+        fprintf(stderr, "Failed to find a suitable memory type!\n");
+        exit(-12);
+}
+
+void vulkan_allocate_vertex_buffer(size_t sz, struct allocation *alloc)
 {
-        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[cursor_pipe].pipeline);
+        alloc->buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        alloc->buf_info.size = sz;
+        alloc->buf_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        alloc->buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-        int w = vk.bestSwapchainExtent.width;
-        int h = vk.bestSwapchainExtent.height;
-        int w2 = w/2;
-        int h2 = h/2;
-
-        cursor_buf_p = cursor_buf;
-
-        cursor_rect(w2 - 25 + 1, h2 -  1 + 1, w2 -  9 + 1, h2 +  1 + 1);
-        cursor_rect(w2 +  9 + 1, h2 -  1 + 1, w2 + 25 + 1, h2 +  1 + 1);
-        cursor_rect(w2 -  1 + 1, h2 - 25 + 1, w2 +  1 + 1, h2 -  9 + 1);
-        cursor_rect(w2 -  1 + 1, h2 +  9 + 1, w2 +  1 + 1, h2 + 25 + 1);
-
-        int outer_n = (cursor_buf_p - cursor_buf) / 2;
-
-        cursor_rect(w2 - 25, h2 -  1, w2 -  9, h2 +  1);
-        cursor_rect(w2 +  9, h2 -  1, w2 + 25, h2 +  1);
-        cursor_rect(w2 -  1, h2 - 25, w2 +  1, h2 -  9);
-        cursor_rect(w2 -  1, h2 +  9, w2 +  1, h2 + 25);
-
-        int inner_n = (cursor_buf_p - cursor_buf) / 2;
-
-        VkBufferCreateInfo bufferInfo = {};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = sizeof(cursor_buf);
-        bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VkBuffer vertexBuffer;
-        vkCreateBuffer(vk.device, &bufferInfo, NULL, &vertexBuffer);
+        vkCreateBuffer(vk.device, &alloc->buf_info, NULL, &alloc->buf);
 
         VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(vk.device, vertexBuffer, &memRequirements);
+        vkGetBufferMemoryRequirements(vk.device, alloc->buf, &memRequirements);
 
         VkMemoryAllocateInfo allocInfo = {};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, 
+        allocInfo.memoryTypeIndex = find_memory_type(memRequirements.memoryTypeBits, 
                                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
                                                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-        VkDeviceMemory vertexBufferMemory;
-        vkAllocateMemory(vk.device, &allocInfo, NULL, &vertexBufferMemory);
-        vkBindBufferMemory(vk.device, vertexBuffer, vertexBufferMemory, 0);
+        vkAllocateMemory(vk.device, &allocInfo, NULL, &alloc->mem);
+        vkBindBufferMemory(vk.device, alloc->buf, alloc->mem, 0);
+}
 
-        void* data;
-        vkMapMemory(vk.device, vertexBufferMemory, 0, bufferInfo.size, 0, &data);
-        memcpy(data, cursor_buf, sizeof(cursor_buf));
-        vkUnmapMemory(vk.device, vertexBufferMemory);
+void vulkan_populate_vertex_buffer(void *buf, size_t sz, struct allocation *alloc)
+{
+        void *data;
+        vkMapMemory(vk.device, alloc->mem, 0, alloc->buf_info.size, 0, &data);
+        memcpy(data, buf, sz);
+        vkUnmapMemory(vk.device, alloc->mem);
+}
+
+void vulkan_free_vertex_buffer(struct allocation *alloc)
+{
+        vkFreeMemory(vk.device, alloc->mem, NULL);
+}
+
+void cursor(VkCommandBuffer cmdbuf)
+{
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[cursor_pipe].pipeline);
+
+        struct allocation allocation = {};
+        int w = vk.bestSwapchainExtent.width;
+        int h = vk.bestSwapchainExtent.height;
+        int w2 = w/2;
+        int h2 = h/2;
+        static int outer_n;
+        static int inner_n;
+
+        if (!allocation.buf)
+        {
+                cursor_buf_p = cursor_buf;
+
+                cursor_rect(w2 - 25 + 1, h2 -  1 + 1, w2 -  9 + 1, h2 +  1 + 1);
+                cursor_rect(w2 +  9 + 1, h2 -  1 + 1, w2 + 25 + 1, h2 +  1 + 1);
+                cursor_rect(w2 -  1 + 1, h2 - 25 + 1, w2 +  1 + 1, h2 -  9 + 1);
+                cursor_rect(w2 -  1 + 1, h2 +  9 + 1, w2 +  1 + 1, h2 + 25 + 1);
+
+                outer_n = (cursor_buf_p - cursor_buf) / 2;
+
+                cursor_rect(w2 - 25, h2 -  1, w2 -  9, h2 +  1);
+                cursor_rect(w2 +  9, h2 -  1, w2 + 25, h2 +  1);
+                cursor_rect(w2 -  1, h2 - 25, w2 +  1, h2 -  9);
+                cursor_rect(w2 -  1, h2 +  9, w2 +  1, h2 + 25);
+
+                inner_n = (cursor_buf_p - cursor_buf) / 2;
+
+                vulkan_allocate_vertex_buffer(sizeof cursor_buf, &allocation);
+                vulkan_populate_vertex_buffer(cursor_buf, sizeof cursor_buf, &allocation);
+        }
 
         VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(cmdbuf, 0, 1, &vertexBuffer, offsets);
+        vkCmdBindVertexBuffers(cmdbuf, 0, 1, &allocation.buf, offsets);
 
         //push constants
         float near = -100.f;

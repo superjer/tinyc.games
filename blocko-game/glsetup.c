@@ -111,6 +111,124 @@ char *file2str(char *filename)
 //}
 //#endif
 
+void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
+                  VkMemoryPropertyFlags properties, VkBuffer* buffer, VkDeviceMemory* bufferMemory) {
+    
+    // 1. Create the buffer
+    VkBufferCreateInfo bufferInfo = {};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = size;
+    bufferInfo.usage = usage;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    if (vkCreateBuffer(vk.device, &bufferInfo, NULL, buffer) != VK_SUCCESS) {
+        printf("Failed to create buffer!\n");
+        exit(1);
+    }
+
+    // 2. Get memory requirements
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(vk.device, *buffer, &memRequirements);
+
+    // 3. Allocate memory
+    VkMemoryAllocateInfo allocInfo = {};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = find_memory_type(memRequirements.memoryTypeBits, properties);
+
+    if (vkAllocateMemory(vk.device, &allocInfo, NULL, bufferMemory) != VK_SUCCESS) {
+        printf("Failed to allocate buffer memory!\n");
+        exit(1);
+    }
+
+    // 4. Bind buffer to allocated memory
+    vkBindBufferMemory(vk.device, *buffer, *bufferMemory, 0);
+}
+
+void createUniformBuffer(VkBuffer* buffer, VkDeviceMemory* bufferMemory) {
+    VkDeviceSize bufferSize = sizeof(struct main_ubo);
+
+    createBuffer(bufferSize, 
+                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, 
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 buffer, bufferMemory);
+}
+
+void createDescriptorSetLayout(VkDescriptorSetLayout* descriptorSetLayout) {
+    VkDescriptorSetLayoutBinding uboLayoutBinding = {};
+    uboLayoutBinding.binding = 0;
+    uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uboLayoutBinding.descriptorCount = 1;
+    uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding samplerBinding1 = {0};
+    samplerBinding1.binding = 1;
+    samplerBinding1.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerBinding1.descriptorCount = 1;
+    samplerBinding1.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding samplerBinding2 = {0};
+    samplerBinding2.binding = 2;
+    samplerBinding2.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerBinding2.descriptorCount = 1;
+    samplerBinding2.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding samplerBinding3 = {0};
+    samplerBinding3.binding = 3;
+    samplerBinding3.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerBinding3.descriptorCount = 1;
+    samplerBinding3.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding bindings[] = {uboLayoutBinding, samplerBinding1, samplerBinding2, samplerBinding3};
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 4;
+    layoutInfo.pBindings = bindings;
+
+    vkCreateDescriptorSetLayout(vk.device, &layoutInfo, NULL, descriptorSetLayout);
+}
+
+void allocate_world()
+{
+        world_buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        world_buf_info.size = sizeof vbuf;
+        world_buf_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        world_buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        for (int i = 0; i < VAOS; i++)
+                vkCreateBuffer(vk.device, &world_buf_info, NULL, &world_buf[i]);
+
+        VkMemoryRequirements mem_reqs;
+        vkGetBufferMemoryRequirements(vk.device, world_buf[0], &mem_reqs);
+
+        world_aligned_sz = ALIGN_UP(mem_reqs.size, mem_reqs.alignment);
+
+        world_mem_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        world_mem_info.allocationSize = world_aligned_sz * VAOD;
+        world_mem_info.memoryTypeIndex = find_memory_type(
+                mem_reqs.memoryTypeBits, 
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        );
+
+        size_t mem_use = 0;
+        for (int j = 0; j < VAOW; j++)
+        {
+                mem_use += world_mem_info.allocationSize;
+                vkAllocateMemory(vk.device, &world_mem_info, NULL, &world_mem[j]);
+                for (int k = 0; k < VAOD; k++)
+                {
+                        int buffer_idx = j * VAOD + k;
+                        int offset = k * world_aligned_sz;
+                        vkBindBufferMemory(vk.device, world_buf[buffer_idx], world_mem[j], offset);
+                        //fprintf(stderr, "Buffer %d in allocation %d at offset %d / %lu\n", buffer_idx, j, offset, world_mem_info.allocationSize);
+                }
+        }
+
+        fprintf(stderr, "World VRAM usage: %luMB", mem_use / 1024 / 1024);
+}
+
 //initial setup to get the window and rendering going
 void glsetup()
 {
@@ -118,6 +236,11 @@ void glsetup()
 
         triangle_pipe = vulkan_make_pipeline("shaders/triangle.vert.spv", "shaders/triangle.geom.spv", "shaders/triangle.frag.spv",
                                         0, NULL, 0, NULL);
+
+        allocate_world();
+
+        createUniformBuffer(&main_buffer, &main_memory);
+        createDescriptorSetLayout(&main_descriptor_set_layout);
 
         //SDL_Init(SDL_INIT_VIDEO);
         //SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);

@@ -81,6 +81,16 @@ int vulkan_startup()
         vk.bestPhysicalDeviceIndex = getBestPhysicalDeviceIndex(vk.physicalDevices, vk.physicalDeviceCount);
         vk.bestPhysicalDevice = &vk.physicalDevices[vk.bestPhysicalDeviceIndex];
 
+        VkPhysicalDeviceMemoryProperties mem_props;
+        vkGetPhysicalDeviceMemoryProperties(*vk.bestPhysicalDevice, &mem_props);
+
+        for (uint32_t i = 0; i < mem_props.memoryHeapCount; i++) {
+                if (mem_props.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+                        fprintf(stderr, "Heap %d: Total VRAM: %lu MB\n", i, 
+                               mem_props.memoryHeaps[i].size / (1024 * 1024));
+                }
+        }
+
         vk.queueFamilyCount = getQueueFamilyNumber(vk.bestPhysicalDevice);
         vk.queueFamilyProperties = getQueueFamilyProperties(vk.bestPhysicalDevice, vk.queueFamilyCount);
         vk.bestGraphicsQueueFamilyindex = getBestGraphicsQueueFamilyIndex(vk.queueFamilyProperties, vk.queueFamilyCount);

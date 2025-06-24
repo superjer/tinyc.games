@@ -13,11 +13,14 @@ layout (location = 7) in vec4 shadow2_pos;
 layout (location = 8) in vec4 world_pos;
 layout (location = 9) flat in vec3 normal;
 
-layout(set = 0, binding = 0) uniform sampler2DArray tarray;
-layout(set = 0, binding = 1) uniform sampler2DShadow shadow_map;
-layout(set = 0, binding = 2) uniform sampler2DShadow shadow2_map;
-
-layout(set = 0, binding = 3) uniform UBO {
+layout(set = 0, binding = 0) uniform UBO {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+    mat4 shadow_space;
+    mat4 shadow2_space;
+    float BS;
+    
     vec3 day_color;
     vec3 glo_color;
     vec3 fog_color;
@@ -28,6 +31,10 @@ layout(set = 0, binding = 3) uniform UBO {
     float sharpness;
     bool shadow_mapping;
 } ubo;
+
+layout(set = 0, binding = 1) uniform sampler2DArray tarray;
+layout(set = 0, binding = 2) uniform sampler2DShadow shadow_map;
+layout(set = 0, binding = 3) uniform sampler2DShadow shadow2_map;
 
 float rand(vec2 co)
 {
