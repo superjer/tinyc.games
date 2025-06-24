@@ -56,6 +56,8 @@ Anything that supports CMake should work. But here are some suggestions for vari
     cmake ..
     ```
 
+    You make need to run `cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..` if your CMake is very new.
+
 3. Build!
     ```
     cmake --build .                   # build all games

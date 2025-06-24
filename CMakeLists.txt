@@ -18,7 +18,7 @@ message(STATUS "fetching SDL3 from github")
 FetchContent_Declare(
   SDL3
   GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-  GIT_TAG release-3.2.4
+  GIT_TAG release-3.2.16
 )
 FetchContent_MakeAvailable(SDL3)
 
@@ -26,7 +26,7 @@ message(STATUS "fetching SDL3_ttf from github")
 FetchContent_Declare(
   SDL3_ttf
   GIT_REPOSITORY https://github.com/libsdl-org/SDL_ttf.git
-  GIT_TAG prerelease-3.1.2
+  GIT_TAG release-3.2.2
 )
 FetchContent_MakeAvailable(SDL3_ttf)
 
