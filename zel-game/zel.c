@@ -204,15 +204,18 @@ void setup()
                 surf = SDL_LoadBMP(xfile);
                 SDL_SetSurfaceColorKey(surf, 1, 0xffff00);
                 edgetex[i] = SDL_CreateTextureFromSurface(renderer, surf);
+                SDL_SetTextureScaleMode(edgetex[i], SDL_SCALEMODE_NEAREST);
         }
 
         surf = SDL_LoadBMP(TINYC_DIR "/zel-game/assets/sprites.bmp");
         SDL_SetSurfaceColorKey(surf, 1, 0xffff00);
         spritetex = SDL_CreateTextureFromSurface(renderer, surf);
+        SDL_SetTextureScaleMode(spritetex, SDL_SCALEMODE_NEAREST);
 
         surf = SDL_LoadBMP(TINYC_DIR "/zel-game/assets/tiles.bmp");
         SDL_SetSurfaceColorKey(surf, 1, 0xffff00);
         tiletex = SDL_CreateTextureFromSurface(renderer, surf);
+        SDL_SetTextureScaleMode(tiletex, SDL_SCALEMODE_NEAREST);
 }
 
 void enter_dungeon()
