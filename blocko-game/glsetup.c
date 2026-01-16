@@ -237,6 +237,33 @@ void glsetup()
         triangle_pipe = vulkan_make_pipeline("shaders/triangle.vert.spv", "shaders/triangle.geom.spv", "shaders/triangle.frag.spv",
                                         0, NULL, 0, NULL);
 
+        // Main terrain pipeline with vertex inputs matching struct vbufv
+        VkVertexInputBindingDescription mainBindingDesc = {
+                .binding = 0,
+                .stride = sizeof(struct vbufv),
+                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+        };
+        VkVertexInputAttributeDescription mainAttrDescs[] = {
+                {.location = 0, .binding = 0, .format = VK_FORMAT_R32_SFLOAT, .offset = offsetof(struct vbufv, tex)},
+                {.location = 1, .binding = 0, .format = VK_FORMAT_R32_SFLOAT, .offset = offsetof(struct vbufv, orient)},
+                {.location = 2, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(struct vbufv, x)},
+                {.location = 3, .binding = 0, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(struct vbufv, illum0)},
+                {.location = 4, .binding = 0, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(struct vbufv, glow0)},
+                {.location = 5, .binding = 0, .format = VK_FORMAT_R32_SFLOAT, .offset = offsetof(struct vbufv, alpha)},
+        };
+        main_pipe = vulkan_make_pipeline("shaders/main_simple.vert.spv",
+                "shaders/main_simple.geom.spv", "shaders/main_simple.frag.spv",
+                1, &mainBindingDesc, 6, mainAttrDescs);
+
+        fprintf(stderr, "struct vbufv layout: size=%zu, tex=%zu, orient=%zu, x=%zu, illum0=%zu, glow0=%zu, alpha=%zu\n",
+                sizeof(struct vbufv),
+                offsetof(struct vbufv, tex),
+                offsetof(struct vbufv, orient),
+                offsetof(struct vbufv, x),
+                offsetof(struct vbufv, illum0),
+                offsetof(struct vbufv, glow0),
+                offsetof(struct vbufv, alpha));
+
         allocate_world();
 
         createUniformBuffer(&main_buffer, &main_memory);

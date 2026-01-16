@@ -209,16 +209,16 @@ void draw_stuff()
         if (antialiasing)
                 ;//glEnable(GL_MULTISAMPLE);
 
-        // compute proj matrix
+        // compute proj matrix (Vulkan: Y flipped, depth 0-1)
         float near = 8.f;
         float far = 99999.f;
         float frustw = 4.5f * zoom_amt * screenw / screenh;
         float frusth = 4.5f * zoom_amt;
         float proj_mtrx[] = {
-                near/frustw,           0,                                  0,  0,
-                          0, near/frusth,                                  0,  0,
-                          0,           0,       -(far + near) / (far - near), -1,
-                          0,           0, -(2.f * far * near) / (far - near),  0
+                near/frustw,            0,                              0,  0,
+                          0, -near/frusth,                              0,  0,  // negated for Vulkan
+                          0,            0,         -far / (far - near), -1,     // Vulkan depth 0-1
+                          0,            0, -(far * near) / (far - near),  0
         };
 
         // compute view matrix
@@ -561,12 +561,26 @@ void draw_stuff()
                 polys += VBOLEN_(myx, myz);
                 TIMER(glBufferData)
 
-                int buffer_idx = myx * VAOD + myz; //HEREHERE
+                // Debug: print first 3 vertices of first chunk
+                static int debug_once = 0;
+                if (!debug_once && VBOLEN_(myx, myz) >= 3) {
+                        debug_once = 1;
+                        fprintf(stderr, "Chunk (%d,%d) first 3 verts:\n", myx, myz);
+                        for (int dv = 0; dv < 3; dv++) {
+                                fprintf(stderr, "  v[%d]: tex=%.0f orient=%.0f pos=(%.1f,%.1f,%.1f) illum=(%.2f,%.2f,%.2f,%.2f) alpha=%.1f\n",
+                                        dv, vbuf[dv].tex, vbuf[dv].orient,
+                                        vbuf[dv].x, vbuf[dv].y, vbuf[dv].z,
+                                        vbuf[dv].illum0, vbuf[dv].illum1, vbuf[dv].illum2, vbuf[dv].illum3,
+                                        vbuf[dv].alpha);
+                        }
+                }
+
+                int buffer_idx = myx * VAOD + myz;
                 int offset = myz * world_aligned_sz;
                 void *data;
-                vkMapMemory(vk.device, world_mem[myz], offset, world_aligned_sz, 0, &data);
+                vkMapMemory(vk.device, world_mem[myx], offset, world_aligned_sz, 0, &data);
                 memcpy(data, vbuf, (v - vbuf) * sizeof *vbuf);
-                vkUnmapMemory(vk.device, world_mem[myz]);
+                vkUnmapMemory(vk.device, world_mem[myx]);
 
                 //glBufferData(GL_ARRAY_BUFFER, VBOLEN_(myx, myz) * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
                 if (my < 4) // draw the newly buffered verts
@@ -587,10 +601,40 @@ void draw_stuff()
                 }
         }
 
-        // FIXME temp triangle draw
+        // Render terrain
         VkCommandBuffer cmdbuf = vk.commandBuffers[vk.imageIndex];
-        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[triangle_pipe].pipeline);
-        vkCmdDraw(cmdbuf, 3, 1, 0, 0);
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);
+
+        struct { float pv[16]; float chunk_x; float chunk_y; float chunk_z; float bs; } push;
+        memcpy(push.pv, proj_view_mtrx, sizeof push.pv);
+        push.bs = BS;
+
+        VkDeviceSize voffset = 0;
+        int chunks_drawn = 0;
+        int total_verts = 0;
+        int chunks_with_data = 0;
+        for (int i = 0; i < VAOW; i++) {
+                for (int j = 0; j < VAOD; j++) {
+                        if (VBOLEN_(i, j) > 0) chunks_with_data++;
+                        if (!VBOLEN_(i, j)) continue;
+                        // Skip frustum/range check for now - coords don't match player position
+                        // if (!chunk_in_frustum(proj_view_mtrx, i, j) || !chunk_in_range(i, j)) continue;
+
+                        push.chunk_x = i * BS * CHUNKW;
+                        push.chunk_y = 0;
+                        push.chunk_z = j * BS * CHUNKD;
+                        vkCmdPushConstants(cmdbuf, vk.pipelines[main_pipe].layout,
+                                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
+                        vkCmdBindVertexBuffers(cmdbuf, 0, 1, &world_buf[i * VAOD + j], &voffset);
+                        vkCmdDraw(cmdbuf, VBOLEN_(i, j), 1, 0, 0);
+                        chunks_drawn++;
+                        total_verts += VBOLEN_(i, j);
+                }
+        }
+        if (frame % 60 == 0) fprintf(stderr, "Drew %d/%d chunks, %d verts. Player: %d,%d scoot: %d,%d\n",
+                chunks_drawn, chunks_with_data, total_verts,
+                (int)(camplayer.pos.x / BS / CHUNKW), (int)(camplayer.pos.z / BS / CHUNKD),
+                chunk_scootx, chunk_scootz);
 
         if (mouselook) cursor(cmdbuf);
 

@@ -51,9 +51,9 @@
 #define PLYR_SPD_R 200              // units per frame (running)
 #define PLYR_SPD_S 50               // units per frame (sneaking)
 #define EYEDOWN 500                 // how far down are the eyes from the top of the head
-#define STARTPX (577*BS)           // starting position within start screen
+#define STARTPX (256*BS)           // starting position (center of chunk range 0-31)
 #define STARTPY 0                  // ^
-#define STARTPZ (734*BS)           // ^
+#define STARTPZ (256*BS)           // ^
 #define NR_PLAYERS 1
 #define JUMP_BUFFER_FRAMES 6
 #define GRAV_JUMP 0
@@ -225,11 +225,10 @@ size_t vbo_len[VAOS];
 struct vbufv {
     float tex;     // Location 0
     float orient;  // Location 1
-    _Alignas(16) float x, y, z;  // Location 2 (vec3, needs 16-byte alignment)
-    _Alignas(16) float illum0, illum1, illum2, illum3; // Location 3 (vec4)
-    _Alignas(16) float glow0, glow1, glow2, glow3;  // Location 4 (vec4)
+    float x, y, z;  // Location 2
+    float illum0, illum1, illum2, illum3; // Location 3
+    float glow0, glow1, glow2, glow3;  // Location 4
     float alpha;   // Location 5
-    float padding[3]; // Padding to maintain alignment
 } ShaderInput;
 
 struct vbufv vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding
@@ -363,6 +362,7 @@ float sun_yaw = .3f;
 float sun_roll = -1.3f;
 char alert[800]; // only for debugging
 int triangle_pipe; // for vulkan demo triangle
+int main_pipe;     // main terrain rendering pipeline
 
 int mouselook = true;
 int target_x, target_y, target_z;

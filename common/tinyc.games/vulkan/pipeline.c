@@ -2,7 +2,7 @@
 
 VkPipelineLayout createPipelineLayout(VkDevice *pDevice){
         VkPushConstantRange pushConstantRange = {0};
-        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         pushConstantRange.offset = 0;
         pushConstantRange.size = 128;
 
@@ -132,7 +132,7 @@ VkPipelineRasterizationStateCreateInfo configureRasterizationStateCreateInfo(){
 		VK_FALSE,
 		VK_POLYGON_MODE_FILL,
 		VK_CULL_MODE_BACK_BIT,
-		VK_FRONT_FACE_CLOCKWISE,
+		VK_FRONT_FACE_COUNTER_CLOCKWISE,
 		VK_FALSE,
 		0.0f,
 		0.0f,

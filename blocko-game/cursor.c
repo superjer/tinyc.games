@@ -142,7 +142,7 @@ void cursor(VkCommandBuffer cmdbuf)
         vkCmdPushConstants(
                 cmdbuf,
                 vk.pipelines[cursor_pipe].layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,
                 sizeof(push),
                 &push
@@ -155,7 +155,7 @@ void cursor(VkCommandBuffer cmdbuf)
         vkCmdPushConstants(
                 cmdbuf,
                 vk.pipelines[cursor_pipe].layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,
                 sizeof(push),
                 &push

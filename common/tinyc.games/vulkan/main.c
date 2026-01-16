@@ -130,10 +130,10 @@ int vulkan_startup()
         vk.commandPool = createCommandPool(&vk.device, vk.bestGraphicsQueueFamilyindex);
         vk.commandBuffers = createCommandBuffers(&vk.device, &vk.commandPool, vk.swapchainImageCount);
 
-        vk.maxFrames = 2;
-        vk.waitSemaphores = createSemaphores(&vk.device, vk.maxFrames);
-        vk.signalSemaphores = createSemaphores(&vk.device, vk.maxFrames);
-        vk.frontFences = createFences(&vk.device, vk.maxFrames);
+        vk.maxFrames = vk.swapchainImageCount;
+        vk.waitSemaphores = createSemaphores(&vk.device, vk.swapchainImageCount);
+        vk.signalSemaphores = createSemaphores(&vk.device, vk.swapchainImageCount);
+        vk.frontFences = createFences(&vk.device, vk.swapchainImageCount);
         vk.backFences = createEmptyFences(vk.swapchainImageCount);
 }
 
@@ -251,12 +251,14 @@ void vulkan_finish_recording(uint32_t imageIndex)
 
 void vulkan_acquire_next()
 {
+        // Use currentFrame to select which semaphore to use for acquisition
         vkWaitForFences(vk.device, 1, &vk.frontFences[vk.currentFrame], VK_TRUE, UINT64_MAX);
         vkAcquireNextImageKHR(vk.device, vk.swapchain, UINT64_MAX, vk.waitSemaphores[vk.currentFrame], VK_NULL_HANDLE, &vk.imageIndex);
+
+        // Wait for any previous work on this specific image to complete
         if(vk.backFences[vk.imageIndex] != VK_NULL_HANDLE){
                 vkWaitForFences(vk.device, 1, &vk.backFences[vk.imageIndex], VK_TRUE, UINT64_MAX);
         }
-        vk.backFences[vk.imageIndex] = vk.frontFences[vk.currentFrame];
 
         vulkan_start_recording(vk.imageIndex);
 }
@@ -275,16 +277,19 @@ void vulkan_submit()
                 1,
                 &vk.commandBuffers[vk.imageIndex],
                 1,
-                &vk.signalSemaphores[vk.currentFrame]
+                &vk.signalSemaphores[vk.imageIndex]  // Use imageIndex for signal semaphore
         };
         vkResetFences(vk.device, 1, &vk.frontFences[vk.currentFrame]);
         vkQueueSubmit(vk.drawingQueue, 1, &submitInfo, vk.frontFences[vk.currentFrame]);
+
+        // Track which fence is now associated with this image
+        vk.backFences[vk.imageIndex] = vk.frontFences[vk.currentFrame];
 
         VkPresentInfoKHR presentInfo = {
                 VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
                 VK_NULL_HANDLE,
                 1,
-                &vk.signalSemaphores[vk.currentFrame],
+                &vk.signalSemaphores[vk.imageIndex],  // Use imageIndex for present
                 1,
                 &vk.swapchain,
                 &vk.imageIndex,
