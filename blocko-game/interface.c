@@ -53,8 +53,8 @@ void key_move(int down)
                 case SDLK_Q: // go up alot
                         if (!down)
                         {
-                                player[0].pos.y -= 1000;
-                                player[0].grav = GRAV_ZERO;
+                                player[0].pos.y -= 16000;
+                                player[0].grav = GRAV_ZERO - 5;
                         }
                         break;
                 case SDLK_F: // go fast

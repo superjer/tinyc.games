@@ -192,17 +192,17 @@ void update_player(struct player *p, int real)
         if (p->cooldownf > 0) p->cooldownf--;
         if (!p->goingf) p->runningf = false;
 
-        if (p->goingf && !p->goingb) { p->fvel++; }
-        else if (p->fvel > 0)        { p->fvel--; }
+        if (p->goingf && !p->goingb) { p->fvel += PLYR_ACCEL; }
+        else if (p->fvel > 0)        { p->fvel -= PLYR_ACCEL; if (p->fvel < 0) p->fvel = 0; }
 
-        if (p->goingb && !p->goingf) { p->fvel--; }
-        else if (p->fvel < 0)        { p->fvel++; }
+        if (p->goingb && !p->goingf) { p->fvel -= PLYR_ACCEL; }
+        else if (p->fvel < 0)        { p->fvel += PLYR_ACCEL; if (p->fvel > 0) p->fvel = 0; }
 
-        if (p->goingr && !p->goingl) { p->rvel++; }
-        else if (p->rvel > 0)        { p->rvel--; }
+        if (p->goingr && !p->goingl) { p->rvel += PLYR_ACCEL; }
+        else if (p->rvel > 0)        { p->rvel -= PLYR_ACCEL; if (p->rvel < 0) p->rvel = 0; }
 
-        if (p->goingl && !p->goingr) { p->rvel--; }
-        else if (p->rvel < 0)        { p->rvel++; }
+        if (p->goingl && !p->goingr) { p->rvel -= PLYR_ACCEL; }
+        else if (p->rvel < 0)        { p->rvel += PLYR_ACCEL; if (p->rvel > 0) p->rvel = 0; }
 
         //limit speed
         float totalvel = sqrt(p->fvel * p->fvel + p->rvel * p->rvel);

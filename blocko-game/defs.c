@@ -53,6 +53,7 @@
 #define PLYR_SPD 100                 // units per frame
 #define PLYR_SPD_R 200              // units per frame (running)
 #define PLYR_SPD_S 50               // units per frame (sneaking)
+#define PLYR_ACCEL 17               // acceleration per frame (scaled for BS=1000)
 #define EYEDOWN 500                 // how far down are the eyes from the top of the head
 #define STARTPX (256*BS)           // starting position (center of chunk range 0-31)
 #define STARTPY 0                  // ^
