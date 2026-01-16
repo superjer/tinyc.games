@@ -604,9 +604,18 @@ void draw_stuff()
                 }
         }
 
-        // Render terrain
+        // Render sky first (behind everything)
         VkCommandBuffer cmdbuf = vk.commandBuffers[vk.imageIndex];
+        sky_draw(cmdbuf, proj_mtrx, view_mtrx);
+
+        // Render terrain
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);
+
+        VkViewport viewport = { 0, 0, vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height, 0, 1 };
+        VkRect2D scissor = { {0, 0}, {vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height} };
+        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
+        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+
         vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 vk.pipelines[main_pipe].layout, 0, 1, &main_descriptor_set, 0, NULL);
 

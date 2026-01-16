@@ -210,9 +210,12 @@ VkPipelineColorBlendStateCreateInfo configureColorBlendStateCreateInfo(VkPipelin
 	return colorBlendStateCreateInfo;
 }
 
+#define PIPE_NO_DEPTH_WRITE 1
+
 VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout, VkShaderModule *pVertexShaderModule, VkShaderModule *pGeometryShaderModule, VkShaderModule *pFragmentShaderModule, VkRenderPass *pRenderPass, VkExtent2D *pExtent,
         int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
-        int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs
+        int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs,
+        int flags
 ){
 	char entryName[] = "main";
 
@@ -240,10 +243,20 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
 		.depthTestEnable = VK_TRUE,
-		.depthWriteEnable = VK_TRUE,
+		.depthWriteEnable = (flags & PIPE_NO_DEPTH_WRITE) ? VK_FALSE : VK_TRUE,
 		.depthCompareOp = VK_COMPARE_OP_LESS,
 		.depthBoundsTestEnable = VK_FALSE,
 		.stencilTestEnable = VK_FALSE,
+	};
+
+	VkDynamicState dynamicStates[] = {
+		VK_DYNAMIC_STATE_VIEWPORT,
+		VK_DYNAMIC_STATE_SCISSOR
+	};
+	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+		.dynamicStateCount = 2,
+		.pDynamicStates = dynamicStates,
 	};
 
 	VkGraphicsPipelineCreateInfo graphicsPipelineCreateInfo = {
@@ -260,7 +273,7 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 		&multisampleStateCreateInfo,
 		&depthStencilStateCreateInfo,
 		&colorBlendStateCreateInfo,
-		VK_NULL_HANDLE,
+		&dynamicStateCreateInfo,
 		*pPipelineLayout,
 		*pRenderPass,
 		0,

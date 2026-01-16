@@ -6,6 +6,7 @@ void resize()
 {
         screenw = event.window.data1;
         screenh = event.window.data2;
+        vulkan_recreate_swapchain();
 }
 
 void jump(int down)

@@ -85,6 +85,11 @@ void cursor(VkCommandBuffer cmdbuf)
 {
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[cursor_pipe].pipeline);
 
+        VkViewport viewport = { 0, 0, vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height, 0, 1 };
+        VkRect2D scissor = { {0, 0}, {vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height} };
+        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
+        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+
         struct allocation allocation = {};
         int w = vk.bestSwapchainExtent.width;
         int h = vk.bestSwapchainExtent.height;

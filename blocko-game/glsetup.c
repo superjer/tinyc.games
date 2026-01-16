@@ -525,7 +525,7 @@ void glsetup()
         createDescriptorSetLayout(&main_descriptor_set_layout);
         main_pipe = vulkan_make_pipeline_ex("shaders/main_simple.vert.spv",
                 "shaders/main_simple.geom.spv", "shaders/main_simple.frag.spv",
-                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout);
+                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, 0);
 
         fprintf(stderr, "struct vbufv layout: size=%zu, tex=%zu, orient=%zu, x=%zu, illum0=%zu, glow0=%zu, alpha=%zu\n",
                 sizeof(struct vbufv),

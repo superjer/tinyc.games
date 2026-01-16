@@ -75,6 +75,10 @@ struct vk {
         VkImageView depthImageView;
 } vk;
 
+void vulkan_create_swapchain();
+void vulkan_destroy_swapchain();
+void vulkan_recreate_swapchain();
+
 int vulkan_startup()
 {
         SDL_Init(SDL_INIT_VIDEO);
@@ -117,16 +121,33 @@ int vulkan_startup()
                 exit(-1);
         }
 
-        vk.surfaceCapabilities = getSurfaceCapabilities(&vk.surface, vk.bestPhysicalDevice);
         vk.bestSurfaceFormat = getBestSurfaceFormat(&vk.surface, vk.bestPhysicalDevice);
         vk.bestPresentMode = getBestPresentMode(&vk.surface, vk.bestPhysicalDevice);
-        vk.bestSwapchainExtent = getBestSwapchainExtent(&vk.surfaceCapabilities, vk.window);
         vk.imageArrayLayers = 1;
+
+        vk.renderPass = createRenderPass(&vk.device, &vk.bestSurfaceFormat);
+        vk.commandPool = createCommandPool(&vk.device, vk.bestGraphicsQueueFamilyindex);
+
+        vulkan_create_swapchain();
+
+        vk.commandBuffers = createCommandBuffers(&vk.device, &vk.commandPool, vk.swapchainImageCount);
+
+        vk.maxFrames = vk.swapchainImageCount;
+        vk.waitSemaphores = createSemaphores(&vk.device, vk.swapchainImageCount);
+        vk.signalSemaphores = createSemaphores(&vk.device, vk.swapchainImageCount);
+        vk.frontFences = createFences(&vk.device, vk.swapchainImageCount);
+        vk.backFences = createEmptyFences(vk.swapchainImageCount);
+}
+
+// Creates/recreates swapchain, depth buffer, and framebuffers
+void vulkan_create_swapchain() {
+        vk.surfaceCapabilities = getSurfaceCapabilities(&vk.surface, vk.bestPhysicalDevice);
+        vk.bestSwapchainExtent = getBestSwapchainExtent(&vk.surfaceCapabilities, vk.window);
+
         vk.swapchain = createSwapchain(&vk.device, &vk.surface, &vk.surfaceCapabilities, &vk.bestSurfaceFormat, &vk.bestSwapchainExtent, &vk.bestPresentMode, vk.imageArrayLayers, vk.graphicsQueueMode);
 
         vk.swapchainImageCount = getSwapchainImageNumber(&vk.device, &vk.swapchain);
         vk.swapchainImages = getSwapchainImages(&vk.device, &vk.swapchain, vk.swapchainImageCount);
-
         vk.swapchainImageViews = createImageViews(&vk.device, &vk.swapchainImages, &vk.bestSurfaceFormat, vk.swapchainImageCount, vk.imageArrayLayers);
 
         // Create depth buffer
@@ -182,23 +203,37 @@ int vulkan_startup()
         };
         vkCreateImageView(vk.device, &depthViewInfo, NULL, &vk.depthImageView);
 
-        vk.renderPass = createRenderPass(&vk.device, &vk.bestSurfaceFormat);
         vk.framebuffers = createFramebuffers(&vk.device, &vk.renderPass, &vk.bestSwapchainExtent, &vk.swapchainImageViews, vk.swapchainImageCount, &vk.depthImageView);
+}
 
-        vk.commandPool = createCommandPool(&vk.device, vk.bestGraphicsQueueFamilyindex);
-        vk.commandBuffers = createCommandBuffers(&vk.device, &vk.commandPool, vk.swapchainImageCount);
+void vulkan_destroy_swapchain() {
+        for (uint32_t i = 0; i < vk.swapchainImageCount; i++) {
+                vkDestroyFramebuffer(vk.device, vk.framebuffers[i], NULL);
+                vkDestroyImageView(vk.device, vk.swapchainImageViews[i], NULL);
+        }
+        free(vk.framebuffers);
+        free(vk.swapchainImageViews);
+        free(vk.swapchainImages);
 
-        vk.maxFrames = vk.swapchainImageCount;
-        vk.waitSemaphores = createSemaphores(&vk.device, vk.swapchainImageCount);
-        vk.signalSemaphores = createSemaphores(&vk.device, vk.swapchainImageCount);
-        vk.frontFences = createFences(&vk.device, vk.swapchainImageCount);
-        vk.backFences = createEmptyFences(vk.swapchainImageCount);
+        vkDestroyImageView(vk.device, vk.depthImageView, NULL);
+        vkDestroyImage(vk.device, vk.depthImage, NULL);
+        vkFreeMemory(vk.device, vk.depthMemory, NULL);
+
+        vkDestroySwapchainKHR(vk.device, vk.swapchain, NULL);
+}
+
+void vulkan_recreate_swapchain() {
+        vkDeviceWaitIdle(vk.device);
+        vulkan_destroy_swapchain();
+        vulkan_create_swapchain();
+        fprintf(stderr, "Swapchain recreated: %dx%d\n", vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height);
 }
 
 int vulkan_make_pipeline_ex(char *vert, char *geom, char *frag,
         int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
         int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs,
-        VkDescriptorSetLayout *pDescriptorSetLayout
+        VkDescriptorSetLayout *pDescriptorSetLayout,
+        int flags
 ) {
         assert(vk.pipelineCount < 100);
 
@@ -246,7 +281,8 @@ int vulkan_make_pipeline_ex(char *vert, char *geom, char *frag,
                 bindingDescCount,
                 bindingDescs,
                 attributeDescCount,
-                attributeDescs
+                attributeDescs,
+                flags
         );
 
         deleteShaderModule(&vk.device, &fragmentShaderModule);
@@ -268,7 +304,15 @@ int vulkan_make_pipeline(char *vert, char *geom, char *frag,
         int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
         int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs
 ) {
-        return vulkan_make_pipeline_ex(vert, geom, frag, bindingDescCount, bindingDescs, attributeDescCount, attributeDescs, NULL);
+        return vulkan_make_pipeline_ex(vert, geom, frag, bindingDescCount, bindingDescs, attributeDescCount, attributeDescs, NULL, 0);
+}
+
+int vulkan_make_pipeline_flags(char *vert, char *geom, char *frag,
+        int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
+        int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs,
+        int flags
+) {
+        return vulkan_make_pipeline_ex(vert, geom, frag, bindingDescCount, bindingDescs, attributeDescCount, attributeDescs, NULL, flags);
 }
 
 void vulkan_start_recording(uint32_t imageIndex)

@@ -60,6 +60,8 @@ void build_test_area()
 
 void debrief()
 {
+        font_frame_reset();  // Reset font buffer offset for this frame
+
         static unsigned last_ticks = 0;
         static unsigned last_frame = 0;
         static int total_kb = 0;

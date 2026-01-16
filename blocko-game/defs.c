@@ -392,6 +392,7 @@ int check_program_errors(unsigned int shader, char *name);
 unsigned int file2shader(unsigned int type, char *filename);
 
 // font.c protos
+void font_frame_reset();
 void font_begin(int w, int h);
 void font_add_text(char *s, int inx, int iny, float scale);
 void font_end(float r, float g, float b);
@@ -403,6 +404,7 @@ void cursor(VkCommandBuffer cmdbuf);
 // atmosphere.c protos
 void do_atmos_colors();
 void sun_draw(float *proj, float *view, float pitch, float yaw, float roll, unsigned int texid);
+void sky_draw(VkCommandBuffer cmdbuf, float *proj, float *view);
 
 // player.c protos
 void lerp_camera(float t, struct player *a, struct player *b);
