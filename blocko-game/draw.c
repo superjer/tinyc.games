@@ -210,10 +210,13 @@ void draw_stuff()
                 ;//glEnable(GL_MULTISAMPLE);
 
         // compute proj matrix (Vulkan: Y flipped, depth 0-1)
-        float near = 8.f;
-        float far = 99999.f;
-        float frustw = 4.5f * zoom_amt * screenw / screenh;
-        float frusth = 4.5f * zoom_amt;
+        float near = 100.f;
+        float far = 1000000.f;  // 1000 blocks with BS=1000
+        float fov_degrees = 90.f;  // horizontal FOV in degrees
+        float frustw = near * tanf(fov_degrees * PI / 360.f) * zoom_amt;  // tan(fov/2)
+        float frusth = frustw * screenh / screenw;
+        static int fov_debug = 1;
+        if (fov_debug) { fov_debug = 0; fprintf(stderr, "FOV: %.1f deg, zoom_amt=%.2f, frustw=%.1f, tan(fov/2)=%.4f\n", fov_degrees, zoom_amt, frustw, tanf(fov_degrees * PI / 360.f)); }
         float proj_mtrx[] = {
                 near/frustw,            0,                              0,  0,
                           0, -near/frusth,                              0,  0,  // negated for Vulkan

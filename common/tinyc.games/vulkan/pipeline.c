@@ -216,6 +216,15 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 	VkPipelineColorBlendAttachmentState colorBlendAttachmentState = configureColorBlendAttachmentState();
 	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo = configureColorBlendStateCreateInfo(&colorBlendAttachmentState);
 
+	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+		.depthTestEnable = VK_TRUE,
+		.depthWriteEnable = VK_TRUE,
+		.depthCompareOp = VK_COMPARE_OP_LESS,
+		.depthBoundsTestEnable = VK_FALSE,
+		.stencilTestEnable = VK_FALSE,
+	};
+
 	VkGraphicsPipelineCreateInfo graphicsPipelineCreateInfo = {
 		VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
 		VK_NULL_HANDLE,
@@ -228,7 +237,7 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 		&viewportStateCreateInfo,
 		&rasterizationStateCreateInfo,
 		&multisampleStateCreateInfo,
-		VK_NULL_HANDLE,
+		&depthStencilStateCreateInfo,
 		&colorBlendStateCreateInfo,
 		VK_NULL_HANDLE,
 		*pPipelineLayout,

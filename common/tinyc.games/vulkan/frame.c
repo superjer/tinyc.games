@@ -1,21 +1,41 @@
 #include "main.c"
 
 VkRenderPass createRenderPass(VkDevice *pDevice, VkSurfaceFormatKHR *pFormat){
-	VkAttachmentDescription attachmentDescription = {
-		0,
-		pFormat->format,
-		VK_SAMPLE_COUNT_1_BIT,
-		VK_ATTACHMENT_LOAD_OP_CLEAR,
-		VK_ATTACHMENT_STORE_OP_STORE,
-		VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-		VK_ATTACHMENT_STORE_OP_DONT_CARE,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+	VkAttachmentDescription attachments[2] = {
+		// Color attachment
+		{
+			0,
+			pFormat->format,
+			VK_SAMPLE_COUNT_1_BIT,
+			VK_ATTACHMENT_LOAD_OP_CLEAR,
+			VK_ATTACHMENT_STORE_OP_STORE,
+			VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+			VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+		},
+		// Depth attachment
+		{
+			0,
+			VK_FORMAT_D32_SFLOAT,
+			VK_SAMPLE_COUNT_1_BIT,
+			VK_ATTACHMENT_LOAD_OP_CLEAR,
+			VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+			VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+		}
 	};
 
-	VkAttachmentReference attachmentReference = {
+	VkAttachmentReference colorReference = {
 		0,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	};
+
+	VkAttachmentReference depthReference = {
+		1,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
 	};
 
 	VkSubpassDescription subpassDescription = {
@@ -24,9 +44,9 @@ VkRenderPass createRenderPass(VkDevice *pDevice, VkSurfaceFormatKHR *pFormat){
 		0,
 		VK_NULL_HANDLE,
 		1,
-		&attachmentReference,
+		&colorReference,
 		VK_NULL_HANDLE,
-		VK_NULL_HANDLE,
+		&depthReference,
 		0,
 		VK_NULL_HANDLE
 	};
@@ -34,10 +54,10 @@ VkRenderPass createRenderPass(VkDevice *pDevice, VkSurfaceFormatKHR *pFormat){
 	VkSubpassDependency subpassDependency = {
 		VK_SUBPASS_EXTERNAL,
 		0,
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
 		0,
-		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
 		0
 	};
 
@@ -45,8 +65,8 @@ VkRenderPass createRenderPass(VkDevice *pDevice, VkSurfaceFormatKHR *pFormat){
 		VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
 		VK_NULL_HANDLE,
 		0,
-		1,
-		&attachmentDescription,
+		2,
+		attachments,
 		1,
 		&subpassDescription,
 		1,
@@ -62,25 +82,30 @@ void deleteRenderPass(VkDevice *pDevice, VkRenderPass *pRenderPass){
 	vkDestroyRenderPass(*pDevice, *pRenderPass, VK_NULL_HANDLE);
 }
 
-VkFramebuffer *createFramebuffers(VkDevice *pDevice, VkRenderPass *pRenderPass, VkExtent2D *pExtent, VkImageView **ppImageViews, uint32_t imageViewNumber){
-	VkFramebufferCreateInfo *framebufferCreateInfo = (VkFramebufferCreateInfo *)malloc(imageViewNumber * sizeof(VkFramebufferCreateInfo));
+VkFramebuffer *createFramebuffers(VkDevice *pDevice, VkRenderPass *pRenderPass, VkExtent2D *pExtent, VkImageView **ppImageViews, uint32_t imageViewNumber, VkImageView *pDepthImageView){
 	VkFramebuffer *framebuffers = (VkFramebuffer *)malloc(imageViewNumber * sizeof(VkFramebuffer));
 
 	for(uint32_t i = 0; i < imageViewNumber; i++){
-		framebufferCreateInfo[i].sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-		framebufferCreateInfo[i].pNext = VK_NULL_HANDLE;
-		framebufferCreateInfo[i].flags = 0;
-		framebufferCreateInfo[i].renderPass = *pRenderPass;
-		framebufferCreateInfo[i].attachmentCount = 1;
-		framebufferCreateInfo[i].pAttachments = &(*ppImageViews)[i];
-		framebufferCreateInfo[i].width = pExtent->width;
-		framebufferCreateInfo[i].height = pExtent->height;
-		framebufferCreateInfo[i].layers = 1;
+		VkImageView attachments[2] = {
+			(*ppImageViews)[i],
+			*pDepthImageView
+		};
 
-		vkCreateFramebuffer(*pDevice, &framebufferCreateInfo[i], VK_NULL_HANDLE, &framebuffers[i]);
+		VkFramebufferCreateInfo framebufferCreateInfo = {
+			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+			.pNext = VK_NULL_HANDLE,
+			.flags = 0,
+			.renderPass = *pRenderPass,
+			.attachmentCount = 2,
+			.pAttachments = attachments,
+			.width = pExtent->width,
+			.height = pExtent->height,
+			.layers = 1,
+		};
+
+		vkCreateFramebuffer(*pDevice, &framebufferCreateInfo, VK_NULL_HANDLE, &framebuffers[i]);
 	}
 
-	free(framebufferCreateInfo);
 	return framebuffers;
 }
 

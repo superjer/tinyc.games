@@ -68,6 +68,11 @@ struct vk {
                 VkPipelineLayout layout;
                 VkPipeline pipeline;
         } pipelines[100];
+
+        // Depth buffer
+        VkImage depthImage;
+        VkDeviceMemory depthMemory;
+        VkImageView depthImageView;
 } vk;
 
 int vulkan_startup()
@@ -124,8 +129,61 @@ int vulkan_startup()
 
         vk.swapchainImageViews = createImageViews(&vk.device, &vk.swapchainImages, &vk.bestSurfaceFormat, vk.swapchainImageCount, vk.imageArrayLayers);
 
+        // Create depth buffer
+        VkImageCreateInfo depthImageInfo = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                .imageType = VK_IMAGE_TYPE_2D,
+                .format = VK_FORMAT_D32_SFLOAT,
+                .extent = { vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height, 1 },
+                .mipLevels = 1,
+                .arrayLayers = 1,
+                .samples = VK_SAMPLE_COUNT_1_BIT,
+                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        };
+        vkCreateImage(vk.device, &depthImageInfo, NULL, &vk.depthImage);
+
+        VkMemoryRequirements depthMemReqs;
+        vkGetImageMemoryRequirements(vk.device, vk.depthImage, &depthMemReqs);
+
+        VkPhysicalDeviceMemoryProperties memProps;
+        vkGetPhysicalDeviceMemoryProperties(*vk.bestPhysicalDevice, &memProps);
+        uint32_t depthMemType = 0;
+        for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
+                if ((depthMemReqs.memoryTypeBits & (1 << i)) &&
+                    (memProps.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+                        depthMemType = i;
+                        break;
+                }
+        }
+
+        VkMemoryAllocateInfo depthAllocInfo = {
+                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                .allocationSize = depthMemReqs.size,
+                .memoryTypeIndex = depthMemType,
+        };
+        vkAllocateMemory(vk.device, &depthAllocInfo, NULL, &vk.depthMemory);
+        vkBindImageMemory(vk.device, vk.depthImage, vk.depthMemory, 0);
+
+        VkImageViewCreateInfo depthViewInfo = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image = vk.depthImage,
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = VK_FORMAT_D32_SFLOAT,
+                .subresourceRange = {
+                        .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                        .baseMipLevel = 0,
+                        .levelCount = 1,
+                        .baseArrayLayer = 0,
+                        .layerCount = 1,
+                },
+        };
+        vkCreateImageView(vk.device, &depthViewInfo, NULL, &vk.depthImageView);
+
         vk.renderPass = createRenderPass(&vk.device, &vk.bestSurfaceFormat);
-        vk.framebuffers = createFramebuffers(&vk.device, &vk.renderPass, &vk.bestSwapchainExtent, &vk.swapchainImageViews, vk.swapchainImageCount);
+        vk.framebuffers = createFramebuffers(&vk.device, &vk.renderPass, &vk.bestSwapchainExtent, &vk.swapchainImageViews, vk.swapchainImageCount, &vk.depthImageView);
 
         vk.commandPool = createCommandPool(&vk.device, vk.bestGraphicsQueueFamilyindex);
         vk.commandBuffers = createCommandBuffers(&vk.device, &vk.commandPool, vk.swapchainImageCount);
@@ -215,14 +273,16 @@ void vulkan_start_recording(uint32_t imageIndex)
 {
         int i = imageIndex;
 
-        // we're not actually going to use 8, this is just an upper bound
         VkCommandBufferBeginInfo commandBufferBeginInfo;
         VkRenderPassBeginInfo renderPassBeginInfo;
         VkRect2D renderArea = {
                 {0, 0},
                 {vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height}
         };
-        VkClearValue clearValue = {0.0f, 0.2f, 0.8f, 0.0f};
+        VkClearValue clearValues[2] = {
+                {.color = {{0.0f, 0.2f, 0.8f, 0.0f}}},
+                {.depthStencil = {1.0f, 0}}
+        };
 
         commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         commandBufferBeginInfo.pNext = VK_NULL_HANDLE;
@@ -234,8 +294,8 @@ void vulkan_start_recording(uint32_t imageIndex)
         renderPassBeginInfo.renderPass = vk.renderPass;
         renderPassBeginInfo.framebuffer = vk.framebuffers[i];
         renderPassBeginInfo.renderArea = renderArea;
-        renderPassBeginInfo.clearValueCount = 1;
-        renderPassBeginInfo.pClearValues = &clearValue;
+        renderPassBeginInfo.clearValueCount = 2;
+        renderPassBeginInfo.pClearValues = clearValues;
 
         vkResetCommandBuffer(vk.commandBuffers[i], 0);
         vkBeginCommandBuffer(vk.commandBuffers[i], &commandBufferBeginInfo);
@@ -316,6 +376,9 @@ void vulkan_shutdown()
         }
         deleteFramebuffers(&vk.device, &vk.framebuffers, vk.swapchainImageCount);
         deleteRenderPass(&vk.device, &vk.renderPass);
+        vkDestroyImageView(vk.device, vk.depthImageView, NULL);
+        vkDestroyImage(vk.device, vk.depthImage, NULL);
+        vkFreeMemory(vk.device, vk.depthMemory, NULL);
         deleteImageViews(&vk.device, &vk.swapchainImageViews, vk.swapchainImageCount);
         deleteSwapchainImages(&vk.swapchainImages);
         deleteSwapchain(&vk.device, &vk.swapchain);
