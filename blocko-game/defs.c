@@ -23,6 +23,9 @@
 
 #define LASTSOLID (BARR+1) // everything less than here is solid
 #define OPEN 75            // empty space
+
+// Blocks that faces should be drawn against (transparent or non-solid)
+#define IS_SEE_THROUGH(t) ((t) >= OPEN || (t) == RLEF || (t) == YLEF)
 #define WATR 76
 #define LITE 77
 
@@ -192,6 +195,14 @@ size_t world_aligned_sz;
 VkBuffer main_buffer;
 VkDeviceMemory main_memory;
 VkDescriptorSetLayout main_descriptor_set_layout;
+VkDescriptorPool descriptor_pool;
+VkDescriptorSet main_descriptor_set;
+
+// Texture array
+VkImage texture_image;
+VkDeviceMemory texture_memory;
+VkImageView texture_image_view;
+VkSampler texture_sampler;
 
 struct main_ubo {
     float model[16];      // mat4

@@ -21,6 +21,27 @@ VkPipelineLayout createPipelineLayout(VkDevice *pDevice){
 	return pipelineLayout;
 }
 
+VkPipelineLayout createPipelineLayoutWithDescriptors(VkDevice *pDevice, VkDescriptorSetLayout *pDescriptorSetLayout){
+        VkPushConstantRange pushConstantRange = {0};
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        pushConstantRange.offset = 0;
+        pushConstantRange.size = 128;
+
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
+		VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		VK_NULL_HANDLE,
+		0,
+		1,
+		pDescriptorSetLayout,
+		1,
+		&pushConstantRange
+	};
+
+	VkPipelineLayout pipelineLayout;
+	vkCreatePipelineLayout(*pDevice, &pipelineLayoutCreateInfo, VK_NULL_HANDLE, &pipelineLayout);
+	return pipelineLayout;
+}
+
 void deletePipelineLayout(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout){
 	vkDestroyPipelineLayout(*pDevice, *pPipelineLayout, VK_NULL_HANDLE);
 }

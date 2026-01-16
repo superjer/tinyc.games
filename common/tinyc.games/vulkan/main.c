@@ -195,9 +195,10 @@ int vulkan_startup()
         vk.backFences = createEmptyFences(vk.swapchainImageCount);
 }
 
-int vulkan_make_pipeline(char *vert, char *geom, char *frag, 
+int vulkan_make_pipeline_ex(char *vert, char *geom, char *frag,
         int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
-        int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs
+        int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs,
+        VkDescriptorSetLayout *pDescriptorSetLayout
 ) {
         assert(vk.pipelineCount < 100);
 
@@ -229,17 +230,11 @@ int vulkan_make_pipeline(char *vert, char *geom, char *frag,
         }
         VkShaderModule fragmentShaderModule = createShaderModule(&vk.device, fragmentShaderCode, fragmentShaderSize);
 
-        VkVertexInputAttributeDescription attributeDesc = {};
-        attributeDesc.location = 0;
-        attributeDesc.binding = 0;
-        attributeDesc.format = VK_FORMAT_R32G32_SFLOAT; // Matches vec2
-        attributeDesc.offset = 0;
-        VkVertexInputBindingDescription bindingDesc = {};
-        bindingDesc.binding = 0; // Must match attribute binding
-        bindingDesc.stride = sizeof(float) * 2; // vec2: 2 floats
-        bindingDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        if (pDescriptorSetLayout)
+                vk.pipelines[vk.pipelineCount].layout = createPipelineLayoutWithDescriptors(&vk.device, pDescriptorSetLayout);
+        else
+                vk.pipelines[vk.pipelineCount].layout = createPipelineLayout(&vk.device);
 
-        vk.pipelines[vk.pipelineCount].layout = createPipelineLayout(&vk.device);
         vk.pipelines[vk.pipelineCount].pipeline = createGraphicsPipeline(
                 &vk.device,
                 &vk.pipelines[vk.pipelineCount].layout,
@@ -267,6 +262,13 @@ int vulkan_make_pipeline(char *vert, char *geom, char *frag,
         vert_shader_fail:
 
         return vk.pipelineCount++;
+}
+
+int vulkan_make_pipeline(char *vert, char *geom, char *frag,
+        int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
+        int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs
+) {
+        return vulkan_make_pipeline_ex(vert, geom, frag, bindingDescCount, bindingDescs, attributeDescCount, attributeDescs, NULL);
 }
 
 void vulkan_start_recording(uint32_t imageIndex)

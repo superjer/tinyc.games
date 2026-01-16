@@ -14,6 +14,7 @@ layout(location = 0) flat out float tex;
 layout(location = 1) out float illum;
 layout(location = 2) out float glow;
 layout(location = 3) flat out float alpha;
+layout(location = 4) out vec2 uv;
 
 layout(push_constant) uniform Push {
     mat4 pv;
@@ -77,12 +78,14 @@ void main(void) {
 
     vec4 vertex_pos = world_pos_vs[0];
     vec4 offsets[4] = {a, b, c, d};
+    vec2 uvs[4] = { vec2(1,0), vec2(0,0), vec2(1,1), vec2(0,1) };
 
     for (int i = 0; i < 4; i++) {
         vec4 world_pos = vertex_pos + offsets[i];
         gl_Position = push.pv * world_pos;
         illum = (0.1 + illum_vs[0][i]) * sidel;
         glow = (0.1 + glow_vs[0][i]) * sidel;
+        uv = uvs[i];
         EmitVertex();
     }
 
