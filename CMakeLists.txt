@@ -75,6 +75,8 @@ set(SHADER_FILES
   blocko-game/shaders/font_vk.frag
   blocko-game/shaders/sky.vert
   blocko-game/shaders/sky.frag
+  blocko-game/shaders/sun.vert
+  blocko-game/shaders/sun.frag
 )
 
 foreach(SHADER ${SHADER_FILES})

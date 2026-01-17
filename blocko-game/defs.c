@@ -403,7 +403,7 @@ void cursor(VkCommandBuffer cmdbuf);
 
 // atmosphere.c protos
 void do_atmos_colors();
-void sun_draw(float *proj, float *view, float pitch, float yaw, float roll, unsigned int texid);
+void sun_draw(VkCommandBuffer cmdbuf, float *proj, float *view, float pitch, float yaw, float roll);
 void sky_draw(VkCommandBuffer cmdbuf, float *proj, float *view);
 
 // player.c protos

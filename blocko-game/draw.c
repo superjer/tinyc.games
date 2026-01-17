@@ -232,8 +232,6 @@ void draw_stuff()
         float view_mtrx[16];
         lookit(view_mtrx, f, eye0, eye1, eye2, camplayer.pitch, camplayer.yaw);
 
-        sun_draw(proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll, shadow_tex_id);
-
         // find where we are pointing at
         rayshot(eye0, eye1, eye2, f[0], f[1], f[2]);
 
@@ -607,6 +605,7 @@ void draw_stuff()
         // Render sky first (behind everything)
         VkCommandBuffer cmdbuf = vk.commandBuffers[vk.imageIndex];
         sky_draw(cmdbuf, proj_mtrx, view_mtrx);
+        sun_draw(cmdbuf, proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll);
 
         // Render terrain
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);

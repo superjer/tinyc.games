@@ -211,6 +211,7 @@ VkPipelineColorBlendStateCreateInfo configureColorBlendStateCreateInfo(VkPipelin
 }
 
 #define PIPE_NO_DEPTH_WRITE 1
+#define PIPE_BLEND          2
 
 VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout, VkShaderModule *pVertexShaderModule, VkShaderModule *pGeometryShaderModule, VkShaderModule *pFragmentShaderModule, VkRenderPass *pRenderPass, VkExtent2D *pExtent,
         int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
@@ -237,7 +238,21 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 	VkPipelineViewportStateCreateInfo viewportStateCreateInfo = configureViewportStateCreateInfo(&viewport, &scissor);
 	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo = configureRasterizationStateCreateInfo();
 	VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo = configureMultisampleStateCreateInfo();
-	VkPipelineColorBlendAttachmentState colorBlendAttachmentState = configureColorBlendAttachmentState();
+	VkPipelineColorBlendAttachmentState colorBlendAttachmentState;
+	if (flags & PIPE_BLEND) {
+		colorBlendAttachmentState = (VkPipelineColorBlendAttachmentState){
+			VK_TRUE,
+			VK_BLEND_FACTOR_SRC_ALPHA,
+			VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+			VK_BLEND_OP_ADD,
+			VK_BLEND_FACTOR_ONE,
+			VK_BLEND_FACTOR_ZERO,
+			VK_BLEND_OP_ADD,
+			VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT
+		};
+	} else {
+		colorBlendAttachmentState = configureColorBlendAttachmentState();
+	}
 	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo = configureColorBlendStateCreateInfo(&colorBlendAttachmentState);
 
 	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo = {
