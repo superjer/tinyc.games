@@ -1,11 +1,13 @@
 #version 450
 
 layout(location = 0) in vec2 uv;
+layout(location = 1) in vec3 world_dir;
 
 layout(location = 0) out vec4 color;
 
 layout(push_constant) uniform Push {
     mat4 pvm;
+    vec3 sun_dir;
     float night_amt;  // 0 = day, 0.5 = dusk, 1 = night
 } push;
 
@@ -45,13 +47,28 @@ void main()
         ground_color = mix(day_ground * 0.5, night_ground, t);
     }
 
+    // Compute alignment with sun direction (on XZ plane)
+    vec2 dir_xz = normalize(world_dir.xz);
+    vec2 sun_xz = normalize(push.sun_dir.xz);
+    float sun_align = dot(dir_xz, sun_xz) * (1.0 - abs(push.sun_dir.y));  // -1 (away) to 1 (toward sun)
+
+    // Scale horizon band: larger toward sun, smaller away
+    float horizon_scale = 1.3 + sun_align;
+    if (horizon_scale < 0.3) {
+        horizon_scale = 0.3;
+    }
+
+    if (horizon_scale < 1.0) {
+        horizon_color = mix(sky_color, horizon_color, horizon_scale * horizon_scale);
+    }
+
     if (y > 0.0) {
         // Above horizon - gradient from horizon to sky
-        float t = smoothstep(0.0, 0.6, y);
+        float t = smoothstep(0.0, 0.3 * horizon_scale, y);
         color = vec4(mix(horizon_color, sky_color, t), 1.0);
     } else {
         // Below horizon - gradient from horizon to ground
-        float t = smoothstep(0.0, -0.3, y);
+        float t = smoothstep(0.0, -0.3 * horizon_scale, y);
         color = vec4(mix(horizon_color, ground_color, t), 1.0);
     }
 }
