@@ -90,7 +90,8 @@ void cursor(VkCommandBuffer cmdbuf)
         vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
         vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
 
-        struct allocation allocation = {};
+        static struct allocation allocation = {};
+        static int last_w = 0, last_h = 0;
         int w = vk.bestSwapchainExtent.width;
         int h = vk.bestSwapchainExtent.height;
         int w2 = w/2;
@@ -98,7 +99,7 @@ void cursor(VkCommandBuffer cmdbuf)
         static int outer_n;
         static int inner_n;
 
-        if (!allocation.buf)
+        if (!allocation.buf || w != last_w || h != last_h)
         {
                 cursor_buf_p = cursor_buf;
 
@@ -116,8 +117,12 @@ void cursor(VkCommandBuffer cmdbuf)
 
                 inner_n = (cursor_buf_p - cursor_buf) / 2;
 
-                vulkan_allocate_vertex_buffer(sizeof cursor_buf, &allocation);
+                if (!allocation.buf)
+                        vulkan_allocate_vertex_buffer(sizeof cursor_buf, &allocation);
                 vulkan_populate_vertex_buffer(cursor_buf, sizeof cursor_buf, &allocation);
+
+                last_w = w;
+                last_h = h;
         }
 
         VkDeviceSize offsets[] = {0};
@@ -180,9 +185,9 @@ void cursor_init()
         bindingDesc.stride = sizeof(float) * 2; // vec2: 2 floats
         bindingDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-        cursor_pipe = vulkan_make_pipeline(
+        cursor_pipe = vulkan_make_pipeline_flags(
                 "shaders/cursor.vert.spv", NULL, "shaders/cursor.frag.spv",
-                1, &bindingDesc, 1, &attributeDesc
+                1, &bindingDesc, 1, &attributeDesc, PIPE_NO_DEPTH_TEST | PIPE_NO_CULL
         );
 }
 

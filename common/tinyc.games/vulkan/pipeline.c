@@ -212,6 +212,8 @@ VkPipelineColorBlendStateCreateInfo configureColorBlendStateCreateInfo(VkPipelin
 
 #define PIPE_NO_DEPTH_WRITE 1
 #define PIPE_BLEND          2
+#define PIPE_NO_DEPTH_TEST  4
+#define PIPE_NO_CULL        8
 
 VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout, VkShaderModule *pVertexShaderModule, VkShaderModule *pGeometryShaderModule, VkShaderModule *pFragmentShaderModule, VkRenderPass *pRenderPass, VkExtent2D *pExtent,
         int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
@@ -237,6 +239,9 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 	VkRect2D scissor = configureScissor(pExtent, 0, 0, 0, 0);
 	VkPipelineViewportStateCreateInfo viewportStateCreateInfo = configureViewportStateCreateInfo(&viewport, &scissor);
 	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo = configureRasterizationStateCreateInfo();
+	if (flags & PIPE_NO_CULL) {
+		rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_NONE;
+	}
 	VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo = configureMultisampleStateCreateInfo();
 	VkPipelineColorBlendAttachmentState colorBlendAttachmentState;
 	if (flags & PIPE_BLEND) {
@@ -257,8 +262,8 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 
 	VkPipelineDepthStencilStateCreateInfo depthStencilStateCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
-		.depthTestEnable = VK_TRUE,
-		.depthWriteEnable = (flags & PIPE_NO_DEPTH_WRITE) ? VK_FALSE : VK_TRUE,
+		.depthTestEnable = (flags & PIPE_NO_DEPTH_TEST) ? VK_FALSE : VK_TRUE,
+		.depthWriteEnable = (flags & (PIPE_NO_DEPTH_WRITE | PIPE_NO_DEPTH_TEST)) ? VK_FALSE : VK_TRUE,
 		.depthCompareOp = VK_COMPARE_OP_LESS,
 		.depthBoundsTestEnable = VK_FALSE,
 		.stencilTestEnable = VK_FALSE,

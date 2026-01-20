@@ -1,5 +1,5 @@
 #version 450
-layout(location = 0) out vec3 color;
+layout(location = 0) out vec4 color;
 
 layout(push_constant) uniform PushConstants {
     mat4 proj;
@@ -7,5 +7,5 @@ layout(push_constant) uniform PushConstants {
 } pc;
 
 void main() {
-    color = pc.incolor;
+    color = vec4(pc.incolor, 1.0);
 }

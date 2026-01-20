@@ -300,14 +300,18 @@ void draw_stuff()
                 main_ubo.day_color[0] = r;
                 main_ubo.day_color[1] = g;
                 main_ubo.day_color[2] = b;
+                if (frame % 120 == 0) fprintf(stderr, "night_amt=%.3f day_color=(%.2f,%.2f,%.2f) sun_pitch=%.2f\n",
+                        night_amt, r, g, b, sun_pitch);
                 main_ubo.glo_color[0] = 0.92f;
                 main_ubo.glo_color[1] = 0.83f;
                 main_ubo.glo_color[2] = 0.69f;
                 main_ubo.fog_color[0] = fog_r;
                 main_ubo.fog_color[1] = fog_g;
                 main_ubo.fog_color[2] = fog_b;
-                main_ubo.fog_lo = draw_dist * BS * 0.667f;
-                main_ubo.fog_hi = draw_dist * BS * 1.000f;
+                main_ubo.fog_lo = draw_dist * BS * 0.5f;
+                main_ubo.fog_hi = draw_dist * BS * 1.0f;
+                if (frame % 120 == 0) fprintf(stderr, "fog_lo=%.0f fog_hi=%.0f view_pos=(%.0f,%.0f,%.0f) draw_dist=%.0f BS=%d\n",
+                        main_ubo.fog_lo, main_ubo.fog_hi, main_ubo.view_pos[0], main_ubo.view_pos[1], main_ubo.view_pos[2], draw_dist, BS);
         }
 
         // determine which chunks to send to gl
@@ -584,22 +588,14 @@ void draw_stuff()
                 vkUnmapMemory(vk.device, world_mem[myx]);
 
                 //glBufferData(GL_ARRAY_BUFFER, VBOLEN_(myx, myz) * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
-                if (my < 4) // draw the newly buffered verts
-                {
-                        TIMER(glDrawArrays)
-                        main_ubo.model[12] = myx * BS * CHUNKW;
-                        main_ubo.model[13] = 0.f;
-                        main_ubo.model[14] = myz * BS * CHUNKD;
+        }
 
-                        // send UBO
-                        void* data;
-                        vkMapMemory(vk.device, main_memory, 0, sizeof main_ubo, 0, &data);
-                        memcpy(data, &main_ubo, sizeof main_ubo);
-                        vkUnmapMemory(vk.device, main_memory);
-
-                        //glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, model_mtrx);
-                        //glDrawArrays(GL_POINTS, 0, VBOLEN_(myx, myz));
-                }
+        // Upload UBO every frame (for day_color, fog_color, etc.)
+        {
+                void* data;
+                vkMapMemory(vk.device, main_memory, 0, sizeof main_ubo, 0, &data);
+                memcpy(data, &main_ubo, sizeof main_ubo);
+                vkUnmapMemory(vk.device, main_memory);
         }
 
         // Render sky first (behind everything)
@@ -630,8 +626,7 @@ void draw_stuff()
                 for (int j = 0; j < VAOD; j++) {
                         if (VBOLEN_(i, j) > 0) chunks_with_data++;
                         if (!VBOLEN_(i, j)) continue;
-                        // Skip frustum/range check for now - coords don't match player position
-                        // if (!chunk_in_frustum(proj_view_mtrx, i, j) || !chunk_in_range(i, j)) continue;
+                        if (!chunk_in_frustum(proj_view_mtrx, i, j) || !chunk_in_range(i, j)) continue;
 
                         push.chunk_x = i * BS * CHUNKW;
                         push.chunk_y = 0;
