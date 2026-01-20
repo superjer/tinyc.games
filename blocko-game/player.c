@@ -119,6 +119,13 @@ void update_player(struct player *p, int real)
                 unsigned char max = 0;
                 int broken = T_(x, y, z);
                 T_(x, y, z) = OPEN;
+                DIRTY_(B2C(x), B2C(z)) = 1;
+
+                // Mark neighboring chunks dirty if block is on chunk edge
+                if (x % CHUNKW == 0 && x > 0)           DIRTY_(B2C(x-1), B2C(z)) = 1;
+                if (x % CHUNKW == CHUNKW-1 && x < TILESW-1) DIRTY_(B2C(x+1), B2C(z)) = 1;
+                if (z % CHUNKD == 0 && z > 0)           DIRTY_(B2C(x), B2C(z-1)) = 1;
+                if (z % CHUNKD == CHUNKD-1 && z < TILESD-1) DIRTY_(B2C(x), B2C(z+1)) = 1;
 
                 if (broken == LITE)
                 {
@@ -167,6 +174,7 @@ void update_player(struct player *p, int real)
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
                 {
                         T_(place_x, place_y, place_z) = HARD;
+                        DIRTY_(B2C(place_x), B2C(place_z)) = 1;
 
                         if (ABOVE_GROUND(place_x, place_y, place_z))
                                 GNDH_(place_x, place_z) = place_y;
@@ -183,6 +191,7 @@ void update_player(struct player *p, int real)
 
         if (real && p->lighting && !p->cooldown && place_x >= 0) {
                 T_(place_x, place_y, place_z) = LITE;
+                DIRTY_(B2C(place_x), B2C(place_z)) = 1;
                 glo_enqueue(place_x, place_y, place_z, 0, 15);
                 p->cooldown = 10;
         }

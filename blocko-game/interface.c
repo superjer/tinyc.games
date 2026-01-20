@@ -133,9 +133,12 @@ void key_move(int down)
                         if (!down) show_fresh_updates = !show_fresh_updates;
                         break;
                 case SDLK_F5: // delete test chunk
-                        if (!down) for(int x=0;x<CHUNKW;x++) for(int y=0;y<TILESH;y++) for(int z=0;z<CHUNKD;z++)
-                        {
-                                T_(C2B(32) + x, y, C2B(32) + z) = OPEN;
+                        if (!down) {
+                                for(int x=0;x<CHUNKW;x++) for(int y=0;y<TILESH;y++) for(int z=0;z<CHUNKD;z++)
+                                {
+                                        T_(C2B(32) + x, y, C2B(32) + z) = OPEN;
+                                }
+                                DIRTY_(32, 32) = 1;
                         }
                         break;
                 case SDLK_F12: // draw shadow map on the sun

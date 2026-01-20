@@ -166,6 +166,12 @@ void set_sunlight(int xlo, int ylo, int zlo, int light)
 {
         SUN_(xlo, ylo, zlo) = light;
 
+        // Mark all chunks that could be affected by corner lighting update
+        DIRTY_(B2C(xlo), B2C(zlo)) = 1;
+        DIRTY_(B2C(xlo+1), B2C(zlo)) = 1;
+        DIRTY_(B2C(xlo), B2C(zlo+1)) = 1;
+        DIRTY_(B2C(xlo+1), B2C(zlo+1)) = 1;
+
         for (int x = xlo; x < xlo + 2; x++) for (int z = zlo; z < zlo + 2; z++) for (int y = ylo; y < ylo + 2; y++)
         {
                 int x_ = (x == 0) ? 0 : x - 1;
@@ -181,6 +187,12 @@ void set_sunlight(int xlo, int ylo, int zlo, int light)
 void set_glolight(int xlo, int ylo, int zlo, int light)
 {
         GLO_(xlo, ylo, zlo) = light;
+
+        // Mark all chunks that could be affected by corner lighting update
+        DIRTY_(B2C(xlo), B2C(zlo)) = 1;
+        DIRTY_(B2C(xlo+1), B2C(zlo)) = 1;
+        DIRTY_(B2C(xlo), B2C(zlo+1)) = 1;
+        DIRTY_(B2C(xlo+1), B2C(zlo+1)) = 1;
 
         for (int x = xlo; x < xlo + 2; x++) for (int z = zlo; z < zlo + 2; z++) for (int y = ylo; y < ylo + 2; y++)
         {

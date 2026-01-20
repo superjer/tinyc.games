@@ -130,6 +130,7 @@
 
 // chunk pos-to-mem-location macros
 #define AGEN_(x,z)   already_generated[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
+#define DIRTY_(x,z)  chunk_dirty[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
 #define VAO_(x,z)    vbo[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define VBO_(x,z)    vao[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define VBOLEN_(x,z) vbo_len[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
@@ -261,6 +262,7 @@ unsigned char gndheight[TILESW * TILESD];
 float *cornlight;
 float *kornlight;
 volatile char already_generated[VAOW][VAOD];
+volatile char chunk_dirty[VAOW][VAOD];
 
 int future_scootx, future_scootz; // pending global map offset
 int scootx, scootz;               // actual global map offset

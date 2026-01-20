@@ -341,6 +341,12 @@ void draw_stuff()
 
         #pragma omp critical
         {
+                // Mark newly generated chunks as dirty
+                for (size_t i = 0; i < just_gen_len; i++) {
+                        int cx = just_generated[i].x;
+                        int cz = just_generated[i].z;
+                        DIRTY_(cx, cz) = 1;
+                }
                 memcpy(fresh + fresh_len,
                                 (struct qitem *)just_generated,
                                 just_gen_len * sizeof *just_generated);
@@ -446,6 +452,14 @@ void draw_stuff()
 
                 if (ungenerated)
                         continue; // don't bother with ungenerated chunks
+
+                // Only rebuild chunks that are dirty
+                if (!DIRTY_(myx, myz))
+                        continue;
+
+                // Skip chunks outside frustum or range
+                if (!chunk_in_frustum(proj_view_mtrx, myx, myz) || !chunk_in_range(myx, myz))
+                        continue;
 
                 //glBindVertexArray(VAO_(myx, myz));
                 //glBindBuffer(GL_ARRAY_BUFFER, VBO_(myx, myz));
@@ -586,6 +600,9 @@ void draw_stuff()
                 vkMapMemory(vk.device, world_mem[myx], offset, world_aligned_sz, 0, &data);
                 memcpy(data, vbuf, (v - vbuf) * sizeof *vbuf);
                 vkUnmapMemory(vk.device, world_mem[myx]);
+
+                // Mark chunk as clean after rebuild
+                DIRTY_(myx, myz) = 0;
 
                 //glBufferData(GL_ARRAY_BUFFER, VBOLEN_(myx, myz) * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
         }

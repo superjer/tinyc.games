@@ -56,6 +56,11 @@ void build_test_area()
         }
 
         recalc_corner_lighting(tx, tx + TEST_AREA_SZ, tz, tz + TEST_AREA_SZ);
+
+        // Mark all affected chunks as dirty
+        for (int cx = B2C(tx); cx <= B2C(tx + TEST_AREA_SZ); cx++)
+                for (int cz = B2C(tz); cz <= B2C(tz + TEST_AREA_SZ); cz++)
+                        DIRTY_(cx, cz) = 1;
 }
 
 void debrief()
@@ -183,8 +188,8 @@ void debrief()
                 font_add_text(compass_buf, screenw/2.f, 0.f, 0);
                 font_end(1, 1, 1);
 
-                static char dir[][4] = {
-                        "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW", "N",
+                static char dir[][8] = {
+                        "N (+Z)", "NNE", "NE", "ENE", "E (+X)", "ESE", "SE", "SSE", "S (-Z)", "SSW", "SW", "WSW", "W (-X)", "WNW", "NW", "NNW", "N (+Z)",
                 };
                 int idx = (int)floorf((player[0].yaw + PI / 16.f) / (PI / 8.f));
                 font_begin(screenw, screenh);
