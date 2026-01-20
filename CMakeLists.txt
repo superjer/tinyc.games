@@ -69,6 +69,9 @@ set(SHADER_FILES
   blocko-game/shaders/main_simple.vert
   blocko-game/shaders/main_simple.geom
   blocko-game/shaders/main_simple.frag
+  blocko-game/shaders/shadow.vert
+  blocko-game/shaders/shadow.geom
+  blocko-game/shaders/shadow.frag
   blocko-game/shaders/cursor.vert
   blocko-game/shaders/cursor.frag
   blocko-game/shaders/font_vk.vert

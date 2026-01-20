@@ -315,6 +315,79 @@ int vulkan_make_pipeline_flags(char *vert, char *geom, char *frag,
         return vulkan_make_pipeline_ex(vert, geom, frag, bindingDescCount, bindingDescs, attributeDescCount, attributeDescs, NULL, flags);
 }
 
+// Create pipeline with custom render pass (for shadow mapping)
+int vulkan_make_pipeline_with_renderpass(char *vert, char *geom, char *frag,
+        int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
+        int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs,
+        VkDescriptorSetLayout *pDescriptorSetLayout,
+        VkRenderPass renderPass,
+        int flags
+) {
+        assert(vk.pipelineCount < 100);
+
+        uint32_t vertexShaderSize = 0;
+        char *vertexShaderCode = getShaderCode(vert, &vertexShaderSize);
+        if (vertexShaderCode == VK_NULL_HANDLE){
+                fprintf(stderr, "vertex shader %s not found\n", vert);
+                goto vert_shader_fail;
+        }
+        VkShaderModule vertexShaderModule = createShaderModule(&vk.device, vertexShaderCode, vertexShaderSize);
+
+        uint32_t geometryShaderSize = 0;
+        char *geometryShaderCode;
+        VkShaderModule geometryShaderModule;
+        if (geom){
+                geometryShaderCode = getShaderCode(geom, &geometryShaderSize);
+                if (geometryShaderCode == VK_NULL_HANDLE){
+                        fprintf(stderr, "geometry shader %s not found\n", geom);
+                        goto geom_shader_fail;
+                }
+                geometryShaderModule = createShaderModule(&vk.device, geometryShaderCode, geometryShaderSize);
+        }
+
+        uint32_t fragmentShaderSize = 0;
+        char *fragmentShaderCode = getShaderCode(frag, &fragmentShaderSize);
+        if(fragmentShaderCode == VK_NULL_HANDLE){
+                fprintf(stderr, "fragment shader %s not found\n", frag);
+                goto frag_shader_fail;
+        }
+        VkShaderModule fragmentShaderModule = createShaderModule(&vk.device, fragmentShaderCode, fragmentShaderSize);
+
+        if (pDescriptorSetLayout)
+                vk.pipelines[vk.pipelineCount].layout = createPipelineLayoutWithDescriptors(&vk.device, pDescriptorSetLayout);
+        else
+                vk.pipelines[vk.pipelineCount].layout = createPipelineLayout(&vk.device);
+
+        vk.pipelines[vk.pipelineCount].pipeline = createGraphicsPipeline(
+                &vk.device,
+                &vk.pipelines[vk.pipelineCount].layout,
+                &vertexShaderModule,
+                geom ? &geometryShaderModule : VK_NULL_HANDLE,
+                &fragmentShaderModule,
+                &renderPass,
+                &vk.bestSwapchainExtent,
+                bindingDescCount,
+                bindingDescs,
+                attributeDescCount,
+                attributeDescs,
+                flags
+        );
+
+        deleteShaderModule(&vk.device, &fragmentShaderModule);
+        deleteShaderCode(&fragmentShaderCode);
+        frag_shader_fail:
+        if (geom) {
+                deleteShaderModule(&vk.device, &geometryShaderModule);
+                deleteShaderCode(&geometryShaderCode);
+        }
+        geom_shader_fail:
+        deleteShaderModule(&vk.device, &vertexShaderModule);
+        deleteShaderCode(&vertexShaderCode);
+        vert_shader_fail:
+
+        return vk.pipelineCount++;
+}
+
 void vulkan_start_recording(uint32_t imageIndex)
 {
         int i = imageIndex;

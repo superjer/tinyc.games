@@ -51,6 +51,55 @@ int chunk_in_range(int chunk_x, int chunk_z)
         return dist_sq < draw_dist_sq;
 }
 
+// Draw shadow pass for one cascade
+void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade, float *shadow_pv)
+{
+        VkFramebuffer fb = (cascade == 0) ? shadow_framebuffer : shadow2_framebuffer;
+
+        VkClearValue clearValue = {.depthStencil = {1.0f, 0}};
+        VkRenderPassBeginInfo rpInfo = {
+                .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                .renderPass = shadow_render_pass,
+                .framebuffer = fb,
+                .renderArea = {{0, 0}, {SHADOW_SZ, SHADOW_SZ}},
+                .clearValueCount = 1,
+                .pClearValues = &clearValue,
+        };
+        vkCmdBeginRenderPass(cmdbuf, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[shadow_pipe].pipeline);
+
+        VkViewport viewport = {0, 0, SHADOW_SZ, SHADOW_SZ, 0, 1};
+        VkRect2D scissor = {{0, 0}, {SHADOW_SZ, SHADOW_SZ}};
+        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
+        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+
+        struct { float pv[16]; float chunk_x; float chunk_y; float chunk_z; float bs; } push;
+        memcpy(push.pv, shadow_pv, sizeof push.pv);
+        push.bs = BS;
+
+        VkDeviceSize voffset = 0;
+        for (int i = 0; i < VAOW; i++) {
+                for (int j = 0; j < VAOD; j++) {
+                        if (!VBOLEN_(i, j)) continue;
+                        if (!chunk_in_frustum(shadow_pv, i, j)) continue;
+                        if (!chunk_in_range(i, j)) continue;
+
+                        push.chunk_x = i * BS * CHUNKW;
+                        push.chunk_y = 0;
+                        push.chunk_z = j * BS * CHUNKD;
+                        vkCmdPushConstants(cmdbuf, vk.pipelines[shadow_pipe].layout,
+                                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                0, sizeof push, &push);
+                        vkCmdBindVertexBuffers(cmdbuf, 0, 1, &world_buf[i * VAOD + j], &voffset);
+                        vkCmdDraw(cmdbuf, VBOLEN_(i, j), 1, 0, 0);
+                        shadow_polys += VBOLEN_(i, j);
+                }
+        }
+
+        vkCmdEndRenderPass(cmdbuf);
+}
+
 // prevent shaking shadows by quantizing sun or moon pitch
 float quantize(float p)
 {
@@ -83,102 +132,127 @@ void draw_stuff()
 
         memcpy(main_ubo.model, identity_mtrx, sizeof identity_mtrx);
 
-        // make shadow map
+        // Calculate sun/moon positions (used for lighting and shadows)
+        float dist2sun = TILESW * BS;
+        float chunk_size = BS * CHUNKW;
+        float shadow_target[3] = {
+                floorf(lerped_pos.x / chunk_size) * chunk_size + chunk_size / 2,
+                100 * BS,
+                floorf(lerped_pos.z / chunk_size) * chunk_size + chunk_size / 2,
+        };
+
+        // Original tilted sun path (non-equatorial for interesting lighting)
+        sun_pos.x = shadow_target[0] + dist2sun * (cosf(sun_pitch) * cosf(sun_yaw));
+        sun_pos.y = shadow_target[1] + dist2sun * (cosf(sun_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(sun_pitch) * sinf(sun_roll));
+        sun_pos.z = shadow_target[2] + dist2sun * (cosf(sun_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(sun_pitch) * cosf(sun_roll));
+
+        float moon_pitch = sun_pitch + PI;
+        if (moon_pitch >= TAU) moon_pitch -= TAU;
+        moon_pos.x = shadow_target[0] + dist2sun * (cosf(moon_pitch) * cosf(sun_yaw));
+        moon_pos.y = shadow_target[1] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(moon_pitch) * sinf(sun_roll));
+        moon_pos.z = shadow_target[2] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(moon_pitch) * cosf(sun_roll));
+
+        // Store shadow PV matrices for rendering
+        float shadow_pv_mtrx0[16] = {0};
+        float shadow_pv_mtrx1[16] = {0};
+
+        // compute shadow matrices and render shadow maps
         if (shadow_mapping) for(int s = 0; s < 2; s++)
         {
-                //glBindFramebuffer(GL_FRAMEBUFFER, s == 0 ? shadow_fbo : shadow2_fbo);
-                //if (is_framebuffer_incomplete()) goto fb_is_bad;
+                // Use sun or moon depending on time of day
+                float light_pos[3];
+                if (sun_pitch < PI) {
+                        light_pos[0] = sun_pos.x;
+                        light_pos[1] = sun_pos.y;
+                        light_pos[2] = sun_pos.z;
+                } else {
+                        light_pos[0] = moon_pos.x;
+                        light_pos[1] = moon_pos.y;
+                        light_pos[2] = moon_pos.z;
+                }
 
-                //glViewport(0, 0, SHADOW_SZ, SHADOW_SZ);
-                //glClear(GL_DEPTH_BUFFER_BIT);
+                // Build view matrix: look from light toward target
+                // Forward = normalize(target - light_pos)
+                float fwd[3] = {
+                        shadow_target[0] - light_pos[0],
+                        shadow_target[1] - light_pos[1],
+                        shadow_target[2] - light_pos[2],
+                };
+                float fwd_len = sqrtf(fwd[0]*fwd[0] + fwd[1]*fwd[1] + fwd[2]*fwd[2]);
+                fwd[0] /= fwd_len; fwd[1] /= fwd_len; fwd[2] /= fwd_len;
 
-                //glEnable(GL_BLEND);
-                //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                //glEnable(GL_DEPTH_TEST);
-                //glDepthFunc(GL_LEQUAL);
-                //glDepthMask(GL_TRUE);
-                //glEnable(GL_CULL_FACE);
-                //glCullFace(GL_FRONT);
-                //glEnable(GL_POLYGON_OFFSET_FILL);
-                //glPolygonOffset(4.f, 4.f);
+                // Right = normalize(cross(world_up, forward))
+                // world_up = (0, 1, 0) unless forward is vertical
+                float world_up[3] = {0, 1, 0};
+                if (fabsf(fwd[1]) > 0.99f) {
+                        // Sun near zenith, use Z as up
+                        world_up[0] = 0; world_up[1] = 0; world_up[2] = 1;
+                }
+                float right[3] = {
+                        world_up[1]*fwd[2] - world_up[2]*fwd[1],
+                        world_up[2]*fwd[0] - world_up[0]*fwd[2],
+                        world_up[0]*fwd[1] - world_up[1]*fwd[0],
+                };
+                float right_len = sqrtf(right[0]*right[0] + right[1]*right[1] + right[2]*right[2]);
+                right[0] /= right_len; right[1] /= right_len; right[2] /= right_len;
 
-                ////render shadows here
-                //glUseProgram(shadow_prog_id);
-                // view matrix
-                float view_mtrx[16];
-
-                float moon_pitch = sun_pitch + PI;
-                if (moon_pitch >= TAU) moon_pitch -= TAU;
-
-                float dist2sun = TILESW * BS;
-
-                float f[3] = {
-                        camplayer.pos.x,
-                        100 * BS,
-                        camplayer.pos.z,
+                // Up = cross(forward, right)
+                float up[3] = {
+                        fwd[1]*right[2] - fwd[2]*right[1],
+                        fwd[2]*right[0] - fwd[0]*right[2],
+                        fwd[0]*right[1] - fwd[1]*right[0],
                 };
 
-                sun_pos.x = f[0] + dist2sun * (cosf(sun_pitch) * cosf(sun_yaw));
-                sun_pos.y = f[1] + dist2sun * (cosf(sun_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(sun_pitch) * sinf(sun_roll));
-                sun_pos.z = f[2] + dist2sun * (cosf(sun_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(sun_pitch) * cosf(sun_roll));
+                // View matrix (column-major)
+                float view_mtrx[16] = {
+                        right[0], up[0], -fwd[0], 0,
+                        right[1], up[1], -fwd[1], 0,
+                        right[2], up[2], -fwd[2], 0,
+                        -(right[0]*light_pos[0] + right[1]*light_pos[1] + right[2]*light_pos[2]),
+                        -(up[0]*light_pos[0] + up[1]*light_pos[1] + up[2]*light_pos[2]),
+                        (fwd[0]*light_pos[0] + fwd[1]*light_pos[1] + fwd[2]*light_pos[2]),
+                        1,
+                };
 
-                moon_pos.x = f[0] + dist2sun * (cosf(moon_pitch) * cosf(sun_yaw));
-                moon_pos.y = f[1] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(moon_pitch) * sinf(sun_roll));
-                moon_pos.z = f[2] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(moon_pitch) * cosf(sun_roll));
-
-                /*
-                T_((int)(sun_pos.x / BS), (int)(sun_pos.y / BS), (int)(sun_pos.z / BS)) = GRAS;
-                T_((int)(moon_pos.x / BS), (int)(moon_pos.y / BS), (int)(moon_pos.z / BS)) = GRAN;
-                */
-
-                if (sun_pitch < PI)
-                {
-                        lookit(view_mtrx, f, sun_pos.x, sun_pos.y, sun_pos.z, NO_PITCH, 0.f);
-                        translate(view_mtrx, -sun_pos.x, -sun_pos.y, -sun_pos.z);
-                }
-                else
-                {
-                        lookit(view_mtrx, f, moon_pos.x, moon_pos.y, moon_pos.z, NO_PITCH, 0.f);
-                        translate(view_mtrx, -moon_pos.x, -moon_pos.y, -moon_pos.z);
-                }
-
-                // proj matrix
+                // Orthographic projection (Vulkan depth [0,1])
                 float snear = (s == 0 ? 10.f : 80.f);
-                float sfar = dist2sun + (s == 0 ? 9000.f : 72000.f);
+                float sfar = dist2sun * 2;
                 float mag = (s == 0 ? 3000.f : 24000.f);
-                float x = 1.f / mag;
-                float y = -1.f / mag;
-                float z = -1.f / ((sfar - snear) / 2.f);
-                float tz = -(sfar + snear) / (sfar - snear);
                 float ortho_mtrx[] = {
-                        x, 0, 0,  0,
-                        0, y, 0,  0,
-                        0, 0, z,  0,
-                        0, 0, tz, 1,
+                        1.f/mag, 0,       0,                        0,
+                        0,       1.f/mag, 0,                        0,
+                        0,       0,       -1.f/(sfar - snear),      0,
+                        0,       0,       -snear/(sfar - snear),    1,
                 };
-
-                float shadow_pv_mtrx[16];
-                if (!lock_culling)
-                        mat4_multiply(shadow_pv_mtrx, ortho_mtrx, view_mtrx);
 
                 memcpy(main_ubo.proj, ortho_mtrx, sizeof(ortho_mtrx));
                 memcpy(main_ubo.view, view_mtrx, sizeof(view_mtrx));
-                //glUniform1i(glGetUniformLocation(shadow_prog_id, "tarray"), 0);
                 main_ubo.bs = BS;
 
-                float bias_mtrx[] = {
-                        .5f,   0,   0, 1.f,
-                          0, .5f,   0, 1.f,
-                          0,   0, .5f, 1.f,
-                        .5f, .5f, .5f, 1.f,
-                };
-                float tmp_mtrx[16];
-                mat4_multiply(tmp_mtrx, ortho_mtrx, view_mtrx);
+                // Compute shadow projection*view matrix (used for both rendering and sampling)
+                float shadow_pv_mtrx[16];
+                mat4_multiply(shadow_pv_mtrx, ortho_mtrx, view_mtrx);
 
+                // Store for shadow rendering pass
                 if (s == 0)
-                        mat4_multiply(main_ubo.shadow_space, bias_mtrx, tmp_mtrx);
+                        memcpy(shadow_pv_mtrx0, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
                 else
-                        mat4_multiply(main_ubo.shadow2_space, bias_mtrx, tmp_mtrx);
+                        memcpy(shadow_pv_mtrx1, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+
+                // Bias matrix transforms from NDC to texture coordinates
+                // For Vulkan: xy from [-1,1] to [0,1], z already in [0,1]
+                float bias_mtrx[] = {
+                        0.5f, 0,    0, 0,      // column 0
+                        0,    0.5f, 0, 0,      // column 1
+                        0,    0,    1, 0,      // column 2 (Z unchanged for Vulkan)
+                        0.5f, 0.5f, 0, 1,      // column 3 (translation)
+                };
+
+                // Apply bias to get texture sampling matrix
+                if (s == 0)
+                        mat4_multiply(main_ubo.shadow_space, bias_mtrx, shadow_pv_mtrx);
+                else
+                        mat4_multiply(main_ubo.shadow2_space, bias_mtrx, shadow_pv_mtrx);
 
                 for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
                 {
@@ -615,8 +689,34 @@ void draw_stuff()
                 vkUnmapMemory(vk.device, main_memory);
         }
 
-        // Render sky first (behind everything)
         VkCommandBuffer cmdbuf = vk.commandBuffers[vk.imageIndex];
+
+        // Render shadow maps (before main render pass)
+        if (shadow_mapping) {
+                // End the auto-started main render pass
+                vkCmdEndRenderPass(cmdbuf);
+
+                // Render shadow passes
+                draw_shadow_pass(cmdbuf, 0, shadow_pv_mtrx0);
+                draw_shadow_pass(cmdbuf, 1, shadow_pv_mtrx1);
+
+                // Restart main render pass
+                VkClearValue clearValues[2] = {
+                        {.color = {{fog_r, fog_g, fog_b, 1.0f}}},
+                        {.depthStencil = {1.0f, 0}}
+                };
+                VkRenderPassBeginInfo renderPassBeginInfo = {
+                        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                        .renderPass = vk.renderPass,
+                        .framebuffer = vk.framebuffers[vk.imageIndex],
+                        .renderArea = {{0, 0}, {vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height}},
+                        .clearValueCount = 2,
+                        .pClearValues = clearValues,
+                };
+                vkCmdBeginRenderPass(cmdbuf, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+        }
+
+        // Render sky first (behind everything)
         sky_draw(cmdbuf, proj_mtrx, view_mtrx);
         sun_draw(cmdbuf, proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll);
 

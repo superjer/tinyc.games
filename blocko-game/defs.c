@@ -207,6 +207,15 @@ VkDeviceMemory texture_memory;
 VkImageView texture_image_view;
 VkSampler texture_sampler;
 
+// Shadow mapping resources
+VkImage shadow_image, shadow2_image;
+VkDeviceMemory shadow_memory, shadow2_memory;
+VkImageView shadow_image_view, shadow2_image_view;
+VkSampler shadow_sampler;
+VkRenderPass shadow_render_pass;
+VkFramebuffer shadow_framebuffer, shadow2_framebuffer;
+int shadow_pipe;
+
 struct main_ubo {
     float model[16];      // mat4 - offset 0
     float view[16];       // mat4 - offset 64

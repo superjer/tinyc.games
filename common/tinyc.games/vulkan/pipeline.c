@@ -214,6 +214,8 @@ VkPipelineColorBlendStateCreateInfo configureColorBlendStateCreateInfo(VkPipelin
 #define PIPE_BLEND          2
 #define PIPE_NO_DEPTH_TEST  4
 #define PIPE_NO_CULL        8
+#define PIPE_FRONT_CULL     16
+#define PIPE_DEPTH_BIAS     32
 
 VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout, VkShaderModule *pVertexShaderModule, VkShaderModule *pGeometryShaderModule, VkShaderModule *pFragmentShaderModule, VkRenderPass *pRenderPass, VkExtent2D *pExtent,
         int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
@@ -241,6 +243,14 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo = configureRasterizationStateCreateInfo();
 	if (flags & PIPE_NO_CULL) {
 		rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_NONE;
+	}
+	if (flags & PIPE_FRONT_CULL) {
+		rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_FRONT_BIT;
+	}
+	if (flags & PIPE_DEPTH_BIAS) {
+		rasterizationStateCreateInfo.depthBiasEnable = VK_TRUE;
+		rasterizationStateCreateInfo.depthBiasConstantFactor = 1.5f;
+		rasterizationStateCreateInfo.depthBiasSlopeFactor = 1.5f;
 	}
 	VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo = configureMultisampleStateCreateInfo();
 	VkPipelineColorBlendAttachmentState colorBlendAttachmentState;

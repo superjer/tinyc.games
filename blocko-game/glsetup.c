@@ -404,6 +404,181 @@ void create_texture_array(char **files, int file_count) {
     fprintf(stderr, "Created texture array: %dx%d, %d layers, %d mip levels\n", tex_w, tex_h, file_count, mip_levels);
 }
 
+void create_shadow_render_pass() {
+    VkAttachmentDescription depthAttachment = {
+        .format = VK_FORMAT_D32_SFLOAT,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+
+    VkAttachmentReference depthAttachmentRef = {
+        .attachment = 0,
+        .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    };
+
+    VkSubpassDescription subpass = {
+        .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+        .colorAttachmentCount = 0,
+        .pColorAttachments = NULL,
+        .pDepthStencilAttachment = &depthAttachmentRef,
+    };
+
+    // Dependency for transitioning depth image to shader-readable after render pass
+    VkSubpassDependency dependencies[2] = {
+        {
+            .srcSubpass = VK_SUBPASS_EXTERNAL,
+            .dstSubpass = 0,
+            .srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+            .srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
+            .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+        },
+        {
+            .srcSubpass = 0,
+            .dstSubpass = VK_SUBPASS_EXTERNAL,
+            .srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+        },
+    };
+
+    VkRenderPassCreateInfo renderPassInfo = {
+        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+        .attachmentCount = 1,
+        .pAttachments = &depthAttachment,
+        .subpassCount = 1,
+        .pSubpasses = &subpass,
+        .dependencyCount = 2,
+        .pDependencies = dependencies,
+    };
+
+    if (vkCreateRenderPass(vk.device, &renderPassInfo, NULL, &shadow_render_pass) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create shadow render pass!\n");
+        exit(1);
+    }
+    fprintf(stderr, "Created shadow render pass\n");
+}
+
+void create_shadow_maps() {
+    VkPhysicalDeviceMemoryProperties mem_props;
+    vkGetPhysicalDeviceMemoryProperties(*vk.bestPhysicalDevice, &mem_props);
+
+    // Create shadow depth images
+    VkImageCreateInfo imageInfo = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = VK_FORMAT_D32_SFLOAT,
+        .extent = { SHADOW_SZ, SHADOW_SZ, 1 },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    // Create both shadow map images
+    vkCreateImage(vk.device, &imageInfo, NULL, &shadow_image);
+    vkCreateImage(vk.device, &imageInfo, NULL, &shadow2_image);
+
+    // Allocate memory for shadow images
+    VkMemoryRequirements mem_reqs;
+    vkGetImageMemoryRequirements(vk.device, shadow_image, &mem_reqs);
+
+    uint32_t mem_type = 0;
+    for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++) {
+        if ((mem_reqs.memoryTypeBits & (1 << i)) &&
+            (mem_props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+            mem_type = i;
+            break;
+        }
+    }
+
+    VkMemoryAllocateInfo allocInfo = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = mem_reqs.size,
+        .memoryTypeIndex = mem_type,
+    };
+
+    vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow_memory);
+    vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow2_memory);
+    vkBindImageMemory(vk.device, shadow_image, shadow_memory, 0);
+    vkBindImageMemory(vk.device, shadow2_image, shadow2_memory, 0);
+
+    // Create image views
+    VkImageViewCreateInfo viewInfo = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = VK_FORMAT_D32_SFLOAT,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+
+    viewInfo.image = shadow_image;
+    vkCreateImageView(vk.device, &viewInfo, NULL, &shadow_image_view);
+    viewInfo.image = shadow2_image;
+    vkCreateImageView(vk.device, &viewInfo, NULL, &shadow2_image_view);
+
+    // Create shadow sampler with depth comparison
+    VkSamplerCreateInfo samplerInfo = {
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .magFilter = VK_FILTER_LINEAR,
+        .minFilter = VK_FILTER_LINEAR,
+        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+        .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+        .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+        .mipLodBias = 0.0f,
+        .minLod = 0.0f,
+        .maxLod = 1.0f,
+        .compareEnable = VK_TRUE,
+        .compareOp = VK_COMPARE_OP_LESS,
+        .borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE, // Outside shadow = lit
+    };
+    vkCreateSampler(vk.device, &samplerInfo, NULL, &shadow_sampler);
+
+    fprintf(stderr, "Created shadow maps: %dx%d\n", SHADOW_SZ, SHADOW_SZ);
+}
+
+void create_shadow_framebuffers() {
+    VkFramebufferCreateInfo framebufferInfo = {
+        .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        .renderPass = shadow_render_pass,
+        .attachmentCount = 1,
+        .width = SHADOW_SZ,
+        .height = SHADOW_SZ,
+        .layers = 1,
+    };
+
+    framebufferInfo.pAttachments = &shadow_image_view;
+    if (vkCreateFramebuffer(vk.device, &framebufferInfo, NULL, &shadow_framebuffer) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create shadow framebuffer!\n");
+        exit(1);
+    }
+
+    framebufferInfo.pAttachments = &shadow2_image_view;
+    if (vkCreateFramebuffer(vk.device, &framebufferInfo, NULL, &shadow2_framebuffer) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create shadow2 framebuffer!\n");
+        exit(1);
+    }
+
+    fprintf(stderr, "Created shadow framebuffers\n");
+}
+
 void create_descriptor_pool_and_set() {
     // Create descriptor pool
     VkDescriptorPoolSize pool_sizes[] = {
@@ -427,7 +602,7 @@ void create_descriptor_pool_and_set() {
     };
     vkAllocateDescriptorSets(vk.device, &set_alloc, &main_descriptor_set);
 
-    // Update descriptor set with UBO and texture
+    // Update descriptor set with UBO, texture, and shadow maps
     VkDescriptorBufferInfo buffer_info = {
         .buffer = main_buffer,
         .offset = 0,
@@ -436,6 +611,16 @@ void create_descriptor_pool_and_set() {
     VkDescriptorImageInfo image_info = {
         .sampler = texture_sampler,
         .imageView = texture_image_view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+    VkDescriptorImageInfo shadow_info = {
+        .sampler = shadow_sampler,
+        .imageView = shadow_image_view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+    VkDescriptorImageInfo shadow2_info = {
+        .sampler = shadow_sampler,
+        .imageView = shadow2_image_view,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
     VkWriteDescriptorSet writes[] = {
@@ -455,8 +640,24 @@ void create_descriptor_pool_and_set() {
             .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .pImageInfo = &image_info,
         },
+        {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = main_descriptor_set,
+            .dstBinding = 2,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo = &shadow_info,
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = main_descriptor_set,
+            .dstBinding = 3,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo = &shadow2_info,
+        },
     };
-    vkUpdateDescriptorSets(vk.device, 2, writes, 0, NULL);
+    vkUpdateDescriptorSets(vk.device, 4, writes, 0, NULL);
 }
 
 void allocate_world()
@@ -602,6 +803,19 @@ void glsetup()
         };
         int texture_count = sizeof(texture_files) / sizeof(texture_files[0]);
         create_texture_array(texture_files, texture_count);
+
+        // Create shadow mapping resources (must happen before create_descriptor_pool_and_set)
+        create_shadow_render_pass();
+        create_shadow_maps();
+        create_shadow_framebuffers();
+
+        // Create shadow pipeline with same vertex layout as main pipeline
+        shadow_pipe = vulkan_make_pipeline_with_renderpass(
+                "shaders/shadow.vert.spv", "shaders/shadow.geom.spv", "shaders/shadow.frag.spv",
+                1, &mainBindingDesc, 6, mainAttrDescs,
+                NULL, shadow_render_pass,
+                PIPE_FRONT_CULL | PIPE_DEPTH_BIAS);
+
         create_descriptor_pool_and_set();
         //glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 

@@ -16,6 +16,28 @@ layout(location = 2) out float glow;
 layout(location = 3) flat out float alpha;
 layout(location = 4) out vec2 uv;
 layout(location = 5) out vec4 world_pos_out;
+layout(location = 6) out vec4 shadow_pos;
+layout(location = 7) out vec4 shadow2_pos;
+layout(location = 8) flat out vec3 normal;
+
+layout(std140, set = 0, binding = 0) uniform UBO {
+    mat4 model;           // offset 0
+    mat4 view;            // offset 64
+    mat4 proj;            // offset 128
+    mat4 shadow_space;    // offset 192
+    mat4 shadow2_space;   // offset 256
+    float BS;             // offset 320
+
+    vec3 day_color;       // offset 336
+    vec3 glo_color;       // offset 352
+    vec3 fog_color;       // offset 368
+    float fog_lo;         // offset 380
+    float fog_hi;         // offset 384
+    vec3 light_pos;       // offset 400
+    vec3 view_pos;        // offset 416
+    float sharpness;      // offset 428
+    bool shadow_mapping;  // offset 432
+} ubo;
 
 layout(push_constant) uniform Push {
     mat4 pv;
@@ -28,54 +50,62 @@ layout(push_constant) uniform Push {
 void main(void) {
     float sidel = 0.0f;
     vec4 a, b, c, d;
+    vec3 face_normal;
 
     switch (int(orient_vs[0])) {
-        case 1: // UP
+        case 1: // UP (Y-)
             a = vec4(0, 0, 0, 0);
             b = vec4(push.bs, 0, 0, 0);
             c = vec4(0, 0, push.bs, 0);
             d = vec4(push.bs, 0, push.bs, 0);
             sidel = 1.0f;
+            face_normal = vec3(0, -1, 0);
             break;
-        case 2: // EAST
+        case 2: // EAST (X+)
             a = vec4(push.bs, 0, push.bs, 0);
             b = vec4(push.bs, 0, 0, 0);
             c = vec4(push.bs, push.bs, push.bs, 0);
             d = vec4(push.bs, push.bs, 0, 0);
             sidel = 0.9f;
+            face_normal = vec3(1, 0, 0);
             break;
-        case 3: // NORTH
+        case 3: // NORTH (Z+)
             a = vec4(0, 0, push.bs, 0);
             b = vec4(push.bs, 0, push.bs, 0);
             c = vec4(0, push.bs, push.bs, 0);
             d = vec4(push.bs, push.bs, push.bs, 0);
             sidel = 0.8f;
+            face_normal = vec3(0, 0, 1);
             break;
-        case 4: // WEST
+        case 4: // WEST (X-)
             a = vec4(0, 0, 0, 0);
             b = vec4(0, 0, push.bs, 0);
             c = vec4(0, push.bs, 0, 0);
             d = vec4(0, push.bs, push.bs, 0);
             sidel = 0.9f;
+            face_normal = vec3(-1, 0, 0);
             break;
-        case 5: // SOUTH
+        case 5: // SOUTH (Z-)
             a = vec4(push.bs, 0, 0, 0);
             b = vec4(0, 0, 0, 0);
             c = vec4(push.bs, push.bs, 0, 0);
             d = vec4(0, push.bs, 0, 0);
             sidel = 0.8f;
+            face_normal = vec3(0, 0, -1);
             break;
-        case 6: // DOWN
+        case 6: // DOWN (Y+)
             a = vec4(push.bs, push.bs, 0, 0);
             b = vec4(0, push.bs, 0, 0);
             c = vec4(push.bs, push.bs, push.bs, 0);
             d = vec4(0, push.bs, push.bs, 0);
             sidel = 0.6f;
+            face_normal = vec3(0, 1, 0);
             break;
     }
 
     tex = tex_vs[0];
     alpha = alpha_vs[0];
+    normal = face_normal;
 
     vec4 vertex_pos = world_pos_vs[0];
     vec4 offsets[4] = {a, b, c, d};
@@ -88,6 +118,9 @@ void main(void) {
         glow = (0.1 + glow_vs[0][i]) * sidel;
         uv = uvs[i];
         world_pos_out = world_pos;
+        // Calculate shadow space positions
+        shadow_pos = ubo.shadow_space * world_pos;
+        shadow2_pos = ubo.shadow2_space * world_pos;
         EmitVertex();
     }
 
