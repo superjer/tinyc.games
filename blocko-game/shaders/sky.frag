@@ -11,6 +11,50 @@ layout(push_constant) uniform Push {
     float night_amt;  // 0 = day, 0.5 = dusk, 1 = night
 } push;
 
+// Hash functions for procedural stars
+float hash(vec3 p) {
+    p = fract(p * vec3(443.897, 441.423, 437.195));
+    p += dot(p, p.yxz + 19.19);
+    return fract((p.x + p.y) * p.z);
+}
+
+vec3 hash3(vec3 p) {
+    return vec3(hash(p), hash(p + 71.1), hash(p + 133.3));
+}
+
+// Generate stars using 3D cells (avoids pole pinching)
+float stars(vec3 dir) {
+    vec3 n = normalize(dir);
+
+    // Scale direction to create cell grid on unit sphere
+    float scale = 50.0;
+    vec3 p = n * scale;
+
+    // Find the cell and local position
+    vec3 cell = floor(p);
+    vec3 local = fract(p);
+
+    // Only some cells have stars
+    float h = hash(cell + 0.5);
+    if (h < 0.85) return 0.0;
+
+    // Star position constrained to center of cell (0.2 to 0.8)
+    // so its glow never crosses cell boundaries
+    vec3 star_offset = hash3(cell) * 0.6 + 0.2;
+
+    // Distance from local position to star
+    float d = length(local - star_offset);
+
+    // Star brightness varies
+    float brightness = hash(cell + 0.7);
+
+    // Sharp star point - max radius ~0.2 fits within cell margin
+    float star = smoothstep(0.15 + 0.05 * brightness, 0.0, d);
+    star *= 0.5 + 0.5 * brightness;
+
+    return star;
+}
+
 void main()
 {
     // uv.y goes from -1 (bottom) to 1 (top)
@@ -62,13 +106,27 @@ void main()
         horizon_color = mix(sky_color, horizon_color, horizon_scale * horizon_scale);
     }
 
+    vec3 final_color;
     if (y > 0.0) {
         // Above horizon - gradient from horizon to sky
         float t = smoothstep(0.0, 0.3 * horizon_scale, y);
-        color = vec4(mix(horizon_color, sky_color, t), 1.0);
+        final_color = mix(horizon_color, sky_color, t);
+
+        // Add stars at night (only above horizon)
+        if (push.night_amt > 0.5) {
+            float star_intensity = stars(world_dir);
+            // Fade stars in as night deepens, and fade near horizon
+            float night_factor = (push.night_amt - 0.5) * 2.0;
+            float horizon_fade = smoothstep(0.0, 0.15, y);
+            // Slightly tinted stars (some warm, some cool)
+            vec3 star_color = vec3(0.9, 0.9, 1.0);
+            final_color += star_color * star_intensity * night_factor * horizon_fade;
+        }
     } else {
         // Below horizon - gradient from horizon to ground
         float t = smoothstep(0.0, -0.3 * horizon_scale, y);
-        color = vec4(mix(horizon_color, ground_color, t), 1.0);
+        final_color = mix(horizon_color, ground_color, t);
     }
+
+    color = vec4(final_color, 1.0);
 }

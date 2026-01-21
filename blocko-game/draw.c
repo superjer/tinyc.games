@@ -77,6 +77,10 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade, float *shadow_pv, flo
         vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
         vkCmdSetDepthBias(cmdbuf, bias_constant, 0.0f, bias_slope);
 
+        // Bind descriptor set for texture access (alpha testing leaves)
+        vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                vk.pipelines[shadow_pipe].layout, 0, 1, &main_descriptor_set, 0, NULL);
+
         struct { float pv[16]; float chunk_x; float chunk_y; float chunk_z; float bs; } push;
         memcpy(push.pv, shadow_pv, sizeof push.pv);
         push.bs = BS;

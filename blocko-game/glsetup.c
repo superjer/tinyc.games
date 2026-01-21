@@ -843,11 +843,11 @@ void glsetup()
         create_shadow_framebuffers();
 
         // Create shadow pipeline with same vertex layout as main pipeline
-        // Use default back-face culling (renders front faces toward light) + depth bias
+        // Use main_descriptor_set_layout to access texture for alpha testing leaves
         shadow_pipe = vulkan_make_pipeline_with_renderpass(
                 "shaders/shadow.vert.spv", "shaders/shadow.geom.spv", "shaders/shadow.frag.spv",
                 1, &mainBindingDesc, 6, mainAttrDescs,
-                NULL, shadow_render_pass,
+                &main_descriptor_set_layout, shadow_render_pass,
                 PIPE_DEPTH_BIAS);
 
         create_descriptor_pool_and_set();

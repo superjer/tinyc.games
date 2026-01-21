@@ -182,9 +182,9 @@ void sun_init()
         memcpy(sunData, sun_verts, sun_buf_size);
         vkUnmapMemory(vk.device, sun_vmem);
 
-        // Sun pipeline - same vertex format, no depth write, with blending
+        // Sun pipeline - same vertex format, no depth write, with blending, no culling (moon faces opposite)
         sun_pipe = vulkan_make_pipeline_flags("shaders/sun.vert.spv", NULL, "shaders/sun.frag.spv",
-                1, &bindingDesc, 2, attrDescs, PIPE_NO_DEPTH_WRITE | PIPE_BLEND);
+                1, &bindingDesc, 2, attrDescs, PIPE_NO_DEPTH_WRITE | PIPE_BLEND | PIPE_NO_CULL);
 }
 
 void sky_draw(VkCommandBuffer cmdbuf, float *proj, float *view)

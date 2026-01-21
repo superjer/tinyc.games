@@ -19,10 +19,10 @@ void main()
     float alpha = 1.0 - smoothstep(0.7, 1.0, dist);
 
     if (push.is_moon > 0.5) {
-        // Moon: slightly dimmer, hint of yellow
-        color = vec4(0.95, 0.95, 0.85, alpha);
+        // Moon: cool bluish-white
+        color = vec4(0.8, 0.85, 0.95, alpha);
     } else {
-        // Sun: bright white/yellow
+        // Sun: warm white/yellow
         color = vec4(1.0, 1.0, 0.9, alpha);
     }
 }
