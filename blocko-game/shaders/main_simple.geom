@@ -19,6 +19,7 @@ layout(location = 5) out vec4 world_pos_out;
 layout(location = 6) out vec4 shadow_pos;
 layout(location = 7) out vec4 shadow2_pos;
 layout(location = 8) flat out vec3 normal;
+layout(location = 9) out vec4 shadow3_pos;
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 model;           // offset 0
@@ -26,17 +27,18 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 proj;            // offset 128
     mat4 shadow_space;    // offset 192
     mat4 shadow2_space;   // offset 256
-    float BS;             // offset 320
+    mat4 shadow3_space;   // offset 320
+    float BS;             // offset 384
 
-    vec3 day_color;       // offset 336
-    vec3 glo_color;       // offset 352
-    vec3 fog_color;       // offset 368
-    float fog_lo;         // offset 380
-    float fog_hi;         // offset 384
-    vec3 light_pos;       // offset 400
-    vec3 view_pos;        // offset 416
-    float sharpness;      // offset 428
-    bool shadow_mapping;  // offset 432
+    vec3 day_color;       // offset 400
+    vec3 glo_color;       // offset 416
+    vec3 fog_color;       // offset 432
+    float fog_lo;         // offset 444
+    float fog_hi;         // offset 448
+    vec3 light_pos;       // offset 464
+    vec3 view_pos;        // offset 480
+    float sharpness;      // offset 492
+    bool shadow_mapping;  // offset 496
 } ubo;
 
 layout(push_constant) uniform Push {
@@ -121,6 +123,7 @@ void main(void) {
         // Calculate shadow space positions
         shadow_pos = ubo.shadow_space * world_pos;
         shadow2_pos = ubo.shadow2_space * world_pos;
+        shadow3_pos = ubo.shadow3_space * world_pos;
         EmitVertex();
     }
 

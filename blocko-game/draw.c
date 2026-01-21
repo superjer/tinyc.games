@@ -52,9 +52,11 @@ int chunk_in_range(int chunk_x, int chunk_z)
 }
 
 // Draw shadow pass for one cascade
-void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade, float *shadow_pv)
+// bias_constant and bias_slope are per-cascade depth bias values
+void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade, float *shadow_pv, float bias_constant, float bias_slope)
 {
-        VkFramebuffer fb = (cascade == 0) ? shadow_framebuffer : shadow2_framebuffer;
+        VkFramebuffer fb = (cascade == 0) ? shadow_framebuffer :
+                           (cascade == 1) ? shadow2_framebuffer : shadow3_framebuffer;
 
         VkClearValue clearValue = {.depthStencil = {1.0f, 0}};
         VkRenderPassBeginInfo rpInfo = {
@@ -73,6 +75,7 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade, float *shadow_pv)
         VkRect2D scissor = {{0, 0}, {SHADOW_SZ, SHADOW_SZ}};
         vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
         vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+        vkCmdSetDepthBias(cmdbuf, bias_constant, 0.0f, bias_slope);
 
         struct { float pv[16]; float chunk_x; float chunk_y; float chunk_z; float bs; } push;
         memcpy(push.pv, shadow_pv, sizeof push.pv);
@@ -136,9 +139,9 @@ void draw_stuff()
         float dist2sun = TILESW * BS;
         float chunk_size = BS * CHUNKW;
         float shadow_target[3] = {
-                floorf(lerped_pos.x / chunk_size) * chunk_size + chunk_size / 2,
-                100 * BS,
-                floorf(lerped_pos.z / chunk_size) * chunk_size + chunk_size / 2,
+                camplayer.pos.x,
+                camplayer.pos.y,
+                camplayer.pos.z,
         };
 
         // Original tilted sun path (non-equatorial for interesting lighting)
@@ -155,9 +158,11 @@ void draw_stuff()
         // Store shadow PV matrices for rendering
         float shadow_pv_mtrx0[16] = {0};
         float shadow_pv_mtrx1[16] = {0};
+        float shadow_pv_mtrx2[16] = {0};
 
         // compute shadow matrices and render shadow maps
-        if (shadow_mapping) for(int s = 0; s < 2; s++)
+        // CASCADE SIZES: Near=5000, Mid=15000, Far=50000 (tweak these values)
+        if (shadow_mapping) for(int s = 0; s < 3; s++)
         {
                 // Use sun or moon depending on time of day
                 float light_pos[3];
@@ -215,15 +220,22 @@ void draw_stuff()
                 };
 
                 // Orthographic projection (Vulkan depth [0,1])
-                float snear = (s == 0 ? 10.f : 80.f);
+                // Cascade sizes - tweak these values as needed
+                float snear = (s == 0 ? 10.f : s == 1 ? 80.f : 200.f);
                 float sfar = dist2sun * 2;
-                float mag = (s == 0 ? 3000.f : 24000.f);
+                float mag = (s == 0 ? 5000.f : s == 1 ? 50000.f : 500000.f);
                 float ortho_mtrx[] = {
                         1.f/mag, 0,       0,                        0,
                         0,       1.f/mag, 0,                        0,
                         0,       0,       -1.f/(sfar - snear),      0,
                         0,       0,       -snear/(sfar - snear),    1,
                 };
+
+                // Shadow map stabilization: snap translation to texel boundaries
+                // This prevents shadow swimming as the camera moves
+                float texel_size = (2.0f * mag) / SHADOW_SZ;  // world units per texel
+                view_mtrx[12] = floorf(view_mtrx[12] / texel_size) * texel_size;
+                view_mtrx[13] = floorf(view_mtrx[13] / texel_size) * texel_size;
 
                 memcpy(main_ubo.proj, ortho_mtrx, sizeof(ortho_mtrx));
                 memcpy(main_ubo.view, view_mtrx, sizeof(view_mtrx));
@@ -236,8 +248,10 @@ void draw_stuff()
                 // Store for shadow rendering pass
                 if (s == 0)
                         memcpy(shadow_pv_mtrx0, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
-                else
+                else if (s == 1)
                         memcpy(shadow_pv_mtrx1, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                else
+                        memcpy(shadow_pv_mtrx2, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
 
                 // Bias matrix transforms from NDC to texture coordinates
                 // For Vulkan: xy from [-1,1] to [0,1], z already in [0,1]
@@ -251,8 +265,10 @@ void draw_stuff()
                 // Apply bias to get texture sampling matrix
                 if (s == 0)
                         mat4_multiply(main_ubo.shadow_space, bias_mtrx, shadow_pv_mtrx);
-                else
+                else if (s == 1)
                         mat4_multiply(main_ubo.shadow2_space, bias_mtrx, shadow_pv_mtrx);
+                else
+                        mat4_multiply(main_ubo.shadow3_space, bias_mtrx, shadow_pv_mtrx);
 
                 for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
                 {
@@ -681,12 +697,31 @@ void draw_stuff()
                 //glBufferData(GL_ARRAY_BUFFER, VBOLEN_(myx, myz) * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
         }
 
-        // Upload UBO every frame (for day_color, fog_color, etc.)
+        // Upload UBO to per-frame buffer (avoids race condition with GPU)
         {
+                int frame = vk.currentFrame;
+
+                // Update descriptor set to use this frame's UBO buffer
+                VkDescriptorBufferInfo buffer_info = {
+                        .buffer = main_buffer[frame],
+                        .offset = 0,
+                        .range = sizeof main_ubo,
+                };
+                VkWriteDescriptorSet write = {
+                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                        .dstSet = main_descriptor_set,
+                        .dstBinding = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .pBufferInfo = &buffer_info,
+                };
+                vkUpdateDescriptorSets(vk.device, 1, &write, 0, NULL);
+
+                // Upload UBO data
                 void* data;
-                vkMapMemory(vk.device, main_memory, 0, sizeof main_ubo, 0, &data);
+                vkMapMemory(vk.device, main_memory[frame], 0, sizeof main_ubo, 0, &data);
                 memcpy(data, &main_ubo, sizeof main_ubo);
-                vkUnmapMemory(vk.device, main_memory);
+                vkUnmapMemory(vk.device, main_memory[frame]);
         }
 
         VkCommandBuffer cmdbuf = vk.commandBuffers[vk.imageIndex];
@@ -696,9 +731,11 @@ void draw_stuff()
                 // End the auto-started main render pass
                 vkCmdEndRenderPass(cmdbuf);
 
-                // Render shadow passes
-                draw_shadow_pass(cmdbuf, 0, shadow_pv_mtrx0);
-                draw_shadow_pass(cmdbuf, 1, shadow_pv_mtrx1);
+                // Render shadow passes with per-cascade bias
+                // Near cascade needs higher bias due to PCF sampling
+                draw_shadow_pass(cmdbuf, 0, shadow_pv_mtrx0, 6.5f, 6.5f);
+                draw_shadow_pass(cmdbuf, 1, shadow_pv_mtrx1, 1.5f, 1.5f);
+                draw_shadow_pass(cmdbuf, 2, shadow_pv_mtrx2, 1.5f, 1.5f);
 
                 // Restart main render pass
                 VkClearValue clearValues[2] = {

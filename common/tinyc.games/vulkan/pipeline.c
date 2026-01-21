@@ -249,8 +249,8 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 	}
 	if (flags & PIPE_DEPTH_BIAS) {
 		rasterizationStateCreateInfo.depthBiasEnable = VK_TRUE;
-		rasterizationStateCreateInfo.depthBiasConstantFactor = 1.5f;
-		rasterizationStateCreateInfo.depthBiasSlopeFactor = 1.5f;
+		rasterizationStateCreateInfo.depthBiasConstantFactor = 12.5f;
+		rasterizationStateCreateInfo.depthBiasSlopeFactor = 12.5f;
 	}
 	VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo = configureMultisampleStateCreateInfo();
 	VkPipelineColorBlendAttachmentState colorBlendAttachmentState;
@@ -281,11 +281,12 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 
 	VkDynamicState dynamicStates[] = {
 		VK_DYNAMIC_STATE_VIEWPORT,
-		VK_DYNAMIC_STATE_SCISSOR
+		VK_DYNAMIC_STATE_SCISSOR,
+		VK_DYNAMIC_STATE_DEPTH_BIAS
 	};
 	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = 2,
+		.dynamicStateCount = (flags & PIPE_DEPTH_BIAS) ? 3 : 2,
 		.pDynamicStates = dynamicStates,
 	};
 

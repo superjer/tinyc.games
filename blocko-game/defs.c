@@ -195,8 +195,9 @@ VkBufferCreateInfo world_buf_info;
 VkDeviceMemory world_mem[VAOW];
 VkMemoryAllocateInfo world_mem_info;
 size_t world_aligned_sz;
-VkBuffer main_buffer;
-VkDeviceMemory main_memory;
+#define MAX_FRAMES_IN_FLIGHT 4
+VkBuffer main_buffer[MAX_FRAMES_IN_FLIGHT];
+VkDeviceMemory main_memory[MAX_FRAMES_IN_FLIGHT];
 VkDescriptorSetLayout main_descriptor_set_layout;
 VkDescriptorPool descriptor_pool;
 VkDescriptorSet main_descriptor_set;
@@ -208,37 +209,38 @@ VkImageView texture_image_view;
 VkSampler texture_sampler;
 
 // Shadow mapping resources
-VkImage shadow_image, shadow2_image;
-VkDeviceMemory shadow_memory, shadow2_memory;
-VkImageView shadow_image_view, shadow2_image_view;
+VkImage shadow_image, shadow2_image, shadow3_image;
+VkDeviceMemory shadow_memory, shadow2_memory, shadow3_memory;
+VkImageView shadow_image_view, shadow2_image_view, shadow3_image_view;
 VkSampler shadow_sampler;
 VkRenderPass shadow_render_pass;
-VkFramebuffer shadow_framebuffer, shadow2_framebuffer;
+VkFramebuffer shadow_framebuffer, shadow2_framebuffer, shadow3_framebuffer;
 int shadow_pipe;
 
 struct main_ubo {
-    float model[16];      // mat4 - offset 0
-    float view[16];       // mat4 - offset 64
-    float proj[16];       // mat4 - offset 128
+    float model[16];          // mat4 - offset 0
+    float view[16];           // mat4 - offset 64
+    float proj[16];           // mat4 - offset 128
     float shadow_space[16];   // mat4 - offset 192
     float shadow2_space[16];  // mat4 - offset 256
-    float bs;             // float - offset 320
-    float padding1[3];    // Padding to align day_color to 16 bytes
+    float shadow3_space[16];  // mat4 - offset 320
+    float bs;                 // float - offset 384
+    float padding1[3];        // Padding to align day_color to 16 bytes
 
-    float day_color[3];   // vec3 - offset 336
-    float padding2;       // Padding (348-351)
-    float glo_color[3];   // vec3 - offset 352
-    float padding3;       // Padding (364-367)
-    float fog_color[3];   // vec3 - offset 368
-    float fog_lo;         // float - offset 380 (in vec3's padding)
-    float fog_hi;         // float - offset 384
-    float padding4[3];    // Padding to align light_pos to 16 bytes (388-399)
-    float light_pos[3];   // vec3 - offset 400
-    float padding5;       // Padding (412-415)
-    float view_pos[3];    // vec3 - offset 416
-    float sharpness;      // float - offset 428 (in vec3's padding)
-    int shadow_mapping;   // bool (as int) - offset 432
-    float padding6[3];    // Padding to 16-byte boundary (436-447)
+    float day_color[3];   // vec3 - offset 400
+    float padding2;       // Padding
+    float glo_color[3];   // vec3 - offset 416
+    float padding3;       // Padding
+    float fog_color[3];   // vec3 - offset 432
+    float fog_lo;         // float - offset 444 (in vec3's padding)
+    float fog_hi;         // float - offset 448
+    float padding4[3];    // Padding to align light_pos to 16 bytes
+    float light_pos[3];   // vec3 - offset 464
+    float padding5;       // Padding
+    float view_pos[3];    // vec3 - offset 480
+    float sharpness;      // float - offset 492 (in vec3's padding)
+    int shadow_mapping;   // bool (as int) - offset 496
+    float padding6[3];    // Padding to 16-byte boundary
 };
 
 unsigned int vbo[VAOS], vao[VAOS];

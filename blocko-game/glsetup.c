@@ -179,11 +179,17 @@ void createDescriptorSetLayout(VkDescriptorSetLayout* descriptorSetLayout) {
     samplerBinding3.descriptorCount = 1;
     samplerBinding3.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    VkDescriptorSetLayoutBinding bindings[] = {uboLayoutBinding, samplerBinding1, samplerBinding2, samplerBinding3};
+    VkDescriptorSetLayoutBinding samplerBinding4 = {0};
+    samplerBinding4.binding = 4;
+    samplerBinding4.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerBinding4.descriptorCount = 1;
+    samplerBinding4.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding bindings[] = {uboLayoutBinding, samplerBinding1, samplerBinding2, samplerBinding3, samplerBinding4};
 
     VkDescriptorSetLayoutCreateInfo layoutInfo = {};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 4;
+    layoutInfo.bindingCount = 5;
     layoutInfo.pBindings = bindings;
 
     vkCreateDescriptorSetLayout(vk.device, &layoutInfo, NULL, descriptorSetLayout);
@@ -486,9 +492,10 @@ void create_shadow_maps() {
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    // Create both shadow map images
+    // Create all three shadow map images
     vkCreateImage(vk.device, &imageInfo, NULL, &shadow_image);
     vkCreateImage(vk.device, &imageInfo, NULL, &shadow2_image);
+    vkCreateImage(vk.device, &imageInfo, NULL, &shadow3_image);
 
     // Allocate memory for shadow images
     VkMemoryRequirements mem_reqs;
@@ -511,8 +518,10 @@ void create_shadow_maps() {
 
     vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow_memory);
     vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow2_memory);
+    vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow3_memory);
     vkBindImageMemory(vk.device, shadow_image, shadow_memory, 0);
     vkBindImageMemory(vk.device, shadow2_image, shadow2_memory, 0);
+    vkBindImageMemory(vk.device, shadow3_image, shadow3_memory, 0);
 
     // Create image views
     VkImageViewCreateInfo viewInfo = {
@@ -532,6 +541,8 @@ void create_shadow_maps() {
     vkCreateImageView(vk.device, &viewInfo, NULL, &shadow_image_view);
     viewInfo.image = shadow2_image;
     vkCreateImageView(vk.device, &viewInfo, NULL, &shadow2_image_view);
+    viewInfo.image = shadow3_image;
+    vkCreateImageView(vk.device, &viewInfo, NULL, &shadow3_image_view);
 
     // Create shadow sampler with depth comparison
     VkSamplerCreateInfo samplerInfo = {
@@ -576,6 +587,12 @@ void create_shadow_framebuffers() {
         exit(1);
     }
 
+    framebufferInfo.pAttachments = &shadow3_image_view;
+    if (vkCreateFramebuffer(vk.device, &framebufferInfo, NULL, &shadow3_framebuffer) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create shadow3 framebuffer!\n");
+        exit(1);
+    }
+
     fprintf(stderr, "Created shadow framebuffers\n");
 }
 
@@ -583,7 +600,7 @@ void create_descriptor_pool_and_set() {
     // Create descriptor pool
     VkDescriptorPoolSize pool_sizes[] = {
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
     };
     VkDescriptorPoolCreateInfo pool_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -603,8 +620,9 @@ void create_descriptor_pool_and_set() {
     vkAllocateDescriptorSets(vk.device, &set_alloc, &main_descriptor_set);
 
     // Update descriptor set with UBO, texture, and shadow maps
+    // (UBO binding will be updated each frame to use correct per-frame buffer)
     VkDescriptorBufferInfo buffer_info = {
-        .buffer = main_buffer,
+        .buffer = main_buffer[0],
         .offset = 0,
         .range = sizeof(struct main_ubo),
     };
@@ -621,6 +639,11 @@ void create_descriptor_pool_and_set() {
     VkDescriptorImageInfo shadow2_info = {
         .sampler = shadow_sampler,
         .imageView = shadow2_image_view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+    VkDescriptorImageInfo shadow3_info = {
+        .sampler = shadow_sampler,
+        .imageView = shadow3_image_view,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
     VkWriteDescriptorSet writes[] = {
@@ -656,8 +679,16 @@ void create_descriptor_pool_and_set() {
             .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .pImageInfo = &shadow2_info,
         },
+        {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = main_descriptor_set,
+            .dstBinding = 4,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo = &shadow3_info,
+        },
     };
-    vkUpdateDescriptorSets(vk.device, 4, writes, 0, NULL);
+    vkUpdateDescriptorSets(vk.device, 5, writes, 0, NULL);
 }
 
 void allocate_world()
@@ -739,7 +770,9 @@ void glsetup()
 
         allocate_world();
 
-        createUniformBuffer(&main_buffer, &main_memory);
+        // Create per-frame UBOs to avoid race conditions
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+                createUniformBuffer(&main_buffer[i], &main_memory[i]);
 
         //SDL_Init(SDL_INIT_VIDEO);
         //SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
@@ -810,11 +843,12 @@ void glsetup()
         create_shadow_framebuffers();
 
         // Create shadow pipeline with same vertex layout as main pipeline
+        // Use default back-face culling (renders front faces toward light) + depth bias
         shadow_pipe = vulkan_make_pipeline_with_renderpass(
                 "shaders/shadow.vert.spv", "shaders/shadow.geom.spv", "shaders/shadow.frag.spv",
                 1, &mainBindingDesc, 6, mainAttrDescs,
                 NULL, shadow_render_pass,
-                PIPE_FRONT_CULL | PIPE_DEPTH_BIAS);
+                PIPE_DEPTH_BIAS);
 
         create_descriptor_pool_and_set();
         //glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
