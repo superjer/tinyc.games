@@ -17,28 +17,30 @@ layout(location = 3) flat out float alpha;
 layout(location = 4) out vec2 uv;
 layout(location = 5) out vec4 world_pos_out;
 layout(location = 6) out vec4 shadow_pos;
-layout(location = 7) out vec4 shadow2_pos;
 layout(location = 8) flat out vec3 normal;
-layout(location = 9) out vec4 shadow3_pos;
 
 layout(std140, set = 0, binding = 0) uniform UBO {
-    mat4 model;           // offset 0
-    mat4 view;            // offset 64
-    mat4 proj;            // offset 128
-    mat4 shadow_space;    // offset 192
-    mat4 shadow2_space;   // offset 256
-    mat4 shadow3_space;   // offset 320
-    float BS;             // offset 384
+    mat4 model;            // offset 0
+    mat4 view;             // offset 64
+    mat4 proj;             // offset 128
+    mat4 shadow_space;     // offset 192 (near cascade)
+    mat4 shadow2a_space;   // offset 256 (mid cascade A)
+    mat4 shadow2b_space;   // offset 320 (mid cascade B)
+    mat4 shadow3a_space;   // offset 384 (far cascade A)
+    mat4 shadow3b_space;   // offset 448 (far cascade B)
+    float BS;              // offset 512
+    float shadow2_blend;   // offset 516
+    float shadow3_blend;   // offset 520
 
-    vec3 day_color;       // offset 400
-    vec3 glo_color;       // offset 416
-    vec3 fog_color;       // offset 432
-    float fog_lo;         // offset 444
-    float fog_hi;         // offset 448
-    vec3 light_pos;       // offset 464
-    vec3 view_pos;        // offset 480
-    float sharpness;      // offset 492
-    bool shadow_mapping;  // offset 496
+    vec3 day_color;        // offset 528
+    vec3 glo_color;        // offset 544
+    vec3 fog_color;        // offset 560
+    float fog_lo;          // offset 572
+    float fog_hi;          // offset 576
+    vec3 light_pos;        // offset 592
+    vec3 view_pos;         // offset 608
+    float sharpness;       // offset 620
+    bool shadow_mapping;   // offset 624
 } ubo;
 
 layout(push_constant) uniform Push {
@@ -105,25 +107,34 @@ void main(void) {
             break;
     }
 
-    tex = tex_vs[0];
-    alpha = alpha_vs[0];
-    normal = face_normal;
+    float tex_val = tex_vs[0];
+    float alpha_val = alpha_vs[0];
+    vec3 normal_val = face_normal;
 
     vec4 vertex_pos = world_pos_vs[0];
     vec4 offsets[4] = {a, b, c, d};
     vec2 uvs[4] = { vec2(1,0), vec2(0,0), vec2(1,1), vec2(0,1) };
 
     for (int i = 0; i < 4; i++) {
+        // Set flat outputs inside loop to ensure they're set for each vertex
+        // (workaround for potential driver bugs with flat interpolation)
+        tex = tex_val;
+        alpha = alpha_val;
+        normal = normal_val;
+
         vec4 world_pos = vertex_pos + offsets[i];
         gl_Position = push.pv * world_pos;
         illum = (0.1 + illum_vs[0][i]) * sidel;
         glow = (0.1 + glow_vs[0][i]) * sidel;
         uv = uvs[i];
         world_pos_out = world_pos;
-        // Calculate shadow space positions
-        shadow_pos = ubo.shadow_space * world_pos;
-        shadow2_pos = ubo.shadow2_space * world_pos;
-        shadow3_pos = ubo.shadow3_space * world_pos;
+
+        // Calculate shadow space position for near cascade only
+        // Mid/far cascade positions are computed in fragment shader (for A/B blending)
+        // Normal offset bias prevents shadow bleeding at cube edges
+        vec4 shadow_sample_pos = world_pos + vec4(normal_val * 10.0, 0.0);
+        shadow_pos = ubo.shadow_space * shadow_sample_pos;
+
         EmitVertex();
     }
 

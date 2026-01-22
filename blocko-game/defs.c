@@ -200,7 +200,7 @@ VkBuffer main_buffer[MAX_FRAMES_IN_FLIGHT];
 VkDeviceMemory main_memory[MAX_FRAMES_IN_FLIGHT];
 VkDescriptorSetLayout main_descriptor_set_layout;
 VkDescriptorPool descriptor_pool;
-VkDescriptorSet main_descriptor_set;
+VkDescriptorSet main_descriptor_set[MAX_FRAMES_IN_FLIGHT];
 
 // Texture array
 VkImage texture_image;
@@ -209,37 +209,67 @@ VkImageView texture_image_view;
 VkSampler texture_sampler;
 
 // Shadow mapping resources
-VkImage shadow_image, shadow2_image, shadow3_image;
-VkDeviceMemory shadow_memory, shadow2_memory, shadow3_memory;
-VkImageView shadow_image_view, shadow2_image_view, shadow3_image_view;
+// Near cascade (single shadow map, updated every frame)
+VkImage shadow_image;
+VkDeviceMemory shadow_memory;
+VkImageView shadow_image_view;
+VkFramebuffer shadow_framebuffer;
+
+// Mid cascade (A/B shadow maps for temporal blending)
+VkImage shadow2a_image, shadow2b_image;
+VkDeviceMemory shadow2a_memory, shadow2b_memory;
+VkImageView shadow2a_image_view, shadow2b_image_view;
+VkFramebuffer shadow2a_framebuffer, shadow2b_framebuffer;
+
+// Far cascade (A/B shadow maps for temporal blending)
+VkImage shadow3a_image, shadow3b_image;
+VkDeviceMemory shadow3a_memory, shadow3b_memory;
+VkImageView shadow3a_image_view, shadow3b_image_view;
+VkFramebuffer shadow3a_framebuffer, shadow3b_framebuffer;
+
 VkSampler shadow_sampler;
 VkRenderPass shadow_render_pass;
-VkFramebuffer shadow_framebuffer, shadow2_framebuffer, shadow3_framebuffer;
 int shadow_pipe;
 
-struct main_ubo {
-    float model[16];          // mat4 - offset 0
-    float view[16];           // mat4 - offset 64
-    float proj[16];           // mat4 - offset 128
-    float shadow_space[16];   // mat4 - offset 192
-    float shadow2_space[16];  // mat4 - offset 256
-    float shadow3_space[16];  // mat4 - offset 320
-    float bs;                 // float - offset 384
-    float padding1[3];        // Padding to align day_color to 16 bytes
+// Stored matrices for shadow map blending
+float shadow2a_matrix[16], shadow2b_matrix[16];
+float shadow3a_matrix[16], shadow3b_matrix[16];
 
-    float day_color[3];   // vec3 - offset 400
+// Which quantized slot each shadow map was rendered at (-1 = uninitialized)
+int shadow2a_slot = -1, shadow2b_slot = -1;
+int shadow3a_slot = -1, shadow3b_slot = -1;
+
+// Which shadow map to render this frame (0=A, 1=B)
+int shadow2_render_index = 0;
+int shadow3_render_index = 0;
+
+struct main_ubo {
+    float model[16];           // mat4 - offset 0
+    float view[16];            // mat4 - offset 64
+    float proj[16];            // mat4 - offset 128
+    float shadow_space[16];    // mat4 - offset 192 (near cascade)
+    float shadow2a_space[16];  // mat4 - offset 256 (mid cascade A)
+    float shadow2b_space[16];  // mat4 - offset 320 (mid cascade B)
+    float shadow3a_space[16];  // mat4 - offset 384 (far cascade A)
+    float shadow3b_space[16];  // mat4 - offset 448 (far cascade B)
+    float bs;                  // float - offset 512
+    float shadow2_blend;       // float - offset 516 (0=A, 1=B)
+    float shadow3_blend;       // float - offset 520
+    float padding1;            // Padding to align day_color to 16 bytes
+
+    float day_color[3];   // vec3 - offset 528
     float padding2;       // Padding
-    float glo_color[3];   // vec3 - offset 416
+    float glo_color[3];   // vec3 - offset 544
     float padding3;       // Padding
-    float fog_color[3];   // vec3 - offset 432
-    float fog_lo;         // float - offset 444 (in vec3's padding)
-    float fog_hi;         // float - offset 448
+    float fog_color[3];   // vec3 - offset 560
+    float fog_lo;         // float - offset 572
+    float fog_hi;         // float - offset 576
     float padding4[3];    // Padding to align light_pos to 16 bytes
-    float light_pos[3];   // vec3 - offset 464
+    float light_pos[3];   // vec3 - offset 592
     float padding5;       // Padding
-    float view_pos[3];    // vec3 - offset 480
-    float sharpness;      // float - offset 492 (in vec3's padding)
-    int shadow_mapping;   // bool (as int) - offset 496
+    float view_pos[3];    // vec3 - offset 608
+    float sharpness;      // float - offset 620
+    int shadow_mapping;   // bool (as int) - offset 624
     float padding6[3];    // Padding to 16-byte boundary
 };
 

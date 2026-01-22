@@ -62,14 +62,18 @@ void main(void) {
             break;
     }
 
-    tex = tex_vs[0];
-    alpha = alpha_vs[0];
+    float tex_val = tex_vs[0];
+    float alpha_val = alpha_vs[0];
 
     vec4 vertex_pos = world_pos_vs[0];
     vec4 offsets[4] = {a, b, c, d};
     vec2 uvs[4] = { vec2(1,0), vec2(0,0), vec2(1,1), vec2(0,1) };
 
     for (int i = 0; i < 4; i++) {
+        // Set flat outputs inside loop (driver bug workaround)
+        tex = tex_val;
+        alpha = alpha_val;
+
         vec4 world_pos = vertex_pos + offsets[i];
         gl_Position = push.pv * world_pos;
         uv = uvs[i];

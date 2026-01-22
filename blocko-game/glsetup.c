@@ -185,11 +185,23 @@ void createDescriptorSetLayout(VkDescriptorSetLayout* descriptorSetLayout) {
     samplerBinding4.descriptorCount = 1;
     samplerBinding4.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    VkDescriptorSetLayoutBinding bindings[] = {uboLayoutBinding, samplerBinding1, samplerBinding2, samplerBinding3, samplerBinding4};
+    VkDescriptorSetLayoutBinding samplerBinding5 = {0};
+    samplerBinding5.binding = 5;
+    samplerBinding5.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerBinding5.descriptorCount = 1;
+    samplerBinding5.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding samplerBinding6 = {0};
+    samplerBinding6.binding = 6;
+    samplerBinding6.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    samplerBinding6.descriptorCount = 1;
+    samplerBinding6.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkDescriptorSetLayoutBinding bindings[] = {uboLayoutBinding, samplerBinding1, samplerBinding2, samplerBinding3, samplerBinding4, samplerBinding5, samplerBinding6};
 
     VkDescriptorSetLayoutCreateInfo layoutInfo = {};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 5;
+    layoutInfo.bindingCount = 7;
     layoutInfo.pBindings = bindings;
 
     vkCreateDescriptorSetLayout(vk.device, &layoutInfo, NULL, descriptorSetLayout);
@@ -492,10 +504,14 @@ void create_shadow_maps() {
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    // Create all three shadow map images
+    // Create shadow map images:
+    // - Near cascade: single image (updated every frame)
+    // - Mid/Far cascades: A/B images for temporal blending
     vkCreateImage(vk.device, &imageInfo, NULL, &shadow_image);
-    vkCreateImage(vk.device, &imageInfo, NULL, &shadow2_image);
-    vkCreateImage(vk.device, &imageInfo, NULL, &shadow3_image);
+    vkCreateImage(vk.device, &imageInfo, NULL, &shadow2a_image);
+    vkCreateImage(vk.device, &imageInfo, NULL, &shadow2b_image);
+    vkCreateImage(vk.device, &imageInfo, NULL, &shadow3a_image);
+    vkCreateImage(vk.device, &imageInfo, NULL, &shadow3b_image);
 
     // Allocate memory for shadow images
     VkMemoryRequirements mem_reqs;
@@ -517,11 +533,15 @@ void create_shadow_maps() {
     };
 
     vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow_memory);
-    vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow2_memory);
-    vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow3_memory);
+    vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow2a_memory);
+    vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow2b_memory);
+    vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow3a_memory);
+    vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow3b_memory);
     vkBindImageMemory(vk.device, shadow_image, shadow_memory, 0);
-    vkBindImageMemory(vk.device, shadow2_image, shadow2_memory, 0);
-    vkBindImageMemory(vk.device, shadow3_image, shadow3_memory, 0);
+    vkBindImageMemory(vk.device, shadow2a_image, shadow2a_memory, 0);
+    vkBindImageMemory(vk.device, shadow2b_image, shadow2b_memory, 0);
+    vkBindImageMemory(vk.device, shadow3a_image, shadow3a_memory, 0);
+    vkBindImageMemory(vk.device, shadow3b_image, shadow3b_memory, 0);
 
     // Create image views
     VkImageViewCreateInfo viewInfo = {
@@ -539,10 +559,14 @@ void create_shadow_maps() {
 
     viewInfo.image = shadow_image;
     vkCreateImageView(vk.device, &viewInfo, NULL, &shadow_image_view);
-    viewInfo.image = shadow2_image;
-    vkCreateImageView(vk.device, &viewInfo, NULL, &shadow2_image_view);
-    viewInfo.image = shadow3_image;
-    vkCreateImageView(vk.device, &viewInfo, NULL, &shadow3_image_view);
+    viewInfo.image = shadow2a_image;
+    vkCreateImageView(vk.device, &viewInfo, NULL, &shadow2a_image_view);
+    viewInfo.image = shadow2b_image;
+    vkCreateImageView(vk.device, &viewInfo, NULL, &shadow2b_image_view);
+    viewInfo.image = shadow3a_image;
+    vkCreateImageView(vk.device, &viewInfo, NULL, &shadow3a_image_view);
+    viewInfo.image = shadow3b_image;
+    vkCreateImageView(vk.device, &viewInfo, NULL, &shadow3b_image_view);
 
     // Create shadow sampler with depth comparison
     VkSamplerCreateInfo samplerInfo = {
@@ -561,6 +585,60 @@ void create_shadow_maps() {
         .borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE, // Outside shadow = lit
     };
     vkCreateSampler(vk.device, &samplerInfo, NULL, &shadow_sampler);
+
+    // Transition shadow images to SHADER_READ_ONLY_OPTIMAL so they can be sampled
+    // even when shadow mapping is disabled
+    VkCommandBuffer cmd;
+    VkCommandBufferAllocateInfo cmdAllocInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = vk.commandPool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+    vkAllocateCommandBuffers(vk.device, &cmdAllocInfo, &cmd);
+
+    VkCommandBufferBeginInfo beginInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    vkBeginCommandBuffer(cmd, &beginInfo);
+
+    VkImageMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = 0,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+
+    VkImage shadow_images[] = { shadow_image, shadow2a_image, shadow2b_image, shadow3a_image, shadow3b_image };
+    for (int i = 0; i < 5; i++) {
+        barrier.image = shadow_images[i];
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0, 0, NULL, 0, NULL, 1, &barrier);
+    }
+
+    vkEndCommandBuffer(cmd);
+
+    VkSubmitInfo submitInfo = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &cmd,
+    };
+    vkQueueSubmit(vk.drawingQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(vk.drawingQueue);
+    vkFreeCommandBuffers(vk.device, vk.commandPool, 1, &cmd);
 
     fprintf(stderr, "Created shadow maps: %dx%d\n", SHADOW_SZ, SHADOW_SZ);
 }
@@ -581,51 +659,62 @@ void create_shadow_framebuffers() {
         exit(1);
     }
 
-    framebufferInfo.pAttachments = &shadow2_image_view;
-    if (vkCreateFramebuffer(vk.device, &framebufferInfo, NULL, &shadow2_framebuffer) != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create shadow2 framebuffer!\n");
+    framebufferInfo.pAttachments = &shadow2a_image_view;
+    if (vkCreateFramebuffer(vk.device, &framebufferInfo, NULL, &shadow2a_framebuffer) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create shadow2a framebuffer!\n");
         exit(1);
     }
 
-    framebufferInfo.pAttachments = &shadow3_image_view;
-    if (vkCreateFramebuffer(vk.device, &framebufferInfo, NULL, &shadow3_framebuffer) != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create shadow3 framebuffer!\n");
+    framebufferInfo.pAttachments = &shadow2b_image_view;
+    if (vkCreateFramebuffer(vk.device, &framebufferInfo, NULL, &shadow2b_framebuffer) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create shadow2b framebuffer!\n");
         exit(1);
     }
 
-    fprintf(stderr, "Created shadow framebuffers\n");
+    framebufferInfo.pAttachments = &shadow3a_image_view;
+    if (vkCreateFramebuffer(vk.device, &framebufferInfo, NULL, &shadow3a_framebuffer) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create shadow3a framebuffer!\n");
+        exit(1);
+    }
+
+    framebufferInfo.pAttachments = &shadow3b_image_view;
+    if (vkCreateFramebuffer(vk.device, &framebufferInfo, NULL, &shadow3b_framebuffer) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create shadow3b framebuffer!\n");
+        exit(1);
+    }
+
+    fprintf(stderr, "Created shadow framebuffers (5 total: 1 near + 2 mid + 2 far)\n");
 }
 
 void create_descriptor_pool_and_set() {
-    // Create descriptor pool
+    // Create descriptor pool (sized for MAX_FRAMES_IN_FLIGHT descriptor sets)
+    // 6 samplers: texture array + shadow + shadow2a + shadow2b + shadow3a + shadow3b
     VkDescriptorPoolSize pool_sizes[] = {
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, MAX_FRAMES_IN_FLIGHT },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 6 * MAX_FRAMES_IN_FLIGHT },
     };
     VkDescriptorPoolCreateInfo pool_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .maxSets = 1,
+        .maxSets = MAX_FRAMES_IN_FLIGHT,
         .poolSizeCount = 2,
         .pPoolSizes = pool_sizes,
     };
     vkCreateDescriptorPool(vk.device, &pool_info, NULL, &descriptor_pool);
 
-    // Allocate descriptor set
+    // Allocate per-frame descriptor sets
+    VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+        layouts[i] = main_descriptor_set_layout;
+
     VkDescriptorSetAllocateInfo set_alloc = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = descriptor_pool,
-        .descriptorSetCount = 1,
-        .pSetLayouts = &main_descriptor_set_layout,
+        .descriptorSetCount = MAX_FRAMES_IN_FLIGHT,
+        .pSetLayouts = layouts,
     };
-    vkAllocateDescriptorSets(vk.device, &set_alloc, &main_descriptor_set);
+    vkAllocateDescriptorSets(vk.device, &set_alloc, main_descriptor_set);
 
-    // Update descriptor set with UBO, texture, and shadow maps
-    // (UBO binding will be updated each frame to use correct per-frame buffer)
-    VkDescriptorBufferInfo buffer_info = {
-        .buffer = main_buffer[0],
-        .offset = 0,
-        .range = sizeof(struct main_ubo),
-    };
+    // Update each per-frame descriptor set with its UBO, plus shared textures and shadow maps
     VkDescriptorImageInfo image_info = {
         .sampler = texture_sampler,
         .imageView = texture_image_view,
@@ -636,59 +725,93 @@ void create_descriptor_pool_and_set() {
         .imageView = shadow_image_view,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
-    VkDescriptorImageInfo shadow2_info = {
+    VkDescriptorImageInfo shadow2a_info = {
         .sampler = shadow_sampler,
-        .imageView = shadow2_image_view,
+        .imageView = shadow2a_image_view,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
-    VkDescriptorImageInfo shadow3_info = {
+    VkDescriptorImageInfo shadow2b_info = {
         .sampler = shadow_sampler,
-        .imageView = shadow3_image_view,
+        .imageView = shadow2b_image_view,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
-    VkWriteDescriptorSet writes[] = {
-        {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = main_descriptor_set,
-            .dstBinding = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pBufferInfo = &buffer_info,
-        },
-        {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = main_descriptor_set,
-            .dstBinding = 1,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &image_info,
-        },
-        {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = main_descriptor_set,
-            .dstBinding = 2,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &shadow_info,
-        },
-        {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = main_descriptor_set,
-            .dstBinding = 3,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &shadow2_info,
-        },
-        {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = main_descriptor_set,
-            .dstBinding = 4,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &shadow3_info,
-        },
+    VkDescriptorImageInfo shadow3a_info = {
+        .sampler = shadow_sampler,
+        .imageView = shadow3a_image_view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
-    vkUpdateDescriptorSets(vk.device, 5, writes, 0, NULL);
+    VkDescriptorImageInfo shadow3b_info = {
+        .sampler = shadow_sampler,
+        .imageView = shadow3b_image_view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkDescriptorBufferInfo buffer_info = {
+            .buffer = main_buffer[i],
+            .offset = 0,
+            .range = sizeof(struct main_ubo),
+        };
+        VkWriteDescriptorSet writes[] = {
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = main_descriptor_set[i],
+                .dstBinding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pBufferInfo = &buffer_info,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = main_descriptor_set[i],
+                .dstBinding = 1,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &image_info,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = main_descriptor_set[i],
+                .dstBinding = 2,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &shadow_info,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = main_descriptor_set[i],
+                .dstBinding = 3,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &shadow2a_info,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = main_descriptor_set[i],
+                .dstBinding = 4,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &shadow2b_info,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = main_descriptor_set[i],
+                .dstBinding = 5,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &shadow3a_info,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = main_descriptor_set[i],
+                .dstBinding = 6,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &shadow3b_info,
+            },
+        };
+        vkUpdateDescriptorSets(vk.device, 7, writes, 0, NULL);
+    }
 }
 
 void allocate_world()
@@ -715,10 +838,16 @@ void allocate_world()
         );
 
         size_t mem_use = 0;
+        int alloc_failures = 0;
         for (int j = 0; j < VAOW; j++)
         {
                 mem_use += world_mem_info.allocationSize;
-                vkAllocateMemory(vk.device, &world_mem_info, NULL, &world_mem[j]);
+                VkResult result = vkAllocateMemory(vk.device, &world_mem_info, NULL, &world_mem[j]);
+                if (result != VK_SUCCESS) {
+                        fprintf(stderr, "ERROR: vkAllocateMemory failed for world_mem[%d]: %d\n", j, result);
+                        alloc_failures++;
+                        continue;
+                }
                 for (int k = 0; k < VAOD; k++)
                 {
                         int buffer_idx = j * VAOD + k;
@@ -728,13 +857,27 @@ void allocate_world()
                 }
         }
 
-        fprintf(stderr, "World VRAM usage: %luMB", mem_use / 1024 / 1024);
+        fprintf(stderr, "World VRAM usage: %luMB (allocation size: %luMB x %d)\n",
+                mem_use / 1024 / 1024,
+                world_mem_info.allocationSize / 1024 / 1024,
+                VAOW);
+        if (alloc_failures > 0) {
+                fprintf(stderr, "WARNING: %d memory allocations failed! Try reducing VAOW/VAOD in defs.c\n", alloc_failures);
+        }
 }
 
 //initial setup to get the window and rendering going
 void glsetup()
 {
         vulkan_startup();
+
+        // Ensure swapchain image count doesn't exceed our descriptor set array size
+        if (vk.maxFrames > MAX_FRAMES_IN_FLIGHT) {
+                fprintf(stderr, "ERROR: vk.maxFrames (%u) > MAX_FRAMES_IN_FLIGHT (%d). Increase MAX_FRAMES_IN_FLIGHT.\n",
+                        vk.maxFrames, MAX_FRAMES_IN_FLIGHT);
+                exit(1);
+        }
+        fprintf(stderr, "Vulkan: maxFrames=%u, swapchainImageCount=%u\n", vk.maxFrames, vk.swapchainImageCount);
 
         triangle_pipe = vulkan_make_pipeline("shaders/triangle.vert.spv", "shaders/triangle.geom.spv", "shaders/triangle.frag.spv",
                                         0, NULL, 0, NULL);

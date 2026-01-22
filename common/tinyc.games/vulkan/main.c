@@ -107,6 +107,18 @@ int vulkan_startup()
 
         vk.device = createDevice(vk.bestPhysicalDevice, vk.bestGraphicsQueueFamilyindex, vk.queueFamilyProperties);
 
+        // Print GPU info for debugging
+        VkPhysicalDeviceProperties deviceProps;
+        vkGetPhysicalDeviceProperties(*vk.bestPhysicalDevice, &deviceProps);
+        fprintf(stderr, "Vulkan GPU: %s (driver %u.%u.%u)\n", deviceProps.deviceName,
+                VK_VERSION_MAJOR(deviceProps.driverVersion),
+                VK_VERSION_MINOR(deviceProps.driverVersion),
+                VK_VERSION_PATCH(deviceProps.driverVersion));
+        fprintf(stderr, "Queue family %u: %u queues, mode=%s\n",
+                vk.bestGraphicsQueueFamilyindex,
+                vk.queueFamilyProperties[vk.bestGraphicsQueueFamilyindex].queueCount,
+                vk.graphicsQueueMode == 0 ? "SINGLE_QUEUE" : "SEPARATE_QUEUES");
+
         vk.drawingQueue = getDrawingQueue(&vk.device, vk.bestGraphicsQueueFamilyindex);
         vk.presentingQueue = getPresentingQueue(&vk.device, vk.bestGraphicsQueueFamilyindex, vk.graphicsQueueMode);
         deleteQueueFamilyProperties(&vk.queueFamilyProperties);
@@ -123,6 +135,10 @@ int vulkan_startup()
 
         vk.bestSurfaceFormat = getBestSurfaceFormat(&vk.surface, vk.bestPhysicalDevice);
         vk.bestPresentMode = getBestPresentMode(&vk.surface, vk.bestPhysicalDevice);
+        fprintf(stderr, "Present mode: %s\n",
+                vk.bestPresentMode == VK_PRESENT_MODE_MAILBOX_KHR ? "MAILBOX" :
+                vk.bestPresentMode == VK_PRESENT_MODE_FIFO_KHR ? "FIFO" :
+                vk.bestPresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR ? "IMMEDIATE" : "OTHER");
         vk.imageArrayLayers = 1;
 
         vk.renderPass = createRenderPass(&vk.device, &vk.bestSurfaceFormat);

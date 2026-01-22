@@ -16,7 +16,7 @@ message(STATUS "fetching SDL3 from github")
 FetchContent_Declare(
   SDL3
   GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-  GIT_TAG release-3.2.4
+  GIT_TAG release-3.2.8
 )
 FetchContent_MakeAvailable(SDL3)
 
@@ -60,12 +60,6 @@ add_custom_target(shaders
 	COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders)
 
 set(SHADER_FILES
-  blocko-game/shaders/triangle.vert
-  blocko-game/shaders/triangle.geom
-  blocko-game/shaders/triangle.frag
-  blocko-game/shaders/main.vert
-  blocko-game/shaders/main.frag
-  blocko-game/shaders/main.geom
   blocko-game/shaders/main_simple.vert
   blocko-game/shaders/main_simple.geom
   blocko-game/shaders/main_simple.frag
@@ -90,6 +84,7 @@ foreach(SHADER ${SHADER_FILES})
     COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/${SHADER} -o ${COMPILED_SHADER}
     COMMENT "Compiling shader: ${SHADER}"
   )
+  add_dependencies(${SHADER_NAME}.spv shaders)
   list(APPEND COMPILED_SHADERS ${SHADER_NAME}.spv)
 endforeach()
 
