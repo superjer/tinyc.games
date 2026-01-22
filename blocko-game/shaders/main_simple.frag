@@ -9,34 +9,38 @@ layout(location = 3) flat in float alpha;
 layout(location = 4) in vec2 uv;
 layout(location = 5) in vec4 world_pos;
 layout(location = 6) in vec4 shadow_pos;
-layout(location = 7) in vec4 shadow2_pos;
 layout(location = 8) flat in vec3 normal;
-layout(location = 9) in vec4 shadow3_pos;
 
 layout(std140, set = 0, binding = 0) uniform UBO {
-    mat4 model;           // offset 0
-    mat4 view;            // offset 64
-    mat4 proj;            // offset 128
-    mat4 shadow_space;    // offset 192
-    mat4 shadow2_space;   // offset 256
-    mat4 shadow3_space;   // offset 320
-    float BS;             // offset 384
+    mat4 model;            // offset 0
+    mat4 view;             // offset 64
+    mat4 proj;             // offset 128
+    mat4 shadow_space;     // offset 192 (near cascade)
+    mat4 shadow2a_space;   // offset 256 (mid cascade A)
+    mat4 shadow2b_space;   // offset 320 (mid cascade B)
+    mat4 shadow3a_space;   // offset 384 (far cascade A)
+    mat4 shadow3b_space;   // offset 448 (far cascade B)
+    float BS;              // offset 512
+    float shadow2_blend;   // offset 516 (0=A, 1=B)
+    float shadow3_blend;   // offset 520
 
-    vec3 day_color;       // offset 400
-    vec3 glo_color;       // offset 416
-    vec3 fog_color;       // offset 432
-    float fog_lo;         // offset 444
-    float fog_hi;         // offset 448
-    vec3 light_pos;       // offset 464
-    vec3 view_pos;        // offset 480
-    float sharpness;      // offset 492
-    bool shadow_mapping;  // offset 496
+    vec3 day_color;        // offset 528
+    vec3 glo_color;        // offset 544
+    vec3 fog_color;        // offset 560
+    float fog_lo;          // offset 572
+    float fog_hi;          // offset 576
+    vec3 light_pos;        // offset 592
+    vec3 view_pos;         // offset 608
+    float sharpness;       // offset 620
+    bool shadow_mapping;   // offset 624
 } ubo;
 
 layout(set = 0, binding = 1) uniform sampler2DArray tarray;
 layout(set = 0, binding = 2) uniform sampler2DShadow shadow_map;
-layout(set = 0, binding = 3) uniform sampler2DShadow shadow2_map;
-layout(set = 0, binding = 4) uniform sampler2DShadow shadow3_map;
+layout(set = 0, binding = 3) uniform sampler2DShadow shadow2a_map;
+layout(set = 0, binding = 4) uniform sampler2DShadow shadow2b_map;
+layout(set = 0, binding = 5) uniform sampler2DShadow shadow3a_map;
+layout(set = 0, binding = 6) uniform sampler2DShadow shadow3b_map;
 
 // Poisson disk samples for soft shadows (16 samples, well-distributed)
 const vec2 poissonDisk[16] = vec2[](
@@ -93,26 +97,35 @@ void main(void) {
         // Screen-space random rotation - no spatial coherence, should produce noise instead of moire
         float rotation = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.28318;
 
+        // Compute shadow positions for mid/far cascades (A and B)
+        // Apply normal offset bias to prevent shadow bleeding at cube edges
+        vec4 shadow_sample_pos = world_pos + vec4(normal * 10.0, 0.0);
+        vec4 shadow2a_pos = ubo.shadow2a_space * shadow_sample_pos;
+        vec4 shadow2b_pos = ubo.shadow2b_space * shadow_sample_pos;
+        vec4 shadow3a_pos = ubo.shadow3a_space * shadow_sample_pos;
+        vec4 shadow3b_pos = ubo.shadow3b_space * shadow_sample_pos;
+
         float unshadow;
         if (shadow_pos.x > 0.001 && shadow_pos.x < 0.999 && shadow_pos.y > 0.001 && shadow_pos.y < 0.999) {
-            // Near cascade - softest shadows
+            // Near cascade - softest shadows, single shadow map
             unshadow = sampleShadowPCF(shadow_map, shadow_pos.xyz, 0.0015, rotation);
-            //unshadow = textureProj(shadow_map, vec4(shadow_pos.xy, shadow_pos.z, 1.0));
-        } else if (shadow2_pos.x > 0.001 && shadow2_pos.x < 0.999 && shadow2_pos.y > 0.001 && shadow2_pos.y < 0.999) {
-            // Mid cascade
-            //unshadow = sampleShadowPCF(shadow2_map, shadow2_pos.xyz, 0.0008, rotation);
-            unshadow = textureProj(shadow2_map, vec4(shadow2_pos.xy, shadow2_pos.z, 1.0));
+        } else if (shadow2a_pos.x > 0.001 && shadow2a_pos.x < 0.999 && shadow2a_pos.y > 0.001 && shadow2a_pos.y < 0.999) {
+            // Mid cascade - blend between A and B shadow maps
+            float shadow_a = textureProj(shadow2a_map, vec4(shadow2a_pos.xy, shadow2a_pos.z, 1.0));
+            float shadow_b = textureProj(shadow2b_map, vec4(shadow2b_pos.xy, shadow2b_pos.z, 1.0));
+            unshadow = mix(shadow_a, shadow_b, ubo.shadow2_blend);
         } else {
-            // Far cascade
-            //unshadow = sampleShadowPCF(shadow3_map, shadow3_pos.xyz, 0.0004, rotation);
-            unshadow = textureProj(shadow3_map, vec4(shadow3_pos.xy, shadow3_pos.z, 1.0));
-        }
+            // Far cascade - blend between A and B shadow maps
+            float shadow_a = textureProj(shadow3a_map, vec4(shadow3a_pos.xy, shadow3a_pos.z, 1.0));
+            float shadow_b = textureProj(shadow3b_map, vec4(shadow3b_pos.xy, shadow3b_pos.z, 1.0));
+            unshadow = mix(shadow_a, shadow_b, ubo.shadow3_blend);
 
-        // Fade out shadow at edges of far cascade
-        if (shadow3_pos.x >= 0.0 && shadow3_pos.x <= 0.1) { unshadow = max(unshadow, 1.0 - (shadow3_pos.x * 10.0)); }
-        if (shadow3_pos.x >= 0.9 && shadow3_pos.x <= 1.0) { unshadow = max(unshadow, (shadow3_pos.x - 0.9) * 10.0); }
-        if (shadow3_pos.y >= 0.0 && shadow3_pos.y <= 0.1) { unshadow = max(unshadow, 1.0 - (shadow3_pos.y * 10.0)); }
-        if (shadow3_pos.y >= 0.9 && shadow3_pos.y <= 1.0) { unshadow = max(unshadow, (shadow3_pos.y - 0.9) * 10.0); }
+            // Fade out shadow at edges of far cascade
+            if (shadow3a_pos.x >= 0.0 && shadow3a_pos.x <= 0.1) { unshadow = max(unshadow, 1.0 - (shadow3a_pos.x * 10.0)); }
+            if (shadow3a_pos.x >= 0.9 && shadow3a_pos.x <= 1.0) { unshadow = max(unshadow, (shadow3a_pos.x - 0.9) * 10.0); }
+            if (shadow3a_pos.y >= 0.0 && shadow3a_pos.y <= 0.1) { unshadow = max(unshadow, 1.0 - (shadow3a_pos.y * 10.0)); }
+            if (shadow3a_pos.y >= 0.9 && shadow3a_pos.y <= 1.0) { unshadow = max(unshadow, (shadow3a_pos.y - 0.9) * 10.0); }
+        }
 
         // Combine shadow with lighting
         float s0 = 0.6 + 0.4 * ubo.sharpness;

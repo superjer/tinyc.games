@@ -51,12 +51,10 @@ int chunk_in_range(int chunk_x, int chunk_z)
         return dist_sq < draw_dist_sq;
 }
 
-// Draw shadow pass for one cascade
+// Draw shadow pass to a specific framebuffer
 // bias_constant and bias_slope are per-cascade depth bias values
-void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade, float *shadow_pv, float bias_constant, float bias_slope)
+void draw_shadow_pass(VkCommandBuffer cmdbuf, VkFramebuffer fb, float *shadow_pv, float bias_constant, float bias_slope)
 {
-        VkFramebuffer fb = (cascade == 0) ? shadow_framebuffer :
-                           (cascade == 1) ? shadow2_framebuffer : shadow3_framebuffer;
 
         VkClearValue clearValue = {.depthStencil = {1.0f, 0}};
         VkRenderPassBeginInfo rpInfo = {
@@ -103,21 +101,6 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade, float *shadow_pv, flo
         vkCmdEndRenderPass(cmdbuf);
 }
 
-// prevent shaking shadows by quantizing sun or moon pitch
-float quantize(float p)
-{
-        float quantizer;
-        float qbracket = sinf(p);
-
-        if      (qbracket > 0.8f) quantizer = 0.001f;
-        else if (qbracket > 0.6f) quantizer = 0.0005f;
-        else if (qbracket > 0.4f) quantizer = 0.00025f;
-        else if (qbracket > 0.2f) quantizer = 0.000125f;
-        else                      quantizer = 0.0000625f;
-
-        return roundf(p / quantizer) * quantizer;
-}
-
 //draw everything in the game on the screen
 void draw_stuff()
 {
@@ -156,25 +139,94 @@ void draw_stuff()
         moon_pos.z = shadow_target[2] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(moon_pitch) * cosf(sun_roll));
 
         // Store shadow PV matrices for rendering
-        float shadow_pv_mtrx0[16] = {0};
-        float shadow_pv_mtrx1[16] = {0};
-        float shadow_pv_mtrx2[16] = {0};
+        float shadow_pv_mtrx0[16] = {0};  // Near cascade (rendered every frame)
+        // Mid/far cascades use shadow2a/b_matrix and shadow3a/b_matrix from defs.c
+
+        // Quantization step for mid/far cascades (radians)
+        const float MID_QUANT_STEP = 0.002f;
+        const float FAR_QUANT_STEP = 0.002f;
+
+        // Determine effective light pitch (always positive angle for slot calculation)
+        float light_pitch = sun_pitch;
+        if (light_pitch < 0) light_pitch += TAU;
+
+        // Compute current slots for mid/far cascades
+        int mid_slot = (int)floorf(light_pitch / MID_QUANT_STEP);
+        int far_slot = (int)floorf(light_pitch / FAR_QUANT_STEP);
+
+        // Alternating A/B shadow maps based on slot parity:
+        // - Even slot: A=slot (lo), B=slot+1 (hi), blend 0→1
+        // - Odd slot:  B=slot (lo), A=slot+1 (hi), blend 1→0
+        // This ensures when crossing a boundary, the shadow map that was "hi" becomes "lo"
+        // without needing to copy matrices.
+
+        int mid_slot_is_even = (mid_slot % 2) == 0;
+        int far_slot_is_even = (far_slot % 2) == 0;
+
+        // Determine which slot each shadow map should be at
+        int mid_a_slot = mid_slot_is_even ? mid_slot : mid_slot + 1;  // A = even slots
+        int mid_b_slot = mid_slot_is_even ? mid_slot + 1 : mid_slot;  // B = odd slots
+        int far_a_slot = far_slot_is_even ? far_slot : far_slot + 1;
+        int far_b_slot = far_slot_is_even ? far_slot + 1 : far_slot;
+
+        // Blend factor: position within current slot (0→1)
+        float mid_blend_raw = (light_pitch - mid_slot * MID_QUANT_STEP) / MID_QUANT_STEP;
+        float far_blend_raw = (light_pitch - far_slot * FAR_QUANT_STEP) / FAR_QUANT_STEP;
+
+        // When slot is even: blend from A(0) to B(1), so use raw blend
+        // When slot is odd:  blend from B(0) to A(1), so use 1-raw blend
+        main_ubo.shadow2_blend = mid_slot_is_even ? mid_blend_raw : (1.0f - mid_blend_raw);
+        main_ubo.shadow3_blend = far_slot_is_even ? far_blend_raw : (1.0f - far_blend_raw);
+
+        // Static frame counter for alternating A/B renders
+        static int shadow_frame = 0;
+        shadow_frame++;
+
+        // Alternate which shadow map to render each frame
+        shadow2_render_index = (shadow_frame % 2);  // 0=A, 1=B
+        shadow3_render_index = ((shadow_frame + 1) % 2);  // Offset so not both on same frame
+
+        // Track which slot each shadow map needs to be rendered at
+        // (these are used when rendering to know what angle to use)
+        shadow2a_slot = mid_a_slot;
+        shadow2b_slot = mid_b_slot;
+        shadow3a_slot = far_a_slot;
+        shadow3b_slot = far_b_slot;
+
+        // Helper to compute light position from pitch
+        #define COMPUTE_LIGHT_POS(pitch, lp) do { \
+                lp[0] = shadow_target[0] + dist2sun * (cosf(pitch) * cosf(sun_yaw)); \
+                lp[1] = shadow_target[1] + dist2sun * (cosf(pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(pitch) * sinf(sun_roll)); \
+                lp[2] = shadow_target[2] + dist2sun * (cosf(pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(pitch) * cosf(sun_roll)); \
+        } while(0)
 
         // compute shadow matrices and render shadow maps
-        // CASCADE SIZES: Near=5000, Mid=15000, Far=50000 (tweak these values)
+        // CASCADE SIZES: Near=5000, Mid=50000, Far=500000
         if (shadow_mapping) for(int s = 0; s < 3; s++)
         {
-                // Use sun or moon depending on time of day
                 float light_pos[3];
-                if (sun_pitch < PI) {
-                        light_pos[0] = sun_pos.x;
-                        light_pos[1] = sun_pos.y;
-                        light_pos[2] = sun_pos.z;
+                float render_pitch;
+
+                if (s == 0) {
+                        // Near cascade: use current sun pitch
+                        render_pitch = sun_pitch;
+                } else if (s == 1) {
+                        // Mid cascade: render at the slot assigned to A or B
+                        if (shadow2_render_index == 0) {
+                                render_pitch = shadow2a_slot * MID_QUANT_STEP;
+                        } else {
+                                render_pitch = shadow2b_slot * MID_QUANT_STEP;
+                        }
                 } else {
-                        light_pos[0] = moon_pos.x;
-                        light_pos[1] = moon_pos.y;
-                        light_pos[2] = moon_pos.z;
+                        // Far cascade: render at the slot assigned to A or B
+                        if (shadow3_render_index == 0) {
+                                render_pitch = shadow3a_slot * FAR_QUANT_STEP;
+                        } else {
+                                render_pitch = shadow3b_slot * FAR_QUANT_STEP;
+                        }
                 }
+
+                COMPUTE_LIGHT_POS(render_pitch, light_pos);
 
                 // Build view matrix: look from light toward target
                 // Forward = normalize(target - light_pos)
@@ -224,18 +276,13 @@ void draw_stuff()
                 float snear = (s == 0 ? 10.f : s == 1 ? 80.f : 200.f);
                 float sfar = dist2sun * 2;
                 float mag = (s == 0 ? 5000.f : s == 1 ? 50000.f : 500000.f);
+
                 float ortho_mtrx[] = {
                         1.f/mag, 0,       0,                        0,
                         0,       1.f/mag, 0,                        0,
                         0,       0,       -1.f/(sfar - snear),      0,
                         0,       0,       -snear/(sfar - snear),    1,
                 };
-
-                // Shadow map stabilization: snap translation to texel boundaries
-                // This prevents shadow swimming as the camera moves
-                float texel_size = (2.0f * mag) / SHADOW_SZ;  // world units per texel
-                view_mtrx[12] = floorf(view_mtrx[12] / texel_size) * texel_size;
-                view_mtrx[13] = floorf(view_mtrx[13] / texel_size) * texel_size;
 
                 memcpy(main_ubo.proj, ortho_mtrx, sizeof(ortho_mtrx));
                 memcpy(main_ubo.view, view_mtrx, sizeof(view_mtrx));
@@ -244,14 +291,6 @@ void draw_stuff()
                 // Compute shadow projection*view matrix (used for both rendering and sampling)
                 float shadow_pv_mtrx[16];
                 mat4_multiply(shadow_pv_mtrx, ortho_mtrx, view_mtrx);
-
-                // Store for shadow rendering pass
-                if (s == 0)
-                        memcpy(shadow_pv_mtrx0, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
-                else if (s == 1)
-                        memcpy(shadow_pv_mtrx1, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
-                else
-                        memcpy(shadow_pv_mtrx2, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
 
                 // Bias matrix transforms from NDC to texture coordinates
                 // For Vulkan: xy from [-1,1] to [0,1], z already in [0,1]
@@ -262,13 +301,31 @@ void draw_stuff()
                         0.5f, 0.5f, 0, 1,      // column 3 (translation)
                 };
 
-                // Apply bias to get texture sampling matrix
-                if (s == 0)
-                        mat4_multiply(main_ubo.shadow_space, bias_mtrx, shadow_pv_mtrx);
-                else if (s == 1)
-                        mat4_multiply(main_ubo.shadow2_space, bias_mtrx, shadow_pv_mtrx);
-                else
-                        mat4_multiply(main_ubo.shadow3_space, bias_mtrx, shadow_pv_mtrx);
+                float biased_shadow_mtrx[16];
+                mat4_multiply(biased_shadow_mtrx, bias_mtrx, shadow_pv_mtrx);
+
+                // Store matrices
+                if (s == 0) {
+                        // Near cascade: render every frame
+                        memcpy(shadow_pv_mtrx0, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        memcpy(main_ubo.shadow_space, biased_shadow_mtrx, sizeof biased_shadow_mtrx);
+                } else if (s == 1) {
+                        // Mid cascade: store in A or B based on which we're rendering
+                        if (shadow2_render_index == 0)
+                                memcpy(shadow2a_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        else
+                                memcpy(shadow2b_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        mat4_multiply(main_ubo.shadow2a_space, bias_mtrx, shadow2a_matrix);
+                        mat4_multiply(main_ubo.shadow2b_space, bias_mtrx, shadow2b_matrix);
+                } else {
+                        // Far cascade: store in A or B based on which we're rendering
+                        if (shadow3_render_index == 0)
+                                memcpy(shadow3a_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        else
+                                memcpy(shadow3b_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        mat4_multiply(main_ubo.shadow3a_space, bias_mtrx, shadow3a_matrix);
+                        mat4_multiply(main_ubo.shadow3b_space, bias_mtrx, shadow3b_matrix);
+                }
 
                 for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
                 {
@@ -717,10 +774,22 @@ void draw_stuff()
                 vkCmdEndRenderPass(cmdbuf);
 
                 // Render shadow passes with per-cascade bias
-                // Near cascade needs higher bias due to PCF sampling
-                draw_shadow_pass(cmdbuf, 0, shadow_pv_mtrx0, 1.5f, 1.5f);
-                draw_shadow_pass(cmdbuf, 1, shadow_pv_mtrx1, 0.5f, 0.5f);
-                draw_shadow_pass(cmdbuf, 2, shadow_pv_mtrx2, 0.5f, 0.5f);
+                // Near cascade: rendered every frame
+                draw_shadow_pass(cmdbuf, shadow_framebuffer, shadow_pv_mtrx0, 1.5f, 1.5f);
+
+                // Mid cascade: render to A or B based on which needs updating
+                if (shadow2_render_index >= 0) {
+                        VkFramebuffer mid_fb = (shadow2_render_index == 0) ? shadow2a_framebuffer : shadow2b_framebuffer;
+                        float *mid_pv = (shadow2_render_index == 0) ? shadow2a_matrix : shadow2b_matrix;
+                        draw_shadow_pass(cmdbuf, mid_fb, mid_pv, 0.5f, 0.5f);
+                }
+
+                // Far cascade: render to A or B based on which needs updating
+                if (shadow3_render_index >= 0) {
+                        VkFramebuffer far_fb = (shadow3_render_index == 0) ? shadow3a_framebuffer : shadow3b_framebuffer;
+                        float *far_pv = (shadow3_render_index == 0) ? shadow3a_matrix : shadow3b_matrix;
+                        draw_shadow_pass(cmdbuf, far_fb, far_pv, 0.5f, 0.5f);
+                }
 
                 // Restart main render pass
                 VkClearValue clearValues[2] = {
