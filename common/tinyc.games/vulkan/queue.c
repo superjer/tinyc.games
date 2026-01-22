@@ -38,11 +38,14 @@ uint32_t getBestGraphicsQueueFamilyIndex(VkQueueFamilyProperties *pQueueFamilyPr
 }
 
 drawAndPresentQueues getGraphicsQueueMode(VkQueueFamilyProperties *pQueueFamilyProperties, uint32_t graphicsQueueFamilyIndex){
-	if (pQueueFamilyProperties[graphicsQueueFamilyIndex].queueCount == 1){
-		return SINGLE_QUEUE;
-	}else{
-		return SEPARATE_QUEUES;
-	}
+	// Force single queue mode - works around semaphore sync issues on some NVIDIA drivers
+	// when using separate queues for drawing and presenting
+	return SINGLE_QUEUE;
+	// if (pQueueFamilyProperties[graphicsQueueFamilyIndex].queueCount == 1){
+	// 	return SINGLE_QUEUE;
+	// }else{
+	// 	return SEPARATE_QUEUES;
+	// }
 }
 
 VkQueue getDrawingQueue(VkDevice *pDevice, uint32_t graphicsQueueFamilyIndex){

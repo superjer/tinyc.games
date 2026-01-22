@@ -2,7 +2,7 @@
 
 VkDevice createDevice(VkPhysicalDevice *pPhysicalDevice, uint32_t queueFamilyIndex, VkQueueFamilyProperties *pQueueFamilyProperties){
         float priorities[] = {1.0, 1.0};
-        uint32_t queueCount = (pQueueFamilyProperties[queueFamilyIndex].queueCount == 2 ? 2 : 1);
+        uint32_t queueCount = (pQueueFamilyProperties[queueFamilyIndex].queueCount >= 2 ? 2 : 1);
 
         VkDeviceQueueCreateInfo deviceQueueCreateInfo = {
                 VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,

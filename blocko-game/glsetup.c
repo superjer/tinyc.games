@@ -562,6 +562,60 @@ void create_shadow_maps() {
     };
     vkCreateSampler(vk.device, &samplerInfo, NULL, &shadow_sampler);
 
+    // Transition shadow images to SHADER_READ_ONLY_OPTIMAL so they can be sampled
+    // even when shadow mapping is disabled
+    VkCommandBuffer cmd;
+    VkCommandBufferAllocateInfo cmdAllocInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = vk.commandPool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+    vkAllocateCommandBuffers(vk.device, &cmdAllocInfo, &cmd);
+
+    VkCommandBufferBeginInfo beginInfo = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    vkBeginCommandBuffer(cmd, &beginInfo);
+
+    VkImageMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = 0,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+
+    VkImage shadow_images[] = { shadow_image, shadow2_image, shadow3_image };
+    for (int i = 0; i < 3; i++) {
+        barrier.image = shadow_images[i];
+        vkCmdPipelineBarrier(cmd,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0, 0, NULL, 0, NULL, 1, &barrier);
+    }
+
+    vkEndCommandBuffer(cmd);
+
+    VkSubmitInfo submitInfo = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &cmd,
+    };
+    vkQueueSubmit(vk.drawingQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(vk.drawingQueue);
+    vkFreeCommandBuffers(vk.device, vk.commandPool, 1, &cmd);
+
     fprintf(stderr, "Created shadow maps: %dx%d\n", SHADOW_SZ, SHADOW_SZ);
 }
 
@@ -597,35 +651,33 @@ void create_shadow_framebuffers() {
 }
 
 void create_descriptor_pool_and_set() {
-    // Create descriptor pool
+    // Create descriptor pool (sized for MAX_FRAMES_IN_FLIGHT descriptor sets)
     VkDescriptorPoolSize pool_sizes[] = {
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, MAX_FRAMES_IN_FLIGHT },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 * MAX_FRAMES_IN_FLIGHT },
     };
     VkDescriptorPoolCreateInfo pool_info = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .maxSets = 1,
+        .maxSets = MAX_FRAMES_IN_FLIGHT,
         .poolSizeCount = 2,
         .pPoolSizes = pool_sizes,
     };
     vkCreateDescriptorPool(vk.device, &pool_info, NULL, &descriptor_pool);
 
-    // Allocate descriptor set
+    // Allocate per-frame descriptor sets
+    VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+        layouts[i] = main_descriptor_set_layout;
+
     VkDescriptorSetAllocateInfo set_alloc = {
         .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
         .descriptorPool = descriptor_pool,
-        .descriptorSetCount = 1,
-        .pSetLayouts = &main_descriptor_set_layout,
+        .descriptorSetCount = MAX_FRAMES_IN_FLIGHT,
+        .pSetLayouts = layouts,
     };
-    vkAllocateDescriptorSets(vk.device, &set_alloc, &main_descriptor_set);
+    vkAllocateDescriptorSets(vk.device, &set_alloc, main_descriptor_set);
 
-    // Update descriptor set with UBO, texture, and shadow maps
-    // (UBO binding will be updated each frame to use correct per-frame buffer)
-    VkDescriptorBufferInfo buffer_info = {
-        .buffer = main_buffer[0],
-        .offset = 0,
-        .range = sizeof(struct main_ubo),
-    };
+    // Update each per-frame descriptor set with its UBO, plus shared textures and shadow maps
     VkDescriptorImageInfo image_info = {
         .sampler = texture_sampler,
         .imageView = texture_image_view,
@@ -646,49 +698,57 @@ void create_descriptor_pool_and_set() {
         .imageView = shadow3_image_view,
         .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     };
-    VkWriteDescriptorSet writes[] = {
-        {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = main_descriptor_set,
-            .dstBinding = 0,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pBufferInfo = &buffer_info,
-        },
-        {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = main_descriptor_set,
-            .dstBinding = 1,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &image_info,
-        },
-        {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = main_descriptor_set,
-            .dstBinding = 2,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &shadow_info,
-        },
-        {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = main_descriptor_set,
-            .dstBinding = 3,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &shadow2_info,
-        },
-        {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = main_descriptor_set,
-            .dstBinding = 4,
-            .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo = &shadow3_info,
-        },
-    };
-    vkUpdateDescriptorSets(vk.device, 5, writes, 0, NULL);
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        VkDescriptorBufferInfo buffer_info = {
+            .buffer = main_buffer[i],
+            .offset = 0,
+            .range = sizeof(struct main_ubo),
+        };
+        VkWriteDescriptorSet writes[] = {
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = main_descriptor_set[i],
+                .dstBinding = 0,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pBufferInfo = &buffer_info,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = main_descriptor_set[i],
+                .dstBinding = 1,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &image_info,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = main_descriptor_set[i],
+                .dstBinding = 2,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &shadow_info,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = main_descriptor_set[i],
+                .dstBinding = 3,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &shadow2_info,
+            },
+            {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = main_descriptor_set[i],
+                .dstBinding = 4,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &shadow3_info,
+            },
+        };
+        vkUpdateDescriptorSets(vk.device, 5, writes, 0, NULL);
+    }
 }
 
 void allocate_world()
@@ -715,10 +775,16 @@ void allocate_world()
         );
 
         size_t mem_use = 0;
+        int alloc_failures = 0;
         for (int j = 0; j < VAOW; j++)
         {
                 mem_use += world_mem_info.allocationSize;
-                vkAllocateMemory(vk.device, &world_mem_info, NULL, &world_mem[j]);
+                VkResult result = vkAllocateMemory(vk.device, &world_mem_info, NULL, &world_mem[j]);
+                if (result != VK_SUCCESS) {
+                        fprintf(stderr, "ERROR: vkAllocateMemory failed for world_mem[%d]: %d\n", j, result);
+                        alloc_failures++;
+                        continue;
+                }
                 for (int k = 0; k < VAOD; k++)
                 {
                         int buffer_idx = j * VAOD + k;
@@ -728,13 +794,27 @@ void allocate_world()
                 }
         }
 
-        fprintf(stderr, "World VRAM usage: %luMB", mem_use / 1024 / 1024);
+        fprintf(stderr, "World VRAM usage: %luMB (allocation size: %luMB x %d)\n",
+                mem_use / 1024 / 1024,
+                world_mem_info.allocationSize / 1024 / 1024,
+                VAOW);
+        if (alloc_failures > 0) {
+                fprintf(stderr, "WARNING: %d memory allocations failed! Try reducing VAOW/VAOD in defs.c\n", alloc_failures);
+        }
 }
 
 //initial setup to get the window and rendering going
 void glsetup()
 {
         vulkan_startup();
+
+        // Ensure swapchain image count doesn't exceed our descriptor set array size
+        if (vk.maxFrames > MAX_FRAMES_IN_FLIGHT) {
+                fprintf(stderr, "ERROR: vk.maxFrames (%u) > MAX_FRAMES_IN_FLIGHT (%d). Increase MAX_FRAMES_IN_FLIGHT.\n",
+                        vk.maxFrames, MAX_FRAMES_IN_FLIGHT);
+                exit(1);
+        }
+        fprintf(stderr, "Vulkan: maxFrames=%u, swapchainImageCount=%u\n", vk.maxFrames, vk.swapchainImageCount);
 
         triangle_pipe = vulkan_make_pipeline("shaders/triangle.vert.spv", "shaders/triangle.geom.spv", "shaders/triangle.frag.spv",
                                         0, NULL, 0, NULL);

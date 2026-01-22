@@ -55,11 +55,12 @@ VkPresentModeKHR getBestPresentMode(VkSurfaceKHR *pSurface, VkPhysicalDevice *pP
 
 	VkPresentModeKHR bestPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 
-	for(uint32_t i = 0; i < presentModeNumber; i++){
-		if(presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR){
-			bestPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
-		}
-	}
+	// Temporarily disabled MAILBOX to test if it's causing frame sync issues
+	// for(uint32_t i = 0; i < presentModeNumber; i++){
+	// 	if(presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR){
+	// 		bestPresentMode = VK_PRESENT_MODE_MAILBOX_KHR;
+	// 	}
+	// }
 
 	free(presentModes);
 	return bestPresentMode;

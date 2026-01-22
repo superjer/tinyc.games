@@ -249,8 +249,8 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 	}
 	if (flags & PIPE_DEPTH_BIAS) {
 		rasterizationStateCreateInfo.depthBiasEnable = VK_TRUE;
-		rasterizationStateCreateInfo.depthBiasConstantFactor = 12.5f;
-		rasterizationStateCreateInfo.depthBiasSlopeFactor = 12.5f;
+		rasterizationStateCreateInfo.depthBiasConstantFactor = 1.5f;
+		rasterizationStateCreateInfo.depthBiasSlopeFactor = 1.5f;
 	}
 	VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo = configureMultisampleStateCreateInfo();
 	VkPipelineColorBlendAttachmentState colorBlendAttachmentState;

@@ -200,7 +200,7 @@ VkBuffer main_buffer[MAX_FRAMES_IN_FLIGHT];
 VkDeviceMemory main_memory[MAX_FRAMES_IN_FLIGHT];
 VkDescriptorSetLayout main_descriptor_set_layout;
 VkDescriptorPool descriptor_pool;
-VkDescriptorSet main_descriptor_set;
+VkDescriptorSet main_descriptor_set[MAX_FRAMES_IN_FLIGHT];
 
 // Texture array
 VkImage texture_image;

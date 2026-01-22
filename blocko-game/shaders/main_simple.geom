@@ -105,25 +105,33 @@ void main(void) {
             break;
     }
 
-    tex = tex_vs[0];
-    alpha = alpha_vs[0];
-    normal = face_normal;
+    float tex_val = tex_vs[0];
+    float alpha_val = alpha_vs[0];
+    vec3 normal_val = face_normal;
 
     vec4 vertex_pos = world_pos_vs[0];
     vec4 offsets[4] = {a, b, c, d};
     vec2 uvs[4] = { vec2(1,0), vec2(0,0), vec2(1,1), vec2(0,1) };
 
     for (int i = 0; i < 4; i++) {
+        // Set flat outputs inside loop to ensure they're set for each vertex
+        // (workaround for potential driver bugs with flat interpolation)
+        tex = tex_val;
+        alpha = alpha_val;
+        normal = normal_val;
+
         vec4 world_pos = vertex_pos + offsets[i];
         gl_Position = push.pv * world_pos;
         illum = (0.1 + illum_vs[0][i]) * sidel;
         glow = (0.1 + glow_vs[0][i]) * sidel;
         uv = uvs[i];
         world_pos_out = world_pos;
-        // Calculate shadow space positions
-        shadow_pos = ubo.shadow_space * world_pos;
-        shadow2_pos = ubo.shadow2_space * world_pos;
-        shadow3_pos = ubo.shadow3_space * world_pos;
+        // Calculate shadow space positions with normal offset bias
+        // Offset along normal to prevent shadow bleeding at cube edges
+        vec4 shadow_sample_pos = world_pos + vec4(normal_val * 10.0, 0.0);
+        shadow_pos = ubo.shadow_space * shadow_sample_pos;
+        shadow2_pos = ubo.shadow2_space * shadow_sample_pos;
+        shadow3_pos = ubo.shadow3_space * shadow_sample_pos;
         EmitVertex();
     }
 

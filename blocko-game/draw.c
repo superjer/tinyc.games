@@ -697,27 +697,12 @@ void draw_stuff()
                 //glBufferData(GL_ARRAY_BUFFER, VBOLEN_(myx, myz) * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
         }
 
-        // Upload UBO to per-frame buffer (avoids race condition with GPU)
+        // Upload UBO to per-frame buffer
         {
                 int frame = vk.currentFrame;
-
-                // Update descriptor set to use this frame's UBO buffer
-                VkDescriptorBufferInfo buffer_info = {
-                        .buffer = main_buffer[frame],
-                        .offset = 0,
-                        .range = sizeof main_ubo,
-                };
-                VkWriteDescriptorSet write = {
-                        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                        .dstSet = main_descriptor_set,
-                        .dstBinding = 0,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .pBufferInfo = &buffer_info,
-                };
-                vkUpdateDescriptorSets(vk.device, 1, &write, 0, NULL);
-
-                // Upload UBO data
+                if (frame >= MAX_FRAMES_IN_FLIGHT) {
+                        fprintf(stderr, "ERROR: frame %d >= MAX_FRAMES_IN_FLIGHT %d\n", frame, MAX_FRAMES_IN_FLIGHT);
+                }
                 void* data;
                 vkMapMemory(vk.device, main_memory[frame], 0, sizeof main_ubo, 0, &data);
                 memcpy(data, &main_ubo, sizeof main_ubo);
@@ -733,9 +718,9 @@ void draw_stuff()
 
                 // Render shadow passes with per-cascade bias
                 // Near cascade needs higher bias due to PCF sampling
-                draw_shadow_pass(cmdbuf, 0, shadow_pv_mtrx0, 6.5f, 6.5f);
-                draw_shadow_pass(cmdbuf, 1, shadow_pv_mtrx1, 1.5f, 1.5f);
-                draw_shadow_pass(cmdbuf, 2, shadow_pv_mtrx2, 1.5f, 1.5f);
+                draw_shadow_pass(cmdbuf, 0, shadow_pv_mtrx0, 1.5f, 1.5f);
+                draw_shadow_pass(cmdbuf, 1, shadow_pv_mtrx1, 0.5f, 0.5f);
+                draw_shadow_pass(cmdbuf, 2, shadow_pv_mtrx2, 0.5f, 0.5f);
 
                 // Restart main render pass
                 VkClearValue clearValues[2] = {
@@ -766,7 +751,7 @@ void draw_stuff()
         vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
 
         vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                vk.pipelines[main_pipe].layout, 0, 1, &main_descriptor_set, 0, NULL);
+                vk.pipelines[main_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
         struct { float pv[16]; float chunk_x; float chunk_y; float chunk_z; float bs; } push;
         memcpy(push.pv, proj_view_mtrx, sizeof push.pv);
