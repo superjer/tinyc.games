@@ -7,12 +7,16 @@
         X(step_glolight), \
         X(step_glolight_building), \
         X(recalc_corner_lighting), \
-        X(rings), \
-        X(drawstale), \
-        X(buildvbo), \
-        X(glBufferData), \
-        X(glDrawArrays), \
-        X(swapwindow), \
+        X(gpu_sync), \
+        X(shadow_calc), \
+        X(shadow_render), \
+        X(frame_setup), \
+        X(collect_dirty), \
+        X(draw_cached), \
+        X(build_meshes), \
+        X(gpu_upload), \
+        X(draw_terrain), \
+        X(frame_submit), \
         X(glsetup), \
         X(font_init), \
         X(cursor_init), \

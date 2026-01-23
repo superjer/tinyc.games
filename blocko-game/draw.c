@@ -7,7 +7,7 @@ int sorter(const void * _a, const void * _b)
         const struct qitem *a = _a;
         const struct qitem *b = _b;
         return (a->y == b->y) ?  0 :
-               (a->y <  b->y) ?  1 : -1;
+               (a->y <  b->y) ? -1 : 1;  // closest first
 }
 
 int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z)
@@ -77,7 +77,7 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, VkFramebuffer fb, float *shadow_pv
 
         // Bind descriptor set for texture access (alpha testing leaves)
         vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                vk.pipelines[shadow_pipe].layout, 0, 1, &main_descriptor_set, 0, NULL);
+                vk.pipelines[shadow_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
         struct { float pv[16]; float chunk_x; float chunk_y; float chunk_z; float bs; } push;
         memcpy(push.pv, shadow_pv, sizeof push.pv);
@@ -108,7 +108,9 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, VkFramebuffer fb, float *shadow_pv
 //draw everything in the game on the screen
 void draw_stuff()
 {
+        TIMER(gpu_sync);
         vulkan_acquire_next();
+        TIMER(shadow_calc);
         struct main_ubo main_ubo = {0};
 
         float identity_mtrx[] = {
@@ -206,6 +208,7 @@ void draw_stuff()
 
         // compute shadow matrices and render shadow maps
         // CASCADE SIZES: Near=5000, Mid=50000, Far=500000
+        TIMER(shadow_render);
         if (shadow_mapping) for(int s = 0; s < 3; s++)
         {
                 float light_pos[3];
@@ -352,8 +355,9 @@ void draw_stuff()
         }
 
         do_atmos_colors();
+        TIMER(frame_setup);
 
-        //glViewport(0, 0, screenw, screenh);
+        //glViewport(0, 0, screenw, screenw);
         //glClearColor(fog_r, fog_g, fog_b, 1.f);
         //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -465,88 +469,45 @@ void draw_stuff()
                         main_ubo.fog_lo, main_ubo.fog_hi, main_ubo.view_pos[0], main_ubo.view_pos[1], main_ubo.view_pos[2], draw_dist, BS);
         }
 
-        // determine which chunks to send to gl
-        TIMER(rings)
-        int x0 = (eye0 - BS * CHUNKW2) / (BS * CHUNKW);
-        int z0 = (eye2 - BS * CHUNKW2) / (BS * CHUNKD);
-        CLAMP(x0, 0, VAOW - 2);
-        CLAMP(z0, 0, VAOD - 2);
-        int x1 = x0 + 1;
-        int z1 = z0 + 1;
-
-        int x0d = ((x0 * BS * CHUNKW + BS * CHUNKW2) - eye0);
-        int x1d = ((x1 * BS * CHUNKW + BS * CHUNKW2) - eye0);
-        int z0d = ((z0 * BS * CHUNKD + BS * CHUNKD2) - eye2);
-        int z1d = ((z1 * BS * CHUNKD + BS * CHUNKD2) - eye2);
-
-        // initialize with ring0 chunks
-        struct qitem fresh[VAOW*VAOD] = { // chunkx, distance sq, chunkz
-                {x0, (x0d * x0d + z0d * z0d), z0},
-                {x0, (x0d * x0d + z1d * z1d), z1},
-                {x1, (x1d * x1d + z0d * z0d), z0},
-                {x1, (x1d * x1d + z1d * z1d), z1}
-        };
-        size_t fresh_len = 4;
-
-        qsort(fresh, fresh_len, sizeof(struct qitem), sorter);
-
+        // Mark newly generated chunks as dirty
+        TIMER(collect_dirty)
         #pragma omp critical
         {
-                // Mark newly generated chunks as dirty
                 for (size_t i = 0; i < just_gen_len; i++) {
                         int cx = just_generated[i].x;
                         int cz = just_generated[i].z;
                         DIRTY_(cx, cz) = 1;
                 }
-                memcpy(fresh + fresh_len,
-                                (struct qitem *)just_generated,
-                                just_gen_len * sizeof *just_generated);
-                fresh_len += just_gen_len;
                 just_gen_len = 0;
         }
 
-        // position within each ring that we're at this frame
-	static struct qitem ringpos[VAOW + VAOD] = {0};
-        for (int r = 1; r < VAOW + VAOD; r++)
-        {
-		// expand ring in all directions
-		x0--; x1++; z0--; z1++;
+        // Collect all dirty chunks with distances from current player position
+        struct qitem fresh[VAOW*VAOD];
+        size_t fresh_len = 0;
 
-                // freshen farther rings less and less often
-                if (r >= 3 && r <= 6 && frame % 2 != r % 2)   continue;
-                if (r >= 7 && r <= 14 && frame % 4 != r % 4)  continue;
-                if (r >= 15 && r <= 30 && frame % 8 != r % 8) continue;
-                if (r >= 31 && frame % 16 != r % 16)          continue;
+        // Player's chunk (avoid overflow by using chunk units, not world units)
+        int player_chunk_x = (int)(eye0 / (BS * CHUNKW));
+        int player_chunk_z = (int)(eye2 / (BS * CHUNKD));
 
-                int *x = &ringpos[r].x;
-                int *z = &ringpos[r].z;
+        for (int i = 0; i < VAOW; i++) {
+                for (int j = 0; j < VAOD; j++) {
+                        if (!DIRTY_(i, j)) continue;
+                        if (!AGEN_(i, j)) continue;
 
-                // move to next chunk, maybe on ring
-                --(*x);
-
-                // wrap around the ring
-		int x_too_low = (*x < x0);
-                if (x_too_low) { *x = x1; --(*z); }
-
-                // reset if out of the ring
-		int z_too_low = (*z < z0);
-                if (z_too_low) { *x = x1; *z = z1; }
-
-                // get out of the middle
-		int is_on_ring = (*z == z0 || *z == z1 || *x == x1);
-                if (!is_on_ring) { *x = x0; }
-
-                // render if in bounds
-                if (*x >= 0 && *x < VAOW && *z >= 0 && *z < VAOD)
-                {
-                        fresh[fresh_len].x = *x;
-                        fresh[fresh_len].z = *z;
+                        int xd = i - player_chunk_x;
+                        int zd = j - player_chunk_z;
+                        fresh[fresh_len].x = i;
+                        fresh[fresh_len].y = xd * xd + zd * zd;
+                        fresh[fresh_len].z = j;
                         fresh_len++;
                 }
         }
 
+        // sort by distance (closest first)
+        qsort(fresh, fresh_len, sizeof(struct qitem), sorter);
+
         // render non-fresh chunks
-        TIMER(drawstale)
+        TIMER(draw_cached)
         struct qitem stale[VAOW * VAOD] = {0}; // chunkx, distance sq, chunkz
         size_t stale_len = 0;
         for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
@@ -559,9 +520,9 @@ void draw_stuff()
 
                 stale[stale_len].x = i;
                 stale[stale_len].z = j;
-                int xd = ((i * BS * CHUNKW + BS * CHUNKW2) - eye0);
-                int zd = ((j * BS * CHUNKD + BS * CHUNKD2) - eye2);
-                stale[stale_len].y = (xd * xd + zd * zd);
+                int xd = i - player_chunk_x;
+                int zd = j - player_chunk_z;
+                stale[stale_len].y = xd * xd + zd * zd;
 
                 // only queue chunks we could see
                 int passes_vis_test = chunk_in_frustum(proj_view_mtrx, i, j) && chunk_in_range(i, j);
@@ -584,8 +545,9 @@ void draw_stuff()
         }
 
         // package, ship and render fresh chunks (while the stales are rendering!)
-        TIMER(buildvbo);
-        for (size_t my = 0; my < fresh_len; my++)
+        TIMER(build_meshes);
+        int meshes_built = 0;
+        for (size_t my = 0; my < fresh_len && meshes_built < MAX_MESHES_PER_FRAME; my++)
         {
                 int myx = fresh[my].x;
                 int myz = fresh[my].z;
@@ -593,20 +555,6 @@ void draw_stuff()
                 int xhi = xlo + CHUNKW;
                 int zlo = myz * CHUNKD;
                 int zhi = zlo + CHUNKD;
-                int ungenerated = false;
-
-                #pragma omp critical
-                if (!AGEN_(myx, myz))
-                {
-                        ungenerated = true;
-                }
-
-                if (ungenerated)
-                        continue; // don't bother with ungenerated chunks
-
-                // Only rebuild chunks that are dirty
-                if (!DIRTY_(myx, myz))
-                        continue;
 
                 // Skip chunks outside frustum or range
                 if (!chunk_in_frustum(proj_view_mtrx, myx, myz) || !chunk_in_range(myx, myz))
@@ -617,107 +565,139 @@ void draw_stuff()
                 v = vbuf; // reset vertex buffer pointer
                 w = wbuf; // same for water buffer
 
-                TIMER(buildvbo);
+                TIMER(build_meshes);
 
-                for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH; y++) for (int x = xlo; x < xhi; x++)
+                // Track per-thread vertex counts for merging
+                int v_counts[MAX_MESH_THREADS] = {0};
+                int w_counts[MAX_MESH_THREADS] = {0};
+
+                #pragma omp parallel
                 {
-                        if (v >= v_limit) break; // out of vertex space, shouldnt reasonably happen
+                        int tid = omp_get_thread_num();
+                        struct vbufv *tv = vbuf_mt[tid];
+                        struct vbufv *tv_start = tv;
+                        struct vbufv *tv_limit = tv + VERTEX_BUFLEN;
+                        struct vbufv *tw = wbuf_mt[tid];
+                        struct vbufv *tw_start = tw;
 
-                        if (w >= w_limit) w -= 10; // just overwrite water if we run out of space
+                        #pragma omp for schedule(static)
+                        for (int z = zlo; z < zhi; z++) {
+                        for (int y = 0; y < TILESH; y++) for (int x = xlo; x < xhi; x++)
+                        {
+                                if (tv >= tv_limit) break;
 
-                        if (T_(x, y, z) == OPEN && (!show_light_values || !in_test_area(x, y, z)))
-                                continue;
+                                if (T_(x, y, z) == OPEN && (!show_light_values || !in_test_area(x, y, z)))
+                                        continue;
 
-                        //lighting
-                        float usw = CORN_(x  , y  , z  );
-                        float use = CORN_(x+1, y  , z  );
-                        float unw = CORN_(x  , y  , z+1);
-                        float une = CORN_(x+1, y  , z+1);
-                        float dsw = CORN_(x  , y+1, z  );
-                        float dse = CORN_(x+1, y+1, z  );
-                        float dnw = CORN_(x  , y+1, z+1);
-                        float dne = CORN_(x+1, y+1, z+1);
-                        float USW = KORN_(x  , y  , z  );
-                        float USE = KORN_(x+1, y  , z  );
-                        float UNW = KORN_(x  , y  , z+1);
-                        float UNE = KORN_(x+1, y  , z+1);
-                        float DSW = KORN_(x  , y+1, z  );
-                        float DSE = KORN_(x+1, y+1, z  );
-                        float DNW = KORN_(x  , y+1, z+1);
-                        float DNE = KORN_(x+1, y+1, z+1);
-                        int t = T_(x, y, z);
-                        int m = x & (CHUNKW-1);
-                        int n = z & (CHUNKD-1);
+                                //lighting
+                                float usw = CORN_(x  , y  , z  );
+                                float use = CORN_(x+1, y  , z  );
+                                float unw = CORN_(x  , y  , z+1);
+                                float une = CORN_(x+1, y  , z+1);
+                                float dsw = CORN_(x  , y+1, z  );
+                                float dse = CORN_(x+1, y+1, z  );
+                                float dnw = CORN_(x  , y+1, z+1);
+                                float dne = CORN_(x+1, y+1, z+1);
+                                float USW = KORN_(x  , y  , z  );
+                                float USE = KORN_(x+1, y  , z  );
+                                float UNW = KORN_(x  , y  , z+1);
+                                float UNE = KORN_(x+1, y  , z+1);
+                                float DSW = KORN_(x  , y+1, z  );
+                                float DSE = KORN_(x+1, y+1, z  );
+                                float DNW = KORN_(x  , y+1, z+1);
+                                float DNE = KORN_(x+1, y+1, z+1);
+                                int t = T_(x, y, z);
+                                int m = x & (CHUNKW-1);
+                                int n = z & (CHUNKD-1);
 
-                        if (t == GRAS)
-                        {
-                                if (y == 0        || IS_SEE_THROUGH(T_(x  , y-1, z  ))) *v++ = (struct vbufv){ 0,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if (z == 0        || IS_SEE_THROUGH(T_(x  , y  , z-1))) *v++ = (struct vbufv){ 1, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if (z == TILESD-1 || IS_SEE_THROUGH(T_(x  , y  , z+1))) *v++ = (struct vbufv){ 1, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if (x == 0        || IS_SEE_THROUGH(T_(x-1, y  , z  ))) *v++ = (struct vbufv){ 1,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if (x == TILESW-1 || IS_SEE_THROUGH(T_(x+1, y  , z  ))) *v++ = (struct vbufv){ 1,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if (y <  TILESH-1 && IS_SEE_THROUGH(T_(x  , y+1, z  ))) *v++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
-                        }
-                        else if (t == DIRT || t == GRG1 || t == GRG2)
-                        {
-                                int u = (t == DIRT) ? 2 :
-                                        (t == GRG1) ? 3 : 4;
-                                if (y == 0        || IS_SEE_THROUGH(T_(x  , y-1, z  ))) *v++ = (struct vbufv){ u,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if (z == 0        || IS_SEE_THROUGH(T_(x  , y  , z-1))) *v++ = (struct vbufv){ 2, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if (z == TILESD-1 || IS_SEE_THROUGH(T_(x  , y  , z+1))) *v++ = (struct vbufv){ 2, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if (x == 0        || IS_SEE_THROUGH(T_(x-1, y  , z  ))) *v++ = (struct vbufv){ 2,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if (x == TILESW-1 || IS_SEE_THROUGH(T_(x+1, y  , z  ))) *v++ = (struct vbufv){ 2,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if (y <  TILESH-1 && IS_SEE_THROUGH(T_(x  , y+1, z  ))) *v++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
-                        }
-                        else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN ||
-                                 t == RLEF || t == YLEF)
-                        {
-                                int f = (t == STON) ?  5 :
-                                        (t == SAND) ?  6 :
-                                        (t == ORE ) ? 11 :
-                                        (t == OREH) ? 12 :
-                                        (t == HARD) ? 13 :
-                                        (t == WOOD) ? 14 :
-                                        (t == GRAN) ? 15 :
-                                        (t == RLEF) ? 16 :
-                                        (t == YLEF) ? 17 :
-                                                       0 ;
-                                if (y == 0        || IS_SEE_THROUGH(T_(x  , y-1, z  ))) *v++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if (z == 0        || IS_SEE_THROUGH(T_(x  , y  , z-1))) *v++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if (z == TILESD-1 || IS_SEE_THROUGH(T_(x  , y  , z+1))) *v++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if (x == 0        || IS_SEE_THROUGH(T_(x-1, y  , z  ))) *v++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if (x == TILESW-1 || IS_SEE_THROUGH(T_(x+1, y  , z  ))) *v++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if (y <  TILESH-1 && IS_SEE_THROUGH(T_(x  , y+1, z  ))) *v++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
-                        }
-                        else if (t == WATR)
-                        {
-                                if (y == 0        || T_(x  , y-1, z  ) == OPEN)
+                                if (t == GRAS)
                                 {
-                                        int f = 7 + (pframe / 10 + (x ^ z)) % 4;
-                                        *w++ = (struct vbufv){ f,    UP, m, y+0.06f, n, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f };
-                                        *w++ = (struct vbufv){ f,  DOWN, m, y-0.94f, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f };
+                                        if (y == 0        || IS_SEE_THROUGH(T_(x  , y-1, z  ))) *tv++ = (struct vbufv){ 0,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                        if (z == 0        || IS_SEE_THROUGH(T_(x  , y  , z-1))) *tv++ = (struct vbufv){ 1, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                        if (z == TILESD-1 || IS_SEE_THROUGH(T_(x  , y  , z+1))) *tv++ = (struct vbufv){ 1, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                        if (x == 0        || IS_SEE_THROUGH(T_(x-1, y  , z  ))) *tv++ = (struct vbufv){ 1,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                        if (x == TILESW-1 || IS_SEE_THROUGH(T_(x+1, y  , z  ))) *tv++ = (struct vbufv){ 1,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                        if (y <  TILESH-1 && IS_SEE_THROUGH(T_(x  , y+1, z  ))) *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                }
+                                else if (t == DIRT || t == GRG1 || t == GRG2)
+                                {
+                                        int u = (t == DIRT) ? 2 :
+                                                (t == GRG1) ? 3 : 4;
+                                        if (y == 0        || IS_SEE_THROUGH(T_(x  , y-1, z  ))) *tv++ = (struct vbufv){ u,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                        if (z == 0        || IS_SEE_THROUGH(T_(x  , y  , z-1))) *tv++ = (struct vbufv){ 2, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                        if (z == TILESD-1 || IS_SEE_THROUGH(T_(x  , y  , z+1))) *tv++ = (struct vbufv){ 2, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                        if (x == 0        || IS_SEE_THROUGH(T_(x-1, y  , z  ))) *tv++ = (struct vbufv){ 2,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                        if (x == TILESW-1 || IS_SEE_THROUGH(T_(x+1, y  , z  ))) *tv++ = (struct vbufv){ 2,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                        if (y <  TILESH-1 && IS_SEE_THROUGH(T_(x  , y+1, z  ))) *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                }
+                                else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN ||
+                                         t == RLEF || t == YLEF)
+                                {
+                                        int f = (t == STON) ?  5 :
+                                                (t == SAND) ?  6 :
+                                                (t == ORE ) ? 11 :
+                                                (t == OREH) ? 12 :
+                                                (t == HARD) ? 13 :
+                                                (t == WOOD) ? 14 :
+                                                (t == GRAN) ? 15 :
+                                                (t == RLEF) ? 16 :
+                                                (t == YLEF) ? 17 :
+                                                               0 ;
+                                        if (y == 0        || IS_SEE_THROUGH(T_(x  , y-1, z  ))) *tv++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                        if (z == 0        || IS_SEE_THROUGH(T_(x  , y  , z-1))) *tv++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                        if (z == TILESD-1 || IS_SEE_THROUGH(T_(x  , y  , z+1))) *tv++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                        if (x == 0        || IS_SEE_THROUGH(T_(x-1, y  , z  ))) *tv++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                        if (x == TILESW-1 || IS_SEE_THROUGH(T_(x+1, y  , z  ))) *tv++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                        if (y <  TILESH-1 && IS_SEE_THROUGH(T_(x  , y+1, z  ))) *tv++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                }
+                                else if (t == WATR)
+                                {
+                                        if (y == 0        || T_(x  , y-1, z  ) == OPEN)
+                                        {
+                                                int f = 7 + (pframe / 10 + (x ^ z)) % 4;
+                                                *tw++ = (struct vbufv){ f,    UP, m, y+0.06f, n, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f };
+                                                *tw++ = (struct vbufv){ f,  DOWN, m, y-0.94f, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f };
+                                        }
+                                }
+                                else if (t == LITE)
+                                {
+                                        *tw++ = (struct vbufv){ 18, SOUTH, m     , y, n+0.5f, use, usw, dse, dsw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                        *tw++ = (struct vbufv){ 18, NORTH, m     , y, n-0.5f, unw, une, dnw, dne, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                        *tw++ = (struct vbufv){ 18,  WEST, m+0.5f, y, n     , usw, unw, dsw, dnw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                        *tw++ = (struct vbufv){ 18,  EAST, m-0.5f, y, n     , une, use, dne, dse, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                }
+
+                                if (show_light_values && in_test_area(x, y, z))
+                                {
+                                        int f = MAX(GLO_(x, y, z), SUN_(x, y, z)) + PNG0;
+                                        int ty = y;
+                                        float lit = 1.f;
+                                        if (IS_OPAQUE(x, y, z))
+                                        {
+                                                ty = y - 1;
+                                                lit = 0.1f;
+                                        }
+                                        *tw++ = (struct vbufv){ f,    UP, m, ty+0.99f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
+                                        *tw++ = (struct vbufv){ f,  DOWN, m, ty-0.01f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
                                 }
                         }
-                        else if (t == LITE)
-                        {
-                                *w++ = (struct vbufv){ 18, SOUTH, m     , y, n+0.5f, use, usw, dse, dsw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                *w++ = (struct vbufv){ 18, NORTH, m     , y, n-0.5f, unw, une, dnw, dne, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                *w++ = (struct vbufv){ 18,  WEST, m+0.5f, y, n     , usw, unw, dsw, dnw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                *w++ = (struct vbufv){ 18,  EAST, m-0.5f, y, n     , une, use, dne, dse, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
                         }
 
-                        if (show_light_values && in_test_area(x, y, z))
-                        {
-                                int f = MAX(GLO_(x, y, z), SUN_(x, y, z)) + PNG0;
-                                int ty = y;
-                                float lit = 1.f;
-                                if (IS_OPAQUE(x, y, z))
-                                {
-                                        ty = y - 1;
-                                        lit = 0.1f;
-                                }
-                                *w++ = (struct vbufv){ f,    UP, m, ty+0.99f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
-                                *w++ = (struct vbufv){ f,  DOWN, m, ty-0.01f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
+                        // Store counts for this thread
+                        v_counts[tid] = tv - tv_start;
+                        w_counts[tid] = tw - tw_start;
+                }
+
+                // Merge thread buffers into main buffer
+                for (int tid = 0; tid < MAX_MESH_THREADS; tid++)
+                {
+                        if (v_counts[tid] > 0) {
+                                memcpy(v, vbuf_mt[tid], v_counts[tid] * sizeof *v);
+                                v += v_counts[tid];
+                        }
+                        if (w_counts[tid] > 0) {
+                                memcpy(w, wbuf_mt[tid], w_counts[tid] * sizeof *w);
+                                w += w_counts[tid];
                         }
                 }
 
@@ -729,7 +709,7 @@ void draw_stuff()
 
                 VBOLEN_(myx, myz) = v - vbuf;
                 polys += VBOLEN_(myx, myz);
-                TIMER(glBufferData)
+                TIMER(gpu_upload)
 
                 // Debug: print first 3 vertices of first chunk
                 static int debug_once = 0;
@@ -745,15 +725,13 @@ void draw_stuff()
                         }
                 }
 
-                int buffer_idx = myx * VAOD + myz;
                 int offset = myz * world_aligned_sz;
-                void *data;
-                vkMapMemory(vk.device, world_mem[myx], offset, world_aligned_sz, 0, &data);
+                void *data = (char *)world_mapped[myx] + offset;
                 memcpy(data, vbuf, (v - vbuf) * sizeof *vbuf);
-                vkUnmapMemory(vk.device, world_mem[myx]);
 
                 // Mark chunk as clean after rebuild
                 DIRTY_(myx, myz) = 0;
+                meshes_built++;
 
                 //glBufferData(GL_ARRAY_BUFFER, VBOLEN_(myx, myz) * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
         }
@@ -816,6 +794,7 @@ void draw_stuff()
         sun_draw(cmdbuf, proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll);
 
         // Render terrain
+        TIMER(draw_terrain);
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);
 
         VkViewport viewport = { 0, 0, vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height, 0, 1 };
@@ -860,7 +839,7 @@ void draw_stuff()
 
         debrief();
 
-        TIMER(swapwindow);
+        TIMER(frame_submit);
         vulkan_submit();
         TIMER();
 }

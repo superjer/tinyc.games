@@ -855,6 +855,8 @@ void allocate_world()
                         vkBindBufferMemory(vk.device, world_buf[buffer_idx], world_mem[j], offset);
                         //fprintf(stderr, "Buffer %d in allocation %d at offset %d / %lu\n", buffer_idx, j, offset, world_mem_info.allocationSize);
                 }
+                // Persistently map the memory (stays mapped for lifetime of app)
+                vkMapMemory(vk.device, world_mem[j], 0, world_mem_info.allocationSize, 0, &world_mapped[j]);
         }
 
         fprintf(stderr, "World VRAM usage: %luMB (allocation size: %luMB x %d)\n",

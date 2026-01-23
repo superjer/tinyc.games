@@ -12,7 +12,9 @@
 #ifndef NO_OMPH
         #include <omp.h>
 #else
-        #define omp_get_num_threads() 0
+        #define omp_get_num_threads() 1
+        #define omp_get_thread_num() 0
+        #define omp_get_max_threads() 1
         #define omp_set_nested(n)
 #endif
 
@@ -65,6 +67,7 @@ void update_world();
 int main()
 {
         omp_set_nested(1); // needed or omp won't parallelize chunk gen
+        fprintf(stderr, "OpenMP threads available: %d\n", omp_get_max_threads());
         startup();
 
         #pragma omp parallel sections

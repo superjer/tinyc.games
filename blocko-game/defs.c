@@ -43,6 +43,7 @@
 #define VAOW 64                    // how many VAOs wide
 #define VAOD 64                    // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
+#define MAX_MESHES_PER_FRAME 1     // max dirty chunks to rebuild per frame
 #define TILESW (CHUNKW*VAOW)       // total level width, height
 #define TILESH 160                 // ^
 #define TILESD (CHUNKD*VAOD)       // ^
@@ -73,6 +74,7 @@
 #define DOWN  6
 
 #define VERTEX_BUFLEN 16384
+#define MAX_MESH_THREADS 16
 #define SUNQLEN 10000
 #define GLOQLEN 10000
 
@@ -193,6 +195,7 @@ struct allocation {
 VkBuffer world_buf[VAOS];
 VkBufferCreateInfo world_buf_info;
 VkDeviceMemory world_mem[VAOW];
+void *world_mapped[VAOW];  // persistently mapped pointers
 VkMemoryAllocateInfo world_mem_info;
 size_t world_aligned_sz;
 #define MAX_FRAMES_IN_FLIGHT 4
@@ -292,6 +295,10 @@ struct vbufv *v = vbuf;
 struct vbufv wbuf[VERTEX_BUFLEN + 1000]; // water buffer
 struct vbufv *w_limit = wbuf + VERTEX_BUFLEN;
 struct vbufv *w = wbuf;
+
+// Per-thread buffers for parallel mesh building (each needs full size)
+struct vbufv vbuf_mt[MAX_MESH_THREADS][VERTEX_BUFLEN + 1000];
+struct vbufv wbuf_mt[MAX_MESH_THREADS][VERTEX_BUFLEN + 1000];
 
 float night_amt;
 float fog_r, fog_g, fog_b;
