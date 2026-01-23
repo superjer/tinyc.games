@@ -23,7 +23,7 @@ vec3 hash3(vec3 p) {
 }
 
 // Generate stars using 3D cells (avoids pole pinching)
-float stars(vec3 dir) {
+vec4 stars(vec3 dir) {
     vec3 n = normalize(dir);
 
     // Scale direction to create cell grid on unit sphere
@@ -34,13 +34,19 @@ float stars(vec3 dir) {
     vec3 cell = floor(p);
     vec3 local = fract(p);
 
-    // Only some cells have stars
-    float h = hash(cell + 0.5);
-    if (h < 0.85) return 0.0;
+    /*
+    if (local.x < 0.01) return vec4(1.0, 0.0, 0.0, 1.0);
+    if (local.y < 0.01) return vec4(0.0, 1.0, 0.0, 1.0);
+    if (local.z < 0.01) return vec4(0.0, 0.0, 1.0, 1.0);
+    */
 
-    // Star position constrained to center of cell (0.2 to 0.8)
+    // Only some cells have a star
+    float h = hash(cell + 0.5);
+    if (h < 0.70) return vec4(0.0, 0.0, 0.0, 0.0);
+
+    // Star position constrained to center of cell
     // so its glow never crosses cell boundaries
-    vec3 star_offset = hash3(cell) * 0.6 + 0.2;
+    vec3 star_offset = hash3(cell) * 0.8 + 0.1;
 
     // Distance from local position to star
     float d = length(local - star_offset);
@@ -48,11 +54,12 @@ float stars(vec3 dir) {
     // Star brightness varies
     float brightness = hash(cell + 0.7);
 
-    // Sharp star point - max radius ~0.2 fits within cell margin
-    float star = smoothstep(0.15 + 0.05 * brightness, 0.0, d);
-    star *= 0.5 + 0.5 * brightness;
+    // Sharp star point - max radius ~0.1 fits within cell margin
+    float intensity = smoothstep(0.05 + 0.05 * brightness, 0.0, d);
+    intensity *= 1.5 + 0.5 * brightness;
+    vec3 color = hash3(cell) * 0.2 + vec3(0.8, 0.8, 0.8);
 
-    return star;
+    return vec4(color, intensity);
 }
 
 void main()
@@ -114,12 +121,12 @@ void main()
 
         // Add stars at night (only above horizon)
         if (push.night_amt > 0.5) {
-            float star_intensity = stars(world_dir);
+            vec4 star = stars(world_dir);
+            float star_intensity = star.a;
+	    vec3 star_color = star.rgb;
             // Fade stars in as night deepens, and fade near horizon
             float night_factor = (push.night_amt - 0.5) * 2.0;
             float horizon_fade = smoothstep(0.0, 0.15, y);
-            // Slightly tinted stars (some warm, some cool)
-            vec3 star_color = vec3(0.9, 0.9, 1.0);
             final_color += star_color * star_intensity * night_factor * horizon_fade;
         }
     } else {
