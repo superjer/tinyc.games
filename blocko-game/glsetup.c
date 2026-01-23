@@ -863,8 +863,9 @@ void allocate_world()
                 mem_use / 1024 / 1024,
                 world_mem_info.allocationSize / 1024 / 1024,
                 VAOW);
+
         if (alloc_failures > 0) {
-                fprintf(stderr, "WARNING: %d memory allocations failed! Try reducing VAOW/VAOD in defs.c\n", alloc_failures);
+                fprintf(stderr, "WARNING: %d memory allocations failed!\n", alloc_failures);
         }
 }
 
@@ -903,15 +904,6 @@ void glsetup()
         main_pipe = vulkan_make_pipeline_ex("shaders/main_simple.vert.spv",
                 "shaders/main_simple.geom.spv", "shaders/main_simple.frag.spv",
                 1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, 0);
-
-        fprintf(stderr, "struct vbufv layout: size=%zu, tex=%zu, orient=%zu, x=%zu, illum0=%zu, glow0=%zu, alpha=%zu\n",
-                sizeof(struct vbufv),
-                offsetof(struct vbufv, tex),
-                offsetof(struct vbufv, orient),
-                offsetof(struct vbufv, x),
-                offsetof(struct vbufv, illum0),
-                offsetof(struct vbufv, glow0),
-                offsetof(struct vbufv, alpha));
 
         allocate_world();
 

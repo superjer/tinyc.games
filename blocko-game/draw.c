@@ -120,8 +120,6 @@ void draw_stuff()
                 0, 0, 0, 1,
         };
 
-        //glDisable(GL_MULTISAMPLE);
-
         memcpy(main_ubo.model, identity_mtrx, sizeof identity_mtrx);
 
         // Calculate sun/moon positions (used for lighting and shadows)
@@ -152,8 +150,9 @@ void draw_stuff()
         const float MID_QUANT_STEP = 0.002f;
         const float FAR_QUANT_STEP = 0.002f;
 
-        // Determine effective light pitch (always positive angle for slot calculation)
-        float light_pitch = sun_pitch;
+        // Determine effective light pitch - use moon at night (sun below horizon)
+        int is_night = (sun_pitch >= PI);
+        float light_pitch = is_night ? moon_pitch : sun_pitch;
         if (light_pitch < 0) light_pitch += TAU;
 
         // Compute current slots for mid/far cascades
@@ -170,10 +169,10 @@ void draw_stuff()
         int far_slot_is_even = (far_slot % 2) == 0;
 
         // Determine which slot each shadow map should be at
-        int mid_a_slot = mid_slot_is_even ? mid_slot : mid_slot + 1;  // A = even slots
-        int mid_b_slot = mid_slot_is_even ? mid_slot + 1 : mid_slot;  // B = odd slots
-        int far_a_slot = far_slot_is_even ? far_slot : far_slot + 1;
-        int far_b_slot = far_slot_is_even ? far_slot + 1 : far_slot;
+        shadow2a_slot = mid_slot_is_even ? mid_slot : mid_slot + 1;  // A = even slots
+        shadow2b_slot = mid_slot_is_even ? mid_slot + 1 : mid_slot;  // B = odd slots
+        shadow3a_slot = far_slot_is_even ? far_slot : far_slot + 1;
+        shadow3b_slot = far_slot_is_even ? far_slot + 1 : far_slot;
 
         // Blend factor: position within current slot (0→1)
         float mid_blend_raw = (light_pitch - mid_slot * MID_QUANT_STEP) / MID_QUANT_STEP;
@@ -192,13 +191,6 @@ void draw_stuff()
         shadow2_render_index = (shadow_frame % 2);  // 0=A, 1=B
         shadow3_render_index = ((shadow_frame + 1) % 2);  // Offset so not both on same frame
 
-        // Track which slot each shadow map needs to be rendered at
-        // (these are used when rendering to know what angle to use)
-        shadow2a_slot = mid_a_slot;
-        shadow2b_slot = mid_b_slot;
-        shadow3a_slot = far_a_slot;
-        shadow3b_slot = far_b_slot;
-
         // Helper to compute light position from pitch
         #define COMPUTE_LIGHT_POS(pitch, lp) do { \
                 lp[0] = shadow_target[0] + dist2sun * (cosf(pitch) * cosf(sun_yaw)); \
@@ -207,7 +199,6 @@ void draw_stuff()
         } while(0)
 
         // compute shadow matrices and render shadow maps
-        // CASCADE SIZES: Near=5000, Mid=50000, Far=500000
         TIMER(shadow_render);
         if (shadow_mapping) for(int s = 0; s < 3; s++)
         {
@@ -215,8 +206,8 @@ void draw_stuff()
                 float render_pitch;
 
                 if (s == 0) {
-                        // Near cascade: use current sun pitch
-                        render_pitch = sun_pitch;
+                        // Near cascade: use current light pitch (sun or moon)
+                        render_pitch = light_pitch;
                 } else if (s == 1) {
                         // Mid cascade: render at the slot assigned to A or B
                         if (shadow2_render_index == 0) {
@@ -279,9 +270,9 @@ void draw_stuff()
                 };
 
                 // Orthographic projection (Vulkan depth [0,1])
-                // Cascade sizes - tweak these values as needed
                 float snear = (s == 0 ? 10.f : s == 1 ? 80.f : 200.f);
                 float sfar = dist2sun * 2;
+                // Cascade sizes
                 float mag = (s == 0 ? 5000.f : s == 1 ? 50000.f : 500000.f);
 
                 float ortho_mtrx[] = {
@@ -333,49 +324,24 @@ void draw_stuff()
                         mat4_multiply(main_ubo.shadow3a_space, bias_mtrx, shadow3a_matrix);
                         mat4_multiply(main_ubo.shadow3b_space, bias_mtrx, shadow3b_matrix);
                 }
-
-                for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
-                {
-                        if (!VBOLEN_(i, j)) continue;
-                        int passes_vis_test = chunk_in_frustum(shadow_pv_mtrx, i, j) && chunk_in_range(i, j);
-                        if (!frustum_culling || passes_vis_test)
-                        {
-                                //glBindVertexArray(VAO_(i, j));
-                                main_ubo.model[12] = i * BS * CHUNKW;
-                                main_ubo.model[14] = j * BS * CHUNKD;
-                                //glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "model"), 1, GL_FALSE, model_mtrx);
-                                //glDrawArrays(GL_POINTS, 0, VBOLEN_(i, j));
-                                shadow_polys += VBOLEN_(i, j);
-                        }
-                }
-
-                fb_is_bad: ;
-                //glBindFramebuffer(GL_FRAMEBUFFER, 0);
-                //glDisable(GL_POLYGON_OFFSET_FILL);
         }
 
         do_atmos_colors();
         TIMER(frame_setup);
 
-        //glViewport(0, 0, screenw, screenw);
-        //glClearColor(fog_r, fog_g, fog_b, 1.f);
-        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
         if (antialiasing)
                 ;//glEnable(GL_MULTISAMPLE);
 
-        // compute proj matrix (Vulkan: Y flipped, depth 0-1)
+        // compute proj matrix
         float near = 100.f;
-        float far = 1000000.f;  // 1000 blocks with BS=1000
+        float far = 1000 * BS;  // 1000 blocks with BS=1000
         float fov_degrees = 90.f;  // horizontal FOV in degrees
-        float frustw = near * tanf(fov_degrees * PI / 360.f) * zoom_amt;  // tan(fov/2)
+        float frustw = near * tanf(fov_degrees * PI / 360.f) * zoom_amt;
         float frusth = frustw * screenh / screenw;
-        static int fov_debug = 1;
-        if (fov_debug) { fov_debug = 0; fprintf(stderr, "FOV: %.1f deg, zoom_amt=%.2f, frustw=%.1f, tan(fov/2)=%.4f\n", fov_degrees, zoom_amt, frustw, tanf(fov_degrees * PI / 360.f)); }
         float proj_mtrx[] = {
-                near/frustw,            0,                              0,  0,
-                          0, -near/frusth,                              0,  0,  // negated for Vulkan
-                          0,            0,         -far / (far - near), -1,     // Vulkan depth 0-1
+                near/frustw,            0,                                0,  0,
+                          0, -near/frusth,                                0,  0,
+                          0,            0,          -far / (far - near), -1,
                           0,            0, -(far * near) / (far - near),  0
         };
 
@@ -398,28 +364,6 @@ void draw_stuff()
         static float proj_view_mtrx[16];
         if (!lock_culling)
                 mat4_multiply(proj_view_mtrx, proj_mtrx, translated_view_mtrx);
-
-        //glEnable(GL_BLEND);
-        //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        //glEnable(GL_DEPTH_TEST);
-        //glDepthFunc(GL_LEQUAL);
-        //glDepthMask(GL_TRUE);
-        //glEnable(GL_CULL_FACE);
-        //glCullFace(GL_BACK);
-
-        //glUseProgram(prog_id);
-
-        //glActiveTexture(GL_TEXTURE0);
-        //glBindTexture(GL_TEXTURE_2D_ARRAY, material_tex_id);
-        //glUniform1i(glGetUniformLocation(prog_id, "tarray"), 0);
-
-        //glActiveTexture(GL_TEXTURE1);
-        //glBindTexture(GL_TEXTURE_2D, shadow_tex_id);
-        //glUniform1i(glGetUniformLocation(prog_id, "shadow_map"), 1);
-
-        //glActiveTexture(GL_TEXTURE2);
-        //glBindTexture(GL_TEXTURE_2D, shadow2_tex_id);
-        //glUniform1i(glGetUniformLocation(prog_id, "shadow2_map"), 2);
 
         main_ubo.shadow_mapping = shadow_mapping;
 
@@ -455,8 +399,6 @@ void draw_stuff()
                 main_ubo.day_color[0] = r;
                 main_ubo.day_color[1] = g;
                 main_ubo.day_color[2] = b;
-                if (frame % 120 == 0) fprintf(stderr, "night_amt=%.3f day_color=(%.2f,%.2f,%.2f) sun_pitch=%.2f\n",
-                        night_amt, r, g, b, sun_pitch);
                 main_ubo.glo_color[0] = 0.92f;
                 main_ubo.glo_color[1] = 0.83f;
                 main_ubo.glo_color[2] = 0.69f;
@@ -465,8 +407,6 @@ void draw_stuff()
                 main_ubo.fog_color[2] = fog_b;
                 main_ubo.fog_lo = draw_dist * BS * 0.5f;
                 main_ubo.fog_hi = draw_dist * BS * 1.0f;
-                if (frame % 120 == 0) fprintf(stderr, "fog_lo=%.0f fog_hi=%.0f view_pos=(%.0f,%.0f,%.0f) draw_dist=%.0f BS=%d\n",
-                        main_ubo.fog_lo, main_ubo.fog_hi, main_ubo.view_pos[0], main_ubo.view_pos[1], main_ubo.view_pos[2], draw_dist, BS);
         }
 
         // Mark newly generated chunks as dirty
@@ -508,6 +448,7 @@ void draw_stuff()
 
         // render non-fresh chunks
         TIMER(draw_cached)
+        /*
         struct qitem stale[VAOW * VAOD] = {0}; // chunkx, distance sq, chunkz
         size_t stale_len = 0;
         for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
@@ -539,12 +480,11 @@ void draw_stuff()
                 int myz = stale[my].z;
                 main_ubo.model[12] = myx * BS * CHUNKW;
                 main_ubo.model[14] = myz * BS * CHUNKD;
-                //glBindVertexArray(VAO_(myx, myz));
-                //glDrawArrays(GL_POINTS, 0, VBOLEN_(myx, myz));
                 polys += VBOLEN_(myx, myz);
         }
+        */
 
-        // package, ship and render fresh chunks (while the stales are rendering!)
+        // package, ship and render fresh chunks
         TIMER(build_meshes);
         int meshes_built = 0;
         for (size_t my = 0; my < fresh_len && meshes_built < MAX_MESHES_PER_FRAME; my++)
@@ -560,8 +500,6 @@ void draw_stuff()
                 if (!chunk_in_frustum(proj_view_mtrx, myx, myz) || !chunk_in_range(myx, myz))
                         continue;
 
-                //glBindVertexArray(VAO_(myx, myz));
-                //glBindBuffer(GL_ARRAY_BUFFER, VBO_(myx, myz));
                 v = vbuf; // reset vertex buffer pointer
                 w = wbuf; // same for water buffer
 
@@ -711,29 +649,13 @@ void draw_stuff()
                 polys += VBOLEN_(myx, myz);
                 TIMER(gpu_upload)
 
-                // Debug: print first 3 vertices of first chunk
-                static int debug_once = 0;
-                if (!debug_once && VBOLEN_(myx, myz) >= 3) {
-                        debug_once = 1;
-                        fprintf(stderr, "Chunk (%d,%d) first 3 verts:\n", myx, myz);
-                        for (int dv = 0; dv < 3; dv++) {
-                                fprintf(stderr, "  v[%d]: tex=%.0f orient=%.0f pos=(%.1f,%.1f,%.1f) illum=(%.2f,%.2f,%.2f,%.2f) alpha=%.1f\n",
-                                        dv, vbuf[dv].tex, vbuf[dv].orient,
-                                        vbuf[dv].x, vbuf[dv].y, vbuf[dv].z,
-                                        vbuf[dv].illum0, vbuf[dv].illum1, vbuf[dv].illum2, vbuf[dv].illum3,
-                                        vbuf[dv].alpha);
-                        }
-                }
-
                 int offset = myz * world_aligned_sz;
                 void *data = (char *)world_mapped[myx] + offset;
                 memcpy(data, vbuf, (v - vbuf) * sizeof *vbuf);
 
-                // Mark chunk as clean after rebuild
+                // Mark chunk as clean after mesh rebuild
                 DIRTY_(myx, myz) = 0;
                 meshes_built++;
-
-                //glBufferData(GL_ARRAY_BUFFER, VBOLEN_(myx, myz) * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
         }
 
         // Upload UBO to per-frame buffer
@@ -830,10 +752,13 @@ void draw_stuff()
                         total_verts += VBOLEN_(i, j);
                 }
         }
+
+        /*
         if (frame % 60 == 0) fprintf(stderr, "Drew %d/%d chunks, %d verts. Player: %d,%d scoot: %d,%d\n",
                 chunks_drawn, chunks_with_data, total_verts,
                 (int)(camplayer.pos.x / BS / CHUNKW), (int)(camplayer.pos.z / BS / CHUNKD),
                 chunk_scootx, chunk_scootz);
+        */
 
         if (mouselook) cursor(cmdbuf);
 

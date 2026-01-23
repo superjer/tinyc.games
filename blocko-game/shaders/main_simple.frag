@@ -99,7 +99,7 @@ void main(void) {
 
         // Compute shadow positions for mid/far cascades (A and B)
         // Apply normal offset bias to prevent shadow bleeding at cube edges
-        vec4 shadow_sample_pos = world_pos + vec4(normal * 10.0, 0.0);
+        vec4 shadow_sample_pos = world_pos + vec4(normal * 50.0, 0.0);
         vec4 shadow2a_pos = ubo.shadow2a_space * shadow_sample_pos;
         vec4 shadow2b_pos = ubo.shadow2b_space * shadow_sample_pos;
         vec4 shadow3a_pos = ubo.shadow3a_space * shadow_sample_pos;
