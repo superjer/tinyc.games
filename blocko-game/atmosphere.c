@@ -8,8 +8,7 @@ VkDeviceMemory sky_vmem;
 int sky_vertex_count;
 
 int sun_pipe;
-VkBuffer sun_vbuf;
-VkDeviceMemory sun_vmem;
+int moon_pipe;
 
 void do_atmos_colors()
 {
@@ -135,56 +134,14 @@ void sun_init()
                 { .location = 1, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = 3 * sizeof(float) },
         };
 
-        sky_pipe = vulkan_make_pipeline_flags("shaders/sky.vert.spv", NULL, "shaders/sky.frag.spv",
-                1, &bindingDesc, 2, attrDescs, PIPE_NO_DEPTH_WRITE);
+        sky_pipe = vulkan_make_pipeline("shaders/sky.vert.spv", NULL, "shaders/sky.frag.spv",
+                1, &bindingDesc, 2, attrDescs, NULL, VK_NULL_HANDLE, PIPE_NO_DEPTH_WRITE);
 
-        // Create sun/moon vertex buffer - two quads as triangle lists
-        // Sun at +X, moon at -X (they rotate around origin)
-        float sun_verts[] = {
-                // Sun quad (2000x2000 at x=10000) - two triangles
-                10000, -1000, -1000,  0, 0,
-                10000,  1000, -1000,  1, 0,
-                10000,  1000,  1000,  1, 1,
-                10000, -1000, -1000,  0, 0,
-                10000,  1000,  1000,  1, 1,
-                10000, -1000,  1000,  0, 1,
-                // Moon quad (800x800 at x=-10000) - two triangles
-                -10000, -400, -400,  0, 0,
-                -10000,  400, -400,  1, 0,
-                -10000,  400,  400,  1, 1,
-                -10000, -400, -400,  0, 0,
-                -10000,  400,  400,  1, 1,
-                -10000, -400,  400,  0, 1,
-        };
-
-        size_t sun_buf_size = sizeof(sun_verts);
-        VkBufferCreateInfo sunBufInfo = {
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = sun_buf_size,
-                .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        };
-        vkCreateBuffer(vk.device, &sunBufInfo, NULL, &sun_vbuf);
-
-        VkMemoryRequirements sunMemReq;
-        vkGetBufferMemoryRequirements(vk.device, sun_vbuf, &sunMemReq);
-
-        VkMemoryAllocateInfo sunAllocInfo = {
-                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                .allocationSize = sunMemReq.size,
-                .memoryTypeIndex = memType,  // reuse memType from sky
-        };
-        vkAllocateMemory(vk.device, &sunAllocInfo, NULL, &sun_vmem);
-        vkBindBufferMemory(vk.device, sun_vbuf, sun_vmem, 0);
-
-        void *sunData;
-        vkMapMemory(vk.device, sun_vmem, 0, sun_buf_size, 0, &sunData);
-        memcpy(sunData, sun_verts, sun_buf_size);
-        vkUnmapMemory(vk.device, sun_vmem);
-
-        // Sun pipeline - same vertex format, no depth write, with blending, no culling (moon faces opposite)
-        sun_pipe = vulkan_make_pipeline_flags("shaders/sun.vert.spv", NULL, "shaders/sun.frag.spv",
-                1, &bindingDesc, 2, attrDescs, PIPE_NO_DEPTH_WRITE | PIPE_BLEND | PIPE_NO_CULL);
+        // Sun/moon pipelines - no vertex inputs, quads generated in shader
+        sun_pipe = vulkan_make_pipeline("shaders/sun.vert.spv", NULL, "shaders/sun.frag.spv",
+                0, NULL, 0, NULL, NULL, VK_NULL_HANDLE, PIPE_NO_DEPTH_WRITE | PIPE_BLEND | PIPE_NO_CULL);
+        moon_pipe = vulkan_make_pipeline("shaders/moon.vert.spv", NULL, "shaders/moon.frag.spv",
+                0, NULL, 0, NULL, NULL, VK_NULL_HANDLE, PIPE_NO_DEPTH_WRITE | PIPE_BLEND | PIPE_NO_CULL);
 }
 
 void sky_draw(VkCommandBuffer cmdbuf, float *proj, float *view)
@@ -216,12 +173,13 @@ void sky_draw(VkCommandBuffer cmdbuf, float *proj, float *view)
         mat4_multiply(pv, proj, view_rot);
         mat4_multiply(pvm, pv, scale_mtrx);
 
-        struct { float pvm[16]; float sun_dir[3]; float night_amt; } push;
+        struct { float pvm[16]; float sun_dir[3]; float night_amt; float time; } push;
         memcpy(push.pvm, pvm, sizeof pvm);
         push.sun_dir[0] = cosf(sun_pitch) * cosf(sun_yaw);
         push.sun_dir[1] = sinf(sun_pitch);
         push.sun_dir[2] = -cosf(sun_pitch) * sinf(sun_yaw);
         push.night_amt = night_amt;
+        push.time = (float)pframe;
 
         vkCmdPushConstants(cmdbuf, vk.pipelines[sky_pipe].layout,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -234,57 +192,45 @@ void sky_draw(VkCommandBuffer cmdbuf, float *proj, float *view)
 
 void sun_draw(VkCommandBuffer cmdbuf, float *proj, float *view, float pitch, float yaw, float roll)
 {
-        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[sun_pipe].pipeline);
-
         VkViewport viewport = { 0, 0, vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height, 0, 1 };
         VkRect2D scissor = { {0, 0}, {vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height} };
-        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
-        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
 
-        // Create rotation matrix from pitch/yaw/roll
-        float cosa = cosf(pitch);
-        float sina = sinf(pitch);
-        float cosb = cosf(yaw);
-        float sinb = sinf(yaw);
-        float cosc = cosf(roll);
-        float sinc = sinf(roll);
-        float model[] = {
-                cosa * cosb,       cosa * sinb * cosc + sina * sinc,      cosa * sinb * sinc - sina * cosc,       0,
-                sina * cosb,       sina * sinb * cosc - cosa * sinc,      sina * sinb * sinc + cosa * cosc,       0,
-                      -sinb,              cosb * cosc              ,             cosb * sinc              ,       0,
-                          0,                                      0,                                     0,       1,
-        };
-
-        // View without translation (sun is infinitely far)
+        // View without translation (sun/moon are infinitely far)
         float view_rot[16];
         memcpy(view_rot, view, sizeof view_rot);
         view_rot[12] = 0;
         view_rot[13] = 0;
         view_rot[14] = 0;
 
-        float pv[16], pvm[16];
+        // Pre-multiply proj * view
+        float pv[16];
         mat4_multiply(pv, proj, view_rot);
-        mat4_multiply(pvm, pv, model);
 
-        struct { float pvm[16]; float is_moon; float pad[3]; } push;
-        memcpy(push.pvm, pvm, sizeof pvm);
+        // Push constants: pv matrix, angles, and time (80 bytes, under 128 limit)
+        struct { float pv[16]; float pitch; float yaw; float roll; float time; } push;
+        memcpy(push.pv, pv, sizeof push.pv);
+        push.pitch = pitch;
+        push.yaw = yaw;
+        push.roll = roll;
+        push.time = (float)pframe;
 
-        VkDeviceSize offset = 0;
-        vkCmdBindVertexBuffers(cmdbuf, 0, 1, &sun_vbuf, &offset);
-
-        // Draw sun (first 6 vertices)
-        push.is_moon = 0.0f;
+        // Draw sun
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[sun_pipe].pipeline);
+        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
+        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
         vkCmdPushConstants(cmdbuf, vk.pipelines[sun_pipe].layout,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                 0, sizeof push, &push);
         vkCmdDraw(cmdbuf, 6, 1, 0, 0);
 
-        // Draw moon (next 6 vertices)
-        push.is_moon = 1.0f;
-        vkCmdPushConstants(cmdbuf, vk.pipelines[sun_pipe].layout,
+        // Draw moon (same push constants, moon.vert adds PI to pitch)
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[moon_pipe].pipeline);
+        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
+        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+        vkCmdPushConstants(cmdbuf, vk.pipelines[moon_pipe].layout,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                 0, sizeof push, &push);
-        vkCmdDraw(cmdbuf, 6, 1, 6, 0);
+        vkCmdDraw(cmdbuf, 6, 1, 0, 0);
 }
 
 #endif // BLOCKO_ATMOSPHERE_C_INCLUDED

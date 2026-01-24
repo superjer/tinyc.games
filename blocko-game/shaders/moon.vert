@@ -10,15 +10,14 @@ layout(push_constant) uniform Push {
     float time;    // frame counter for animation
 } push;
 
-// Quad half-size and distance
-const float SIZE = 1000.0;
+// Quad half-size and distance (moon is smaller, opposite side)
+const float SIZE = 400.0;
 const float DIST = 10000.0;
+const float PI = 3.14159265359;
 
 void main()
 {
     // Generate quad vertices from gl_VertexIndex (0-5 for two triangles)
-    // Triangle 1: 0,1,2  Triangle 2: 3,4,5
-    // Vertex order: BL, TL, TR, BL, TR, BR
     vec2 corners[6] = vec2[](
         vec2(-1, -1), vec2(-1, 1), vec2(1, 1),
         vec2(-1, -1), vec2(1, 1), vec2(1, -1)
@@ -26,15 +25,18 @@ void main()
 
     vec2 corner = corners[gl_VertexIndex];
 
-    // UV from corner (-1,-1 -> 0,0) to (1,1 -> 1,1)
+    // UV from corner
     uv = corner * 0.5 + 0.5;
 
-    // Quad positioned at +X, facing origin
+    // Quad positioned at +X (will be rotated to opposite side of sun)
     vec3 pos = vec3(DIST, corner.x * SIZE, corner.y * SIZE);
 
+    // Moon is opposite the sun: add PI to pitch
+    float moon_pitch = push.pitch + PI;
+
     // Build rotation matrix from pitch/yaw/roll
-    float cosa = cos(push.pitch);
-    float sina = sin(push.pitch);
+    float cosa = cos(moon_pitch);
+    float sina = sin(moon_pitch);
     float cosb = cos(push.yaw);
     float sinb = sin(push.yaw);
     float cosc = cos(push.roll);

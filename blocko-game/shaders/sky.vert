@@ -10,6 +10,7 @@ layout(push_constant) uniform Push {
     mat4 pvm;
     vec3 sun_dir;
     float night_amt;
+    float time;
 } push;
 
 void main()

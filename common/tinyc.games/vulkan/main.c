@@ -443,46 +443,7 @@ static void store_pipeline_metadata(int index, char *vert, char *geom, char *fra
         p->flags = flags;
 }
 
-int vulkan_make_pipeline_ex(char *vert, char *geom, char *frag,
-        int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
-        int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs,
-        VkDescriptorSetLayout *pDescriptorSetLayout,
-        int flags
-) {
-        assert(vk.pipelineCount < 100);
-        int index = vk.pipelineCount;
-
-        // Store metadata for hot-reload (VK_NULL_HANDLE for default render pass)
-        store_pipeline_metadata(index, vert, geom, frag,
-                bindingDescCount, bindingDescs, attributeDescCount, attributeDescs,
-                pDescriptorSetLayout, VK_NULL_HANDLE, flags);
-
-        // Create the pipeline
-        if (vulkan_create_pipeline_at(index) != 0) {
-                fprintf(stderr, "Failed to create pipeline %d\n", index);
-                return -1;
-        }
-
-        return vk.pipelineCount++;
-}
-
 int vulkan_make_pipeline(char *vert, char *geom, char *frag,
-        int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
-        int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs
-) {
-        return vulkan_make_pipeline_ex(vert, geom, frag, bindingDescCount, bindingDescs, attributeDescCount, attributeDescs, NULL, 0);
-}
-
-int vulkan_make_pipeline_flags(char *vert, char *geom, char *frag,
-        int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
-        int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs,
-        int flags
-) {
-        return vulkan_make_pipeline_ex(vert, geom, frag, bindingDescCount, bindingDescs, attributeDescCount, attributeDescs, NULL, flags);
-}
-
-// Create pipeline with custom render pass (for shadow mapping)
-int vulkan_make_pipeline_with_renderpass(char *vert, char *geom, char *frag,
         int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
         int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs,
         VkDescriptorSetLayout *pDescriptorSetLayout,
@@ -492,7 +453,7 @@ int vulkan_make_pipeline_with_renderpass(char *vert, char *geom, char *frag,
         assert(vk.pipelineCount < 100);
         int index = vk.pipelineCount;
 
-        // Store metadata for hot-reload
+        // Store metadata for hot-reload (VK_NULL_HANDLE for default render pass)
         store_pipeline_metadata(index, vert, geom, frag,
                 bindingDescCount, bindingDescs, attributeDescCount, attributeDescs,
                 pDescriptorSetLayout, renderPass, flags);
@@ -640,7 +601,7 @@ int main()
                 "shaders/triangle_vertex.spv",
                 "shaders/triangle_geometry.spv",
                 "shaders/triangle_fragment.spv",
-                0, NULL, 0, NULL
+                0, NULL, 0, NULL, NULL, VK_NULL_HANDLE, 0
         );
 
         SDL_Event event;

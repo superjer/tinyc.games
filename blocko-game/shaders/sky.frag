@@ -9,6 +9,7 @@ layout(push_constant) uniform Push {
     mat4 pvm;
     vec3 sun_dir;
     float night_amt;  // 0 = day, 0.5 = dusk, 1 = night
+    float time;
 } push;
 
 // Hash functions for procedural stars
@@ -53,11 +54,24 @@ vec4 stars(vec3 dir) {
 
     // Star brightness varies
     float brightness = hash(cell + 0.7);
+    float is_bright = step(0.995, hash(cell + 1.3));  // .5% chance
+    brightness = mix(brightness, 1.0, is_bright);
+
+    // some stars twinkle
+    float is_twinkly = step(0.6, hash(cell + 2.1));
+    float twinkle_speed = hash(cell + 2.5) * 0.15 + 0.05;  // vary speed per star
+    float twinkle_phase = hash(cell + 2.9) * 6.28;  // random phase
+    float twinkle = sin(push.time * twinkle_speed + twinkle_phase) * 0.5 + 0.5;
+    twinkle = (twinkle > 0.2 && twinkle < 0.3) || (twinkle > 0.6 && twinkle < 0.7) ? mix(0.4, 1.0, twinkle) : 1.0;
 
     // Sharp star point - max radius ~0.1 fits within cell margin
-    float intensity = smoothstep(0.05 + 0.05 * brightness, 0.0, d);
-    intensity *= 1.5 + 0.5 * brightness;
-    vec3 color = hash3(cell) * 0.2 + vec3(0.8, 0.8, 0.8);
+    float size = 0.05 + 0.05 * brightness;
+    float intensity = smoothstep(size, 0.0, d);
+    intensity *= mix(0.8 + 0.5 * brightness, 4.0, is_bright);
+    intensity *= mix(1.0, twinkle, is_twinkly);
+    vec3 color = hash3(cell) * 0.3 + vec3(0.7, 0.7, 0.7);
+
+    color.b = (color.g > color.b && color.g > color.r) ? color.g : color.b; // no green stars
 
     return vec4(color, intensity);
 }

@@ -896,11 +896,12 @@ void glsetup()
                 {.location = 4, .binding = 0, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(struct vbufv, glow0)},
                 {.location = 5, .binding = 0, .format = VK_FORMAT_R32_SFLOAT, .offset = offsetof(struct vbufv, alpha)},
         };
+
         // Must create descriptor set layout BEFORE using it in pipeline creation
         createDescriptorSetLayout(&main_descriptor_set_layout);
-        main_pipe = vulkan_make_pipeline_ex("shaders/main_simple.vert.spv",
+        main_pipe = vulkan_make_pipeline("shaders/main_simple.vert.spv",
                 "shaders/main_simple.geom.spv", "shaders/main_simple.frag.spv",
-                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, 0);
+                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, 0);
 
         allocate_world();
 
@@ -908,28 +909,7 @@ void glsetup()
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
                 createUniformBuffer(&main_buffer[i], &main_memory[i]);
 
-        //SDL_Init(SDL_INIT_VIDEO);
-        //SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-        //SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
-        //win = SDL_CreateWindow("Blocko", W, H, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
-        //if (!win) exit(fprintf(stderr, "%s\n", SDL_GetError()));
-	//SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-        //SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
-        //SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-        //ctx = SDL_GL_CreateContext(win);
-        //if (!ctx) exit(fprintf(stderr, "Could not create GL context\n"));
-
-        //SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-        //SDL_GL_SetSwapInterval(vsync);
-
         SDL_SetWindowRelativeMouseMode(vk.window, true);
-
-        //#ifndef SDL_PLATFORM_APPLE
-        //glewExperimental = GL_TRUE;
-        //glewInit();
-        //glEnable(GL_DEBUG_OUTPUT);
-        //glDebugMessageCallback(MessageCallback, 0);
-	//#endif
 
         char *texture_files[] = {
                 TINYC_DIR "/blocko-game/assets/grass_top.png",       //  0
@@ -978,86 +958,13 @@ void glsetup()
 
         // Create shadow pipeline with same vertex layout as main pipeline
         // Use main_descriptor_set_layout to access texture for alpha testing leaves
-        shadow_pipe = vulkan_make_pipeline_with_renderpass(
+        shadow_pipe = vulkan_make_pipeline(
                 "shaders/shadow.vert.spv", "shaders/shadow.geom.spv", "shaders/shadow.frag.spv",
                 1, &mainBindingDesc, 6, mainAttrDescs,
                 &main_descriptor_set_layout, shadow_render_pass,
                 PIPE_DEPTH_BIAS);
 
         create_descriptor_pool_and_set();
-        //glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-        //load_shaders();
-
-        //glGenVertexArrays(VAOS, vao);
-        //glGenBuffers(VAOS, vbo);
-        for (int i = 0; i < VAOS; i++)
-        {
-                //glBindVertexArray(vao[i]);
-                //glBindBuffer(GL_ARRAY_BUFFER, vbo[i]);
-                //// tex number
-                //glVertexAttribPointer(0, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->tex);
-                //glEnableVertexAttribArray(0);
-                //// orientation
-                //glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->orient);
-                //glEnableVertexAttribArray(1);
-                //// position
-                //glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->x);
-                //glEnableVertexAttribArray(2);
-                //// illum
-                //glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->illum0);
-                //glEnableVertexAttribArray(3);
-                //// glow
-                //glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->glow0);
-                //glEnableVertexAttribArray(4);
-                //// alpha
-                //glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof (struct vbufv), (void*)&((struct vbufv *)NULL)->alpha);
-                //glEnableVertexAttribArray(5);
-        }
-
-        float border_color[4] = {1.f, 1.f, 1.f, 1.f};
-
-        // create shadow map texture
-        //glGenTextures(1, &shadow_tex_id);
-        //glBindTexture(GL_TEXTURE_2D, shadow_tex_id);
-        //glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, SHADOW_SZ, SHADOW_SZ,
-        //                0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-        //glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
-        //glBindTexture(GL_TEXTURE_2D, 0);
-
-        //glGenFramebuffers(1, &shadow_fbo);
-        //glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo);
-        //glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadow_tex_id, 0);
-        //glDrawBuffer(GL_NONE);
-        //glReadBuffer(GL_NONE);
-        //glBindFramebuffer(GL_FRAMEBUFFER, 0); // <- even need this?
-
-        //// create shadow map texture ***2***
-        //glGenTextures(1, &shadow2_tex_id);
-        //glBindTexture(GL_TEXTURE_2D, shadow2_tex_id);
-        //glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, SHADOW_SZ, SHADOW_SZ,
-        //                0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
-        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-        //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-        //glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color);
-        //glBindTexture(GL_TEXTURE_2D, 0);
-
-        //glGenFramebuffers(1, &shadow2_fbo);
-        //glBindFramebuffer(GL_FRAMEBUFFER, shadow2_fbo);
-        //glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadow2_tex_id, 0);
-        //glDrawBuffer(GL_NONE);
-        //glReadBuffer(GL_NONE);
-        //glBindFramebuffer(GL_FRAMEBUFFER, 0); // <- even need this?
 }
 
 #endif // BLOCKO_GLSETUP_C_INCLUDED
