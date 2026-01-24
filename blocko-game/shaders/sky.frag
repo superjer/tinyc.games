@@ -58,7 +58,7 @@ vec4 stars(vec3 dir) {
     brightness = mix(brightness, 1.0, is_bright);
 
     // some stars twinkle
-    float is_twinkly = step(0.6, hash(cell + 2.1));
+    float is_twinkly = step(0.06, hash(cell + 2.1));
     float twinkle_speed = hash(cell + 2.5) * 0.15 + 0.05;  // vary speed per star
     float twinkle_phase = hash(cell + 2.9) * 6.28;  // random phase
     float twinkle = sin(push.time * twinkle_speed + twinkle_phase) * 0.5 + 0.5;

@@ -12,7 +12,7 @@ message(STATUS "fetching SDL3 from github")
 FetchContent_Declare(
   SDL3
   GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-  GIT_TAG release-3.2.4
+  GIT_TAG release-3.2.8
 )
 FetchContent_MakeAvailable(SDL3)
 
@@ -30,17 +30,17 @@ endif()
 add_custom_target(shaders
 	COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders)
 
-add_custom_target(triangle_vertex.spv
-	COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/shaders/triangle.vert -o ${CMAKE_BINARY_DIR}/shaders/triangle_vertex.spv)
+add_custom_target(triangle.vert.spv
+	COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/shaders/triangle.vert -o ${CMAKE_BINARY_DIR}/shaders/triangle.vert.spv)
 
-add_custom_target(triangle_geometry.spv
-	COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/shaders/triangle.geom -o ${CMAKE_BINARY_DIR}/shaders/triangle_geometry.spv)
+add_custom_target(triangle.geom.spv
+	COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/shaders/triangle.geom -o ${CMAKE_BINARY_DIR}/shaders/triangle.geom.spv)
 
-add_custom_target(triangle_fragment.spv
-	COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/shaders/triangle.frag -o ${CMAKE_BINARY_DIR}/shaders/triangle_fragment.spv)
+add_custom_target(triangle.frag.spv
+	COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/shaders/triangle.frag -o ${CMAKE_BINARY_DIR}/shaders/triangle.frag.spv)
 
 add_dependencies(vulkan-triangle
 	shaders
-	triangle_vertex.spv
-	triangle_geometry.spv
-	triangle_fragment.spv)
+	triangle.vert.spv
+	triangle.geom.spv
+	triangle.frag.spv)

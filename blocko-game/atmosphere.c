@@ -134,13 +134,13 @@ void sun_init()
                 { .location = 1, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = 3 * sizeof(float) },
         };
 
-        sky_pipe = vulkan_make_pipeline("shaders/sky.vert.spv", NULL, "shaders/sky.frag.spv",
+        sky_pipe = vulkan_make_pipeline("sky.vert", NULL, "sky.frag",
                 1, &bindingDesc, 2, attrDescs, NULL, VK_NULL_HANDLE, PIPE_NO_DEPTH_WRITE);
 
         // Sun/moon pipelines - no vertex inputs, quads generated in shader
-        sun_pipe = vulkan_make_pipeline("shaders/sun.vert.spv", NULL, "shaders/sun.frag.spv",
+        sun_pipe = vulkan_make_pipeline("sun.vert", NULL, "sun.frag",
                 0, NULL, 0, NULL, NULL, VK_NULL_HANDLE, PIPE_NO_DEPTH_WRITE | PIPE_BLEND | PIPE_NO_CULL);
-        moon_pipe = vulkan_make_pipeline("shaders/moon.vert.spv", NULL, "shaders/moon.frag.spv",
+        moon_pipe = vulkan_make_pipeline("moon.vert", NULL, "moon.frag",
                 0, NULL, 0, NULL, NULL, VK_NULL_HANDLE, PIPE_NO_DEPTH_WRITE | PIPE_BLEND | PIPE_NO_CULL);
 }
 

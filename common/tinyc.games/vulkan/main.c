@@ -14,6 +14,13 @@
 #include <SDL3/SDL_vulkan.h>
 #include <vulkan/vulkan.h>
 
+#define STBI_NO_SIMD
+#ifndef TCGVK_SKIP_MAIN
+#define STB_IMAGE_IMPLEMENTATION
+#endif
+#include "../../nothings/stb_image.h"
+
+
 #include "instance.c"
 #include "physical.c"
 #include "queue.c"
@@ -71,6 +78,9 @@ struct vk {
                 char vert_src[256];  // GLSL source path (not .spv)
                 char geom_src[256];
                 char frag_src[256];
+                SDL_Time vert_mtime;   // last modification time
+                SDL_Time geom_mtime;
+                SDL_Time frag_mtime;
                 int bindingDescCount;
                 int attributeDescCount;
                 VkVertexInputBindingDescription bindingDescs[8];
@@ -84,15 +94,24 @@ struct vk {
         VkImage depthImage;
         VkDeviceMemory depthMemory;
         VkImageView depthImageView;
+
+        // Shader source directory (for hot-reload)
+        char shader_dir[256];
 } vk;
 
 void vulkan_create_swapchain();
 void vulkan_destroy_swapchain();
 void vulkan_recreate_swapchain();
 
-int vulkan_startup()
+int vulkan_startup(char *window_title, char *icon_file, char *shader_dir)
 {
         SDL_Init(SDL_INIT_VIDEO);
+
+        // Store shader source directory for hot-reload
+        if (shader_dir)
+                snprintf(vk.shader_dir, sizeof(vk.shader_dir), "%s", shader_dir);
+        else
+                vk.shader_dir[0] = '\0';
 
         vk.instance = createInstance();
 
@@ -134,8 +153,7 @@ int vulkan_startup()
         vk.presentingQueue = getPresentingQueue(&vk.device, vk.bestGraphicsQueueFamilyindex, vk.graphicsQueueMode);
         deleteQueueFamilyProperties(&vk.queueFamilyProperties);
 
-        char windowTitle[] = "Vulkan Triangle";
-        vk.window = createVulkanWindow(1440, 900, windowTitle);
+        vk.window = createVulkanWindow(1440, 900, window_title, icon_file);
         vk.surface = createSurface(vk.window, &vk.instance);
         VkBool32 surfaceSupported = getSurfaceSupport(&vk.surface, vk.bestPhysicalDevice, vk.bestGraphicsQueueFamilyindex);
         if (!surfaceSupported)
@@ -256,16 +274,22 @@ void vulkan_recreate_swapchain() {
         fprintf(stderr, "Swapchain recreated: %dx%d\n", vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height);
 }
 
-// Convert .spv path to source path and vice versa
-// "shaders/sun.frag.spv" -> "../blocko-game/shaders/sun.frag"
-// Assumes running from build directory
-static void spv_to_src(const char *spv, char *src, size_t src_size) {
-        // Remove .spv suffix and prepend ../blocko-game/
-        size_t len = strlen(spv);
-        if (len > 4 && strcmp(spv + len - 4, ".spv") == 0) {
-                snprintf(src, src_size, "../blocko-game/%.*s", (int)(len - 4), spv);
+// Get file modification time using SDL (cross-platform)
+static SDL_Time get_file_mtime(const char *path) {
+        SDL_PathInfo info;
+        if (SDL_GetPathInfo(path, &info)) {
+                return info.modify_time;
+        }
+        return 0;
+}
+
+// Build full source path from shader filename
+// "sun.frag" -> "{shader_dir}sun.frag"
+static void build_src_path(const char *filename, char *src, size_t src_size) {
+        if (vk.shader_dir[0]) {
+                snprintf(src, src_size, "%s%s", vk.shader_dir, filename);
         } else {
-                snprintf(src, src_size, "../blocko-game/%s", spv);
+                snprintf(src, src_size, "%s", filename);
         }
 }
 
@@ -394,22 +418,52 @@ int vulkan_reload_pipeline(int index) {
         deletePipelineLayout(&vk.device, &p->layout);
 
         // Create new pipeline
-        return vulkan_create_pipeline_at(index);
+        int result = vulkan_create_pipeline_at(index);
+
+        // Update mtimes on success
+        if (result == 0) {
+                p->vert_mtime = get_file_mtime(p->vert_src);
+                p->geom_mtime = p->geom_src[0] ? get_file_mtime(p->geom_src) : 0;
+                p->frag_mtime = get_file_mtime(p->frag_src);
+        }
+
+        return result;
 }
 
-// Reload all pipelines
+// Check if a pipeline's shaders have changed
+static int pipeline_shaders_changed(int index) {
+        struct pipeline *p = &vk.pipelines[index];
+
+        SDL_Time vert_now = get_file_mtime(p->vert_src);
+        SDL_Time frag_now = get_file_mtime(p->frag_src);
+        SDL_Time geom_now = p->geom_src[0] ? get_file_mtime(p->geom_src) : 0;
+
+        return (vert_now != p->vert_mtime) ||
+               (frag_now != p->frag_mtime) ||
+               (geom_now != p->geom_mtime);
+}
+
+// Reload only pipelines whose shaders have changed
 void vulkan_reload_all_pipelines() {
-        fprintf(stderr, "Reloading %d pipelines...\n", vk.pipelineCount);
-        int failed = 0;
+        int changed = 0, failed = 0;
+
         for (int i = 0; i < vk.pipelineCount; i++) {
+                if (!pipeline_shaders_changed(i))
+                        continue;
+
+                changed++;
                 if (vulkan_reload_pipeline(i) != 0) {
-                        fprintf(stderr, "  Pipeline %d: FAILED\n", i);
+                        fprintf(stderr, "Pipeline %d: FAILED\n", i);
                         failed++;
                 } else {
-                        fprintf(stderr, "  Pipeline %d: OK\n", i);
+                        fprintf(stderr, "Pipeline %d: reloaded\n", i);
                 }
         }
-        fprintf(stderr, "Reload complete: %d/%d succeeded\n", vk.pipelineCount - failed, vk.pipelineCount);
+
+        if (changed == 0)
+                fprintf(stderr, "No shader changes detected\n");
+        else
+                fprintf(stderr, "Reloaded %d/%d pipelines\n", changed - failed, changed);
 }
 
 // Internal: store pipeline metadata for hot-reload
@@ -422,13 +476,18 @@ static void store_pipeline_metadata(int index, char *vert, char *geom, char *fra
 ) {
         struct pipeline *p = &vk.pipelines[index];
 
-        // Store source paths (convert from .spv to source)
-        spv_to_src(vert, p->vert_src, sizeof(p->vert_src));
+        // Store full source paths
+        build_src_path(vert, p->vert_src, sizeof(p->vert_src));
         if (geom)
-                spv_to_src(geom, p->geom_src, sizeof(p->geom_src));
+                build_src_path(geom, p->geom_src, sizeof(p->geom_src));
         else
                 p->geom_src[0] = '\0';
-        spv_to_src(frag, p->frag_src, sizeof(p->frag_src));
+        build_src_path(frag, p->frag_src, sizeof(p->frag_src));
+
+        // Record initial modification times
+        p->vert_mtime = get_file_mtime(p->vert_src);
+        p->geom_mtime = geom ? get_file_mtime(p->geom_src) : 0;
+        p->frag_mtime = get_file_mtime(p->frag_src);
 
         // Store vertex input info
         p->bindingDescCount = bindingDescCount;
@@ -590,17 +649,23 @@ void vulkan_shutdown()
 void myDrawCallback(VkCommandBuffer cmdbuf)
 {
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[0].pipeline);
+
+        VkViewport viewport = { 0, 0, vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height, 0, 1 };
+        VkRect2D scissor = { {0, 0}, {vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height} };
+        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
+        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+
         vkCmdDraw(cmdbuf, 3, 1, 0, 0);
 }
 
 #ifndef TCGVK_SKIP_MAIN
 int main()
 {
-        vulkan_startup();
+        vulkan_startup("TCGVK - TinyC.Games Vulkan test", "../assets/tinyc-icon.png", "./shaders/");
         int pipe = vulkan_make_pipeline(
-                "shaders/triangle_vertex.spv",
-                "shaders/triangle_geometry.spv",
-                "shaders/triangle_fragment.spv",
+                "triangle.vert",
+                "triangle.geom",
+                "triangle.frag",
                 0, NULL, 0, NULL, NULL, VK_NULL_HANDLE, 0
         );
 

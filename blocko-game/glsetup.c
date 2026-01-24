@@ -2,32 +2,6 @@
 #ifndef BLOCKO_GLSETUP_C_INCLUDED
 #define BLOCKO_GLSETUP_C_INCLUDED
 
-//SDL_GLContext ctx;
-//
-//int check_shader_errors(GLuint shader, char *name)
-//{
-//        GLint success;
-//        GLchar log[1024];
-//        glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-//        if (success) return 0;
-//        glGetShaderInfoLog(shader, 1024, NULL, log);
-//        fprintf(stderr, "ERROR in %s shader program: %s\n", name, log);
-//        exit(1);
-//        return 1;
-//}
-//
-//int check_program_errors(GLuint shader, char *name)
-//{
-//        GLint success;
-//        GLchar log[1024];
-//        glGetProgramiv(shader, GL_LINK_STATUS, &success);
-//        if (success) return 0;
-//        glGetProgramInfoLog(shader, 1024, NULL, log);
-//        fprintf(stderr, "ERROR in %s shader: %s\n", name, log);
-//        exit(1);
-//        return 1;
-//}
-
 // please free() the returned string
 char *file2str(char *filename)
 {
@@ -53,63 +27,6 @@ char *file2str(char *filename)
         fprintf(stderr, __FILE__ " Failed to open/read %s\n", filename);
         return NULL;
 }
-
-//unsigned int file2shader(unsigned int type, char *filename)
-//{
-//        char *code = file2str(filename);
-//        unsigned int id = glCreateShader(type);
-//        glShaderSource(id, 1, (const char *const *)&code, NULL);
-//        glCompileShader(id);
-//        check_shader_errors(id, filename);
-//        free(code);
-//        return id;
-//}
-//
-//void load_shaders()
-//{
-//        printf("GLSL version on this system is %s\n", (char *)glGetString(GL_SHADING_LANGUAGE_VERSION));
-//
-//        unsigned int vertex          = file2shader(GL_VERTEX_SHADER,   TINYC_DIR "/blocko-game/shaders/main.vert");
-//        unsigned int geometry        = file2shader(GL_GEOMETRY_SHADER, TINYC_DIR "/blocko-game/shaders/main.geom");
-//        unsigned int fragment        = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/blocko-game/shaders/main.frag");
-//        unsigned int shadow_vertex   = file2shader(GL_VERTEX_SHADER,   TINYC_DIR "/blocko-game/shaders/shadow.vert");
-//        unsigned int shadow_geometry = file2shader(GL_GEOMETRY_SHADER, TINYC_DIR "/blocko-game/shaders/shadow.geom");
-//        unsigned int shadow_fragment = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/blocko-game/shaders/shadow.frag");
-//
-//        prog_id = glCreateProgram();
-//        glAttachShader(prog_id, vertex);
-//        glAttachShader(prog_id, geometry);
-//        glAttachShader(prog_id, fragment);
-//        glLinkProgram(prog_id);
-//        check_program_errors(prog_id, "main");
-//
-//        shadow_prog_id = glCreateProgram();
-//        glAttachShader(shadow_prog_id, shadow_vertex);
-//        glAttachShader(shadow_prog_id, shadow_geometry);
-//        glAttachShader(shadow_prog_id, shadow_fragment);
-//        glLinkProgram(shadow_prog_id);
-//        check_program_errors(shadow_prog_id, "shadow");
-//
-//        glDeleteShader(vertex);
-//        glDeleteShader(geometry);
-//        glDeleteShader(fragment);
-//        glDeleteShader(shadow_vertex);
-//        glDeleteShader(shadow_geometry);
-//        glDeleteShader(shadow_fragment);
-//}
-//
-//#ifndef SDL_PLATFORM_APPLE
-//void GLAPIENTRY
-//MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity,
-//                GLsizei length, const GLchar* message, const void* userParam)
-//{
-//        if (type != GL_DEBUG_TYPE_ERROR) return; // too much yelling
-//        fprintf( stderr, "GL CALLBACK: %s type = 0x%x, severity = 0x%x, message = %s\n",
-//                        ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR **" : "" ),
-//                        type, severity, message );
-//        exit(-7);
-//}
-//#endif
 
 void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
                   VkMemoryPropertyFlags properties, VkBuffer* buffer, VkDeviceMemory* bufferMemory) {
@@ -872,7 +789,7 @@ void allocate_world()
 //initial setup to get the window and rendering going
 void glsetup()
 {
-        vulkan_startup();
+        vulkan_startup("Blocko", TINYC_DIR "/blocko-game/assets/tinyc-icon.png", TINYC_DIR "/blocko-game/shaders/");
 
         // Ensure swapchain image count doesn't exceed our descriptor set array size
         if (vk.maxFrames > MAX_FRAMES_IN_FLIGHT) {
@@ -899,8 +816,7 @@ void glsetup()
 
         // Must create descriptor set layout BEFORE using it in pipeline creation
         createDescriptorSetLayout(&main_descriptor_set_layout);
-        main_pipe = vulkan_make_pipeline("shaders/main_simple.vert.spv",
-                "shaders/main_simple.geom.spv", "shaders/main_simple.frag.spv",
+        main_pipe = vulkan_make_pipeline("main.vert", "main.geom", "main.frag",
                 1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, 0);
 
         allocate_world();
@@ -959,7 +875,7 @@ void glsetup()
         // Create shadow pipeline with same vertex layout as main pipeline
         // Use main_descriptor_set_layout to access texture for alpha testing leaves
         shadow_pipe = vulkan_make_pipeline(
-                "shaders/shadow.vert.spv", "shaders/shadow.geom.spv", "shaders/shadow.frag.spv",
+                "shadow.vert", "shadow.geom", "shadow.frag",
                 1, &mainBindingDesc, 6, mainAttrDescs,
                 &main_descriptor_set_layout, shadow_render_pass,
                 PIPE_DEPTH_BIAS);

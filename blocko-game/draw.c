@@ -147,8 +147,8 @@ void draw_stuff()
         // Mid/far cascades use shadow2a/b_matrix and shadow3a/b_matrix from defs.c
 
         // Quantization step for mid/far cascades (radians)
-        const float MID_QUANT_STEP = 0.002f;
-        const float FAR_QUANT_STEP = 0.002f;
+        const float MID_QUANT_STEP = 0.01f;
+        const float FAR_QUANT_STEP = 0.01f;
 
         // Determine effective light pitch - use moon at night (sun below horizon)
         int is_night = (sun_pitch >= PI);

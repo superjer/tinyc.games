@@ -49,7 +49,7 @@ struct osn_context *osn_context;
 #include "atmosphere.c"
 #include "collision.c"
 #include "draw.c"
-#include "font.c"
+#include "../common/tinyc.games/font.c"
 #include "cursor.c"
 #include "glsetup.c"
 #include "interface.c"

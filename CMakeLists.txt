@@ -60,16 +60,16 @@ add_custom_target(shaders
 	COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders)
 
 set(SHADER_FILES
-  blocko-game/shaders/main_simple.vert
-  blocko-game/shaders/main_simple.geom
-  blocko-game/shaders/main_simple.frag
+  blocko-game/shaders/main.vert
+  blocko-game/shaders/main.geom
+  blocko-game/shaders/main.frag
   blocko-game/shaders/shadow.vert
   blocko-game/shaders/shadow.geom
   blocko-game/shaders/shadow.frag
   blocko-game/shaders/cursor.vert
   blocko-game/shaders/cursor.frag
-  blocko-game/shaders/font_vk.vert
-  blocko-game/shaders/font_vk.frag
+  common/tinyc.games/shaders/font.vert
+  common/tinyc.games/shaders/font.frag
   blocko-game/shaders/sky.vert
   blocko-game/shaders/sky.frag
   blocko-game/shaders/sun.vert

@@ -111,11 +111,6 @@ void debrief()
                                         "Out of room in the glo queue (%d times)\n", gloq_outta_room);
                 gloq_outta_room = 0;
 
-                //if (GLEW_NVX_gpu_memory_info) {
-                //        glGetIntegerv(GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &total_kb);
-                //        glGetIntegerv(GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &avail_kb);
-                //}
-
                 last_ticks = ticks;
                 last_frame = frame;
                 polys = 0;
@@ -181,19 +176,15 @@ void debrief()
 
         // compass
         {
-                char compass_buf[10] = {0};
-                snprintf(compass_buf, 10, "Yaw: %d", (int)(player[0].yaw / PI * 180.f));
-
-                font_begin(screenw, screenh);
-                font_add_text(compass_buf, screenw/2.f, 0.f, 0);
-                font_end(1, 1, 1);
-
+                char compass_buf[20] = {0};
                 static char dir[][8] = {
                         "N (+Z)", "NNE", "NE", "ENE", "E (+X)", "ESE", "SE", "SSE", "S (-Z)", "SSW", "SW", "WSW", "W (-X)", "WNW", "NW", "NNW", "N (+Z)",
                 };
                 int idx = (int)floorf((player[0].yaw + PI / 16.f) / (PI / 8.f));
+
+                snprintf(compass_buf, 20, "%d  %s", (int)(player[0].yaw / PI * 180.f), dir[idx]);
                 font_begin(screenw, screenh);
-                font_add_text(dir[idx], screenw/2.f, screenh/20.f, 0);
+                font_add_text(compass_buf, screenw/2.1f, 0.f, 0);
                 font_end(1, 1, 1);
         }
 

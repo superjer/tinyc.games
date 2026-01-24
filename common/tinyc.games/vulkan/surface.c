@@ -1,12 +1,27 @@
 #include "main.c"
 
-SDL_Window *createVulkanWindow(int width, int height, const char *title){
+SDL_Window *createVulkanWindow(int width, int height, const char *title, const char *icon_file){
         SDL_Window *window = SDL_CreateWindow(title, width, height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
         if (!window)
         {
                 fprintf(stderr, "could not create SDL window: %s\n", SDL_GetError());
                 exit(-1);
         }
+
+        // Load and set window icon
+        int icon_w, icon_h, icon_channels;
+        unsigned char *icon_pixels = stbi_load(icon_file, &icon_w, &icon_h, &icon_channels, 4);
+        if (icon_pixels) {
+                SDL_Surface *icon = SDL_CreateSurfaceFrom(icon_w, icon_h, SDL_PIXELFORMAT_RGBA32, icon_pixels, icon_w * 4);
+                if (icon) {
+                        SDL_SetWindowIcon(window, icon);
+                        SDL_DestroySurface(icon);
+                }
+                stbi_image_free(icon_pixels);
+        } else {
+                fprintf(stderr, "Could not load window icon: assets/tinyc-icon.png\n");
+        }
+
 	return window;
 }
 

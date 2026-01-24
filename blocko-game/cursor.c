@@ -186,7 +186,7 @@ void cursor_init()
         bindingDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
         cursor_pipe = vulkan_make_pipeline(
-                "shaders/cursor.vert.spv", NULL, "shaders/cursor.frag.spv",
+                "cursor.vert", NULL, "cursor.frag",
                 1, &bindingDesc, 1, &attributeDesc, NULL, VK_NULL_HANDLE, PIPE_NO_DEPTH_TEST | PIPE_NO_CULL
         );
 }
