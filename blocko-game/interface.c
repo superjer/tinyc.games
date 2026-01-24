@@ -132,13 +132,9 @@ void key_move(int down)
                 case SDLK_F4: // show which chunks are being sent to gl
                         if (!down) show_fresh_updates = !show_fresh_updates;
                         break;
-                case SDLK_F5: // delete test chunk
+                case SDLK_F5: // hot-reload shaders
                         if (!down) {
-                                for(int x=0;x<CHUNKW;x++) for(int y=0;y<TILESH;y++) for(int z=0;z<CHUNKD;z++)
-                                {
-                                        T_(C2B(32) + x, y, C2B(32) + z) = OPEN;
-                                }
-                                DIRTY_(32, 32) = 1;
+                                vulkan_reload_all_pipelines();
                         }
                         break;
                 case SDLK_F12: // draw shadow map on the sun

@@ -882,9 +882,6 @@ void glsetup()
         }
         fprintf(stderr, "Vulkan: maxFrames=%u, swapchainImageCount=%u\n", vk.maxFrames, vk.swapchainImageCount);
 
-        triangle_pipe = vulkan_make_pipeline("shaders/triangle.vert.spv", "shaders/triangle.geom.spv", "shaders/triangle.frag.spv",
-                                        0, NULL, 0, NULL);
-
         // Main terrain pipeline with vertex inputs matching struct vbufv
         VkVertexInputBindingDescription mainBindingDesc = {
                 .binding = 0,

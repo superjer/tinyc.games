@@ -67,6 +67,17 @@ struct vk {
         struct pipeline {
                 VkPipelineLayout layout;
                 VkPipeline pipeline;
+                // Metadata for hot-reload
+                char vert_src[256];  // GLSL source path (not .spv)
+                char geom_src[256];
+                char frag_src[256];
+                int bindingDescCount;
+                int attributeDescCount;
+                VkVertexInputBindingDescription bindingDescs[8];
+                VkVertexInputAttributeDescription attributeDescs[16];
+                VkDescriptorSetLayout *pDescriptorSetLayout;
+                VkRenderPass renderPass;  // VK_NULL_HANDLE = use default
+                int flags;
         } pipelines[100];
 
         // Depth buffer
@@ -245,6 +256,193 @@ void vulkan_recreate_swapchain() {
         fprintf(stderr, "Swapchain recreated: %dx%d\n", vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height);
 }
 
+// Convert .spv path to source path and vice versa
+// "shaders/sun.frag.spv" -> "../blocko-game/shaders/sun.frag"
+// Assumes running from build directory
+static void spv_to_src(const char *spv, char *src, size_t src_size) {
+        // Remove .spv suffix and prepend ../blocko-game/
+        size_t len = strlen(spv);
+        if (len > 4 && strcmp(spv + len - 4, ".spv") == 0) {
+                snprintf(src, src_size, "../blocko-game/%.*s", (int)(len - 4), spv);
+        } else {
+                snprintf(src, src_size, "../blocko-game/%s", spv);
+        }
+}
+
+// Compile a GLSL shader to SPIR-V using glslangValidator
+// Returns 0 on success, non-zero on failure
+static int compile_shader(const char *src_path, const char *spv_path) {
+        char cmd[1024];
+        snprintf(cmd, sizeof(cmd), "glslangValidator --quiet -V \"%s\" -o \"%s\" 2>&1", src_path, spv_path);
+        int ret = system(cmd);
+        if (ret != 0) {
+                fprintf(stderr, "Shader compile failed: %s\n", src_path);
+                // Run again without --quiet to show errors
+                snprintf(cmd, sizeof(cmd), "glslangValidator -V \"%s\" -o \"%s\"", src_path, spv_path);
+                system(cmd);
+        }
+        return ret;
+}
+
+// Internal: create/recreate pipeline at given index using stored metadata
+// If index == vk.pipelineCount, this is a new pipeline; otherwise it's a reload
+static int vulkan_create_pipeline_at(int index) {
+        struct pipeline *p = &vk.pipelines[index];
+
+        // Determine .spv paths from source paths
+        char vert_spv[256], geom_spv[256], frag_spv[256];
+        snprintf(vert_spv, sizeof(vert_spv), "shaders/%s.spv", strrchr(p->vert_src, '/') + 1);
+        if (p->geom_src[0])
+                snprintf(geom_spv, sizeof(geom_spv), "shaders/%s.spv", strrchr(p->geom_src, '/') + 1);
+        snprintf(frag_spv, sizeof(frag_spv), "shaders/%s.spv", strrchr(p->frag_src, '/') + 1);
+
+        uint32_t vertexShaderSize = 0;
+        char *vertexShaderCode = getShaderCode(vert_spv, &vertexShaderSize);
+        if (vertexShaderCode == VK_NULL_HANDLE) {
+                fprintf(stderr, "vertex shader %s not found\n", vert_spv);
+                return -1;
+        }
+        VkShaderModule vertexShaderModule = createShaderModule(&vk.device, vertexShaderCode, vertexShaderSize);
+
+        VkShaderModule geometryShaderModule = VK_NULL_HANDLE;
+        char *geometryShaderCode = NULL;
+        if (p->geom_src[0]) {
+                uint32_t geometryShaderSize = 0;
+                geometryShaderCode = getShaderCode(geom_spv, &geometryShaderSize);
+                if (geometryShaderCode == VK_NULL_HANDLE) {
+                        fprintf(stderr, "geometry shader %s not found\n", geom_spv);
+                        deleteShaderModule(&vk.device, &vertexShaderModule);
+                        deleteShaderCode(&vertexShaderCode);
+                        return -1;
+                }
+                geometryShaderModule = createShaderModule(&vk.device, geometryShaderCode, geometryShaderSize);
+        }
+
+        uint32_t fragmentShaderSize = 0;
+        char *fragmentShaderCode = getShaderCode(frag_spv, &fragmentShaderSize);
+        if (fragmentShaderCode == VK_NULL_HANDLE) {
+                fprintf(stderr, "fragment shader %s not found\n", frag_spv);
+                if (geometryShaderModule) {
+                        deleteShaderModule(&vk.device, &geometryShaderModule);
+                        deleteShaderCode(&geometryShaderCode);
+                }
+                deleteShaderModule(&vk.device, &vertexShaderModule);
+                deleteShaderCode(&vertexShaderCode);
+                return -1;
+        }
+        VkShaderModule fragmentShaderModule = createShaderModule(&vk.device, fragmentShaderCode, fragmentShaderSize);
+
+        if (p->pDescriptorSetLayout)
+                p->layout = createPipelineLayoutWithDescriptors(&vk.device, p->pDescriptorSetLayout);
+        else
+                p->layout = createPipelineLayout(&vk.device);
+
+        VkRenderPass rp = p->renderPass ? p->renderPass : vk.renderPass;
+        p->pipeline = createGraphicsPipeline(
+                &vk.device,
+                &p->layout,
+                &vertexShaderModule,
+                geometryShaderModule ? &geometryShaderModule : VK_NULL_HANDLE,
+                &fragmentShaderModule,
+                &rp,
+                &vk.bestSwapchainExtent,
+                p->bindingDescCount,
+                p->bindingDescs,
+                p->attributeDescCount,
+                p->attributeDescs,
+                p->flags
+        );
+
+        deleteShaderModule(&vk.device, &fragmentShaderModule);
+        deleteShaderCode(&fragmentShaderCode);
+        if (geometryShaderModule) {
+                deleteShaderModule(&vk.device, &geometryShaderModule);
+                deleteShaderCode(&geometryShaderCode);
+        }
+        deleteShaderModule(&vk.device, &vertexShaderModule);
+        deleteShaderCode(&vertexShaderCode);
+
+        return 0;
+}
+
+// Reload a single pipeline by recompiling its shaders
+int vulkan_reload_pipeline(int index) {
+        if (index < 0 || index >= vk.pipelineCount) {
+                fprintf(stderr, "Invalid pipeline index: %d\n", index);
+                return -1;
+        }
+
+        struct pipeline *p = &vk.pipelines[index];
+
+        // Determine .spv paths
+        char vert_spv[256], geom_spv[256], frag_spv[256];
+        snprintf(vert_spv, sizeof(vert_spv), "shaders/%s.spv", strrchr(p->vert_src, '/') + 1);
+        if (p->geom_src[0])
+                snprintf(geom_spv, sizeof(geom_spv), "shaders/%s.spv", strrchr(p->geom_src, '/') + 1);
+        snprintf(frag_spv, sizeof(frag_spv), "shaders/%s.spv", strrchr(p->frag_src, '/') + 1);
+
+        // Compile shaders
+        if (compile_shader(p->vert_src, vert_spv) != 0) return -1;
+        if (p->geom_src[0] && compile_shader(p->geom_src, geom_spv) != 0) return -1;
+        if (compile_shader(p->frag_src, frag_spv) != 0) return -1;
+
+        // Wait for GPU to finish using old pipeline
+        vkDeviceWaitIdle(vk.device);
+
+        // Destroy old pipeline and layout
+        deleteGraphicsPipeline(&vk.device, &p->pipeline);
+        deletePipelineLayout(&vk.device, &p->layout);
+
+        // Create new pipeline
+        return vulkan_create_pipeline_at(index);
+}
+
+// Reload all pipelines
+void vulkan_reload_all_pipelines() {
+        fprintf(stderr, "Reloading %d pipelines...\n", vk.pipelineCount);
+        int failed = 0;
+        for (int i = 0; i < vk.pipelineCount; i++) {
+                if (vulkan_reload_pipeline(i) != 0) {
+                        fprintf(stderr, "  Pipeline %d: FAILED\n", i);
+                        failed++;
+                } else {
+                        fprintf(stderr, "  Pipeline %d: OK\n", i);
+                }
+        }
+        fprintf(stderr, "Reload complete: %d/%d succeeded\n", vk.pipelineCount - failed, vk.pipelineCount);
+}
+
+// Internal: store pipeline metadata for hot-reload
+static void store_pipeline_metadata(int index, char *vert, char *geom, char *frag,
+        int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
+        int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs,
+        VkDescriptorSetLayout *pDescriptorSetLayout,
+        VkRenderPass renderPass,
+        int flags
+) {
+        struct pipeline *p = &vk.pipelines[index];
+
+        // Store source paths (convert from .spv to source)
+        spv_to_src(vert, p->vert_src, sizeof(p->vert_src));
+        if (geom)
+                spv_to_src(geom, p->geom_src, sizeof(p->geom_src));
+        else
+                p->geom_src[0] = '\0';
+        spv_to_src(frag, p->frag_src, sizeof(p->frag_src));
+
+        // Store vertex input info
+        p->bindingDescCount = bindingDescCount;
+        p->attributeDescCount = attributeDescCount;
+        if (bindingDescCount > 0 && bindingDescs)
+                memcpy(p->bindingDescs, bindingDescs, bindingDescCount * sizeof(VkVertexInputBindingDescription));
+        if (attributeDescCount > 0 && attributeDescs)
+                memcpy(p->attributeDescs, attributeDescs, attributeDescCount * sizeof(VkVertexInputAttributeDescription));
+
+        p->pDescriptorSetLayout = pDescriptorSetLayout;
+        p->renderPass = renderPass;
+        p->flags = flags;
+}
+
 int vulkan_make_pipeline_ex(char *vert, char *geom, char *frag,
         int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
         int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs,
@@ -252,66 +450,18 @@ int vulkan_make_pipeline_ex(char *vert, char *geom, char *frag,
         int flags
 ) {
         assert(vk.pipelineCount < 100);
+        int index = vk.pipelineCount;
 
-        uint32_t vertexShaderSize = 0;
-        char *vertexShaderCode = getShaderCode(vert, &vertexShaderSize);
-        if (vertexShaderCode == VK_NULL_HANDLE){
-                fprintf(stderr, "vertex shader %s not found\n", vert);
-                goto vert_shader_fail;
+        // Store metadata for hot-reload (VK_NULL_HANDLE for default render pass)
+        store_pipeline_metadata(index, vert, geom, frag,
+                bindingDescCount, bindingDescs, attributeDescCount, attributeDescs,
+                pDescriptorSetLayout, VK_NULL_HANDLE, flags);
+
+        // Create the pipeline
+        if (vulkan_create_pipeline_at(index) != 0) {
+                fprintf(stderr, "Failed to create pipeline %d\n", index);
+                return -1;
         }
-        VkShaderModule vertexShaderModule = createShaderModule(&vk.device, vertexShaderCode, vertexShaderSize);
-
-        uint32_t geometryShaderSize = 0;
-        char *geometryShaderCode;
-        VkShaderModule geometryShaderModule;
-        if (geom){
-                geometryShaderCode = getShaderCode(geom, &geometryShaderSize);
-                if (geometryShaderCode == VK_NULL_HANDLE){
-                        fprintf(stderr, "geometry shader %s not found\n", geom);
-                        goto geom_shader_fail;
-                }
-                geometryShaderModule = createShaderModule(&vk.device, geometryShaderCode, geometryShaderSize);
-        }
-
-        uint32_t fragmentShaderSize = 0;
-        char *fragmentShaderCode = getShaderCode(frag, &fragmentShaderSize);
-        if(fragmentShaderCode == VK_NULL_HANDLE){
-                fprintf(stderr, "fragment shader %s not found\n", frag);
-                goto frag_shader_fail;
-        }
-        VkShaderModule fragmentShaderModule = createShaderModule(&vk.device, fragmentShaderCode, fragmentShaderSize);
-
-        if (pDescriptorSetLayout)
-                vk.pipelines[vk.pipelineCount].layout = createPipelineLayoutWithDescriptors(&vk.device, pDescriptorSetLayout);
-        else
-                vk.pipelines[vk.pipelineCount].layout = createPipelineLayout(&vk.device);
-
-        vk.pipelines[vk.pipelineCount].pipeline = createGraphicsPipeline(
-                &vk.device,
-                &vk.pipelines[vk.pipelineCount].layout,
-                &vertexShaderModule,
-                geom ? &geometryShaderModule : VK_NULL_HANDLE,
-                &fragmentShaderModule,
-                &vk.renderPass,
-                &vk.bestSwapchainExtent,
-                bindingDescCount,
-                bindingDescs,
-                attributeDescCount,
-                attributeDescs,
-                flags
-        );
-
-        deleteShaderModule(&vk.device, &fragmentShaderModule);
-        deleteShaderCode(&fragmentShaderCode);
-        frag_shader_fail:
-        if (geom) {
-                deleteShaderModule(&vk.device, &geometryShaderModule);
-                deleteShaderCode(&geometryShaderCode);
-        }
-        geom_shader_fail:
-        deleteShaderModule(&vk.device, &vertexShaderModule);
-        deleteShaderCode(&vertexShaderCode);
-        vert_shader_fail:
 
         return vk.pipelineCount++;
 }
@@ -340,66 +490,18 @@ int vulkan_make_pipeline_with_renderpass(char *vert, char *geom, char *frag,
         int flags
 ) {
         assert(vk.pipelineCount < 100);
+        int index = vk.pipelineCount;
 
-        uint32_t vertexShaderSize = 0;
-        char *vertexShaderCode = getShaderCode(vert, &vertexShaderSize);
-        if (vertexShaderCode == VK_NULL_HANDLE){
-                fprintf(stderr, "vertex shader %s not found\n", vert);
-                goto vert_shader_fail;
+        // Store metadata for hot-reload
+        store_pipeline_metadata(index, vert, geom, frag,
+                bindingDescCount, bindingDescs, attributeDescCount, attributeDescs,
+                pDescriptorSetLayout, renderPass, flags);
+
+        // Create the pipeline
+        if (vulkan_create_pipeline_at(index) != 0) {
+                fprintf(stderr, "Failed to create pipeline %d\n", index);
+                return -1;
         }
-        VkShaderModule vertexShaderModule = createShaderModule(&vk.device, vertexShaderCode, vertexShaderSize);
-
-        uint32_t geometryShaderSize = 0;
-        char *geometryShaderCode;
-        VkShaderModule geometryShaderModule;
-        if (geom){
-                geometryShaderCode = getShaderCode(geom, &geometryShaderSize);
-                if (geometryShaderCode == VK_NULL_HANDLE){
-                        fprintf(stderr, "geometry shader %s not found\n", geom);
-                        goto geom_shader_fail;
-                }
-                geometryShaderModule = createShaderModule(&vk.device, geometryShaderCode, geometryShaderSize);
-        }
-
-        uint32_t fragmentShaderSize = 0;
-        char *fragmentShaderCode = getShaderCode(frag, &fragmentShaderSize);
-        if(fragmentShaderCode == VK_NULL_HANDLE){
-                fprintf(stderr, "fragment shader %s not found\n", frag);
-                goto frag_shader_fail;
-        }
-        VkShaderModule fragmentShaderModule = createShaderModule(&vk.device, fragmentShaderCode, fragmentShaderSize);
-
-        if (pDescriptorSetLayout)
-                vk.pipelines[vk.pipelineCount].layout = createPipelineLayoutWithDescriptors(&vk.device, pDescriptorSetLayout);
-        else
-                vk.pipelines[vk.pipelineCount].layout = createPipelineLayout(&vk.device);
-
-        vk.pipelines[vk.pipelineCount].pipeline = createGraphicsPipeline(
-                &vk.device,
-                &vk.pipelines[vk.pipelineCount].layout,
-                &vertexShaderModule,
-                geom ? &geometryShaderModule : VK_NULL_HANDLE,
-                &fragmentShaderModule,
-                &renderPass,
-                &vk.bestSwapchainExtent,
-                bindingDescCount,
-                bindingDescs,
-                attributeDescCount,
-                attributeDescs,
-                flags
-        );
-
-        deleteShaderModule(&vk.device, &fragmentShaderModule);
-        deleteShaderCode(&fragmentShaderCode);
-        frag_shader_fail:
-        if (geom) {
-                deleteShaderModule(&vk.device, &geometryShaderModule);
-                deleteShaderCode(&geometryShaderCode);
-        }
-        geom_shader_fail:
-        deleteShaderModule(&vk.device, &vertexShaderModule);
-        deleteShaderCode(&vertexShaderCode);
-        vert_shader_fail:
 
         return vk.pipelineCount++;
 }

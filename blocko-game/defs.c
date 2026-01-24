@@ -423,7 +423,6 @@ float sun_pitch = .3f; //.6f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down
 float sun_yaw = .3f;
 float sun_roll = -1.3f;
 char alert[800]; // only for debugging
-int triangle_pipe; // for vulkan demo triangle
 int main_pipe;     // main terrain rendering pipeline
 
 int mouselook = true;
