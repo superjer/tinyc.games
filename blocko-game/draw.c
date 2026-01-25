@@ -2,6 +2,15 @@
 #ifndef BLOCKO_DRAW_C_INCLUDED
 #define BLOCKO_DRAW_C_INCLUDED
 
+// Visible chunk info for single-pass frustum culling
+struct visible_chunk {
+        int x, z;           // chunk indices
+        unsigned char shadow_mask;  // bitmask: which shadow cascades see this chunk
+        unsigned char camera_visible;  // true if visible to main camera
+};
+struct visible_chunk visible_chunks[VAOW * VAOD];
+int visible_chunk_count = 0;
+
 int sorter(const void * _a, const void * _b)
 {
         const struct qitem *a = _a;
@@ -54,9 +63,9 @@ int chunk_in_range(int chunk_x, int chunk_z)
 // Draw shadow pass to a specific framebuffer
 // bias_constant and bias_slope are per-cascade depth bias values
 // poly_counter is incremented with the number of polygons rendered
-void draw_shadow_pass(VkCommandBuffer cmdbuf, VkFramebuffer fb, float *shadow_pv, float bias_constant, float bias_slope, int *poly_counter)
+// cascade_bit: which bit in shadow_mask to check (1=Near, 2=Mid, 4=Far, 8=Extreme)
+void draw_shadow_pass(VkCommandBuffer cmdbuf, VkFramebuffer fb, float *shadow_pv, float bias_constant, float bias_slope, int *poly_counter, unsigned char cascade_bit)
 {
-
         VkClearValue clearValue = {.depthStencil = {1.0f, 0}};
         VkRenderPassBeginInfo rpInfo = {
                 .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -83,26 +92,29 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, VkFramebuffer fb, float *shadow_pv
         struct { float pv[16]; float chunk_x; float chunk_y; float chunk_z; float bs; } push;
         memcpy(push.pv, shadow_pv, sizeof push.pv);
         push.bs = BS;
+        int cascade_x_draw_calls = 0;
 
         VkDeviceSize voffset = 0;
-        for (int i = 0; i < VAOW; i++) {
-                for (int j = 0; j < VAOD; j++) {
-                        if (!VBOLEN_(i, j)) continue;
-                        if (!chunk_in_frustum(shadow_pv, i, j)) continue;
-                        if (!chunk_in_range(i, j)) continue;
+        for (int k = 0; k < visible_chunk_count; k++) {
+                if (!(visible_chunks[k].shadow_mask & cascade_bit)) continue;
 
-                        push.chunk_x = i * BS * CHUNKW;
-                        push.chunk_y = 0;
-                        push.chunk_z = j * BS * CHUNKD;
-                        vkCmdPushConstants(cmdbuf, vk.pipelines[shadow_pipe].layout,
-                                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                                0, sizeof push, &push);
-                        vkCmdBindVertexBuffers(cmdbuf, 0, 1, &world_buf[i * VAOD + j], &voffset);
-                        vkCmdDraw(cmdbuf, VBOLEN_(i, j), 1, 0, 0);
-                        shadow_polys += VBOLEN_(i, j);
-                        *poly_counter += VBOLEN_(i, j);
-                }
+                int i = visible_chunks[k].x;
+                int j = visible_chunks[k].z;
+                push.chunk_x = i * BS * CHUNKW;
+                push.chunk_y = 0;
+                push.chunk_z = j * BS * CHUNKD;
+                vkCmdPushConstants(cmdbuf, vk.pipelines[shadow_pipe].layout,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                        0, sizeof push, &push);
+                vkCmdBindVertexBuffers(cmdbuf, 0, 1, &world_buf[i * VAOD + j], &voffset);
+                vkCmdDraw(cmdbuf, VBOLEN_(i, j), 1, 0, 0);
+                shadow_polys += VBOLEN_(i, j);
+                *poly_counter += VBOLEN_(i, j);
+                cascade_x_draw_calls++;
         }
+
+        if (cascade_bit == 8) fprintf(stderr, "visible_chunk_count: %d, CX draw calls: %d\n",
+                visible_chunk_count, cascade_x_draw_calls);
 
         vkCmdEndRenderPass(cmdbuf);
 }
@@ -369,8 +381,39 @@ void draw_stuff()
         translate(translated_view_mtrx, -eye0, -eye1, -eye2);
 
         static float proj_view_mtrx[16];
-        if (!lock_culling)
-                mat4_multiply(proj_view_mtrx, proj_mtrx, translated_view_mtrx);
+        mat4_multiply(proj_view_mtrx, proj_mtrx, translated_view_mtrx);
+
+        // Build visible chunk list (single pass: check all frustums)
+        visible_chunk_count = 0;
+        float *far_shadow_pv = (shadow3_render_index == 0) ? shadow3a_matrix : shadow3b_matrix;
+        float *extreme_shadow_pv = (shadow4_render_index == 0) ? shadow4a_matrix : shadow4b_matrix;
+        for (int i = 0; i < VAOW; i++) {
+                for (int j = 0; j < VAOD; j++) {
+                        if (!VBOLEN_(i, j)) continue;
+
+                        // Check camera visibility
+                        int camera_visible = chunk_in_frustum(proj_view_mtrx, i, j) && chunk_in_range(i, j);
+
+                        // Check shadow frustums
+                        unsigned char shadow_mask = 0;
+                        if (shadow_mapping) {
+                                if (chunk_in_frustum(shadow_pv_mtrx0, i, j)) shadow_mask |= 1;  // Near
+                                if (chunk_in_frustum(shadow_pv_mtrx1, i, j)) shadow_mask |= 2;  // Mid
+                                if (shadow3_render_index >= 0 && chunk_in_frustum(far_shadow_pv, i, j)) shadow_mask |= 4;  // Far
+                                // Extreme cascade: only include if camera-visible (too far to cast visible shadows from behind)
+                                if (camera_visible && shadow4_render_index >= 0 && chunk_in_frustum(extreme_shadow_pv, i, j)) shadow_mask |= 8;
+                        }
+
+                        // Include if visible to camera OR any shadow frustum
+                        if (!camera_visible && !shadow_mask) continue;
+
+                        visible_chunks[visible_chunk_count].x = i;
+                        visible_chunks[visible_chunk_count].z = j;
+                        visible_chunks[visible_chunk_count].shadow_mask = shadow_mask;
+                        visible_chunks[visible_chunk_count].camera_visible = camera_visible;
+                        visible_chunk_count++;
+                }
+        }
 
         main_ubo.shadow_mapping = shadow_mapping;
 
@@ -477,6 +520,41 @@ void draw_stuff()
                 just_gen_len = 0;
         }
 
+        // Check LOD chunks for face visibility changes (skip if lock_culling for debugging)
+        if (!lock_culling)
+        for (int i = 0; i < VAOW; i++) {
+                for (int j = 0; j < VAOD; j++) {
+                        if (!LOD_(i, j)) continue;  // skip full-detail chunks
+                        if (DIRTY_(i, j)) continue; // already dirty
+                        if (!AGEN_(i, j)) continue; // not generated yet
+
+                        // Calculate current face needs
+                        float chunk_cx = (i + 0.5f) * CHUNKW * BS;
+                        float chunk_cz = (j + 0.5f) * CHUNKD * BS;
+                        float dx = camplayer.pos.x - chunk_cx;
+                        float dz = camplayer.pos.z - chunk_cz;
+                        float dist = sqrtf(dx*dx + dz*dz);
+                        float dist_blocks = dist / BS;
+
+                        // If close enough, switch to full detail
+                        if (dist_blocks < LOD_DIST_THRESHOLD) {
+                                DIRTY_(i, j) = 1;
+                                continue;
+                        }
+
+                        // Check if any excluded face is now needed
+                        float thresh = dist * LOD_ANGLE_SIN;
+                        unsigned char needed = FACE_UP | FACE_DOWN;
+                        if (dz > -thresh) needed |= FACE_NORTH;
+                        if (dz <  thresh) needed |= FACE_SOUTH;
+                        if (dx > -thresh) needed |= FACE_EAST;
+                        if (dx <  thresh) needed |= FACE_WEST;
+
+                        if (needed & ~FACES_(i, j))
+                                DIRTY_(i, j) = 1;
+                }
+        }
+
         // Collect all dirty chunks with distances from current player position
         struct qitem fresh[VAOW*VAOD];
         size_t fresh_len = 0;
@@ -556,6 +634,31 @@ void draw_stuff()
                 if (!chunk_in_frustum(proj_view_mtrx, myx, myz) || !chunk_in_range(myx, myz))
                         continue;
 
+                // Calculate LOD face mask based on distance and viewing angle
+                float chunk_cx = (myx + 0.5f) * CHUNKW * BS;
+                float chunk_cz = (myz + 0.5f) * CHUNKD * BS;
+                float dx = camplayer.pos.x - chunk_cx;
+                float dz = camplayer.pos.z - chunk_cz;
+                float dist = sqrtf(dx*dx + dz*dz);
+                float dist_blocks = dist / BS;
+
+                unsigned char face_mask;
+                int use_lod;
+                if (dist_blocks < LOD_DIST_THRESHOLD) {
+                        // Close chunk: full detail
+                        face_mask = FACE_ALL;
+                        use_lod = 0;
+                } else {
+                        // Far chunk: cull backfaces with angular tolerance
+                        float thresh = dist * LOD_ANGLE_SIN;
+                        face_mask = FACE_UP | FACE_DOWN;  // always include vertical
+                        if (dz > -thresh) face_mask |= FACE_NORTH;
+                        if (dz <  thresh) face_mask |= FACE_SOUTH;
+                        if (dx > -thresh) face_mask |= FACE_EAST;
+                        if (dx <  thresh) face_mask |= FACE_WEST;
+                        use_lod = 1;
+                }
+
                 v = vbuf; // reset vertex buffer pointer
                 w = wbuf; // same for water buffer
 
@@ -606,23 +709,23 @@ void draw_stuff()
 
                                 if (t == GRAS)
                                 {
-                                        if (y == 0        || IS_SEE_THROUGH(T_(x  , y-1, z  ))) *tv++ = (struct vbufv){ 0,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                        if (z == 0        || IS_SEE_THROUGH(T_(x  , y  , z-1))) *tv++ = (struct vbufv){ 1, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                        if (z == TILESD-1 || IS_SEE_THROUGH(T_(x  , y  , z+1))) *tv++ = (struct vbufv){ 1, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                        if (x == 0        || IS_SEE_THROUGH(T_(x-1, y  , z  ))) *tv++ = (struct vbufv){ 1,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                        if (x == TILESW-1 || IS_SEE_THROUGH(T_(x+1, y  , z  ))) *tv++ = (struct vbufv){ 1,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                        if (y <  TILESH-1 && IS_SEE_THROUGH(T_(x  , y+1, z  ))) *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                        if ((face_mask & FACE_UP)    && (y == 0        || IS_SEE_THROUGH(T_(x  , y-1, z  )))) *tv++ = (struct vbufv){ 0,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                        if ((face_mask & FACE_SOUTH) && (z == 0        || IS_SEE_THROUGH(T_(x  , y  , z-1)))) *tv++ = (struct vbufv){ 1, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                        if ((face_mask & FACE_NORTH) && (z == TILESD-1 || IS_SEE_THROUGH(T_(x  , y  , z+1)))) *tv++ = (struct vbufv){ 1, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                        if ((face_mask & FACE_WEST)  && (x == 0        || IS_SEE_THROUGH(T_(x-1, y  , z  )))) *tv++ = (struct vbufv){ 1,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                        if ((face_mask & FACE_EAST)  && (x == TILESW-1 || IS_SEE_THROUGH(T_(x+1, y  , z  )))) *tv++ = (struct vbufv){ 1,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                        if ((face_mask & FACE_DOWN)  && (y <  TILESH-1 && IS_SEE_THROUGH(T_(x  , y+1, z  )))) *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                                 }
                                 else if (t == DIRT || t == GRG1 || t == GRG2)
                                 {
                                         int u = (t == DIRT) ? 2 :
                                                 (t == GRG1) ? 3 : 4;
-                                        if (y == 0        || IS_SEE_THROUGH(T_(x  , y-1, z  ))) *tv++ = (struct vbufv){ u,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                        if (z == 0        || IS_SEE_THROUGH(T_(x  , y  , z-1))) *tv++ = (struct vbufv){ 2, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                        if (z == TILESD-1 || IS_SEE_THROUGH(T_(x  , y  , z+1))) *tv++ = (struct vbufv){ 2, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                        if (x == 0        || IS_SEE_THROUGH(T_(x-1, y  , z  ))) *tv++ = (struct vbufv){ 2,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                        if (x == TILESW-1 || IS_SEE_THROUGH(T_(x+1, y  , z  ))) *tv++ = (struct vbufv){ 2,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                        if (y <  TILESH-1 && IS_SEE_THROUGH(T_(x  , y+1, z  ))) *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                        if ((face_mask & FACE_UP)    && (y == 0        || IS_SEE_THROUGH(T_(x  , y-1, z  )))) *tv++ = (struct vbufv){ u,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                        if ((face_mask & FACE_SOUTH) && (z == 0        || IS_SEE_THROUGH(T_(x  , y  , z-1)))) *tv++ = (struct vbufv){ 2, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                        if ((face_mask & FACE_NORTH) && (z == TILESD-1 || IS_SEE_THROUGH(T_(x  , y  , z+1)))) *tv++ = (struct vbufv){ 2, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                        if ((face_mask & FACE_WEST)  && (x == 0        || IS_SEE_THROUGH(T_(x-1, y  , z  )))) *tv++ = (struct vbufv){ 2,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                        if ((face_mask & FACE_EAST)  && (x == TILESW-1 || IS_SEE_THROUGH(T_(x+1, y  , z  )))) *tv++ = (struct vbufv){ 2,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                        if ((face_mask & FACE_DOWN)  && (y <  TILESH-1 && IS_SEE_THROUGH(T_(x  , y+1, z  )))) *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                                 }
                                 else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN ||
                                          t == RLEF || t == YLEF)
@@ -637,12 +740,12 @@ void draw_stuff()
                                                 (t == RLEF) ? 16 :
                                                 (t == YLEF) ? 17 :
                                                                0 ;
-                                        if (y == 0        || IS_SEE_THROUGH(T_(x  , y-1, z  ))) *tv++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                        if (z == 0        || IS_SEE_THROUGH(T_(x  , y  , z-1))) *tv++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                        if (z == TILESD-1 || IS_SEE_THROUGH(T_(x  , y  , z+1))) *tv++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                        if (x == 0        || IS_SEE_THROUGH(T_(x-1, y  , z  ))) *tv++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                        if (x == TILESW-1 || IS_SEE_THROUGH(T_(x+1, y  , z  ))) *tv++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                        if (y <  TILESH-1 && IS_SEE_THROUGH(T_(x  , y+1, z  ))) *tv++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                        if ((face_mask & FACE_UP)    && (y == 0        || IS_SEE_THROUGH(T_(x  , y-1, z  )))) *tv++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                        if ((face_mask & FACE_SOUTH) && (z == 0        || IS_SEE_THROUGH(T_(x  , y  , z-1)))) *tv++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                        if ((face_mask & FACE_NORTH) && (z == TILESD-1 || IS_SEE_THROUGH(T_(x  , y  , z+1)))) *tv++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                        if ((face_mask & FACE_WEST)  && (x == 0        || IS_SEE_THROUGH(T_(x-1, y  , z  )))) *tv++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                        if ((face_mask & FACE_EAST)  && (x == TILESW-1 || IS_SEE_THROUGH(T_(x+1, y  , z  )))) *tv++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                        if ((face_mask & FACE_DOWN)  && (y <  TILESH-1 && IS_SEE_THROUGH(T_(x  , y+1, z  )))) *tv++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                                 }
                                 else if (t == WATR)
                                 {
@@ -709,8 +812,10 @@ void draw_stuff()
                 void *data = (char *)world_mapped[myx] + offset;
                 memcpy(data, vbuf, (v - vbuf) * sizeof *vbuf);
 
-                // Mark chunk as clean after mesh rebuild
+                // Mark chunk as clean after mesh rebuild and store LOD state
                 DIRTY_(myx, myz) = 0;
+                FACES_(myx, myz) = face_mask;
+                LOD_(myx, myz) = use_lod;
                 meshes_built++;
         }
 
@@ -729,29 +834,30 @@ void draw_stuff()
         VkCommandBuffer cmdbuf = vk.commandBuffers[vk.imageIndex];
 
         // Render shadow maps (before main render pass)
+        TIMER(shadow_render);
         if (shadow_mapping) {
                 // End the auto-started main render pass
                 vkCmdEndRenderPass(cmdbuf);
 
-                // Render shadow passes with per-cascade bias
+                // Render shadow passes with per-cascade bias (using pre-built visible chunk list)
                 // Near cascade: rendered every frame with PCF
-                draw_shadow_pass(cmdbuf, shadow_framebuffer, shadow_pv_mtrx0, 1.5f, 1.5f, &shadow_polys_near);
+                draw_shadow_pass(cmdbuf, shadow_framebuffer, shadow_pv_mtrx0, 1.5f, 1.5f, &shadow_polys_near, 1);
 
                 // Mid cascade: rendered every frame, no PCF, no A/B blending
-                draw_shadow_pass(cmdbuf, shadow2_framebuffer, shadow_pv_mtrx1, 1.0f, 1.0f, &shadow_polys_mid);
+                draw_shadow_pass(cmdbuf, shadow2_framebuffer, shadow_pv_mtrx1, 1.0f, 1.0f, &shadow_polys_mid, 2);
 
                 // Far cascade: render to A or B based on which needs updating
                 if (shadow3_render_index >= 0) {
                         VkFramebuffer far_fb = (shadow3_render_index == 0) ? shadow3a_framebuffer : shadow3b_framebuffer;
                         float *far_pv = (shadow3_render_index == 0) ? shadow3a_matrix : shadow3b_matrix;
-                        draw_shadow_pass(cmdbuf, far_fb, far_pv, 0.5f, 0.5f, &shadow_polys_far);
+                        draw_shadow_pass(cmdbuf, far_fb, far_pv, 0.5f, 0.5f, &shadow_polys_far, 4);
                 }
 
                 // Extreme cascade: render to A or B based on which needs updating
                 if (shadow4_render_index >= 0) {
                         VkFramebuffer extreme_fb = (shadow4_render_index == 0) ? shadow4a_framebuffer : shadow4b_framebuffer;
                         float *extreme_pv = (shadow4_render_index == 0) ? shadow4a_matrix : shadow4b_matrix;
-                        draw_shadow_pass(cmdbuf, extreme_fb, extreme_pv, 0.5f, 0.5f, &shadow_polys_extreme);
+                        draw_shadow_pass(cmdbuf, extreme_fb, extreme_pv, 0.5f, 0.5f, &shadow_polys_extreme, 8);
                 }
 
                 // Restart main render pass
@@ -770,12 +876,10 @@ void draw_stuff()
                 vkCmdBeginRenderPass(cmdbuf, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
         }
 
-        // Render sky first (behind everything)
+        // Render sky, sun, and terrain
+        TIMER(draw_terrain);
         sky_draw(cmdbuf, proj_mtrx, view_mtrx);
         sun_draw(cmdbuf, proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll);
-
-        // Render terrain
-        TIMER(draw_terrain);
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);
 
         VkViewport viewport = { 0, 0, vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height, 0, 1 };
@@ -793,24 +897,23 @@ void draw_stuff()
         VkDeviceSize voffset = 0;
         int chunks_drawn = 0;
         int total_verts = 0;
-        int chunks_with_data = 0;
-        for (int i = 0; i < VAOW; i++) {
-                for (int j = 0; j < VAOD; j++) {
-                        if (VBOLEN_(i, j) > 0) chunks_with_data++;
-                        if (!VBOLEN_(i, j)) continue;
-                        if (!chunk_in_frustum(proj_view_mtrx, i, j) || !chunk_in_range(i, j)) continue;
 
-                        push.chunk_x = i * BS * CHUNKW;
-                        push.chunk_y = 0;
-                        push.chunk_z = j * BS * CHUNKD;
-                        vkCmdPushConstants(cmdbuf, vk.pipelines[main_pipe].layout,
-                                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
-                        vkCmdBindVertexBuffers(cmdbuf, 0, 1, &world_buf[i * VAOD + j], &voffset);
-                        vkCmdDraw(cmdbuf, VBOLEN_(i, j), 1, 0, 0);
-                        chunks_drawn++;
-                        total_verts += VBOLEN_(i, j);
-                        polys += VBOLEN_(i, j);
-                }
+        // Use pre-built visible chunk list
+        for (int k = 0; k < visible_chunk_count; k++) {
+                if (!visible_chunks[k].camera_visible) continue;
+                int i = visible_chunks[k].x;
+                int j = visible_chunks[k].z;
+
+                push.chunk_x = i * BS * CHUNKW;
+                push.chunk_y = 0;
+                push.chunk_z = j * BS * CHUNKD;
+                vkCmdPushConstants(cmdbuf, vk.pipelines[main_pipe].layout,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
+                vkCmdBindVertexBuffers(cmdbuf, 0, 1, &world_buf[i * VAOD + j], &voffset);
+                vkCmdDraw(cmdbuf, VBOLEN_(i, j), 1, 0, 0);
+                chunks_drawn++;
+                total_verts += VBOLEN_(i, j);
+                polys += VBOLEN_(i, j);
         }
 
         /*

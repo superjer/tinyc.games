@@ -36,12 +36,12 @@
 
 #define W 1920                     // window width, height
 #define H 1000                     // ^
-#define CHUNKW 16                  // chunk size (vao size)
-#define CHUNKD 16                  // ^
+#define CHUNKW 64                  // chunk size (vao size)
+#define CHUNKD 64                  // ^
 #define CHUNKW2 (CHUNKW/2)
 #define CHUNKD2 (CHUNKD/2)
-#define VAOW 64                    // how many VAOs wide
-#define VAOD 64                    // how many VAOs deep
+#define VAOW 16                    // how many VAOs wide
+#define VAOD 16                    // how many VAOs deep
 #define VAOS (VAOW*VAOD)           // total nr of vbos
 #define MAX_MESHES_PER_FRAME 1     // max dirty chunks to rebuild per frame
 #define TILESW (CHUNKW*VAOW)       // total level width, height
@@ -56,9 +56,9 @@
 #define PLYR_SPD_S 50               // units per frame (sneaking)
 #define PLYR_ACCEL 17               // acceleration per frame (scaled for BS=1000)
 #define EYEDOWN 500                 // how far down are the eyes from the top of the head
-#define STARTPX (256*BS)           // starting position (center of chunk range 0-31)
+#define STARTPX (553*BS)           // starting position
 #define STARTPY 0                  // ^
-#define STARTPZ (256*BS)           // ^
+#define STARTPZ (733*BS)           // ^
 #define NR_PLAYERS 1
 #define JUMP_BUFFER_FRAMES 6
 #define GRAV_JUMP 0
@@ -73,10 +73,23 @@
 #define SOUTH 5
 #define DOWN  6
 
-#define VERTEX_BUFLEN 16384
+// Face bitmask for LOD culling
+#define FACE_UP    (1 << 0)
+#define FACE_DOWN  (1 << 1)
+#define FACE_NORTH (1 << 2)
+#define FACE_SOUTH (1 << 3)
+#define FACE_EAST  (1 << 4)
+#define FACE_WEST  (1 << 5)
+#define FACE_ALL   0x3F
+
+// LOD settings
+#define LOD_DIST_THRESHOLD 160.0f  // distance in blocks before LOD kicks in
+#define LOD_ANGLE_SIN 0.259f       // sin(15°) - angular tolerance for face culling
+
+#define VERTEX_BUFLEN 131072
 #define MAX_MESH_THREADS 16
-#define SUNQLEN 10000
-#define GLOQLEN 10000
+#define SUNQLEN 40000
+#define GLOQLEN 40000
 
 #define SHADOW_SZ 4096
 
@@ -133,6 +146,8 @@
 // chunk pos-to-mem-location macros
 #define AGEN_(x,z)   already_generated[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
 #define DIRTY_(x,z)  chunk_dirty[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
+#define FACES_(x,z)  chunk_faces[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
+#define LOD_(x,z)    chunk_lod[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
 #define VAO_(x,z)    vbo[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define VBO_(x,z)    vao[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define VBOLEN_(x,z) vbo_len[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
@@ -320,6 +335,8 @@ float *cornlight;
 float *kornlight;
 volatile char already_generated[VAOW][VAOD];
 volatile char chunk_dirty[VAOW][VAOD];
+unsigned char chunk_faces[VAOW][VAOD];  // bitmask of faces included in mesh
+unsigned char chunk_lod[VAOW][VAOD];    // 0=full detail, 1=LOD mode (backface culled)
 
 int future_scootx, future_scootz; // pending global map offset
 int scootx, scootz;               // actual global map offset
