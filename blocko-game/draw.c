@@ -53,7 +53,8 @@ int chunk_in_range(int chunk_x, int chunk_z)
 
 // Draw shadow pass to a specific framebuffer
 // bias_constant and bias_slope are per-cascade depth bias values
-void draw_shadow_pass(VkCommandBuffer cmdbuf, VkFramebuffer fb, float *shadow_pv, float bias_constant, float bias_slope)
+// poly_counter is incremented with the number of polygons rendered
+void draw_shadow_pass(VkCommandBuffer cmdbuf, VkFramebuffer fb, float *shadow_pv, float bias_constant, float bias_slope, int *poly_counter)
 {
 
         VkClearValue clearValue = {.depthStencil = {1.0f, 0}};
@@ -99,6 +100,7 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, VkFramebuffer fb, float *shadow_pv
                         vkCmdBindVertexBuffers(cmdbuf, 0, 1, &world_buf[i * VAOD + j], &voffset);
                         vkCmdDraw(cmdbuf, VBOLEN_(i, j), 1, 0, 0);
                         shadow_polys += VBOLEN_(i, j);
+                        *poly_counter += VBOLEN_(i, j);
                 }
         }
 
@@ -144,20 +146,21 @@ void draw_stuff()
 
         // Store shadow PV matrices for rendering
         float shadow_pv_mtrx0[16] = {0};  // Near cascade (rendered every frame)
-        // Mid/far cascades use shadow2a/b_matrix and shadow3a/b_matrix from defs.c
+        float shadow_pv_mtrx1[16] = {0};  // Mid cascade (rendered every frame)
+        // Far/extreme cascades use shadow3a/b_matrix and shadow4a/b_matrix from defs.c
 
-        // Quantization step for mid/far cascades (radians)
-        const float MID_QUANT_STEP = 0.01f;
-        const float FAR_QUANT_STEP = 0.01f;
+        // Quantization step for far/extreme cascades (radians)
+        const float FAR_QUANT_STEP = 0.002f;
+        const float EXTREME_QUANT_STEP = 0.002f;
 
         // Determine effective light pitch - use moon at night (sun below horizon)
         int is_night = (sun_pitch >= PI);
         float light_pitch = is_night ? moon_pitch : sun_pitch;
         if (light_pitch < 0) light_pitch += TAU;
 
-        // Compute current slots for mid/far cascades
-        int mid_slot = (int)floorf(light_pitch / MID_QUANT_STEP);
+        // Compute current slots for far/extreme cascades (A/B temporal blending)
         int far_slot = (int)floorf(light_pitch / FAR_QUANT_STEP);
+        int extreme_slot = (int)floorf(light_pitch / EXTREME_QUANT_STEP);
 
         // Alternating A/B shadow maps based on slot parity:
         // - Even slot: A=slot (lo), B=slot+1 (hi), blend 0→1
@@ -165,31 +168,31 @@ void draw_stuff()
         // This ensures when crossing a boundary, the shadow map that was "hi" becomes "lo"
         // without needing to copy matrices.
 
-        int mid_slot_is_even = (mid_slot % 2) == 0;
         int far_slot_is_even = (far_slot % 2) == 0;
+        int extreme_slot_is_even = (extreme_slot % 2) == 0;
 
         // Determine which slot each shadow map should be at
-        shadow2a_slot = mid_slot_is_even ? mid_slot : mid_slot + 1;  // A = even slots
-        shadow2b_slot = mid_slot_is_even ? mid_slot + 1 : mid_slot;  // B = odd slots
-        shadow3a_slot = far_slot_is_even ? far_slot : far_slot + 1;
-        shadow3b_slot = far_slot_is_even ? far_slot + 1 : far_slot;
+        shadow3a_slot = far_slot_is_even ? far_slot : far_slot + 1;  // A = even slots
+        shadow3b_slot = far_slot_is_even ? far_slot + 1 : far_slot;  // B = odd slots
+        shadow4a_slot = extreme_slot_is_even ? extreme_slot : extreme_slot + 1;
+        shadow4b_slot = extreme_slot_is_even ? extreme_slot + 1 : extreme_slot;
 
         // Blend factor: position within current slot (0→1)
-        float mid_blend_raw = (light_pitch - mid_slot * MID_QUANT_STEP) / MID_QUANT_STEP;
         float far_blend_raw = (light_pitch - far_slot * FAR_QUANT_STEP) / FAR_QUANT_STEP;
+        float extreme_blend_raw = (light_pitch - extreme_slot * EXTREME_QUANT_STEP) / EXTREME_QUANT_STEP;
 
         // When slot is even: blend from A(0) to B(1), so use raw blend
         // When slot is odd:  blend from B(0) to A(1), so use 1-raw blend
-        main_ubo.shadow2_blend = mid_slot_is_even ? mid_blend_raw : (1.0f - mid_blend_raw);
         main_ubo.shadow3_blend = far_slot_is_even ? far_blend_raw : (1.0f - far_blend_raw);
+        main_ubo.shadow4_blend = extreme_slot_is_even ? extreme_blend_raw : (1.0f - extreme_blend_raw);
 
         // Static frame counter for alternating A/B renders
         static int shadow_frame = 0;
         shadow_frame++;
 
-        // Alternate which shadow map to render each frame
-        shadow2_render_index = (shadow_frame % 2);  // 0=A, 1=B
-        shadow3_render_index = ((shadow_frame + 1) % 2);  // Offset so not both on same frame
+        // Alternate which shadow map to render each frame (only for far/extreme)
+        shadow3_render_index = (shadow_frame % 2);  // 0=A, 1=B
+        shadow4_render_index = ((shadow_frame + 1) % 2);  // Offset so not both on same frame
 
         // Helper to compute light position from pitch
         #define COMPUTE_LIGHT_POS(pitch, lp) do { \
@@ -199,28 +202,29 @@ void draw_stuff()
         } while(0)
 
         // compute shadow matrices and render shadow maps
+        // s=0: Near, s=1: Mid, s=2: Far, s=3: Extreme
         TIMER(shadow_render);
-        if (shadow_mapping) for(int s = 0; s < 3; s++)
+        if (shadow_mapping) for(int s = 0; s < 4; s++)
         {
                 float light_pos[3];
                 float render_pitch;
 
-                if (s == 0) {
-                        // Near cascade: use current light pitch (sun or moon)
+                if (s == 0 || s == 1) {
+                        // Near and Mid cascades: use current light pitch (sun or moon)
                         render_pitch = light_pitch;
-                } else if (s == 1) {
-                        // Mid cascade: render at the slot assigned to A or B
-                        if (shadow2_render_index == 0) {
-                                render_pitch = shadow2a_slot * MID_QUANT_STEP;
-                        } else {
-                                render_pitch = shadow2b_slot * MID_QUANT_STEP;
-                        }
-                } else {
+                } else if (s == 2) {
                         // Far cascade: render at the slot assigned to A or B
                         if (shadow3_render_index == 0) {
                                 render_pitch = shadow3a_slot * FAR_QUANT_STEP;
                         } else {
                                 render_pitch = shadow3b_slot * FAR_QUANT_STEP;
+                        }
+                } else {
+                        // Extreme cascade: render at the slot assigned to A or B
+                        if (shadow4_render_index == 0) {
+                                render_pitch = shadow4a_slot * EXTREME_QUANT_STEP;
+                        } else {
+                                render_pitch = shadow4b_slot * EXTREME_QUANT_STEP;
                         }
                 }
 
@@ -270,10 +274,9 @@ void draw_stuff()
                 };
 
                 // Orthographic projection (Vulkan depth [0,1])
-                float snear = (s == 0 ? 10.f : s == 1 ? 80.f : 200.f);
+                float snear = (s == 0 ? 10.f : s == 1 ? 40.f : s == 2 ? 80.f : 200.f);
                 float sfar = dist2sun * 2;
-                // Cascade sizes
-                float mag = (s == 0 ? 5000.f : s == 1 ? 50000.f : 500000.f);
+                float mag = (s == 0 ? 5000.f : s == 1 ? 20000.f : s == 2 ? 50000.f : 500000.f);
 
                 float ortho_mtrx[] = {
                         1.f/mag, 0,       0,                        0,
@@ -308,14 +311,10 @@ void draw_stuff()
                         memcpy(shadow_pv_mtrx0, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
                         memcpy(main_ubo.shadow_space, biased_shadow_mtrx, sizeof biased_shadow_mtrx);
                 } else if (s == 1) {
-                        // Mid cascade: store in A or B based on which we're rendering
-                        if (shadow2_render_index == 0)
-                                memcpy(shadow2a_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
-                        else
-                                memcpy(shadow2b_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
-                        mat4_multiply(main_ubo.shadow2a_space, bias_mtrx, shadow2a_matrix);
-                        mat4_multiply(main_ubo.shadow2b_space, bias_mtrx, shadow2b_matrix);
-                } else {
+                        // Mid cascade: render every frame (no A/B blending)
+                        memcpy(shadow_pv_mtrx1, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        memcpy(main_ubo.shadow2_space, biased_shadow_mtrx, sizeof biased_shadow_mtrx);
+                } else if (s == 2) {
                         // Far cascade: store in A or B based on which we're rendering
                         if (shadow3_render_index == 0)
                                 memcpy(shadow3a_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
@@ -323,6 +322,14 @@ void draw_stuff()
                                 memcpy(shadow3b_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
                         mat4_multiply(main_ubo.shadow3a_space, bias_mtrx, shadow3a_matrix);
                         mat4_multiply(main_ubo.shadow3b_space, bias_mtrx, shadow3b_matrix);
+                } else {
+                        // Extreme cascade: store in A or B based on which we're rendering
+                        if (shadow4_render_index == 0)
+                                memcpy(shadow4a_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        else
+                                memcpy(shadow4b_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        mat4_multiply(main_ubo.shadow4a_space, bias_mtrx, shadow4a_matrix);
+                        mat4_multiply(main_ubo.shadow4b_space, bias_mtrx, shadow4b_matrix);
                 }
         }
 
@@ -407,6 +414,55 @@ void draw_stuff()
                 main_ubo.fog_color[2] = fog_b;
                 main_ubo.fog_lo = draw_dist * BS * 0.5f;
                 main_ubo.fog_hi = draw_dist * BS * 1.0f;
+
+                // Sun strength and warmth for day/night cycle
+                // Full brightness between PI/16 and PI-PI/16, dimming/warming only near horizons
+                // During night: moonlight at constant strength, no warmth
+                if (sun_pitch < PI) {
+                        // Daytime
+                        float transition = PI / 64.0f;  // ~11 degrees transition zone
+                        float sunrise_end = transition;
+                        float sunset_start = PI - transition;
+
+                        if (sun_pitch < sunrise_end) {
+                                // Sunrise transition: dim/warm → bright/white
+                                float t = sun_pitch / sunrise_end;
+                                main_ubo.sun_strength = t;
+                                main_ubo.sun_warmth = 1.0f - t;
+                        } else if (sun_pitch > sunset_start) {
+                                // Sunset transition: bright/white → dim/warm
+                                float t = (sun_pitch - sunset_start) / transition;
+                                main_ubo.sun_strength = 1.0f - t;
+                                main_ubo.sun_warmth = t;
+                        } else {
+                                // Full day: constant brightness, no warmth
+                                main_ubo.sun_strength = 1.0f;
+                                main_ubo.sun_warmth = 0.0f;
+                        }
+                        main_ubo.outside_cascade_lit = main_ubo.sun_strength;
+                } else {
+                        // Nighttime - moonlight fades in/out near horizons
+                        float transition = PI / 16.0f;
+                        float moonrise_end = PI + transition;
+                        float moonset_start = TAU - transition;
+
+                        if (sun_pitch < moonrise_end) {
+                                // Moonrise transition: dim → bright, warm → cool
+                                float t = (sun_pitch - PI) / transition;
+                                main_ubo.sun_strength = t;
+                                main_ubo.sun_warmth = 1.0f - t;  // Fade out warmth from sunset
+                        } else if (sun_pitch > moonset_start) {
+                                // Moonset transition: bright → dim, cool → warm
+                                float t = (sun_pitch - moonset_start) / transition;
+                                main_ubo.sun_strength = 1.0f - t;
+                                main_ubo.sun_warmth = t;  // Fade in warmth for sunrise
+                        } else {
+                                // Full night: constant moonlight, no warmth
+                                main_ubo.sun_strength = 1.0f;
+                                main_ubo.sun_warmth = 0.0f;
+                        }
+                        main_ubo.outside_cascade_lit = 0.0f;      // Areas outside shadow cascade always dark at night
+                }
         }
 
         // Mark newly generated chunks as dirty
@@ -678,21 +734,24 @@ void draw_stuff()
                 vkCmdEndRenderPass(cmdbuf);
 
                 // Render shadow passes with per-cascade bias
-                // Near cascade: rendered every frame
-                draw_shadow_pass(cmdbuf, shadow_framebuffer, shadow_pv_mtrx0, 1.5f, 1.5f);
+                // Near cascade: rendered every frame with PCF
+                draw_shadow_pass(cmdbuf, shadow_framebuffer, shadow_pv_mtrx0, 1.5f, 1.5f, &shadow_polys_near);
 
-                // Mid cascade: render to A or B based on which needs updating
-                if (shadow2_render_index >= 0) {
-                        VkFramebuffer mid_fb = (shadow2_render_index == 0) ? shadow2a_framebuffer : shadow2b_framebuffer;
-                        float *mid_pv = (shadow2_render_index == 0) ? shadow2a_matrix : shadow2b_matrix;
-                        draw_shadow_pass(cmdbuf, mid_fb, mid_pv, 0.5f, 0.5f);
-                }
+                // Mid cascade: rendered every frame, no PCF, no A/B blending
+                draw_shadow_pass(cmdbuf, shadow2_framebuffer, shadow_pv_mtrx1, 1.0f, 1.0f, &shadow_polys_mid);
 
                 // Far cascade: render to A or B based on which needs updating
                 if (shadow3_render_index >= 0) {
                         VkFramebuffer far_fb = (shadow3_render_index == 0) ? shadow3a_framebuffer : shadow3b_framebuffer;
                         float *far_pv = (shadow3_render_index == 0) ? shadow3a_matrix : shadow3b_matrix;
-                        draw_shadow_pass(cmdbuf, far_fb, far_pv, 0.5f, 0.5f);
+                        draw_shadow_pass(cmdbuf, far_fb, far_pv, 0.5f, 0.5f, &shadow_polys_far);
+                }
+
+                // Extreme cascade: render to A or B based on which needs updating
+                if (shadow4_render_index >= 0) {
+                        VkFramebuffer extreme_fb = (shadow4_render_index == 0) ? shadow4a_framebuffer : shadow4b_framebuffer;
+                        float *extreme_pv = (shadow4_render_index == 0) ? shadow4a_matrix : shadow4b_matrix;
+                        draw_shadow_pass(cmdbuf, extreme_fb, extreme_pv, 0.5f, 0.5f, &shadow_polys_extreme);
                 }
 
                 // Restart main render pass
@@ -750,6 +809,7 @@ void draw_stuff()
                         vkCmdDraw(cmdbuf, VBOLEN_(i, j), 1, 0, 0);
                         chunks_drawn++;
                         total_verts += VBOLEN_(i, j);
+                        polys += VBOLEN_(i, j);
                 }
         }
 

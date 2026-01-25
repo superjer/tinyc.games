@@ -24,23 +24,24 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 view;             // offset 64
     mat4 proj;             // offset 128
     mat4 shadow_space;     // offset 192 (near cascade)
-    mat4 shadow2a_space;   // offset 256 (mid cascade A)
-    mat4 shadow2b_space;   // offset 320 (mid cascade B)
-    mat4 shadow3a_space;   // offset 384 (far cascade A)
-    mat4 shadow3b_space;   // offset 448 (far cascade B)
-    float BS;              // offset 512
-    float shadow2_blend;   // offset 516
-    float shadow3_blend;   // offset 520
+    mat4 shadow2_space;    // offset 256 (mid cascade)
+    mat4 shadow3a_space;   // offset 320 (far cascade A)
+    mat4 shadow3b_space;   // offset 384 (far cascade B)
+    mat4 shadow4a_space;   // offset 448 (extreme cascade A)
+    mat4 shadow4b_space;   // offset 512 (extreme cascade B)
+    float BS;              // offset 576
+    float shadow3_blend;   // offset 580 (far: 0=A, 1=B)
+    float shadow4_blend;   // offset 584 (extreme: 0=A, 1=B)
 
-    vec3 day_color;        // offset 528
-    vec3 glo_color;        // offset 544
-    vec3 fog_color;        // offset 560
-    float fog_lo;          // offset 572
-    float fog_hi;          // offset 576
-    vec3 light_pos;        // offset 592
-    vec3 view_pos;         // offset 608
-    float sharpness;       // offset 620
-    bool shadow_mapping;   // offset 624
+    vec3 day_color;        // offset 592
+    vec3 glo_color;        // offset 608
+    vec3 fog_color;        // offset 624
+    float fog_lo;          // offset 636
+    float fog_hi;          // offset 640
+    vec3 light_pos;        // offset 656
+    vec3 view_pos;         // offset 672
+    float sharpness;       // offset 684
+    bool shadow_mapping;   // offset 688
 } ubo;
 
 layout(push_constant) uniform Push {
@@ -132,7 +133,8 @@ void main(void) {
         // Calculate shadow space position for near cascade only
         // Mid/far cascade positions are computed in fragment shader (for A/B blending)
         // Normal offset bias prevents shadow bleeding at cube edges
-        vec4 shadow_sample_pos = world_pos + vec4(normal_val * 10.0, 0.0);
+        // Offset must exceed PCF world radius
+        vec4 shadow_sample_pos = world_pos + vec4(normal_val * 75.0, 0.0);
         shadow_pos = ubo.shadow_space * shadow_sample_pos;
 
         EmitVertex();

@@ -212,17 +212,17 @@ VkImageView texture_image_view;
 VkSampler texture_sampler;
 
 // Shadow mapping resources
-// Near cascade (single shadow map, updated every frame)
+// Near cascade (single shadow map, updated every frame, PCF)
 VkImage shadow_image;
 VkDeviceMemory shadow_memory;
 VkImageView shadow_image_view;
 VkFramebuffer shadow_framebuffer;
 
-// Mid cascade (A/B shadow maps for temporal blending)
-VkImage shadow2a_image, shadow2b_image;
-VkDeviceMemory shadow2a_memory, shadow2b_memory;
-VkImageView shadow2a_image_view, shadow2b_image_view;
-VkFramebuffer shadow2a_framebuffer, shadow2b_framebuffer;
+// Mid cascade (single shadow map, updated every frame, no PCF)
+VkImage shadow2_image;
+VkDeviceMemory shadow2_memory;
+VkImageView shadow2_image_view;
+VkFramebuffer shadow2_framebuffer;
 
 // Far cascade (A/B shadow maps for temporal blending)
 VkImage shadow3a_image, shadow3b_image;
@@ -230,50 +230,59 @@ VkDeviceMemory shadow3a_memory, shadow3b_memory;
 VkImageView shadow3a_image_view, shadow3b_image_view;
 VkFramebuffer shadow3a_framebuffer, shadow3b_framebuffer;
 
+// Extreme cascade (A/B shadow maps for temporal blending)
+VkImage shadow4a_image, shadow4b_image;
+VkDeviceMemory shadow4a_memory, shadow4b_memory;
+VkImageView shadow4a_image_view, shadow4b_image_view;
+VkFramebuffer shadow4a_framebuffer, shadow4b_framebuffer;
+
 VkSampler shadow_sampler;
 VkRenderPass shadow_render_pass;
 int shadow_pipe;
 
-// Stored matrices for shadow map blending
-float shadow2a_matrix[16], shadow2b_matrix[16];
+// Stored matrices for shadow map blending (Far and Extreme cascades)
 float shadow3a_matrix[16], shadow3b_matrix[16];
+float shadow4a_matrix[16], shadow4b_matrix[16];
 
 // Which quantized slot each shadow map was rendered at (-1 = uninitialized)
-int shadow2a_slot = -1, shadow2b_slot = -1;
 int shadow3a_slot = -1, shadow3b_slot = -1;
+int shadow4a_slot = -1, shadow4b_slot = -1;
 
 // Which shadow map to render this frame (0=A, 1=B)
-int shadow2_render_index = 0;
 int shadow3_render_index = 0;
+int shadow4_render_index = 0;
 
 struct main_ubo {
     float model[16];           // mat4 - offset 0
     float view[16];            // mat4 - offset 64
     float proj[16];            // mat4 - offset 128
     float shadow_space[16];    // mat4 - offset 192 (near cascade)
-    float shadow2a_space[16];  // mat4 - offset 256 (mid cascade A)
-    float shadow2b_space[16];  // mat4 - offset 320 (mid cascade B)
-    float shadow3a_space[16];  // mat4 - offset 384 (far cascade A)
-    float shadow3b_space[16];  // mat4 - offset 448 (far cascade B)
-    float bs;                  // float - offset 512
-    float shadow2_blend;       // float - offset 516 (0=A, 1=B)
-    float shadow3_blend;       // float - offset 520
+    float shadow2_space[16];   // mat4 - offset 256 (mid cascade)
+    float shadow3a_space[16];  // mat4 - offset 320 (far cascade A)
+    float shadow3b_space[16];  // mat4 - offset 384 (far cascade B)
+    float shadow4a_space[16];  // mat4 - offset 448 (extreme cascade A)
+    float shadow4b_space[16];  // mat4 - offset 512 (extreme cascade B)
+    float bs;                  // float - offset 576
+    float shadow3_blend;       // float - offset 580 (far: 0=A, 1=B)
+    float shadow4_blend;       // float - offset 584 (extreme: 0=A, 1=B)
     float padding1;            // Padding to align day_color to 16 bytes
 
-    float day_color[3];   // vec3 - offset 528
+    float day_color[3];   // vec3 - offset 592
     float padding2;       // Padding
-    float glo_color[3];   // vec3 - offset 544
+    float glo_color[3];   // vec3 - offset 608
     float padding3;       // Padding
-    float fog_color[3];   // vec3 - offset 560
-    float fog_lo;         // float - offset 572
-    float fog_hi;         // float - offset 576
+    float fog_color[3];   // vec3 - offset 624
+    float fog_lo;         // float - offset 636
+    float fog_hi;         // float - offset 640
     float padding4[3];    // Padding to align light_pos to 16 bytes
-    float light_pos[3];   // vec3 - offset 592
+    float light_pos[3];   // vec3 - offset 656
     float padding5;       // Padding
-    float view_pos[3];    // vec3 - offset 608
-    float sharpness;      // float - offset 620
-    int shadow_mapping;   // bool (as int) - offset 624
-    float padding6[3];    // Padding to 16-byte boundary
+    float view_pos[3];    // vec3 - offset 672
+    float sharpness;      // float - offset 684
+    int shadow_mapping;   // bool (as int) - offset 688
+    float sun_strength;   // float - offset 692
+    float sun_warmth;     // float - offset 696
+    float outside_cascade_lit; // float - offset 700
 };
 
 unsigned int vbo[VAOS], vao[VAOS];
@@ -405,6 +414,10 @@ int show_shadow_map = false;
 int help_layer = 0;
 int polys = 0;
 int shadow_polys = 0;
+int shadow_polys_near = 0;
+int shadow_polys_mid = 0;
+int shadow_polys_far = 0;
+int shadow_polys_extreme = 0;
 int sunq_outta_room = 0;
 int gloq_outta_room = 0;
 int omp_threads = 0;

@@ -80,23 +80,19 @@ void debrief()
                 float elapsed = ((float)ticks - last_ticks);
                 float frames = frame - last_frame;
 
-                //if (GLEW_NVX_gpu_memory_info) {
-                //        p += snprintf(p, 8000 - (p-buf),
-                //                      "vmem %0.0fm used of %0.0fm (%0.0f%% free)\n",
-                //                      (float)(total_kb - avail_kb) / 1000.f,
-                //                      (float)(total_kb)            / 1000.f,
-                //                      ((float)avail_kb / total_kb) * 100.f);
-                //}
-
                 p += snprintf(p, 8000 - (p-buf),
                                 "%d omp, %0.2f chunk/s\n",
                                 omp_threads,
                                 (float)nr_chunks_generated / (chunk_gen_ticks / 1000.f));
 
                 p += snprintf(p, 8000 - (p-buf),
-                                "%.3fm poly/s, %.3f shadow poly/s\n",
+                                "%.1fm poly/s, shadow: %.1fm (n:%.1fm m:%.1fm f:%.1fm x:%.1fm)\n",
                                 1000.f * (float)polys / elapsed / 1000000.f,
-                                1000.f * (float)shadow_polys / elapsed / 1000000.f);
+                                1000.f * (float)shadow_polys / elapsed / 1000000.f,
+                                1000.f * (float)shadow_polys_near / elapsed / 1000000.f,
+                                1000.f * (float)shadow_polys_mid / elapsed / 1000000.f,
+                                1000.f * (float)shadow_polys_far / elapsed / 1000000.f,
+                                1000.f * (float)shadow_polys_extreme / elapsed / 1000000.f);
 
                 p += snprintf(p, 8000 - (p-buf),
                                 "%.1f fps\n", 1000.f * frames / elapsed );
@@ -115,6 +111,10 @@ void debrief()
                 last_frame = frame;
                 polys = 0;
                 shadow_polys = 0;
+                shadow_polys_near = 0;
+                shadow_polys_mid = 0;
+                shadow_polys_far = 0;
+                shadow_polys_extreme = 0;
 
                 timer_print(timings_buf, 8000, false);
         }
