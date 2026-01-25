@@ -113,9 +113,6 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, VkFramebuffer fb, float *shadow_pv
                 cascade_x_draw_calls++;
         }
 
-        if (cascade_bit == 8) fprintf(stderr, "visible_chunk_count: %d, CX draw calls: %d\n",
-                visible_chunk_count, cascade_x_draw_calls);
-
         vkCmdEndRenderPass(cmdbuf);
 }
 
@@ -124,6 +121,15 @@ void draw_stuff()
 {
         TIMER(gpu_sync);
         vulkan_acquire_next();
+
+        // Read GPU timestamps from previous frame (non-blocking, from 2 frames ago)
+        if (gpu_timestamp_pool && frame > 1) {
+                VkResult result = vkGetQueryPoolResults(vk.device, gpu_timestamp_pool,
+                        0, GPU_TS_COUNT, sizeof(gpu_timestamps), gpu_timestamps,
+                        sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
+                gpu_timestamps_valid = (result == VK_SUCCESS);
+        }
+
         TIMER(shadow_calc);
         struct main_ubo main_ubo = {0};
 
@@ -198,13 +204,21 @@ void draw_stuff()
         main_ubo.shadow3_blend = far_slot_is_even ? far_blend_raw : (1.0f - far_blend_raw);
         main_ubo.shadow4_blend = extreme_slot_is_even ? extreme_blend_raw : (1.0f - extreme_blend_raw);
 
-        // Static frame counter for alternating A/B renders
+        // Static frame counter for alternating cascade renders
         static int shadow_frame = 0;
         shadow_frame++;
 
-        // Alternate which shadow map to render each frame (only for far/extreme)
-        shadow3_render_index = (shadow_frame % 2);  // 0=A, 1=B
-        shadow4_render_index = ((shadow_frame + 1) % 2);  // Offset so not both on same frame
+        // Alternate between Far and Extreme cascades each frame (only render one)
+        // Each cascade still alternates A/B within its own render schedule
+        if ((shadow_frame % 2) == 1) {
+                // Odd frames: render Far, skip Extreme
+                shadow3_render_index = (shadow_frame / 2) % 2;  // 0=A, 1=B
+                shadow4_render_index = -1;
+        } else {
+                // Even frames: render Extreme, skip Far
+                shadow3_render_index = -1;
+                shadow4_render_index = ((shadow_frame - 2) / 2) % 2;  // 0=A, 1=B
+        }
 
         // Helper to compute light position from pitch
         #define COMPUTE_LIGHT_POS(pitch, lp) do { \
@@ -218,6 +232,10 @@ void draw_stuff()
         TIMER(shadow_render);
         if (shadow_mapping) for(int s = 0; s < 4; s++)
         {
+                // Skip cascades not being rendered this frame (keeps matrix frozen)
+                if (s == 2 && shadow3_render_index < 0) continue;
+                if (s == 3 && shadow4_render_index < 0) continue;
+
                 float light_pos[3];
                 float render_pitch;
 
@@ -343,6 +361,21 @@ void draw_stuff()
                         mat4_multiply(main_ubo.shadow4a_space, bias_mtrx, shadow4a_matrix);
                         mat4_multiply(main_ubo.shadow4b_space, bias_mtrx, shadow4b_matrix);
                 }
+        }
+
+        // Always compute biased matrices for Far/Extreme from stored matrices
+        // (needed when cascade was skipped this frame but UBO still needs valid data)
+        if (shadow_mapping) {
+                float bias_mtrx[] = {
+                        0.5f, 0,    0, 0,
+                        0,    0.5f, 0, 0,
+                        0,    0,    1, 0,
+                        0.5f, 0.5f, 0, 1,
+                };
+                mat4_multiply(main_ubo.shadow3a_space, bias_mtrx, shadow3a_matrix);
+                mat4_multiply(main_ubo.shadow3b_space, bias_mtrx, shadow3b_matrix);
+                mat4_multiply(main_ubo.shadow4a_space, bias_mtrx, shadow4a_matrix);
+                mat4_multiply(main_ubo.shadow4b_space, bias_mtrx, shadow4b_matrix);
         }
 
         do_atmos_colors();
@@ -679,7 +712,7 @@ void draw_stuff()
 
                         #pragma omp for schedule(static)
                         for (int z = zlo; z < zhi; z++) {
-                        for (int y = 0; y < TILESH; y++) for (int x = xlo; x < xhi; x++)
+                        for (int x = xlo; x < xhi; x++) for (int y = 0; y < TILESH; y++)
                         {
                                 if (tv >= tv_limit) break;
 
@@ -833,18 +866,26 @@ void draw_stuff()
 
         VkCommandBuffer cmdbuf = vk.commandBuffers[vk.imageIndex];
 
+        // End the auto-started render pass so we can reset query pool and do shadow passes
+        vkCmdEndRenderPass(cmdbuf);
+
+        // Reset and start GPU timestamp queries (must be outside render pass)
+        if (gpu_timestamp_pool) {
+                vkCmdResetQueryPool(cmdbuf, gpu_timestamp_pool, 0, GPU_TS_COUNT);
+                vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_FRAME_START);
+        }
+
         // Render shadow maps (before main render pass)
         TIMER(shadow_render);
         if (shadow_mapping) {
-                // End the auto-started main render pass
-                vkCmdEndRenderPass(cmdbuf);
-
                 // Render shadow passes with per-cascade bias (using pre-built visible chunk list)
                 // Near cascade: rendered every frame with PCF
                 draw_shadow_pass(cmdbuf, shadow_framebuffer, shadow_pv_mtrx0, 1.5f, 1.5f, &shadow_polys_near, 1);
+                if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_N_END);
 
                 // Mid cascade: rendered every frame, no PCF, no A/B blending
                 draw_shadow_pass(cmdbuf, shadow2_framebuffer, shadow_pv_mtrx1, 1.0f, 1.0f, &shadow_polys_mid, 2);
+                if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_M_END);
 
                 // Far cascade: render to A or B based on which needs updating
                 if (shadow3_render_index >= 0) {
@@ -852,6 +893,7 @@ void draw_stuff()
                         float *far_pv = (shadow3_render_index == 0) ? shadow3a_matrix : shadow3b_matrix;
                         draw_shadow_pass(cmdbuf, far_fb, far_pv, 0.5f, 0.5f, &shadow_polys_far, 4);
                 }
+                if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_F_END);
 
                 // Extreme cascade: render to A or B based on which needs updating
                 if (shadow4_render_index >= 0) {
@@ -859,22 +901,31 @@ void draw_stuff()
                         float *extreme_pv = (shadow4_render_index == 0) ? shadow4a_matrix : shadow4b_matrix;
                         draw_shadow_pass(cmdbuf, extreme_fb, extreme_pv, 0.5f, 0.5f, &shadow_polys_extreme, 8);
                 }
-
-                // Restart main render pass
-                VkClearValue clearValues[2] = {
-                        {.color = {{fog_r, fog_g, fog_b, 1.0f}}},
-                        {.depthStencil = {1.0f, 0}}
-                };
-                VkRenderPassBeginInfo renderPassBeginInfo = {
-                        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-                        .renderPass = vk.renderPass,
-                        .framebuffer = vk.framebuffers[vk.imageIndex],
-                        .renderArea = {{0, 0}, {vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height}},
-                        .clearValueCount = 2,
-                        .pClearValues = clearValues,
-                };
-                vkCmdBeginRenderPass(cmdbuf, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+                if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_X_END);
+        } else {
+                // Write shadow timestamps even when disabled (so GPU timing display works)
+                if (gpu_timestamp_pool) {
+                        vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_N_END);
+                        vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_M_END);
+                        vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_F_END);
+                        vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_X_END);
+                }
         }
+
+        // Start main render pass
+        VkClearValue clearValues[2] = {
+                {},
+                {.depthStencil = {1.0f, 0}}
+        };
+        VkRenderPassBeginInfo renderPassBeginInfo = {
+                .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                .renderPass = vk.renderPass,
+                .framebuffer = vk.framebuffers[vk.imageIndex],
+                .renderArea = {{0, 0}, {vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height}},
+                .clearValueCount = 2,
+                .pClearValues = clearValues,
+        };
+        vkCmdBeginRenderPass(cmdbuf, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
         // Render sky, sun, and terrain
         TIMER(draw_terrain);
@@ -925,7 +976,13 @@ void draw_stuff()
 
         if (mouselook) cursor(cmdbuf);
 
+        // GPU timestamp after terrain
+        if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_TERRAIN_END);
+
         debrief();
+
+        // GPU timestamp at frame end
+        if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_FRAME_END);
 
         TIMER(frame_submit);
         vulkan_submit();

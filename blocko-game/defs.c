@@ -455,6 +455,24 @@ float sun_roll = -1.3f;
 char alert[800]; // only for debugging
 int main_pipe;     // main terrain rendering pipeline
 
+// GPU timestamp queries
+#define GPU_TIMESTAMP_COUNT 8
+VkQueryPool gpu_timestamp_pool;
+uint64_t gpu_timestamps[GPU_TIMESTAMP_COUNT];
+float gpu_timestamp_period;  // nanoseconds per tick
+int gpu_timestamps_valid = 0;  // whether we have valid results from previous frame
+// Indices: 0=frame_start, 1=shadow_end, 2=terrain_end, 3=frame_end
+enum {
+    GPU_TS_FRAME_START = 0,
+    GPU_TS_SHADOW_N_END,
+    GPU_TS_SHADOW_M_END,
+    GPU_TS_SHADOW_F_END,
+    GPU_TS_SHADOW_X_END,
+    GPU_TS_TERRAIN_END,
+    GPU_TS_FRAME_END,
+    GPU_TS_COUNT
+};
+
 int mouselook = true;
 int target_x, target_y, target_z;
 int place_x, place_y, place_z;

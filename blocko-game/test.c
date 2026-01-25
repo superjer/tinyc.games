@@ -94,6 +94,24 @@ void debrief()
                                 1000.f * (float)shadow_polys_far / elapsed / 1000000.f,
                                 1000.f * (float)shadow_polys_extreme / elapsed / 1000000.f);
 
+                // GPU timing display (accumulated averages)
+                static float gpu_shadow_n_ms = 0, gpu_shadow_m_ms = 0;
+                static float gpu_shadow_f_ms = 0, gpu_shadow_x_ms = 0;
+                static float gpu_terrain_ms = 0, gpu_total_ms = 0;
+                if (gpu_timestamps_valid && gpu_timestamp_period > 0) {
+                        float ns_to_ms = gpu_timestamp_period / 1e6f;
+                        gpu_shadow_n_ms = (gpu_timestamps[GPU_TS_SHADOW_N_END] - gpu_timestamps[GPU_TS_FRAME_START]) * ns_to_ms;
+                        gpu_shadow_m_ms = (gpu_timestamps[GPU_TS_SHADOW_M_END] - gpu_timestamps[GPU_TS_SHADOW_N_END]) * ns_to_ms;
+                        gpu_shadow_f_ms = (gpu_timestamps[GPU_TS_SHADOW_F_END] - gpu_timestamps[GPU_TS_SHADOW_M_END]) * ns_to_ms;
+                        gpu_shadow_x_ms = (gpu_timestamps[GPU_TS_SHADOW_X_END] - gpu_timestamps[GPU_TS_SHADOW_F_END]) * ns_to_ms;
+                        gpu_terrain_ms = (gpu_timestamps[GPU_TS_TERRAIN_END] - gpu_timestamps[GPU_TS_SHADOW_X_END]) * ns_to_ms;
+                        gpu_total_ms = (gpu_timestamps[GPU_TS_FRAME_END] - gpu_timestamps[GPU_TS_FRAME_START]) * ns_to_ms;
+                }
+                p += snprintf(p, 8000 - (p-buf),
+                                "GPU: %.1fms (sN:%.1f sM:%.1f sF:%.1f sX:%.1f terr:%.1f)\n",
+                                gpu_total_ms, gpu_shadow_n_ms, gpu_shadow_m_ms,
+                                gpu_shadow_f_ms, gpu_shadow_x_ms, gpu_terrain_ms);
+
                 p += snprintf(p, 8000 - (p-buf),
                                 "%.1f fps\n", 1000.f * frames / elapsed );
 
