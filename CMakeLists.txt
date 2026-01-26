@@ -56,8 +56,8 @@ if(MATH_LIBRARY)
   target_link_libraries(zel PUBLIC ${MATH_LIBRARY})
 endif()
 
-add_custom_target(shaders
-	COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders)
+# Create shader output directory
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/shaders)
 
 set(SHADER_FILES
   blocko-game/shaders/main.vert
@@ -78,19 +78,22 @@ set(SHADER_FILES
   blocko-game/shaders/moon.frag
 )
 
+# Use add_custom_command with OUTPUT for proper dependency tracking
 foreach(SHADER ${SHADER_FILES})
   get_filename_component(SHADER_NAME ${SHADER} NAME)
   set(COMPILED_SHADER ${CMAKE_BINARY_DIR}/shaders/${SHADER_NAME}.spv)
-  add_custom_target(
-    ${SHADER_NAME}.spv
+  add_custom_command(
+    OUTPUT ${COMPILED_SHADER}
     COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/${SHADER} -o ${COMPILED_SHADER}
+    DEPENDS ${CMAKE_SOURCE_DIR}/${SHADER}
     COMMENT "Compiling shader: ${SHADER}"
   )
-  add_dependencies(${SHADER_NAME}.spv shaders)
-  list(APPEND COMPILED_SHADERS ${SHADER_NAME}.spv)
+  list(APPEND COMPILED_SHADER_FILES ${COMPILED_SHADER})
 endforeach()
 
-add_dependencies(blocko ${COMPILED_SHADERS})
+# Target that depends on all compiled shaders
+add_custom_target(shaders DEPENDS ${COMPILED_SHADER_FILES})
+add_dependencies(blocko shaders)
 
 if(WIN32)
   macro(copy_dlls target)

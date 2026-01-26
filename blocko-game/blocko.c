@@ -48,6 +48,8 @@ struct osn_context *osn_context;
 #include "defs.c"
 #include "atmosphere.c"
 #include "collision.c"
+#include "mesh.c"
+#include "shadow.c"
 #include "draw.c"
 #include "../common/tinyc.games/font.c"
 #include "cursor.c"

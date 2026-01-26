@@ -8,13 +8,14 @@
         X(step_glolight_building), \
         X(recalc_corner_lighting), \
         X(gpu_sync), \
+        X(draw_start), \
         X(shadow_calc), \
         X(shadow_render), \
         X(frame_setup), \
-        X(collect_dirty), \
-        X(draw_cached), \
+        X(sync_w_terrain_gen), \
         X(build_meshes), \
         X(gpu_upload), \
+        X(upload_ubo), \
         X(draw_terrain), \
         X(frame_submit), \
         X(glsetup), \

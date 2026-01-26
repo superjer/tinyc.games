@@ -235,6 +235,21 @@ VkDeviceMemory texture_memory;
 VkImageView texture_image_view;
 VkSampler texture_sampler;
 
+// Visible chunk info for single-pass frustum culling
+struct visible_chunk {
+        int x, z;           // chunk indices
+        unsigned char shadow_mask;  // bitmask: which shadow cascades see this chunk
+        unsigned char camera_visible;  // true if visible to main camera
+};
+struct visible_chunk visible_chunks[VAOW * VAOD];
+int visible_chunk_count = 0;
+
+float peye0, peye1, peye2;
+float proj_view_mtrx[16];
+
+float dist2sun = TILESW * BS;
+float shadow_target[3];
+
 // Shadow mapping resources
 struct shadow_cascade {
     VkImage image;
@@ -281,7 +296,7 @@ struct main_ubo {
     float sun_strength;   // float - offset 692
     float sun_warmth;     // float - offset 696
     float outside_cascade_lit; // float - offset 700
-};
+} main_ubo;
 
 unsigned int vbo[VAOS], vao[VAOS];
 size_t vbo_len[VAOS];
@@ -333,7 +348,7 @@ int test_area_z;
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
 struct qchunk { int x, y, z, sqdist; };
-struct qitem { int x, y, z; };
+struct qitem { int x; union { int y; int d; }; int z; };
 
 struct qitem sunq0_[SUNQLEN+1];
 struct qitem sunq1_[SUNQLEN+1];
@@ -429,6 +444,7 @@ int shadow_mapping = true;
 int speedy_sun = false;
 int reverse_sun = false;
 float sun_pitch = .3f; //.6f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down
+float moon_pitch;
 float sun_yaw = .3f;
 float sun_roll = -1.3f;
 char alert[800]; // only for debugging
@@ -502,6 +518,10 @@ int step_sunlight();
 int step_glolight();
 void remove_sunlight(int px, int py, int pz);
 void remove_glolight(int px, int py, int pz);
+
+// draw.c protos
+int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z);
+int chunk_in_range(int chunk_x, int chunk_z);
 
 // main.c protos
 void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi);
