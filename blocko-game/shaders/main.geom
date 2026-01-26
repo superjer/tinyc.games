@@ -23,15 +23,10 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 model;            // offset 0
     mat4 view;             // offset 64
     mat4 proj;             // offset 128
-    mat4 shadow_space;     // offset 192 (near cascade)
-    mat4 shadow2_space;    // offset 256 (mid cascade)
-    mat4 shadow3a_space;   // offset 320 (far cascade A)
-    mat4 shadow3b_space;   // offset 384 (far cascade B)
-    mat4 shadow4a_space;   // offset 448 (extreme cascade A)
-    mat4 shadow4b_space;   // offset 512 (extreme cascade B)
+    mat4 shadow_space[6];  // offset 192 (near, mid, far_a, far_b, ext_a, ext_b)
     float BS;              // offset 576
-    float shadow3_blend;   // offset 580 (far: 0=A, 1=B)
-    float shadow4_blend;   // offset 584 (extreme: 0=A, 1=B)
+    float shadow_far_blend;  // offset 580 (far: 0=A, 1=B)
+    float shadow_ext_blend;  // offset 584 (extreme: 0=A, 1=B)
 
     vec3 day_color;        // offset 592
     vec3 glo_color;        // offset 608
@@ -135,7 +130,7 @@ void main(void) {
         // Normal offset bias prevents shadow bleeding at cube edges
         // Offset must exceed PCF world radius
         vec4 shadow_sample_pos = world_pos + vec4(normal_val * 75.0, 0.0);
-        shadow_pos = ubo.shadow_space * shadow_sample_pos;
+        shadow_pos = ubo.shadow_space[0] * shadow_sample_pos;  // shadow_space[0] = near cascade
 
         EmitVertex();
     }

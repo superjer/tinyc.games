@@ -93,6 +93,15 @@
 
 #define SHADOW_SZ 4096
 
+// Shadow cascade indices
+#define SHADOW_NEAR   0
+#define SHADOW_MID    1
+#define SHADOW_FAR_A  2
+#define SHADOW_FAR_B  3
+#define SHADOW_EXT_A  4
+#define SHADOW_EXT_B  5
+#define SHADOW_COUNT  6
+
 #define CLAMP(v, l, u) { if (v < l) v = l; else if (v > u) v = u; }
 #define ICLAMP(v, l, u) ((v < l) ? l : (v > u) ? u : v)
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -227,60 +236,34 @@ VkImageView texture_image_view;
 VkSampler texture_sampler;
 
 // Shadow mapping resources
-// Near cascade (single shadow map, updated every frame, PCF)
-VkImage shadow_image;
-VkDeviceMemory shadow_memory;
-VkImageView shadow_image_view;
-VkFramebuffer shadow_framebuffer;
-
-// Mid cascade (single shadow map, updated every frame, no PCF)
-VkImage shadow2_image;
-VkDeviceMemory shadow2_memory;
-VkImageView shadow2_image_view;
-VkFramebuffer shadow2_framebuffer;
-
-// Far cascade (A/B shadow maps for temporal blending)
-VkImage shadow3a_image, shadow3b_image;
-VkDeviceMemory shadow3a_memory, shadow3b_memory;
-VkImageView shadow3a_image_view, shadow3b_image_view;
-VkFramebuffer shadow3a_framebuffer, shadow3b_framebuffer;
-
-// Extreme cascade (A/B shadow maps for temporal blending)
-VkImage shadow4a_image, shadow4b_image;
-VkDeviceMemory shadow4a_memory, shadow4b_memory;
-VkImageView shadow4a_image_view, shadow4b_image_view;
-VkFramebuffer shadow4a_framebuffer, shadow4b_framebuffer;
+struct shadow_cascade {
+    VkImage image;
+    VkDeviceMemory memory;
+    VkImageView image_view;
+    VkFramebuffer framebuffer;
+    float matrix[16];      // stored PV matrix (for A/B temporal blending)
+    int slot;              // quantized slot (-1 = uninitialized)
+    int polys;             // polygon counter per cascade
+};
+struct shadow_cascade shadow[SHADOW_COUNT];
 
 VkSampler shadow_sampler;
 VkRenderPass shadow_render_pass;
 int shadow_pipe;
 
-// Stored matrices for shadow map blending (Far and Extreme cascades)
-float shadow3a_matrix[16], shadow3b_matrix[16];
-float shadow4a_matrix[16], shadow4b_matrix[16];
-
-// Which quantized slot each shadow map was rendered at (-1 = uninitialized)
-int shadow3a_slot = -1, shadow3b_slot = -1;
-int shadow4a_slot = -1, shadow4b_slot = -1;
-
-// Which shadow map to render this frame (0=A, 1=B)
-int shadow3_render_index = 0;
-int shadow4_render_index = 0;
+// Which shadow map to render this frame (0=A, 1=B, -1=skip)
+int shadow_far_render_ab = 0;
+int shadow_ext_render_ab = 0;
 
 struct main_ubo {
-    float model[16];           // mat4 - offset 0
-    float view[16];            // mat4 - offset 64
-    float proj[16];            // mat4 - offset 128
-    float shadow_space[16];    // mat4 - offset 192 (near cascade)
-    float shadow2_space[16];   // mat4 - offset 256 (mid cascade)
-    float shadow3a_space[16];  // mat4 - offset 320 (far cascade A)
-    float shadow3b_space[16];  // mat4 - offset 384 (far cascade B)
-    float shadow4a_space[16];  // mat4 - offset 448 (extreme cascade A)
-    float shadow4b_space[16];  // mat4 - offset 512 (extreme cascade B)
-    float bs;                  // float - offset 576
-    float shadow3_blend;       // float - offset 580 (far: 0=A, 1=B)
-    float shadow4_blend;       // float - offset 584 (extreme: 0=A, 1=B)
-    float padding1;            // Padding to align day_color to 16 bytes
+    float model[16];              // mat4 - offset 0
+    float view[16];               // mat4 - offset 64
+    float proj[16];               // mat4 - offset 128
+    float shadow_space[6][16];    // mat4[6] - offset 192 (near, mid, far_a, far_b, ext_a, ext_b)
+    float bs;                     // float - offset 576
+    float shadow_far_blend;       // float - offset 580 (far: 0=A, 1=B)
+    float shadow_ext_blend;       // float - offset 584 (extreme: 0=A, 1=B)
+    float padding1;               // Padding to align day_color to 16 bytes
 
     float day_color[3];   // vec3 - offset 592
     float padding2;       // Padding
@@ -431,10 +414,6 @@ int show_shadow_map = false;
 int help_layer = 0;
 int polys = 0;
 int shadow_polys = 0;
-int shadow_polys_near = 0;
-int shadow_polys_mid = 0;
-int shadow_polys_far = 0;
-int shadow_polys_extreme = 0;
 int sunq_outta_room = 0;
 int gloq_outta_room = 0;
 int omp_threads = 0;

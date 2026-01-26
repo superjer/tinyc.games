@@ -61,11 +61,12 @@ int chunk_in_range(int chunk_x, int chunk_z)
 }
 
 // Draw shadow pass to a specific framebuffer
-// bias_constant and bias_slope are per-cascade depth bias values
-// poly_counter is incremented with the number of polygons rendered
+// cascade_idx: which shadow cascade (SHADOW_NEAR, SHADOW_MID, etc.)
 // cascade_bit: which bit in shadow_mask to check (1=Near, 2=Mid, 4=Far, 8=Extreme)
-void draw_shadow_pass(VkCommandBuffer cmdbuf, VkFramebuffer fb, float *shadow_pv, float bias_constant, float bias_slope, int *poly_counter, unsigned char cascade_bit)
+void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_constant, float bias_slope, unsigned char cascade_bit)
 {
+    VkFramebuffer fb = shadow[cascade_idx].framebuffer;
+    float *shadow_pv = shadow[cascade_idx].matrix;
         VkClearValue clearValue = {.depthStencil = {1.0f, 0}};
         VkRenderPassBeginInfo rpInfo = {
                 .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
@@ -109,7 +110,7 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, VkFramebuffer fb, float *shadow_pv
                 vkCmdBindVertexBuffers(cmdbuf, 0, 1, &world_buf[i * VAOD + j], &voffset);
                 vkCmdDraw(cmdbuf, VBOLEN_(i, j), 1, 0, 0);
                 shadow_polys += VBOLEN_(i, j);
-                *poly_counter += VBOLEN_(i, j);
+                shadow[cascade_idx].polys += VBOLEN_(i, j);
                 cascade_x_draw_calls++;
         }
 
@@ -162,10 +163,7 @@ void draw_stuff()
         moon_pos.y = shadow_target[1] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(moon_pitch) * sinf(sun_roll));
         moon_pos.z = shadow_target[2] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(moon_pitch) * cosf(sun_roll));
 
-        // Store shadow PV matrices for rendering
-        float shadow_pv_mtrx0[16] = {0};  // Near cascade (rendered every frame)
-        float shadow_pv_mtrx1[16] = {0};  // Mid cascade (rendered every frame)
-        // Far/extreme cascades use shadow3a/b_matrix and shadow4a/b_matrix from defs.c
+        // Shadow PV matrices are stored in shadow[].matrix
 
         // Quantization step for far/extreme cascades (radians)
         const float FAR_QUANT_STEP = 0.002f;
@@ -190,10 +188,10 @@ void draw_stuff()
         int extreme_slot_is_even = (extreme_slot % 2) == 0;
 
         // Determine which slot each shadow map should be at
-        shadow3a_slot = far_slot_is_even ? far_slot : far_slot + 1;  // A = even slots
-        shadow3b_slot = far_slot_is_even ? far_slot + 1 : far_slot;  // B = odd slots
-        shadow4a_slot = extreme_slot_is_even ? extreme_slot : extreme_slot + 1;
-        shadow4b_slot = extreme_slot_is_even ? extreme_slot + 1 : extreme_slot;
+        shadow[SHADOW_FAR_A].slot = far_slot_is_even ? far_slot : far_slot + 1;  // A = even slots
+        shadow[SHADOW_FAR_B].slot = far_slot_is_even ? far_slot + 1 : far_slot;  // B = odd slots
+        shadow[SHADOW_EXT_A].slot = extreme_slot_is_even ? extreme_slot : extreme_slot + 1;
+        shadow[SHADOW_EXT_B].slot = extreme_slot_is_even ? extreme_slot + 1 : extreme_slot;
 
         // Blend factor: position within current slot (0→1)
         float far_blend_raw = (light_pitch - far_slot * FAR_QUANT_STEP) / FAR_QUANT_STEP;
@@ -201,8 +199,8 @@ void draw_stuff()
 
         // When slot is even: blend from A(0) to B(1), so use raw blend
         // When slot is odd:  blend from B(0) to A(1), so use 1-raw blend
-        main_ubo.shadow3_blend = far_slot_is_even ? far_blend_raw : (1.0f - far_blend_raw);
-        main_ubo.shadow4_blend = extreme_slot_is_even ? extreme_blend_raw : (1.0f - extreme_blend_raw);
+        main_ubo.shadow_far_blend = far_slot_is_even ? far_blend_raw : (1.0f - far_blend_raw);
+        main_ubo.shadow_ext_blend = extreme_slot_is_even ? extreme_blend_raw : (1.0f - extreme_blend_raw);
 
         // Static frame counter for alternating cascade renders
         static int shadow_frame = 0;
@@ -212,12 +210,12 @@ void draw_stuff()
         // Each cascade still alternates A/B within its own render schedule
         if ((shadow_frame % 2) == 1) {
                 // Odd frames: render Far, skip Extreme
-                shadow3_render_index = (shadow_frame / 2) % 2;  // 0=A, 1=B
-                shadow4_render_index = -1;
+                shadow_far_render_ab = (shadow_frame / 2) % 2;  // 0=A, 1=B
+                shadow_ext_render_ab = -1;
         } else {
                 // Even frames: render Extreme, skip Far
-                shadow3_render_index = -1;
-                shadow4_render_index = ((shadow_frame - 2) / 2) % 2;  // 0=A, 1=B
+                shadow_far_render_ab = -1;
+                shadow_ext_render_ab = ((shadow_frame - 2) / 2) % 2;  // 0=A, 1=B
         }
 
         // Helper to compute light position from pitch
@@ -233,8 +231,8 @@ void draw_stuff()
         if (shadow_mapping) for(int s = 0; s < 4; s++)
         {
                 // Skip cascades not being rendered this frame (keeps matrix frozen)
-                if (s == 2 && shadow3_render_index < 0) continue;
-                if (s == 3 && shadow4_render_index < 0) continue;
+                if (s == 2 && shadow_far_render_ab < 0) continue;
+                if (s == 3 && shadow_ext_render_ab < 0) continue;
 
                 float light_pos[3];
                 float render_pitch;
@@ -244,18 +242,12 @@ void draw_stuff()
                         render_pitch = light_pitch;
                 } else if (s == 2) {
                         // Far cascade: render at the slot assigned to A or B
-                        if (shadow3_render_index == 0) {
-                                render_pitch = shadow3a_slot * FAR_QUANT_STEP;
-                        } else {
-                                render_pitch = shadow3b_slot * FAR_QUANT_STEP;
-                        }
+                        int far_idx = (shadow_far_render_ab == 0) ? SHADOW_FAR_A : SHADOW_FAR_B;
+                        render_pitch = shadow[far_idx].slot * FAR_QUANT_STEP;
                 } else {
                         // Extreme cascade: render at the slot assigned to A or B
-                        if (shadow4_render_index == 0) {
-                                render_pitch = shadow4a_slot * EXTREME_QUANT_STEP;
-                        } else {
-                                render_pitch = shadow4b_slot * EXTREME_QUANT_STEP;
-                        }
+                        int ext_idx = (shadow_ext_render_ab == 0) ? SHADOW_EXT_A : SHADOW_EXT_B;
+                        render_pitch = shadow[ext_idx].slot * EXTREME_QUANT_STEP;
                 }
 
                 COMPUTE_LIGHT_POS(render_pitch, light_pos);
@@ -335,31 +327,27 @@ void draw_stuff()
                 float biased_shadow_mtrx[16];
                 mat4_multiply(biased_shadow_mtrx, bias_mtrx, shadow_pv_mtrx);
 
-                // Store matrices
+                // Store matrices in cascade struct and UBO
                 if (s == 0) {
                         // Near cascade: render every frame
-                        memcpy(shadow_pv_mtrx0, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
-                        memcpy(main_ubo.shadow_space, biased_shadow_mtrx, sizeof biased_shadow_mtrx);
+                        memcpy(shadow[SHADOW_NEAR].matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        memcpy(main_ubo.shadow_space[SHADOW_NEAR], biased_shadow_mtrx, sizeof biased_shadow_mtrx);
                 } else if (s == 1) {
                         // Mid cascade: render every frame (no A/B blending)
-                        memcpy(shadow_pv_mtrx1, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
-                        memcpy(main_ubo.shadow2_space, biased_shadow_mtrx, sizeof biased_shadow_mtrx);
+                        memcpy(shadow[SHADOW_MID].matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        memcpy(main_ubo.shadow_space[SHADOW_MID], biased_shadow_mtrx, sizeof biased_shadow_mtrx);
                 } else if (s == 2) {
                         // Far cascade: store in A or B based on which we're rendering
-                        if (shadow3_render_index == 0)
-                                memcpy(shadow3a_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
-                        else
-                                memcpy(shadow3b_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
-                        mat4_multiply(main_ubo.shadow3a_space, bias_mtrx, shadow3a_matrix);
-                        mat4_multiply(main_ubo.shadow3b_space, bias_mtrx, shadow3b_matrix);
+                        int far_idx = (shadow_far_render_ab == 0) ? SHADOW_FAR_A : SHADOW_FAR_B;
+                        memcpy(shadow[far_idx].matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        mat4_multiply(main_ubo.shadow_space[SHADOW_FAR_A], bias_mtrx, shadow[SHADOW_FAR_A].matrix);
+                        mat4_multiply(main_ubo.shadow_space[SHADOW_FAR_B], bias_mtrx, shadow[SHADOW_FAR_B].matrix);
                 } else {
                         // Extreme cascade: store in A or B based on which we're rendering
-                        if (shadow4_render_index == 0)
-                                memcpy(shadow4a_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
-                        else
-                                memcpy(shadow4b_matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
-                        mat4_multiply(main_ubo.shadow4a_space, bias_mtrx, shadow4a_matrix);
-                        mat4_multiply(main_ubo.shadow4b_space, bias_mtrx, shadow4b_matrix);
+                        int ext_idx = (shadow_ext_render_ab == 0) ? SHADOW_EXT_A : SHADOW_EXT_B;
+                        memcpy(shadow[ext_idx].matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        mat4_multiply(main_ubo.shadow_space[SHADOW_EXT_A], bias_mtrx, shadow[SHADOW_EXT_A].matrix);
+                        mat4_multiply(main_ubo.shadow_space[SHADOW_EXT_B], bias_mtrx, shadow[SHADOW_EXT_B].matrix);
                 }
         }
 
@@ -372,10 +360,10 @@ void draw_stuff()
                         0,    0,    1, 0,
                         0.5f, 0.5f, 0, 1,
                 };
-                mat4_multiply(main_ubo.shadow3a_space, bias_mtrx, shadow3a_matrix);
-                mat4_multiply(main_ubo.shadow3b_space, bias_mtrx, shadow3b_matrix);
-                mat4_multiply(main_ubo.shadow4a_space, bias_mtrx, shadow4a_matrix);
-                mat4_multiply(main_ubo.shadow4b_space, bias_mtrx, shadow4b_matrix);
+                mat4_multiply(main_ubo.shadow_space[SHADOW_FAR_A], bias_mtrx, shadow[SHADOW_FAR_A].matrix);
+                mat4_multiply(main_ubo.shadow_space[SHADOW_FAR_B], bias_mtrx, shadow[SHADOW_FAR_B].matrix);
+                mat4_multiply(main_ubo.shadow_space[SHADOW_EXT_A], bias_mtrx, shadow[SHADOW_EXT_A].matrix);
+                mat4_multiply(main_ubo.shadow_space[SHADOW_EXT_B], bias_mtrx, shadow[SHADOW_EXT_B].matrix);
         }
 
         do_atmos_colors();
@@ -418,8 +406,8 @@ void draw_stuff()
 
         // Build visible chunk list (single pass: check all frustums)
         visible_chunk_count = 0;
-        float *far_shadow_pv = (shadow3_render_index == 0) ? shadow3a_matrix : shadow3b_matrix;
-        float *extreme_shadow_pv = (shadow4_render_index == 0) ? shadow4a_matrix : shadow4b_matrix;
+        int far_idx = (shadow_far_render_ab == 0) ? SHADOW_FAR_A : SHADOW_FAR_B;
+        int ext_idx = (shadow_ext_render_ab == 0) ? SHADOW_EXT_A : SHADOW_EXT_B;
         for (int i = 0; i < VAOW; i++) {
                 for (int j = 0; j < VAOD; j++) {
                         if (!VBOLEN_(i, j)) continue;
@@ -430,11 +418,11 @@ void draw_stuff()
                         // Check shadow frustums
                         unsigned char shadow_mask = 0;
                         if (shadow_mapping) {
-                                if (chunk_in_frustum(shadow_pv_mtrx0, i, j)) shadow_mask |= 1;  // Near
-                                if (chunk_in_frustum(shadow_pv_mtrx1, i, j)) shadow_mask |= 2;  // Mid
-                                if (shadow3_render_index >= 0 && chunk_in_frustum(far_shadow_pv, i, j)) shadow_mask |= 4;  // Far
+                                if (chunk_in_frustum(shadow[SHADOW_NEAR].matrix, i, j)) shadow_mask |= 1;  // Near
+                                if (chunk_in_frustum(shadow[SHADOW_MID].matrix, i, j)) shadow_mask |= 2;  // Mid
+                                if (shadow_far_render_ab >= 0 && chunk_in_frustum(shadow[far_idx].matrix, i, j)) shadow_mask |= 4;  // Far
                                 // Extreme cascade: only include if camera-visible (too far to cast visible shadows from behind)
-                                if (camera_visible && shadow4_render_index >= 0 && chunk_in_frustum(extreme_shadow_pv, i, j)) shadow_mask |= 8;
+                                if (camera_visible && shadow_ext_render_ab >= 0 && chunk_in_frustum(shadow[ext_idx].matrix, i, j)) shadow_mask |= 8;
                         }
 
                         // Include if visible to camera OR any shadow frustum
@@ -880,26 +868,24 @@ void draw_stuff()
         if (shadow_mapping) {
                 // Render shadow passes with per-cascade bias (using pre-built visible chunk list)
                 // Near cascade: rendered every frame with PCF
-                draw_shadow_pass(cmdbuf, shadow_framebuffer, shadow_pv_mtrx0, 1.5f, 1.5f, &shadow_polys_near, 1);
+                draw_shadow_pass(cmdbuf, SHADOW_NEAR, 1.5f, 1.5f, 1);
                 if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_N_END);
 
                 // Mid cascade: rendered every frame, no PCF, no A/B blending
-                draw_shadow_pass(cmdbuf, shadow2_framebuffer, shadow_pv_mtrx1, 1.0f, 1.0f, &shadow_polys_mid, 2);
+                draw_shadow_pass(cmdbuf, SHADOW_MID, 1.0f, 1.0f, 2);
                 if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_M_END);
 
                 // Far cascade: render to A or B based on which needs updating
-                if (shadow3_render_index >= 0) {
-                        VkFramebuffer far_fb = (shadow3_render_index == 0) ? shadow3a_framebuffer : shadow3b_framebuffer;
-                        float *far_pv = (shadow3_render_index == 0) ? shadow3a_matrix : shadow3b_matrix;
-                        draw_shadow_pass(cmdbuf, far_fb, far_pv, 0.5f, 0.5f, &shadow_polys_far, 4);
+                if (shadow_far_render_ab >= 0) {
+                        int far_cascade = (shadow_far_render_ab == 0) ? SHADOW_FAR_A : SHADOW_FAR_B;
+                        draw_shadow_pass(cmdbuf, far_cascade, 0.5f, 0.5f, 4);
                 }
                 if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_F_END);
 
                 // Extreme cascade: render to A or B based on which needs updating
-                if (shadow4_render_index >= 0) {
-                        VkFramebuffer extreme_fb = (shadow4_render_index == 0) ? shadow4a_framebuffer : shadow4b_framebuffer;
-                        float *extreme_pv = (shadow4_render_index == 0) ? shadow4a_matrix : shadow4b_matrix;
-                        draw_shadow_pass(cmdbuf, extreme_fb, extreme_pv, 0.5f, 0.5f, &shadow_polys_extreme, 8);
+                if (shadow_ext_render_ab >= 0) {
+                        int ext_cascade = (shadow_ext_render_ab == 0) ? SHADOW_EXT_A : SHADOW_EXT_B;
+                        draw_shadow_pass(cmdbuf, ext_cascade, 0.5f, 0.5f, 8);
                 }
                 if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_X_END);
         } else {

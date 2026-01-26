@@ -89,10 +89,10 @@ void debrief()
                                 "%.1fm poly/s, shadow: %.1fm (n:%.1fm m:%.1fm f:%.1fm x:%.1fm)\n",
                                 1000.f * (float)polys / elapsed / 1000000.f,
                                 1000.f * (float)shadow_polys / elapsed / 1000000.f,
-                                1000.f * (float)shadow_polys_near / elapsed / 1000000.f,
-                                1000.f * (float)shadow_polys_mid / elapsed / 1000000.f,
-                                1000.f * (float)shadow_polys_far / elapsed / 1000000.f,
-                                1000.f * (float)shadow_polys_extreme / elapsed / 1000000.f);
+                                1000.f * (float)shadow[SHADOW_NEAR].polys / elapsed / 1000000.f,
+                                1000.f * (float)shadow[SHADOW_MID].polys / elapsed / 1000000.f,
+                                1000.f * (float)(shadow[SHADOW_FAR_A].polys + shadow[SHADOW_FAR_B].polys) / elapsed / 1000000.f,
+                                1000.f * (float)(shadow[SHADOW_EXT_A].polys + shadow[SHADOW_EXT_B].polys) / elapsed / 1000000.f);
 
                 // GPU timing display (accumulated averages)
                 static float gpu_shadow_n_ms = 0, gpu_shadow_m_ms = 0;
@@ -129,10 +129,8 @@ void debrief()
                 last_frame = frame;
                 polys = 0;
                 shadow_polys = 0;
-                shadow_polys_near = 0;
-                shadow_polys_mid = 0;
-                shadow_polys_far = 0;
-                shadow_polys_extreme = 0;
+                for (int i = 0; i < SHADOW_COUNT; i++)
+                        shadow[i].polys = 0;
 
                 timer_print(timings_buf, 8000, false);
         }
