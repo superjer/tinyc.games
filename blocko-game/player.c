@@ -1,10 +1,12 @@
-#include "blocko.h"
+#include "blocko.c"
+#ifndef BLOCKO_PLAYER_C_INCLUDED
+#define BLOCKO_PLAYER_C_INCLUDED
 
-int gravity[] = { -20, -17, -14, -12, -10, -8, -6, -5, -4, -3,
-                   -2,  -2,  -1,  -1,   0,  1,  1,  2,  2,  3,
-                    3,   4,   4,   5,   5,  6,  6,  7,  7,  8,
-                    9,  10,  10,  11,  12, 12, 13, 14, 15, 16,
-                   17,  18,  19,  20,  21, 22, 23, 24, 25, 26};
+int gravity[] = { -333, -283, -233, -200, -167, -133, -100, -83, -67, -50,
+                   -40,  -30,  -20,  -10,    0,    8,   16,  24,  32,  40,
+                    48,   56,   64,   72,   80,   90,  100, 110, 120, 130,
+                   140,  150,  160,  170,  180,  190,  200, 220, 240, 260,
+                   280,  300,  320,  340,  360,  380,  400, 420, 440, 450 };
 
 // for extrapolating the camera in > 60FPS
 void lerp_camera(float t, struct player *a, struct player *b)
@@ -117,6 +119,13 @@ void update_player(struct player *p, int real)
                 unsigned char max = 0;
                 int broken = T_(x, y, z);
                 T_(x, y, z) = OPEN;
+                DIRTY_(B2C(x), B2C(z)) = 1;
+
+                // Mark neighboring chunks dirty if block is on chunk edge
+                if (x % CHUNKW == 0 && x > 0)           DIRTY_(B2C(x-1), B2C(z)) = 1;
+                if (x % CHUNKW == CHUNKW-1 && x < TILESW-1) DIRTY_(B2C(x+1), B2C(z)) = 1;
+                if (z % CHUNKD == 0 && z > 0)           DIRTY_(B2C(x), B2C(z-1)) = 1;
+                if (z % CHUNKD == CHUNKD-1 && z < TILESD-1) DIRTY_(B2C(x), B2C(z+1)) = 1;
 
                 if (broken == LITE)
                 {
@@ -165,6 +174,7 @@ void update_player(struct player *p, int real)
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
                 {
                         T_(place_x, place_y, place_z) = HARD;
+                        DIRTY_(B2C(place_x), B2C(place_z)) = 1;
 
                         if (ABOVE_GROUND(place_x, place_y, place_z))
                                 GNDH_(place_x, place_z) = place_y;
@@ -181,6 +191,7 @@ void update_player(struct player *p, int real)
 
         if (real && p->lighting && !p->cooldown && place_x >= 0) {
                 T_(place_x, place_y, place_z) = LITE;
+                DIRTY_(B2C(place_x), B2C(place_z)) = 1;
                 glo_enqueue(place_x, place_y, place_z, 0, 15);
                 p->cooldown = 10;
         }
@@ -190,17 +201,17 @@ void update_player(struct player *p, int real)
         if (p->cooldownf > 0) p->cooldownf--;
         if (!p->goingf) p->runningf = false;
 
-        if (p->goingf && !p->goingb) { p->fvel++; }
-        else if (p->fvel > 0)        { p->fvel--; }
+        if (p->goingf && !p->goingb) { p->fvel += PLYR_ACCEL; }
+        else if (p->fvel > 0)        { p->fvel -= PLYR_ACCEL; if (p->fvel < 0) p->fvel = 0; }
 
-        if (p->goingb && !p->goingf) { p->fvel--; }
-        else if (p->fvel < 0)        { p->fvel++; }
+        if (p->goingb && !p->goingf) { p->fvel -= PLYR_ACCEL; }
+        else if (p->fvel < 0)        { p->fvel += PLYR_ACCEL; if (p->fvel > 0) p->fvel = 0; }
 
-        if (p->goingr && !p->goingl) { p->rvel++; }
-        else if (p->rvel > 0)        { p->rvel--; }
+        if (p->goingr && !p->goingl) { p->rvel += PLYR_ACCEL; }
+        else if (p->rvel > 0)        { p->rvel -= PLYR_ACCEL; if (p->rvel < 0) p->rvel = 0; }
 
-        if (p->goingl && !p->goingr) { p->rvel--; }
-        else if (p->rvel < 0)        { p->rvel++; }
+        if (p->goingl && !p->goingr) { p->rvel -= PLYR_ACCEL; }
+        else if (p->rvel < 0)        { p->rvel += PLYR_ACCEL; if (p->rvel > 0) p->rvel = 0; }
 
         //limit speed
         float totalvel = sqrt(p->fvel * p->fvel + p->rvel * p->rvel);
@@ -260,3 +271,4 @@ void update_player(struct player *p, int real)
         }
 }
 
+#endif // BLOCKO_PLAYER_C_INCLUDED

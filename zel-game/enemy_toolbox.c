@@ -1,6 +1,6 @@
 #include "zel.c"
-#ifndef ENEMY_TOOLBOX_C
-#define ENEMY_TOOLBOX_C
+#ifndef ZEL_ENEMY_TOOLBOX_C
+#define ZEL_ENEMY_TOOLBOX_C
 #define e (enemy[n])
 
 void update_toolbox(int n)
@@ -155,4 +155,4 @@ void update_toolbox(int n)
 }
 
 #undef e
-#endif
+#endif // ZEL_ENEMY_TOOLBOX_C

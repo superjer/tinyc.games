@@ -1,6 +1,6 @@
 #include "zel.c"
-#ifndef PLAYER_C
-#define PLAYER_C
+#ifndef ZEL_PLAYER_C
+#define ZEL_PLAYER_C
 
 enum playerstates {PL_NORMAL, PL_STAB, PL_HURT, PL_DYING, PL_DEAD};
 
@@ -203,4 +203,4 @@ void update_player(int i)
         #undef p
 }
 
-#endif
+#endif // ZEL_PLAYER_C

@@ -1,13 +1,17 @@
-#include "tet.h"
-#include "../common/tinyc.games/audio.h"
+#include "tet.c"
+#ifndef TET_INPUT_C_INCLUDED
+#define TET_INPUT_C_INCLUDED
 
 #define WASD -1
 #define ARROW_KEYS -2
 
 void resize(int, int);
+void hard();
 
 void down()
 {
+        if (lightning_round) hard();
+
         p->down = 1;
         p->move_cooldown = 0;
 }
@@ -27,6 +31,8 @@ void right()
 // spin the falling piece left or right, if possible
 void spin(int dir)
 {
+        if (lightning_round) return;
+
         int new_rot = (p->it.rot + dir) % 4;
         int k = new_rot * 20 + (dir == 1 ? 0 : 10) + (p->it.color == 4 ? 80 : 0);
 
@@ -66,36 +72,45 @@ void hard()
 // hold a piece for later
 void hold()
 {
+        if (lightning_round) return;
+
         if (p->hold_uses++) return;
         SWAP(p->held.color, p->it.color);
         reset_fall();
 }
 
-void joy_setup()
+void gamepad_add()
 {
-        for (int i = 0; i < SDL_NumJoysticks(); i++)
+        int id = event.gdevice.which;
+        SDL_Gamepad *cont = SDL_OpenGamepad(id);
+        printf("Gamepad added: %s cont=%p id=%d\n",
+                SDL_GetGamepadName(cont), (void*)cont, id);
+}
+
+void gamepad_remove()
+{
+        int id = event.gdevice.which;
+        for (int i = 0; i < nplay; i++)
         {
-                if (!SDL_IsGameController(i))
+                if (play[i].device_type == 'G' && play[i].device == id)
                 {
-                        printf("Controller not supported: %s", SDL_JoystickNameForIndex(i));
-                        printf(" - Google SDL_GAMECONTROLLERCONFIG to fix this\n");
-                        continue;
+                        play[i].device = -1;
+                        printf("Player %d disconnected, please reconnect or connect new gamepad\n", i);
+                        state = ASSIGN;
+                        assign_me = 0;
                 }
-                SDL_GameController *cont = SDL_GameControllerOpen(i);
-                printf("Controller added: %s %p\n", SDL_GameControllerNameForIndex(i), (void*)cont);
         }
-        SDL_GameControllerEventState(SDL_ENABLE);
 }
 
 // set current player to match an input device
-void set_player_from_device(int device)
+void set_player_from_device(int device_type, int device)
 {
-        for (int i = 0; i < NPLAY; i++)
+        for (int i = 0; i < nplay; i++)
         {
-                if (play[i].device < 0)
+                if (play[i].device_type != 'G')
                         p = play + i; // default to any keyboard
 
-                if (play[i].device == device)
+                if (play[i].device_type == device_type && play[i].device == device)
                 {
                         p = play + i;
                         return;
@@ -106,27 +121,34 @@ void set_player_from_device(int device)
 // figure out which "device" from key pressed, i.e. WASD or Arrow keys
 int device_from_key()
 {
-        switch(event.key.keysym.sym) {
-                case SDLK_w: case SDLK_a: case SDLK_s: case SDLK_d: case SDLK_z: case SDLK_x:
+        switch(event.key.key) {
+                case SDLK_W: case SDLK_A: case SDLK_S: case SDLK_D: case SDLK_Z: case SDLK_X:
                 case SDLK_TAB: case SDLK_CAPSLOCK: case SDLK_LSHIFT:
-                        return WASD;
+                        return 'L';
                 default:
-                        return ARROW_KEYS;
+                        return 'R';
         }
+}
+
+void unassign_all()
+{
+        for (int i = 0; i < nplay; i++)
+                play[i].device = -1;
+        assign_me = 0;
 }
 
 int menu_input(int key_or_button)
 {
         switch (key_or_button)
         {
-                case SDLK_s:  case SDLK_DOWN:
-                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:   menu_pos++; break;
+                case SDLK_S:  case SDLK_DOWN:
+                case SDL_GAMEPAD_BUTTON_DPAD_DOWN:   menu_pos++; break;
 
-                case SDLK_w:  case SDLK_UP:
-                case SDL_CONTROLLER_BUTTON_DPAD_UP:     menu_pos--; break;
+                case SDLK_W:  case SDLK_UP:
+                case SDL_GAMEPAD_BUTTON_DPAD_UP:     menu_pos--; break;
 
-                case SDLK_RETURN:  case SDLK_z:
-                case SDL_CONTROLLER_BUTTON_A:
+                case SDLK_RETURN:  case SDLK_Z:
+                case SDL_GAMEPAD_BUTTON_SOUTH:
                         if (state == MAIN_MENU)
                         {
                                 if (menu_pos == 0) garbage_race = 0;
@@ -135,68 +157,122 @@ int menu_input(int key_or_button)
                                 state = NUMBER_MENU;
                                 menu_pos = 0;
                         }
-                        else
+                        else if (state == NUMBER_MENU)
                         {
                                 nplay = menu_pos + 1;
                                 resize(win_x, win_y);
+                                unassign_all();
                                 state = ASSIGN;
-                                assign_me = 0;
+                                do_new_game = true;
+                                menu_pos = 0;
+                        }
+                        else if (state == PAUSE_MENU)
+                        {
+                                if (menu_pos == 0)
+                                        state = PLAY;
+                                else if (menu_pos == 1)
+                                {
+                                        unassign_all();
+                                        state = ASSIGN;
+                                }
+                                else if (menu_pos == 2)
+                                        state = MAIN_MENU;
+                                menu_pos = 0;
+                        }
+                        break;
+                case SDLK_ESCAPE:
+                case SDL_GAMEPAD_BUTTON_START:
+                        if (state == NUMBER_MENU)
+                        {
+                                state = MAIN_MENU;
+                                menu_pos = 0;
+                        }
+                        else if (state == PAUSE_MENU)
+                        {
+                                state = PLAY;
+                                menu_pos = 0;
                         }
                         break;
         }
+
+        for (int i = 0; i < nplay; i++)
+                play[i].countdown_time = 4 * CTDN_TICKS;
+
         return 0;
 }
 
-int assign(int device)
+int assign(int device_type, int device)
 {
-        for (int i = 0; i < assign_me; i++)
-                if (play[i].device == device)
-                        return 0;
+        while (assign_me < nplay && play[assign_me].device != -1)
+                assign_me++;
 
-        play[assign_me].device = device;
-        sprintf(play[assign_me].dev_name, "%.10s",
-                        device == WASD ? "WASD keys" :
-                        device == ARROW_KEYS ? "Arrow keys" :
-                        SDL_GameControllerName(SDL_GameControllerFromInstanceID(device)));
+        if (assign_me < nplay)
+        {
+                for (int i = 0; i < nplay; i++)
+                        if (play[i].device_type == device_type && play[i].device == device)
+                                return 0;
 
-        if (++assign_me == nplay)
+                play[assign_me].device_type = device_type;
+                play[assign_me].device = device;
+                const char *name = device_type == 'G'
+                        ? SDL_GetGamepadName(SDL_GetGamepadFromID(device))
+                        : SDL_GetKeyboardNameForID(device);
+                if (name)
+                        sprintf(play[assign_me].dev_name, "%.10s", name);
+                else
+                        sprintf(play[assign_me].dev_name, "%s %d",
+                                        device_type == 'G' ? "Gpad" :
+                                        device_type == 'L' ? "WASD" :
+                                        "Arrows",
+                                        device);
+        }
+
+        while (assign_me < nplay && play[assign_me].device != -1)
+                assign_me++;
+
+        if (assign_me == nplay)
         {
                 state = PLAY;
-                assign_me = 0;
-                seed = rand();
-                for (p = play; p < play + nplay; p++)
-                        new_game();
+                if (do_new_game)
+                {
+                        do_new_game = false;
+                        seed = rand();
+                        for (p = play; p < play + nplay; p++)
+                                new_game();
+                }
         }
+
         return 0;
 }
 
 // handle a key press from a player
 int key_down()
 {
-        if (event.key.repeat)                           return 0;
-        if (state == MAIN_MENU || state == NUMBER_MENU) return menu_input(event.key.keysym.sym);
-        if (state == GAMEOVER)                          return (state = MAIN_MENU);
-        if (state == ASSIGN)                            return assign(device_from_key());
+        if (event.key.repeat)    return 0;
 
-        set_player_from_device(device_from_key());
+        if (event.key.key == SDLK_M) return music_toggle();
+
+        if (state < MAX_MENU)    return menu_input(event.key.key);
+        if (state == GAMEOVER)   return (state = MAIN_MENU);
+        if (state == ASSIGN)     return assign(device_from_key(), event.key.which);
+
+        if (event.key.key == SDLK_ESCAPE) return (state = PAUSE_MENU);
+
+        set_player_from_device(device_from_key(), event.key.which);
 
         if (!p->it.color || p->countdown_time >= CTDN_TICKS) return 0;
 
-        switch (event.key.keysym.sym)
+        switch (event.key.key)
         {
-                case SDLK_a:   case SDLK_LEFT:                        left();  break;
-                case SDLK_s:   case SDLK_DOWN:                        down();  break;
-                case SDLK_d:   case SDLK_RIGHT:                       right(); break;
+                case SDLK_A:   case SDLK_LEFT:                        left();  break;
+                case SDLK_S:   case SDLK_DOWN:                        down();  break;
+                case SDLK_D:   case SDLK_RIGHT:                       right(); break;
 
-                case SDLK_w:   case SDLK_UP:                          hard();  break;
-                case SDLK_z:   case SDLK_CAPSLOCK:  case SDLK_COMMA:  spin(3); break;
-                case SDLK_x:   case SDLK_LSHIFT:    case SDLK_PERIOD: spin(1); break;
+                case SDLK_W:   case SDLK_UP:                          hard();  break;
+                case SDLK_Z:   case SDLK_CAPSLOCK:  case SDLK_COMMA:  spin(3); break;
+                case SDLK_X:   case SDLK_LSHIFT:    case SDLK_PERIOD: spin(1); break;
                 case SDLK_TAB: case SDLK_SLASH:                       hold();  break;
-
-                case SDLK_l:
-                        p->level++;
-                        p->lines += 10;
-                        break;
+                case SDLK_L:   lightning_round = !lightning_round;             break;
         }
 
         return 0;
@@ -205,45 +281,50 @@ int key_down()
 void key_up()
 {
         if (state == ASSIGN) return;
-        set_player_from_device(device_from_key());
+        set_player_from_device(device_from_key(), event.key.which);
 
-        switch (event.key.keysym.sym)
+        switch (event.key.key)
         {
-                case SDLK_a:      case SDLK_LEFT:   p->left = 0;  break;
-                case SDLK_d:      case SDLK_RIGHT:  p->right = 0; break;
-                case SDLK_s:      case SDLK_DOWN:   p->down = 0;  break;
+                case SDLK_A:      case SDLK_LEFT:   p->left = 0;  break;
+                case SDLK_D:      case SDLK_RIGHT:  p->right = 0; break;
+                case SDLK_S:      case SDLK_DOWN:   p->down = 0;  break;
         }
 }
 
-int joy_down()
+int btn_down()
 {
-        if (state == ASSIGN) return assign(event.cbutton.which);
+        if (state == ASSIGN) return assign('G', event.gbutton.which);
         if (state == GAMEOVER) return (state = MAIN_MENU);
-        if (state == MAIN_MENU || state == NUMBER_MENU) return menu_input(event.cbutton.button);
-        set_player_from_device(event.cbutton.which);
+        if (state < MAX_MENU) return menu_input(event.gbutton.button);
 
-        if (p->it.color) switch(event.cbutton.button)
+        if (event.gbutton.button == SDL_GAMEPAD_BUTTON_START) return (state = PAUSE_MENU);
+
+        set_player_from_device('G', event.gbutton.which);
+
+        if (p->it.color) switch(event.gbutton.button)
         {
-                case SDL_CONTROLLER_BUTTON_A:            spin(3); break;
-                case SDL_CONTROLLER_BUTTON_B:            spin(1); break;
-                case SDL_CONTROLLER_BUTTON_DPAD_UP:      hard();  break;
-                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:    down();  break;
-                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:    left();  break;
-                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:   right(); break;
-                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER: hold();  break;
+                case SDL_GAMEPAD_BUTTON_SOUTH:            spin(3); break;
+                case SDL_GAMEPAD_BUTTON_EAST:            spin(1); break;
+                case SDL_GAMEPAD_BUTTON_DPAD_UP:      hard();  break;
+                case SDL_GAMEPAD_BUTTON_DPAD_DOWN:    down();  break;
+                case SDL_GAMEPAD_BUTTON_DPAD_LEFT:    left();  break;
+                case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:   right(); break;
+                case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: hold();  break;
         }
         return 0;
 }
 
-void joy_up()
+void btn_up()
 {
         if (state == ASSIGN) return;
-        set_player_from_device(event.cbutton.which);
+        set_player_from_device('G', event.gbutton.which);
 
-        switch(event.cbutton.button)
+        switch(event.gbutton.button)
         {
-                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  p->down  = 0; break;
-                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  p->left  = 0; break;
-                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: p->right = 0; break;
+                case SDL_GAMEPAD_BUTTON_DPAD_DOWN:  p->down  = 0; break;
+                case SDL_GAMEPAD_BUTTON_DPAD_LEFT:  p->left  = 0; break;
+                case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: p->right = 0; break;
         }
 }
+
+#endif // TET_INPUT_C_INCLUDED

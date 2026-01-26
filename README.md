@@ -5,7 +5,7 @@ Tools and libraries are available for making cross-platform C games, but simple 
 
 This project is an example of how you can get started making a game in C that will work on Windows, Mac and Linux.
 
-## Screens
+## Screenshots
 
 ![Tet](https://raw.githubusercontent.com/superjer/tinyc.games/gh-pages/images/tet-tiny.png)
 ![Flappy](https://raw.githubusercontent.com/superjer/tinyc.games/gh-pages/images/flappy-tiny.png)
@@ -30,24 +30,51 @@ A top-down adventure game with an overworld and a dungeon. Very minimal, no endi
 ### Maker
 A quick hack to make Zel into more of a 2D platformer. Very rough around the edges. The intention is to add a simple level editor.
 
-## How do I do it?
+## How do I run this?
+
+Anything that supports CMake should work. But here are some suggestions for various platforms:
 
 ### Windows
-1. TCC, SDL2, and GLEW are already included!
-2. Open a game folder and run run-windows.bat
-3. For OpenGL games you will need the Windows SDK from Microsoft
 
-### Mac
-1. Install clang by typing "clang" in Terminal and clicking the Install button.
-2. Open a game folder and run run-mac.sh
+1. Install Visual Studio (you can use the free Community Edition)
+   Make sure to check the box for "C++ CMake Tools for Windows." This may be under "Desktop development with C++"
+
+2. Open the tinyc.games folder in Visual Studio. It should detect the CMake config and set everything up
+
+3. Use the play button to build & run, e.g. `blocko.exe`
 
 ### Linux
-1. Install tcc, SDL2-dev, and GLEW-dev. E.g. for Debian/Ubuntu:
 
-    sudo apt install tcc libsdl2-dev libsdl2-ttf-dev libglew-dev
+1. Create a build directory inside tinyc.games
+    ```
+    mkdir build
+    cd build
+    ```
 
-2. Open a game folder and run run-linux.sh
+2. Run CMake to fetch libraries and create build scripts
+    ```
+    cmake ..
+    ```
+
+3. Build!
+    ```
+    cmake --build .                   # build all games
+    cmake --build . --target=blocko   # build only blocko
+    ```
+
+4. Run, for example, blocko
+    ```
+    ./blocko
+    ```
+
+### MacOS
+
+1. Install CMake. For example if you have Homebrew, run `brew install cmake`
+
+2. In the tinyc.games directory, run `cmake . -G Xcode` to generate an Xcode project file
+
+3. Open the project file with Xcode
 
 ## Next?
 
-After you're done playing an exhilirating demo game, open the .c file in your favorite text editor. You're now looking at the actual code you just ran. So feel free to tinker and run it with your changes. Or use it as a starting point for your own game!
+After you're done playing an exhilirating demo game, open a .c file in your favorite text editor. You're now looking at the actual code you just ran. So feel free to tinker and run it with your changes. Or use it as a starting point for your own game!

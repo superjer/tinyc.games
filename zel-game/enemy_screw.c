@@ -1,6 +1,6 @@
 #include "zel.c"
-#ifndef ENEMY_SCREW_C
-#define ENEMY_SCREW_C
+#ifndef ZEL_ENEMY_SCREW_C
+#define ZEL_ENEMY_SCREW_C
 #define e (enemy[n])
 
 void update_screw(int n)
@@ -42,4 +42,4 @@ void update_screw(int n)
 }
 
 #undef e
-#endif
+#endif // ZEL_ENEMY_SCREW_C

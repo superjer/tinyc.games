@@ -1,16 +1,12 @@
-#include "blocko.h"
-#include "../common/tinyc.games/utils.c"
-
-#define GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX    0x9048
-#define GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX  0x9049
+#include "blocko.c"
+#ifndef BLOCKO_TEST_C_INCLUDED
+#define BLOCKO_TEST_C_INCLUDED
 
 int in_test_area(int x, int y, int z)
 {
-        if (test_area_x == -1) return false;
-
-        return (x >= test_area_x && x < test_area_x + TEST_AREA_SZ &&
-                y == test_area_y &&
-                z >= test_area_z && z < test_area_z + TEST_AREA_SZ);
+        return fabsf(x - player[0].pos.x / BS) < 16 &&
+               floorf(y - player[0].pos.y / BS) == 0 &&
+               fabsf(z - player[0].pos.z / BS) < 16;
 }
 
 void build_test_area()
@@ -57,14 +53,21 @@ void build_test_area()
         }
 
         recalc_corner_lighting(tx, tx + TEST_AREA_SZ, tz, tz + TEST_AREA_SZ);
+
+        // Mark all affected chunks as dirty
+        for (int cx = B2C(tx); cx <= B2C(tx + TEST_AREA_SZ); cx++)
+                for (int cz = B2C(tz); cz <= B2C(tz + TEST_AREA_SZ); cz++)
+                        DIRTY_(cx, cz) = 1;
 }
 
 void debrief()
 {
+        font_frame_reset();  // Reset font buffer offset for this frame
+
         static unsigned last_ticks = 0;
         static unsigned last_frame = 0;
-        static GLint total_kb = 0;
-        static GLint avail_kb = 0;
+        static int total_kb = 0;
+        static int avail_kb = 0;
         unsigned ticks = SDL_GetTicks();
         static char buf[8000];
         static char timings_buf[8000];
@@ -74,23 +77,37 @@ void debrief()
                 float elapsed = ((float)ticks - last_ticks);
                 float frames = frame - last_frame;
 
-                if (GLEW_NVX_gpu_memory_info) {
-                        p += snprintf(p, 8000 - (p-buf),
-                                      "vmem %0.0fm used of %0.0fm (%0.0f%% free)\n",
-                                      (float)(total_kb - avail_kb) / 1000.f,
-                                      (float)(total_kb)            / 1000.f,
-                                      ((float)avail_kb / total_kb) * 100.f);
-                }
-
                 p += snprintf(p, 8000 - (p-buf),
                                 "%d omp, %0.2f chunk/s\n",
                                 omp_threads,
                                 (float)nr_chunks_generated / (chunk_gen_ticks / 1000.f));
 
                 p += snprintf(p, 8000 - (p-buf),
-                                "%.3fm poly/s, %.3f shadow poly/s\n",
+                                "%.1fm poly/s, shadow: %.1fm (n:%.1fm m:%.1fm f:%.1fm x:%.1fm)\n",
                                 1000.f * (float)polys / elapsed / 1000000.f,
-                                1000.f * (float)shadow_polys / elapsed / 1000000.f);
+                                1000.f * (float)shadow_polys / elapsed / 1000000.f,
+                                1000.f * (float)shadow[SHADOW_NEAR].polys / elapsed / 1000000.f,
+                                1000.f * (float)shadow[SHADOW_MID].polys / elapsed / 1000000.f,
+                                1000.f * (float)(shadow[SHADOW_FAR_A].polys + shadow[SHADOW_FAR_B].polys) / elapsed / 1000000.f,
+                                1000.f * (float)(shadow[SHADOW_EXT_A].polys + shadow[SHADOW_EXT_B].polys) / elapsed / 1000000.f);
+
+                // GPU timing display (accumulated averages)
+                static float gpu_shadow_n_ms = 0, gpu_shadow_m_ms = 0;
+                static float gpu_shadow_f_ms = 0, gpu_shadow_x_ms = 0;
+                static float gpu_terrain_ms = 0, gpu_total_ms = 0;
+                if (gpu_timestamps_valid && gpu_timestamp_period > 0) {
+                        float ns_to_ms = gpu_timestamp_period / 1e6f;
+                        gpu_shadow_n_ms = (gpu_timestamps[GPU_TS_SHADOW_N_END] - gpu_timestamps[GPU_TS_FRAME_START]) * ns_to_ms;
+                        gpu_shadow_m_ms = (gpu_timestamps[GPU_TS_SHADOW_M_END] - gpu_timestamps[GPU_TS_SHADOW_N_END]) * ns_to_ms;
+                        gpu_shadow_f_ms = (gpu_timestamps[GPU_TS_SHADOW_F_END] - gpu_timestamps[GPU_TS_SHADOW_M_END]) * ns_to_ms;
+                        gpu_shadow_x_ms = (gpu_timestamps[GPU_TS_SHADOW_X_END] - gpu_timestamps[GPU_TS_SHADOW_F_END]) * ns_to_ms;
+                        gpu_terrain_ms = (gpu_timestamps[GPU_TS_TERRAIN_END] - gpu_timestamps[GPU_TS_SHADOW_X_END]) * ns_to_ms;
+                        gpu_total_ms = (gpu_timestamps[GPU_TS_FRAME_END] - gpu_timestamps[GPU_TS_FRAME_START]) * ns_to_ms;
+                }
+                p += snprintf(p, 8000 - (p-buf),
+                                "GPU: %.1fms (sN:%.1f sM:%.1f sF:%.1f sX:%.1f terr:%.1f)\n",
+                                gpu_total_ms, gpu_shadow_n_ms, gpu_shadow_m_ms,
+                                gpu_shadow_f_ms, gpu_shadow_x_ms, gpu_terrain_ms);
 
                 p += snprintf(p, 8000 - (p-buf),
                                 "%.1f fps\n", 1000.f * frames / elapsed );
@@ -105,15 +122,12 @@ void debrief()
                                         "Out of room in the glo queue (%d times)\n", gloq_outta_room);
                 gloq_outta_room = 0;
 
-                if (GLEW_NVX_gpu_memory_info) {
-                        glGetIntegerv(GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &total_kb);
-                        glGetIntegerv(GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &avail_kb);
-                }
-
                 last_ticks = ticks;
                 last_frame = frame;
                 polys = 0;
                 shadow_polys = 0;
+                for (int i = 0; i < SHADOW_COUNT; i++)
+                        shadow[i].polys = 0;
 
                 timer_print(timings_buf, 8000, false);
         }
@@ -122,8 +136,9 @@ void debrief()
         {
                 char xyzbuf[100];
                 snprintf(xyzbuf, 100,
-                                "X=%0.0f Y=%0.0f Z=%0.0f %svsync %sreg %smsaa %sfast %scull %slock",
+                                "X=%0.0f Y=%0.0f Z=%0.0f drawdist=%.0f %svsync %sreg %smsaa %sfast %scull %slock",
                                 player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS,
+                                draw_dist,
                                 vsync           ? "" : "no",
                                 regulated       ? "" : "no",
                                 antialiasing    ? "" : "no",
@@ -137,14 +152,21 @@ void debrief()
                 font_end(1, 1, 1);
 
                 font_begin(screenw, screenh);
-                font_add_text(timings_buf, 0.80f * screenw, 0, 2);
+                font_add_text(timings_buf, 0.80f * screenw, 0, 0);
                 font_end(1, 1, 1);
+        }
+
+        if (help_layer == 0 && pframe < 200)
+        {
+                font_begin(screenw, screenh);
+                font_add_text("Press H for help", 20, screenh - 40, 0);
+                font_end(1, .5f, 1);
         }
 
         if (help_layer == 1)
         {
-                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nE          \nZ   \nH                  \nPress G for more";
-                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nPlace Light\nZoom\nHide this help text";
+                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nE          \nZ   \nC            \nH                  \nPress G for more";
+                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nPlace Light\nZoom\nDraw Distance\nHide this help text";
                 font_begin(screenw, screenh);
                 font_add_text(h1, screenw/100.f, screenh/4.f, 0);
                 font_end(1, 0.5, 1);
@@ -155,13 +177,27 @@ void debrief()
 
         if (help_layer == 2)
         {
-                char *g1 = "Q     \nF   \nN       \nP       \nT       \nL         \nM             \nV    \nR             \n/   \nF1     \nF2          \nF3                    \nF4 ";
-                char *g2 = "Go up!\nFast\nRev. sun\nFast sun\nYest box\nLight vals\nShadow mapping\nVsync\nFixed interval\nMSAA\nCulling\nLock culling\nFPS, timings, position\nShow fresh updates";
+                char *g1 = "Q     \nF   \nN       \nP       \nT       \nL         \nM             \nV    \nR             \n/   \nF1     \nF2          \nF3                    \nF4                \nF5";
+                char *g2 = "Go up!\nFast\nRev. sun\nFast sun\nTest box\nLight vals\nShadow mapping\nVsync\nFixed interval\nMSAA\nCulling\nLock culling\nFPS, timings, position\nShow fresh updates\nReload shaders";
                 font_begin(screenw, screenh);
                 font_add_text(g1, screenw/100.f, screenh/4.f, 0);
                 font_end(0.5, 1, 1);
                 font_begin(screenw, screenh);
                 font_add_text(g2, screenw/20.f, screenh/4.f, 0);
+                font_end(1, 1, 1);
+        }
+
+        // compass
+        {
+                char compass_buf[20] = {0};
+                static char dir[][8] = {
+                        "N (+Z)", "NNE", "NE", "ENE", "E (+X)", "ESE", "SE", "SSE", "S (-Z)", "SSW", "SW", "WSW", "W (-X)", "WNW", "NW", "NNW", "N (+Z)",
+                };
+                int idx = (int)floorf((player[0].yaw + PI / 16.f) / (PI / 8.f));
+
+                snprintf(compass_buf, 20, "%d  %s", (int)(player[0].yaw / PI * 180.f), dir[idx]);
+                font_begin(screenw, screenh);
+                font_add_text(compass_buf, screenw/2.1f, 0.f, 0);
                 font_end(1, 1, 1);
         }
 
@@ -173,3 +209,5 @@ void debrief()
                 font_end(1, 0.5, 0);
         }
 }
+
+#endif // BLOCKO_TEST_C_INCLUDED

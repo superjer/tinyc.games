@@ -1,6 +1,6 @@
 #include "zel.c"
-#ifndef ENEMIES_C
-#define ENEMIES_C
+#ifndef ZEL_ENEMIES_C
+#define ZEL_ENEMIES_C
 
 enum enemy_states {READY, JUMP, LAND, BARF, SHUT, HURT,
                    REFLECTED, ORPHANED,
@@ -99,4 +99,4 @@ void update_enemies()
         }
 }
 
-#endif
+#endif // ZEL_ENEMIES_C

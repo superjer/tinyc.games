@@ -1,121 +1,139 @@
-#version 330 core
-layout (points) in;
-layout (triangle_strip, max_vertices = 4) out;
+#version 450
 
-in float tex_vs[];
-in float orient_vs[];
-in vec4 illum_vs[];
-in vec4 glow_vs[];
-in float alpha_vs[];
-in vec4 world_pos_vs[];
+layout(points) in;
+layout(triangle_strip, max_vertices = 4) out;
 
-flat out float tex;
-out float illum;
-out float glow;
-flat out float alpha;
-out vec2 uv;
-flat out float eyedist;
-out vec4 shadow_pos;
-out vec4 world_pos;
-flat out vec3 normal;
+layout(location = 0) in float tex_vs[];
+layout(location = 1) in float orient_vs[];
+layout(location = 2) in vec4 illum_vs[];
+layout(location = 3) in vec4 glow_vs[];
+layout(location = 4) in float alpha_vs[];
+layout(location = 5) in vec4 world_pos_vs[];
 
-uniform mat4 model;
-uniform mat4 view;
-uniform mat4 proj;
-uniform mat4 shadow_space;
-uniform float BS;
+layout(location = 0) flat out float tex;
+layout(location = 1) out float illum;
+layout(location = 2) out float glow;
+layout(location = 3) flat out float alpha;
+layout(location = 4) out vec2 uv;
+layout(location = 5) out vec4 world_pos_out;
+layout(location = 6) out vec4 shadow_pos;
+layout(location = 8) flat out vec3 normal;
 
-void main(void) // geometry
-{
+layout(std140, set = 0, binding = 0) uniform UBO {
+    mat4 model;            // offset 0
+    mat4 view;             // offset 64
+    mat4 proj;             // offset 128
+    mat4 shadow_space[6];  // offset 192 (near, mid, far_a, far_b, ext_a, ext_b)
+    float BS;              // offset 576
+    float shadow_far_blend;  // offset 580 (far: 0=A, 1=B)
+    float shadow_ext_blend;  // offset 584 (extreme: 0=A, 1=B)
+
+    vec3 day_color;        // offset 592
+    vec3 glo_color;        // offset 608
+    vec3 fog_color;        // offset 624
+    float fog_lo;          // offset 636
+    float fog_hi;          // offset 640
+    vec3 light_pos;        // offset 656
+    vec3 view_pos;         // offset 672
+    float sharpness;       // offset 684
+    bool shadow_mapping;   // offset 688
+} ubo;
+
+layout(push_constant) uniform Push {
+    mat4 pv;
+    float chunk_x;
+    float chunk_y;
+    float chunk_z;
+    float bs;
+} push;
+
+void main(void) {
     float sidel = 0.0f;
     vec4 a, b, c, d;
-    mat4 mvp = proj * view * model;
-    switch(int(orient_vs[0])) {
-        case 1: // UP
-            a = vec4( 0, 0, 0,0);
-            b = vec4(BS, 0, 0,0);
-            c = vec4( 0, 0,BS,0);
-            d = vec4(BS, 0,BS,0);
-            normal = vec3(0, -1, 0);
+    vec3 face_normal;
+
+    switch (int(orient_vs[0])) {
+        case 1: // UP (Y-)
+            a = vec4(0, 0, 0, 0);
+            b = vec4(push.bs, 0, 0, 0);
+            c = vec4(0, 0, push.bs, 0);
+            d = vec4(push.bs, 0, push.bs, 0);
             sidel = 1.0f;
+            face_normal = vec3(0, -1, 0);
             break;
-        case 2: // EAST
-            a = vec4(BS, 0,BS,0);
-            b = vec4(BS, 0, 0,0);
-            c = vec4(BS,BS,BS,0);
-            d = vec4(BS,BS, 0,0);
-            normal = vec3(1, 0, 0);
+        case 2: // EAST (X+)
+            a = vec4(push.bs, 0, push.bs, 0);
+            b = vec4(push.bs, 0, 0, 0);
+            c = vec4(push.bs, push.bs, push.bs, 0);
+            d = vec4(push.bs, push.bs, 0, 0);
             sidel = 0.9f;
+            face_normal = vec3(1, 0, 0);
             break;
-        case 3: // NORTH
-            a = vec4( 0, 0,BS,0);
-            b = vec4(BS, 0,BS,0);
-            c = vec4( 0,BS,BS,0);
-            d = vec4(BS,BS,BS,0);
-            normal = vec3(0, 0, 1);
+        case 3: // NORTH (Z+)
+            a = vec4(0, 0, push.bs, 0);
+            b = vec4(push.bs, 0, push.bs, 0);
+            c = vec4(0, push.bs, push.bs, 0);
+            d = vec4(push.bs, push.bs, push.bs, 0);
             sidel = 0.8f;
+            face_normal = vec3(0, 0, 1);
             break;
-        case 4: // WEST
-            a = vec4( 0, 0, 0,0);
-            b = vec4( 0, 0,BS,0);
-            c = vec4( 0,BS, 0,0);
-            d = vec4( 0,BS,BS,0);
-            normal = vec3(-1, 0, 0);
+        case 4: // WEST (X-)
+            a = vec4(0, 0, 0, 0);
+            b = vec4(0, 0, push.bs, 0);
+            c = vec4(0, push.bs, 0, 0);
+            d = vec4(0, push.bs, push.bs, 0);
             sidel = 0.9f;
+            face_normal = vec3(-1, 0, 0);
             break;
-        case 5: // SOUTH
-            a = vec4(BS, 0, 0,0);
-            b = vec4( 0, 0, 0,0);
-            c = vec4(BS,BS, 0,0);
-            d = vec4( 0,BS, 0,0);
-            normal = vec3(0, 0, -1);
+        case 5: // SOUTH (Z-)
+            a = vec4(push.bs, 0, 0, 0);
+            b = vec4(0, 0, 0, 0);
+            c = vec4(push.bs, push.bs, 0, 0);
+            d = vec4(0, push.bs, 0, 0);
             sidel = 0.8f;
+            face_normal = vec3(0, 0, -1);
             break;
-        case 6: // DOWN
-            a = vec4(BS,BS, 0,0);
-            b = vec4( 0,BS, 0,0);
-            c = vec4(BS,BS,BS,0);
-            d = vec4( 0,BS,BS,0);
-            normal = vec3(0, 1, 0);
+        case 6: // DOWN (Y+)
+            a = vec4(push.bs, push.bs, 0, 0);
+            b = vec4(0, push.bs, 0, 0);
+            c = vec4(push.bs, push.bs, push.bs, 0);
+            d = vec4(0, push.bs, push.bs, 0);
             sidel = 0.6f;
+            face_normal = vec3(0, 1, 0);
             break;
     }
 
-    tex = tex_vs[0];
-    alpha = alpha_vs[0];
-    eyedist = length(gl_in[0].gl_Position);
+    float tex_val = tex_vs[0];
+    float alpha_val = alpha_vs[0];
+    vec3 normal_val = face_normal;
 
-    gl_Position = gl_in[0].gl_Position + mvp * a;
-    world_pos = world_pos_vs[0] + a;
-    shadow_pos = shadow_space * world_pos;
-    uv = vec2(1,0);
-    illum = (0.1 + illum_vs[0].x) * sidel;
-    glow = (0.1 + glow_vs[0].x) * sidel;
-    EmitVertex();
+    vec4 vertex_pos = world_pos_vs[0];
+    vec4 offsets[4] = {a, b, c, d};
+    vec2 uvs[4] = { vec2(1,0), vec2(0,0), vec2(1,1), vec2(0,1) };
 
-    gl_Position = gl_in[0].gl_Position + mvp * b;
-    world_pos = world_pos_vs[0] + b;
-    shadow_pos = shadow_space * world_pos;
-    uv = vec2(0,0);
-    illum = (0.1 + illum_vs[0].y) * sidel;
-    glow = (0.1 + glow_vs[0].y) * sidel;
-    EmitVertex();
+    for (int i = 0; i < 4; i++) {
+        // Set flat outputs inside loop to ensure they're set for each vertex
+        // (workaround for potential driver bugs with flat interpolation)
+        tex = tex_val;
+        alpha = alpha_val;
+        normal = normal_val;
 
-    gl_Position = gl_in[0].gl_Position + mvp * c;
-    world_pos = world_pos_vs[0] + c;
-    shadow_pos = shadow_space * world_pos;
-    uv = vec2(1,1);
-    illum = (0.1 + illum_vs[0].z) * sidel;
-    glow = (0.1 + glow_vs[0].z) * sidel;
-    EmitVertex();
+        vec4 world_pos = vertex_pos + offsets[i];
+        gl_Position = push.pv * world_pos;
+        illum = (0.1 + illum_vs[0][i]) * sidel;
+        glow = (0.1 + glow_vs[0][i]) * sidel;
+        uv = uvs[i];
+        world_pos_out = world_pos;
 
-    gl_Position = gl_in[0].gl_Position + mvp * d;
-    world_pos = world_pos_vs[0] + d;
-    shadow_pos = shadow_space * world_pos;
-    uv = vec2(0,1);
-    illum = (0.1 + illum_vs[0].w) * sidel;
-    glow = (0.1 + glow_vs[0].w) * sidel;
-    EmitVertex();
+        // Calculate shadow space position for near cascade only
+        // Mid/far cascade positions are computed in fragment shader (for A/B blending)
+        // Normal offset bias prevents shadow bleeding at cube edges
+        // Offset must exceed PCF world radius
+        vec4 shadow_sample_pos = world_pos + vec4(normal_val * 75.0, 0.0);
+        shadow_pos = ubo.shadow_space[0] * shadow_sample_pos;  // shadow_space[0] = near cascade
+
+        EmitVertex();
+    }
 
     EndPrimitive();
 }

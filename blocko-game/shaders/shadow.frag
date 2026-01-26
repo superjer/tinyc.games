@@ -1,13 +1,16 @@
-#version 330 core
-flat in float tex;
-in vec2 uv;
+#version 450
 
-out vec4 color;
+// Shadow pass fragment shader - depth-only
+// No color output needed; depth is written automatically
 
-uniform sampler2DArray tarray;
+layout(location = 0) flat in float tex;
+layout(location = 1) in vec2 uv;
+layout(location = 2) flat in float alpha;
 
-void main(void)
-{
-    color = texture(tarray, vec3(uv, tex));
-    if (color.a < 0.51) discard;
+layout(set = 0, binding = 1) uniform sampler2DArray tarray;
+
+void main(void) {
+    // Sample texture and discard transparent pixels (for leaves)
+    vec4 texel = texture(tarray, vec3(uv, tex));
+    if (texel.a < 0.5) discard;
 }

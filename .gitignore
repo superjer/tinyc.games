@@ -11,4 +11,7 @@ Debug
 x64
 .vs
 .DS_Store
+.ccls-cache
+Debug
+build
 tags

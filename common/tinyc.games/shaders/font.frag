@@ -1,11 +1,17 @@
-#version 330 core
-in vec2 uv;
-out vec4 color;
+#version 450
 
-uniform vec3 incolor;
-uniform sampler2D tex;
+layout(location = 0) in vec2 uv;
 
-void main()
-{
-    color = vec4(incolor, texture(tex, uv).r);
+layout(location = 0) out vec4 color;
+
+layout(push_constant) uniform Push {
+    mat4 proj;
+    vec3 incolor;
+} push;
+
+layout(set = 0, binding = 0) uniform sampler2D tex;
+
+void main() {
+    float alpha = texture(tex, uv).r;
+    color = vec4(push.incolor, alpha);
 }

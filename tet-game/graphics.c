@@ -1,8 +1,8 @@
-#include "tet.h"
-#include "../common/tinyc.games/utils.c"
-#include "../common/tinyc.games/font.c"
+#include "tet.c"
+#ifndef TET_GRAPHICS_C_INCLUDED
+#define TET_GRAPHICS_C_INCLUDED
 
-#define VBUFLEN 20000
+#define VBUFLEN 40000
 
 unsigned main_prog_id;
 GLuint main_vao;
@@ -26,8 +26,8 @@ void text(char *fstr, int value)
 void draw_setup()
 {
         fprintf(stderr, "GLSL version on this system is %s\n", (char *)glGetString(GL_SHADING_LANGUAGE_VERSION));
-        unsigned int vertex = file2shader(GL_VERTEX_SHADER, "shaders/main.vert");
-        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, "shaders/main.frag");
+        unsigned int vertex = file2shader(GL_VERTEX_SHADER, TINYC_DIR "/tet-game/shaders/main.vert");
+        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/tet-game/shaders/main.frag");
         main_prog_id = glCreateProgram();
         glAttachShader(main_prog_id, vertex);
         glAttachShader(main_prog_id, fragment);
@@ -93,9 +93,11 @@ void draw_end()
 
         // show GL where the color data is
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(2 * sizeof(float)));
-        glEnableVertexAttribArray(1); 
+        glEnableVertexAttribArray(1);
 
         glDrawArrays(GL_TRIANGLES, 0, vbuf_n / 5);
+        if (vbuf_n > VBUFLEN * 3 / 4)
+                fprintf(stderr, "vbuf fullness (%d/%d)\n", vbuf_n, VBUFLEN);
         vbuf_n = 0;
 }
 
@@ -116,21 +118,20 @@ void set_color(int r, int g, int b)
 
 void draw_menu()
 {
-        if (state != MAIN_MENU && state != NUMBER_MENU) return;
+        if (state > MAX_MENU) return;
 
         menu_pos = MAX(menu_pos, 0);
         menu_pos = MIN(menu_pos, state == NUMBER_MENU ? 3 : 2);
         p = play; // just grab first player :)
+        text_x = win_x / 3;
+        text_y = win_y / 3;
 
+        set_color(60, 60, 60);
+        rect(text_x - bs2, text_y - bs2, p->board_w + bs, line_height * 5 + bs);
         set_color(0, 0, 0);
-        rect(p->held.x,
-             p->held.y + p->box_w + bs2 + line_height * (menu_pos + 1),
-             p->board_w,
-             line_height);
+        rect(text_x, text_y + line_height * (menu_pos + 1), p->board_w, line_height);
         draw_end();
 
-        text_x = p->held.x;
-        text_y = p->held.y + p->box_w + bs2;
         if (state == MAIN_MENU)
         {
                 text("Main Menu"        , 0);
@@ -146,15 +147,22 @@ void draw_menu()
                 text("3"                , 0);
                 text("4"                , 0);
         }
+        else if (state == PAUSE_MENU)
+        {
+                text("Pause Menu"          , 0);
+                text("Resume game"         , 0);
+                text("Reassign controllers", 0);
+                text("End game"            , 0);
+        }
 }
 
 void draw_particles()
 {
+        set_color(254, 254, 254);
         for (int i = 0; i < NPARTS; i++)
         {
                 if (parts[i].r <= 0.5f)
                         continue;
-                set_color(254, 254, 254);
                 rect(parts[i].x, parts[i].y, parts[i].r, parts[i].r);
         }
 }
@@ -269,6 +277,41 @@ void draw_player()
         draw_shape(x + bs * p->it.x, y + bs * (ghost_y - 5), p->it.color, p->it.rot, OUTLINE);
         draw_shape(x + bs * p->it.x, y + bs * (p->it.y - 5), p->it.color, p->it.rot, 0);
 
+        // draw row crash
+        if (p->crash_time > 0 && p->row[p->crash_row].offset < bs * 2)
+        {
+                p->crash_time = MIN(p->crash_time, 10);
+                set_color(255, 255, 255);
+                int h = MAX(2, p->row[p->crash_row].offset);
+                int w = 200 - p->crash_time * 20;
+                int crash_x = x + bs * 5;
+                int crash_y = y + (p->crash_row - BHEIGHT + VHEIGHT + 1) * bs - h;
+                rect(x - w,
+                     crash_y,
+                     p->board_w + w * 2,
+                     h);
+
+                if (p->crash_time == 5 && p->combo >= 2)
+                {
+                        audio_tone(SQUARE, A0, C1, 100, 20, 40, 1000);
+                        audio_tone(SQUARE, D1, F1, 60, 20, 40, 300);
+                        audio_tone(SQUARE, G1, B1, 20, 20, 40, 100);
+                        p->shake_y += .04f;
+                        for (int i = 0; i < NPARTS; i++)
+                        {
+                                int xx = parts[i].x - crash_x;
+                                int yy = (parts[i].y - crash_y + bs4) * 3;
+                                int distsq = xx * xx + yy * yy;
+                                int maxdistsq = (bs * 10) * (bs * 10);
+                                if (distsq >= maxdistsq)
+                                        continue;
+                                float dist = sqrtf((float)distsq);
+                                parts[i].vx += (xx / dist) * (bs * 10 - dist) * 0.008f;
+                                parts[i].vy += (yy / dist) * (bs * 10 - dist) * 0.008f;
+                        }
+                }
+        }
+
         // draw next pieces
         for (int n = 0; n < 5; n++)
                 draw_shape(p->preview_x, p->preview_y + 3 * bs * n, p->next[n], 0, CENTER);
@@ -281,7 +324,8 @@ void draw_player()
         // draw scores etc
         text_x = p->held.x;
         text_y = p->held.y + p->box_w + bs2;
-        text("%d pts ", p->score);
+        if (!garbage_race)
+                text("%d pts ", p->score);
         text("%d lines ", p->lines);
 
         int secs = p->ticks / 120 % 60;
@@ -291,7 +335,10 @@ void draw_player()
         text(minsec, 0);
         text(p->dev_name, 0);
         if (p->combo > 1) text("%d combo ", p->combo);
-        text(p->tspin, 0);
+        if (p->tspin == TSPIN_FULL)
+                text("T-SPIN", 0);
+        else if (p->tspin == TSPIN_MINI)
+                text("T-SPIN MINI", 0);
 
         if (p->reward)
         {
@@ -306,7 +353,7 @@ void draw_player()
                 text(countdown_msg[p->countdown_time / CTDN_TICKS], 0);
 
         if (state == ASSIGN)
-                text(p >= play + assign_me ? "Press button to join" : p->dev_name, 0);
+                text(p->device == -1 ? "Press button to join" : p->dev_name, 0);
 
         if (state == GAMEOVER) text("Game over", 0);
 }
@@ -347,3 +394,5 @@ void resize(int x, int y)
         }
         reflow();
 }
+
+#endif // TET_GRAPHICS_C_INCLUDED

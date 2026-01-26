@@ -1,23 +1,30 @@
-#version 330 core
-layout (location = 0) in float tex_in;
-layout (location = 1) in float orient_in;
-layout (location = 2) in vec3 pos_in;
-layout (location = 3) in vec4 illum_in;
-layout (location = 4) in vec4 glow_in;
-layout (location = 5) in float alpha_in;
+#version 450
 
-out float tex_vs;
-out float orient_vs;
+layout(location = 0) in float tex_in;
+layout(location = 1) in float orient_in;
+layout(location = 2) in vec3 pos_in;
+layout(location = 3) in vec4 illum_in;
+layout(location = 4) in vec4 glow_in;
+layout(location = 5) in float alpha_in;
 
-uniform mat4 model;
-uniform mat4 view;
-uniform mat4 proj;
-uniform float BS;
+layout(location = 0) out float tex_vs;
+layout(location = 1) out float orient_vs;
+layout(location = 2) out float alpha_vs;
+layout(location = 3) out vec4 world_pos_vs;
 
-void main(void)
-{
-    vec3 pos = BS * pos_in;
-    gl_Position = proj * view * model * vec4(pos, 1.0f);
+layout(push_constant) uniform Push {
+    mat4 pv;
+    float chunk_x;
+    float chunk_y;
+    float chunk_z;
+    float bs;
+} push;
+
+void main() {
+    vec3 world = push.bs * pos_in + vec3(push.chunk_x, push.chunk_y, push.chunk_z);
+    gl_Position = push.pv * vec4(world, 1.0);
+    world_pos_vs = vec4(world, 1.0);
     tex_vs = tex_in;
     orient_vs = orient_in;
+    alpha_vs = alpha_in;
 }

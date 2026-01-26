@@ -1,6 +1,6 @@
 #include "zel.c"
-#ifndef ENEMY_WRENCH_C
-#define ENEMY_WRENCH_C
+#ifndef ZEL_ENEMY_WRENCH_C
+#define ZEL_ENEMY_WRENCH_C
 #define e (enemy[n])
 
 void update_wrench(int n)
@@ -48,4 +48,4 @@ void update_wrench(int n)
 }
 
 #undef e
-#endif
+#endif // ZEL_ENEMY_WRENCH_C

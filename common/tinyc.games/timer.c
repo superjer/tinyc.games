@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 
 // You must X-define TIMER_NAMES before including this file, e.g:
 //
