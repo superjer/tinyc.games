@@ -195,8 +195,8 @@ void draw_stuff()
                 main_ubo.fog_color[0] = fog_r;
                 main_ubo.fog_color[1] = fog_g;
                 main_ubo.fog_color[2] = fog_b;
-                main_ubo.fog_lo = draw_dist * BS * 0.5f;
-                main_ubo.fog_hi = draw_dist * BS * 1.0f;
+                main_ubo.fog_lo = BS * 50.0f;
+                main_ubo.fog_hi = draw_dist * BS * 0.9f;
 
                 // Sun strength and warmth for day/night cycle
                 // Full brightness between PI/16 and PI-PI/16, dimming/warming only near horizons

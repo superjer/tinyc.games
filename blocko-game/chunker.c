@@ -32,11 +32,30 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 }
 
                 if (column_already_generated[(x-tscootx) & (TILESW-1)][(z-tscootz) & (TILESD-1)])
-                        continue;
+                        continue; 
                 column_already_generated[(x-tscootx) & (TILESW-1)][(z-tscootz) & (TILESD-1)] = true;
 
                 int solid_depth = 0;
                 int hmaph = (1.f - get_filtered_height(x, z)) * TILESH;
+
+                int hx0 = (1.f - get_filtered_height(x+1, z)) * TILESH;
+                int hz0 = (1.f - get_filtered_height(x, z+1)) * TILESH;
+                int hx1 = (1.f - get_filtered_height(x-1, z)) * TILESH;
+                int hz1 = (1.f - get_filtered_height(x, z-1)) * TILESH;
+                
+                bool sharp_dn = hmaph - hx0 < -1 || hmaph - hz0 < -1 || hmaph - hx1 < -1 || hmaph - hz1 < -1;
+                bool sharp_up = hmaph - hx0 >  1 || hmaph - hz0 >  1 || hmaph - hx1 >  1 || hmaph - hz1 >  1;
+                bool sharper_dn = hmaph - hx0 < -3 || hmaph - hz0 < -3 || hmaph - hx1 < -3 || hmaph - hz1 < -3;
+                bool sharper_up = hmaph - hx0 >  3 || hmaph - hz0 >  3 || hmaph - hx1 >  3 || hmaph - hz1 >  3;
+                bool steep = (sharp_dn && sharp_up) || sharper_dn;
+
+                float reejin = noise(x, z, 350, 12345, 1) - 0.5f;
+                int lev1 = 20 + (int)(reejin * 100.f);
+                int lev2 = 50 + (int)(reejin * 100.f);
+                int lev3 = 80 + (int)(reejin * 50.f);
+                int lev4 = 125 + (int)(reejin * 50.f);
+
+                #define topsoil() ((noise(x, z, 690, 12345, 1) > .5f) ? GRAS : DIRT)
 
                 for (int y = 0; y < TILESH; y++)
                 {
@@ -53,10 +72,14 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
                         solid_depth++;
 
-                             if (y < 60)   TT_(x, y, z) = STON;
-                        else if (y < 77)   TT_(x, y, z) = solid_depth == 1 ? GRAS : DIRT;
-                        else if (y < 115)  TT_(x, y, z) = solid_depth == 1 ? SAND : STON;
+                        if (steep)         TT_(x, y, z) = STON;
+                        else if (y < lev1) TT_(x, y, z) = STON;
+                        else if (y < lev2) TT_(x, y, z) = DIRT;
+                        else if (y < lev3) TT_(x, y, z) = solid_depth == 1 ? GRAS : DIRT;
+                        else if (y < lev4) TT_(x, y, z) = solid_depth <= 4 ? SAND : STON;
                         else               TT_(x, y, z) = HARD;
+
+                        //if (TT_(x, y, z) != HARD) TT_(x, y, z) = OPEN;
                 }
         }
 
@@ -153,14 +176,14 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         }
 
         // trees?
-        float p191 = noise(zlo, xlo, 191, 999, 1);
-        seed = SEED2(xlo - tscootx, zlo - tscootz);
-        if (p191 > 0.6f) while (RANDP(95))
+        float p191 = noise(zlo, xlo, 1300, 999, 1);
+        int randp = p191 > 0.51f ? 96 : p191 > 0.45f ? 85 : 0;
+        if (randp) while (RANDP(randp))
         {
                 char leaves = RANDBOOL ? RLEF : YLEF;
                 float radius = RANDF(3.f, 6.f);
-                int x = xlo + CHUNKW/2 + RANDI(-5, 5);
-                int z = zlo + CHUNKD/2 + RANDI(-5, 5);
+                int x = xlo + RANDI(5, CHUNKW - 5);
+                int z = zlo + RANDI(5, CHUNKD - 5);
                 for (int y = 10; y < TILESH-2; y++)
                 {
                         if (TT_(x, y, z) == OPEN)
