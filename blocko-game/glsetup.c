@@ -2,32 +2,6 @@
 #ifndef BLOCKO_GLSETUP_C_INCLUDED
 #define BLOCKO_GLSETUP_C_INCLUDED
 
-// please free() the returned string
-char *file2str(char *filename)
-{
-        FILE *f;
-
-        #if defined(_MSC_VER) && _MSC_VER >= 1400
-                if (fopen_s(&f, filename, "rb"))
-                        f = NULL;
-        #else
-                f = fopen(filename, "r");
-        #endif
-
-        if (!f) goto bad;
-        fseek(f, 0, SEEK_END);
-        size_t sz = ftell(f);
-        rewind(f);
-        char *buf = calloc(sz + 1, sizeof *buf);
-        if (fread(buf, 1, sz, f) != sz) goto bad;
-        fclose(f);
-        return buf;
-
-        bad:
-        fprintf(stderr, __FILE__ " Failed to open/read %s\n", filename);
-        return NULL;
-}
-
 void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
                   VkMemoryPropertyFlags properties, VkBuffer* buffer, VkDeviceMemory* bufferMemory) {
     

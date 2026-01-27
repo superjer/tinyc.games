@@ -1,5 +1,5 @@
-#ifndef TINY_C_GAMES_TIMER_
-#define TINY_C_GAMES_TIMER_
+#ifndef TINYCGAMES_TIMER_C_INCLUDED
+#define TINYCGAMES_TIMER_C_INCLUDED
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -73,4 +73,4 @@ void timer_print(char *buf, size_t n, bool show_all)
         }
 }
 
-#endif
+#endif // TINYCGAMES_TIMER_C_INCLUDED

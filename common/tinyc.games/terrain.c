@@ -1,11 +1,11 @@
-#ifndef TINY_C_GAMES_TERRAIN_
-#define TINY_C_GAMES_TERRAIN_
+#ifndef TINYCGAMES_TERRAIN_C_INCLUDED
+#define TINYCGAMES_TERRAIN_C_INCLUDED
 
 #include "taylor_noise.c"
 #include "utils.c"
 
 int get_height_hit, get_height_miss;
-int seed;
+int seed = 160659;
 
 float zigzag(float val, int zags)
 {
@@ -34,7 +34,7 @@ float get_height(int x, int y)
         get_height_miss++;
 
         // legend
-        if (x < 20 && y < 640) return (y - 240) / 20 / 20.f;
+        //if (x < 20 && y < 640) return (y - 240) / 20 / 20.f;
 
         float val = noise(x, y, 200, seed, 1);
         //val += (zigzag(val, 100) - .5f) * .02f;
@@ -171,7 +171,15 @@ float get_filtered_height(int x, int y)
                 h = lerp(smoothness, h, smooth_h);
         }
 
+        float lowness = remap(noise(x2, y2, 290, seed, 1), .25f, 1.f, 0.f, 1.f);
+        if (lowness > 0.f && h > .47f)
+        {
+                float x = 1.f - remap(lowness, 0.f, .6f, 0.f, 1.f);
+                //x = x * x;
+                h = h * x + .52f * (1.f - x);
+        }
+
         return h;
 }
 
-#endif
+#endif // TINYCGAMES_TERRAIN_C_INCLUDED

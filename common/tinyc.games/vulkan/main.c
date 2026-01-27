@@ -15,7 +15,7 @@
 #include <vulkan/vulkan.h>
 
 #define STBI_NO_SIMD
-#ifndef TCGVK_SKIP_MAIN
+#ifdef TINYC_VULKAN_TRIANGLE_MAIN
 #define STB_IMAGE_IMPLEMENTATION
 #endif
 #include "../../nothings/stb_image.h"
@@ -658,10 +658,10 @@ void myDrawCallback(VkCommandBuffer cmdbuf)
         vkCmdDraw(cmdbuf, 3, 1, 0, 0);
 }
 
-#ifndef TCGVK_SKIP_MAIN
+#ifdef TINYC_VULKAN_TRIANGLE_MAIN
 int main()
 {
-        vulkan_startup("TCGVK - TinyC.Games Vulkan test", "../assets/tinyc-icon.png", "./shaders/");
+        vulkan_startup("TinyC.Games Vulkan test", "../assets/tinyc-icon.png", "./shaders/");
         int pipe = vulkan_make_pipeline(
                 "triangle.vert",
                 "triangle.geom",

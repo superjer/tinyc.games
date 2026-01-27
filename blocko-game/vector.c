@@ -1,3 +1,6 @@
+#ifndef BLOCKO_VECTOR_C_INCLUDED
+#define BLOCKO_VECTOR_C_INCLUDED
+
 #include <stdio.h>
 #include <math.h>
 #include <memory.h>
@@ -116,3 +119,5 @@ float distance3d(float x, float y, float z, float a, float b, float c)
 {
         return sqrtf((x-a) * (x-a) + (y-b) * (y-b) + (z-c) * (z-c));
 }
+
+#endif // BLOCKO_VECTOR_C_INCLUDED

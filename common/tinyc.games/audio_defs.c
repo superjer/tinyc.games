@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TINYCGAMES_AUDIO_DEFS_C_INCLUDED
+#define TINYCGAMES_AUDIO_DEFS_C_INCLUDED
 
 #define NUM_ENVS 20
 #define NUM_BEAT 32
@@ -117,3 +118,5 @@ void audio_init();
 void audio_tone(int shape, int note_lo, int note_hi,
                 double attack, double decay, double sustain, double release);
 int music_toggle();
+
+#endif // TINYCGAMES_AUDIO_DEFS_C_INCLUDED

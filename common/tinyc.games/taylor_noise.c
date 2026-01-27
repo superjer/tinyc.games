@@ -1,8 +1,8 @@
 // Simple implementation of "Taylor Noise" copyright Jer Wilson 2023
 // for TinyC.Games
 
-#ifndef TINY_C_GAMES_TAYLOR_NOISE_
-#define TINY_C_GAMES_TAYLOR_NOISE_
+#ifndef TINYCGAMES_TAYLOR_NOISE_C_INCLUDED
+#define TINYCGAMES_TAYLOR_NOISE_C_INCLUDED
 
 #include <string.h>
 #include <math.h>
@@ -31,7 +31,7 @@ float noise(int x, int y, int sz, int seed, int samples)
 {
         // no negative numbers!
         sz &= 0x00ffffff;
-        sz /= 2;
+        sz /= 5;
         x += 0x10000000;
         y += 0x01000000;
         if (x <= sz) x = sz + 1;
@@ -95,4 +95,4 @@ float noise(int x, int y, int sz, int seed, int samples)
         return sum_strengths / sum_weights;
 }
 
-#endif
+#endif // TINYCGAMES_TAYLOR_NOISE_C_INCLUDED

@@ -1,5 +1,5 @@
-#ifndef TINYC_FONT_C_INCLUDED
-#define TINYC_FONT_C_INCLUDED
+#ifndef TINYCGAMES_FONT_C_INCLUDED
+#define TINYCGAMES_FONT_C_INCLUDED
 
 #include "utils.c"
 
@@ -623,4 +623,4 @@ void font_end(float r, float g, float b)
         font_gpu_offset += bytes_needed;
 }
 
-#endif // TINYC_FONT_C_INCLUDED
+#endif // TINYCGAMES_FONT_C_INCLUDED

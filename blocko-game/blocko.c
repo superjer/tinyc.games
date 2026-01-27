@@ -29,16 +29,12 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_vulkan.h>
-#define TCGVK_SKIP_MAIN
 #include "../common/tinyc.games/vulkan/main.c"
+#include "../common/tinyc.games/utils.c"
 
 #define STBI_NO_SIMD
 #define STB_IMAGE_IMPLEMENTATION
 #include "../common/nothings/stb_image.h"
-
-#include "../common/smcameron/open-simplex-noise.c"
-struct osn_context *osn_context;
-#define noise(x,y,z,scale) open_simplex_noise3(osn_context,(float)((x)-tscootx+0.5f)/(scale),(float)((y)+0.5f)/(scale),(float)((z)-tscootz+0.5f)/(scale))
 
 #define TINYC_DIR ".."
 #include "build-config.h"

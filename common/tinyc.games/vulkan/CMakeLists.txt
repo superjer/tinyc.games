@@ -5,6 +5,7 @@ project(vulkan_test)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(SDL_TEST_LIBRARY OFF)
+set(TINYC_VULKAN_TRIANGLE_MAIN ON)
 
 include(FetchContent)
 

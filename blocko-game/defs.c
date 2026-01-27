@@ -102,7 +102,6 @@
 #define SHADOW_EXT_B  5
 #define SHADOW_COUNT  6
 
-#define CLAMP(v, l, u) { if (v < l) v = l; else if (v > u) v = u; }
 #define ICLAMP(v, l, u) ((v < l) ? l : (v > u) ? u : v)
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -207,8 +206,6 @@ unsigned dumb_rand(unsigned *seed) { return (*seed = (1103515245 * *seed + 12345
 #define SEED4(a,b,c,d) (world_seed ^ ((a) << 4) ^ ((b) << 8) ^ ((c) << 12) ^ ((d) << 16))
 
 #define ALIGN_UP(n, alignment) (((n) + (alignment) - 1) & ~((alignment) - 1))
-
-float lerp(float t, float a, float b) { return a + t * (b - a); }
 
 struct allocation {
         VkDeviceMemory mem;
