@@ -83,8 +83,11 @@
 #define FACE_ALL   0x3F
 
 // LOD settings
-#define LOD_DIST_THRESHOLD 160.0f  // distance in blocks before LOD kicks in
+#define LOD_DIST_THRESHOLD 160.0f  // distance in blocks before backface culling LOD kicks in
 #define LOD_ANGLE_SIN 0.259f       // sin(15°) - angular tolerance for face culling
+#define LOD_GEO_DIST_THRESHOLD 400.0f  // distance in blocks before geometric LOD kicks in
+#define LOD_GEO_STEP 2             // sample every Nth block (2 = 1 per 2x2x2 cube = 1/8th)
+#define LOD_GEO_SCALE 2.0f         // scale factor for geometric LOD blocks
 
 #define VERTEX_BUFLEN 131072
 #define MAX_MESH_THREADS 16
@@ -237,6 +240,7 @@ struct visible_chunk {
         int x, z;           // chunk indices
         unsigned char shadow_mask;  // bitmask: which shadow cascades see this chunk
         unsigned char camera_visible;  // true if visible to main camera
+        float dist_sq;      // squared distance to camera (for front-to-back sorting)
 };
 struct visible_chunk visible_chunks[VAOW * VAOD];
 int visible_chunk_count = 0;
@@ -305,6 +309,7 @@ struct vbufv {
     float illum0, illum1, illum2, illum3; // Location 3
     float glow0, glow1, glow2, glow3;  // Location 4
     float alpha;   // Location 5
+    float scale;   // Location 6 - LOD scale factor (1.0 = normal, 2.0 = LOD)
 } ShaderInput;
 
 struct vbufv vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding

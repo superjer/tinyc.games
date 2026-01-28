@@ -16,6 +16,7 @@ layout(push_constant) uniform Push {
 void main()
 {
     gl_Position = push.pvm * vec4(pos, 1.0);
+    gl_Position.z = gl_Position.w;  // Force depth to 1.0 (always behind everything)
     uv_out = uv;
     world_dir = normalize(pos);
 }

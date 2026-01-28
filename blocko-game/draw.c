@@ -2,6 +2,13 @@
 #ifndef BLOCKO_DRAW_C_INCLUDED
 #define BLOCKO_DRAW_C_INCLUDED
 
+static int chunk_dist_compare(const struct visible_chunk *a, const struct visible_chunk *b)
+{
+        if (a->dist_sq < b->dist_sq) return -1;
+        if (a->dist_sq > b->dist_sq) return 1;
+        return 0;
+}
+
 int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z)
 {
         int x_too_lo = 0;
@@ -147,13 +154,24 @@ void draw_stuff()
                         // Include if visible to camera OR any shadow frustum
                         if (!camera_visible && !shadow_mask) continue;
 
+                        // Calculate squared distance to camera for sorting
+                        float chunk_cx = (i + 0.5f) * CHUNKW * BS;
+                        float chunk_cz = (j + 0.5f) * CHUNKD * BS;
+                        float dx = peye0 - chunk_cx;
+                        float dz = peye2 - chunk_cz;
+
                         visible_chunks[visible_chunk_count].x = i;
                         visible_chunks[visible_chunk_count].z = j;
                         visible_chunks[visible_chunk_count].shadow_mask = shadow_mask;
                         visible_chunks[visible_chunk_count].camera_visible = camera_visible;
+                        visible_chunks[visible_chunk_count].dist_sq = dx*dx + dz*dz;
                         visible_chunk_count++;
                 }
         }
+
+        // Sort visible chunks front-to-back for early-Z optimization
+        qsort(visible_chunks, visible_chunk_count, sizeof(struct visible_chunk),
+              (int (*)(const void *, const void *))chunk_dist_compare);
 
         main_ubo.shadow_mapping = shadow_mapping;
 
@@ -342,9 +360,7 @@ void draw_stuff()
         };
         vkCmdBeginRenderPass(cmdbuf, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-        // Render sky, sun, and terrain
-        sky_draw(cmdbuf, proj_mtrx, view_mtrx);
-        sun_draw(cmdbuf, proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll);
+        // Render terrain first (front-to-back for early-Z optimization)
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);
 
         VkViewport viewport = { 0, 0, vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height, 0, 1 };
@@ -380,6 +396,10 @@ void draw_stuff()
                 total_verts += VBOLEN_(i, j);
                 polys += VBOLEN_(i, j);
         }
+
+        // Render sky/sun last - only fills pixels not covered by terrain (early-Z optimization)
+        sky_draw(cmdbuf, proj_mtrx, view_mtrx);
+        sun_draw(cmdbuf, proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll);
 
         if (mouselook) cursor(cmdbuf);
 

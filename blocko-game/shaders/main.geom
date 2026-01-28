@@ -9,6 +9,7 @@ layout(location = 2) in vec4 illum_vs[];
 layout(location = 3) in vec4 glow_vs[];
 layout(location = 4) in float alpha_vs[];
 layout(location = 5) in vec4 world_pos_vs[];
+layout(location = 6) in float scale_vs[];
 
 layout(location = 0) flat out float tex;
 layout(location = 1) out float illum;
@@ -51,53 +52,54 @@ void main(void) {
     float sidel = 0.0f;
     vec4 a, b, c, d;
     vec3 face_normal;
+    float bs = push.bs * scale_vs[0];  // Apply LOD scale to block size
 
     switch (int(orient_vs[0])) {
         case 1: // UP (Y-)
             a = vec4(0, 0, 0, 0);
-            b = vec4(push.bs, 0, 0, 0);
-            c = vec4(0, 0, push.bs, 0);
-            d = vec4(push.bs, 0, push.bs, 0);
+            b = vec4(bs, 0, 0, 0);
+            c = vec4(0, 0, bs, 0);
+            d = vec4(bs, 0, bs, 0);
             sidel = 1.0f;
             face_normal = vec3(0, -1, 0);
             break;
         case 2: // EAST (X+)
-            a = vec4(push.bs, 0, push.bs, 0);
-            b = vec4(push.bs, 0, 0, 0);
-            c = vec4(push.bs, push.bs, push.bs, 0);
-            d = vec4(push.bs, push.bs, 0, 0);
+            a = vec4(bs, 0, bs, 0);
+            b = vec4(bs, 0, 0, 0);
+            c = vec4(bs, bs, bs, 0);
+            d = vec4(bs, bs, 0, 0);
             sidel = 0.9f;
             face_normal = vec3(1, 0, 0);
             break;
         case 3: // NORTH (Z+)
-            a = vec4(0, 0, push.bs, 0);
-            b = vec4(push.bs, 0, push.bs, 0);
-            c = vec4(0, push.bs, push.bs, 0);
-            d = vec4(push.bs, push.bs, push.bs, 0);
+            a = vec4(0, 0, bs, 0);
+            b = vec4(bs, 0, bs, 0);
+            c = vec4(0, bs, bs, 0);
+            d = vec4(bs, bs, bs, 0);
             sidel = 0.8f;
             face_normal = vec3(0, 0, 1);
             break;
         case 4: // WEST (X-)
             a = vec4(0, 0, 0, 0);
-            b = vec4(0, 0, push.bs, 0);
-            c = vec4(0, push.bs, 0, 0);
-            d = vec4(0, push.bs, push.bs, 0);
+            b = vec4(0, 0, bs, 0);
+            c = vec4(0, bs, 0, 0);
+            d = vec4(0, bs, bs, 0);
             sidel = 0.9f;
             face_normal = vec3(-1, 0, 0);
             break;
         case 5: // SOUTH (Z-)
-            a = vec4(push.bs, 0, 0, 0);
+            a = vec4(bs, 0, 0, 0);
             b = vec4(0, 0, 0, 0);
-            c = vec4(push.bs, push.bs, 0, 0);
-            d = vec4(0, push.bs, 0, 0);
+            c = vec4(bs, bs, 0, 0);
+            d = vec4(0, bs, 0, 0);
             sidel = 0.8f;
             face_normal = vec3(0, 0, -1);
             break;
         case 6: // DOWN (Y+)
-            a = vec4(push.bs, push.bs, 0, 0);
-            b = vec4(0, push.bs, 0, 0);
-            c = vec4(push.bs, push.bs, push.bs, 0);
-            d = vec4(0, push.bs, push.bs, 0);
+            a = vec4(bs, bs, 0, 0);
+            b = vec4(0, bs, 0, 0);
+            c = vec4(bs, bs, bs, 0);
+            d = vec4(0, bs, bs, 0);
             sidel = 0.6f;
             face_normal = vec3(0, 1, 0);
             break;

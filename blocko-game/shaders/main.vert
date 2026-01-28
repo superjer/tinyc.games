@@ -6,6 +6,7 @@ layout(location = 2) in vec3 pos_in;
 layout(location = 3) in vec4 illum_in;
 layout(location = 4) in vec4 glow_in;
 layout(location = 5) in float alpha_in;
+layout(location = 6) in float scale_in;
 
 layout(location = 0) out float tex_vs;
 layout(location = 1) out float orient_vs;
@@ -13,6 +14,7 @@ layout(location = 2) out vec4 illum_vs;
 layout(location = 3) out vec4 glow_vs;
 layout(location = 4) out float alpha_vs;
 layout(location = 5) out vec4 world_pos_vs;
+layout(location = 6) out float scale_vs;
 
 layout(push_constant) uniform Push {
     mat4 pv;
@@ -31,4 +33,5 @@ void main() {
     illum_vs = illum_in;
     glow_vs = glow_in;
     alpha_vs = alpha_in;
+    scale_vs = scale_in;
 }

@@ -210,12 +210,13 @@ VkPipelineColorBlendStateCreateInfo configureColorBlendStateCreateInfo(VkPipelin
 	return colorBlendStateCreateInfo;
 }
 
-#define PIPE_NO_DEPTH_WRITE 1
-#define PIPE_BLEND          2
-#define PIPE_NO_DEPTH_TEST  4
-#define PIPE_NO_CULL        8
-#define PIPE_FRONT_CULL     16
-#define PIPE_DEPTH_BIAS     32
+#define PIPE_NO_DEPTH_WRITE   1
+#define PIPE_BLEND            2
+#define PIPE_NO_DEPTH_TEST    4
+#define PIPE_NO_CULL          8
+#define PIPE_FRONT_CULL       16
+#define PIPE_DEPTH_BIAS       32
+#define PIPE_DEPTH_LESS_EQUAL 64
 
 VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout, VkShaderModule *pVertexShaderModule, VkShaderModule *pGeometryShaderModule, VkShaderModule *pFragmentShaderModule, VkRenderPass *pRenderPass, VkExtent2D *pExtent,
         int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
@@ -274,7 +275,7 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
 		.depthTestEnable = (flags & PIPE_NO_DEPTH_TEST) ? VK_FALSE : VK_TRUE,
 		.depthWriteEnable = (flags & (PIPE_NO_DEPTH_WRITE | PIPE_NO_DEPTH_TEST)) ? VK_FALSE : VK_TRUE,
-		.depthCompareOp = VK_COMPARE_OP_LESS,
+		.depthCompareOp = (flags & PIPE_DEPTH_LESS_EQUAL) ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS,
 		.depthBoundsTestEnable = VK_FALSE,
 		.stencilTestEnable = VK_FALSE,
 	};

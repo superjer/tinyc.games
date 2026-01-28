@@ -135,13 +135,13 @@ void sun_init()
         };
 
         sky_pipe = vulkan_make_pipeline("sky.vert", NULL, "sky.frag",
-                1, &bindingDesc, 2, attrDescs, NULL, VK_NULL_HANDLE, PIPE_NO_DEPTH_WRITE);
+                1, &bindingDesc, 2, attrDescs, NULL, VK_NULL_HANDLE, PIPE_NO_DEPTH_WRITE | PIPE_DEPTH_LESS_EQUAL);
 
         // Sun/moon pipelines - no vertex inputs, quads generated in shader
         sun_pipe = vulkan_make_pipeline("sun.vert", NULL, "sun.frag",
-                0, NULL, 0, NULL, NULL, VK_NULL_HANDLE, PIPE_NO_DEPTH_WRITE | PIPE_BLEND | PIPE_NO_CULL);
+                0, NULL, 0, NULL, NULL, VK_NULL_HANDLE, PIPE_NO_DEPTH_WRITE | PIPE_BLEND | PIPE_NO_CULL | PIPE_DEPTH_LESS_EQUAL);
         moon_pipe = vulkan_make_pipeline("moon.vert", NULL, "moon.frag",
-                0, NULL, 0, NULL, NULL, VK_NULL_HANDLE, PIPE_NO_DEPTH_WRITE | PIPE_BLEND | PIPE_NO_CULL);
+                0, NULL, 0, NULL, NULL, VK_NULL_HANDLE, PIPE_NO_DEPTH_WRITE | PIPE_BLEND | PIPE_NO_CULL | PIPE_DEPTH_LESS_EQUAL);
 }
 
 void sky_draw(VkCommandBuffer cmdbuf, float *proj, float *view)

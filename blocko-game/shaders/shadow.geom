@@ -7,6 +7,7 @@ layout(location = 0) in float tex_vs[];
 layout(location = 1) in float orient_vs[];
 layout(location = 2) in float alpha_vs[];
 layout(location = 3) in vec4 world_pos_vs[];
+layout(location = 4) in float scale_vs[];
 
 layout(location = 0) flat out float tex;
 layout(location = 1) out vec2 uv;
@@ -22,43 +23,44 @@ layout(push_constant) uniform Push {
 
 void main(void) {
     vec4 a, b, c, d;
+    float bs = push.bs * scale_vs[0];  // Apply LOD scale to block size
 
     switch (int(orient_vs[0])) {
         case 1: // UP
             a = vec4(0, 0, 0, 0);
-            b = vec4(push.bs, 0, 0, 0);
-            c = vec4(0, 0, push.bs, 0);
-            d = vec4(push.bs, 0, push.bs, 0);
+            b = vec4(bs, 0, 0, 0);
+            c = vec4(0, 0, bs, 0);
+            d = vec4(bs, 0, bs, 0);
             break;
         case 2: // EAST
-            a = vec4(push.bs, 0, push.bs, 0);
-            b = vec4(push.bs, 0, 0, 0);
-            c = vec4(push.bs, push.bs, push.bs, 0);
-            d = vec4(push.bs, push.bs, 0, 0);
+            a = vec4(bs, 0, bs, 0);
+            b = vec4(bs, 0, 0, 0);
+            c = vec4(bs, bs, bs, 0);
+            d = vec4(bs, bs, 0, 0);
             break;
         case 3: // NORTH
-            a = vec4(0, 0, push.bs, 0);
-            b = vec4(push.bs, 0, push.bs, 0);
-            c = vec4(0, push.bs, push.bs, 0);
-            d = vec4(push.bs, push.bs, push.bs, 0);
+            a = vec4(0, 0, bs, 0);
+            b = vec4(bs, 0, bs, 0);
+            c = vec4(0, bs, bs, 0);
+            d = vec4(bs, bs, bs, 0);
             break;
         case 4: // WEST
             a = vec4(0, 0, 0, 0);
-            b = vec4(0, 0, push.bs, 0);
-            c = vec4(0, push.bs, 0, 0);
-            d = vec4(0, push.bs, push.bs, 0);
+            b = vec4(0, 0, bs, 0);
+            c = vec4(0, bs, 0, 0);
+            d = vec4(0, bs, bs, 0);
             break;
         case 5: // SOUTH
-            a = vec4(push.bs, 0, 0, 0);
+            a = vec4(bs, 0, 0, 0);
             b = vec4(0, 0, 0, 0);
-            c = vec4(push.bs, push.bs, 0, 0);
-            d = vec4(0, push.bs, 0, 0);
+            c = vec4(bs, bs, 0, 0);
+            d = vec4(0, bs, 0, 0);
             break;
         case 6: // DOWN
-            a = vec4(push.bs, push.bs, 0, 0);
-            b = vec4(0, push.bs, 0, 0);
-            c = vec4(push.bs, push.bs, push.bs, 0);
-            d = vec4(0, push.bs, push.bs, 0);
+            a = vec4(bs, bs, 0, 0);
+            b = vec4(0, bs, 0, 0);
+            c = vec4(bs, bs, bs, 0);
+            d = vec4(0, bs, bs, 0);
             break;
     }
 

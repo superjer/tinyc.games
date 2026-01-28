@@ -194,7 +194,7 @@ void do_shadows()
                 // Orthographic projection (Vulkan depth [0,1])
                 float snear = (s == 0 ? 10.f : s == 1 ? 40.f : s == 2 ? 80.f : 200.f);
                 float sfar = dist2sun * 2;
-                float mag = (s == 0 ? 5000.f : s == 1 ? 20000.f : s == 2 ? 50000.f : 500000.f);
+                float mag = (s == 0 ? 5000.f : s == 1 ? 20000.f : s == 2 ? 50000.f : 150000.f);
 
                 float ortho_mtrx[] = {
                         1.f/mag, 0,       0,                        0,

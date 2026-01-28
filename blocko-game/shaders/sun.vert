@@ -49,4 +49,5 @@ void main()
     vec3 rotated = rot * pos;
 
     gl_Position = push.pv * vec4(rotated, 1.0);
+    gl_Position.z = gl_Position.w;  // Force depth to 1.0 (always behind everything)
 }
