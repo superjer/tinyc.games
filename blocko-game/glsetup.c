@@ -752,7 +752,7 @@ void glsetup()
                 "shadow.vert", "shadow.geom", "shadow.frag",
                 1, &mainBindingDesc, 6, mainAttrDescs,
                 &main_descriptor_set_layout, shadow_render_pass,
-                PIPE_DEPTH_BIAS);
+                PIPE_DEPTH_BIAS | PIPE_NO_CULL);
 
         create_descriptor_pool_and_set();
 
