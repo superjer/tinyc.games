@@ -316,6 +316,8 @@ void draw_stuff()
         TIMER(build_meshes);
         build_meshes();
 
+        main_ubo.water_frame = pframe;
+
         TIMER(upload_ubo);
         // Upload UBO to per-frame buffer
         {
@@ -360,7 +362,7 @@ void draw_stuff()
         };
         vkCmdBeginRenderPass(cmdbuf, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-        // Render terrain first (front-to-back for early-Z optimization)
+        // Render opaque terrain (front-to-back for early-Z optimization)
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);
 
         VkViewport viewport = { 0, 0, vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height, 0, 1 };
@@ -379,11 +381,13 @@ void draw_stuff()
         int chunks_drawn = 0;
         int total_verts = 0;
 
-        // Use pre-built visible chunk list
+        // Pass 1: opaque terrain (front-to-back)
         for (int k = 0; k < visible_chunk_count; k++) {
                 if (!visible_chunks[k].camera_visible) continue;
                 int i = visible_chunks[k].x;
                 int j = visible_chunks[k].z;
+                size_t terrain_verts = WBOSTART_(i, j);
+                if (!terrain_verts) continue;
 
                 push.chunk_x = i * BS * CHUNKW;
                 push.chunk_y = 0;
@@ -391,15 +395,42 @@ void draw_stuff()
                 vkCmdPushConstants(cmdbuf, vk.pipelines[main_pipe].layout,
                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
                 vkCmdBindVertexBuffers(cmdbuf, 0, 1, &world_buf[i * VAOD + j], &voffset);
-                vkCmdDraw(cmdbuf, VBOLEN_(i, j), 1, 0, 0);
+                vkCmdDraw(cmdbuf, terrain_verts, 1, 0, 0);
                 chunks_drawn++;
-                total_verts += VBOLEN_(i, j);
-                polys += VBOLEN_(i, j);
+                total_verts += terrain_verts;
+                polys += terrain_verts;
         }
 
-        // Render sky/sun last - only fills pixels not covered by terrain (early-Z optimization)
+        // Render sky/sun between opaque terrain and transparent water
         sky_draw(cmdbuf, proj_mtrx, view_mtrx);
         sun_draw(cmdbuf, proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll);
+
+        // Pass 2: transparent water (back-to-front)
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[water_pipe].pipeline);
+        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
+        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+        vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                vk.pipelines[water_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
+
+        for (int k = visible_chunk_count - 1; k >= 0; k--) {
+                if (!visible_chunks[k].camera_visible) continue;
+                int i = visible_chunks[k].x;
+                int j = visible_chunks[k].z;
+                size_t water_start = WBOSTART_(i, j);
+                size_t water_verts = VBOLEN_(i, j) - water_start;
+                if (!water_verts) continue;
+
+                push.chunk_x = i * BS * CHUNKW;
+                push.chunk_y = 0;
+                push.chunk_z = j * BS * CHUNKD;
+                VkDeviceSize water_offset = water_start * sizeof(struct vbufv);
+                vkCmdPushConstants(cmdbuf, vk.pipelines[water_pipe].layout,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
+                vkCmdBindVertexBuffers(cmdbuf, 0, 1, &world_buf[i * VAOD + j], &water_offset);
+                vkCmdDraw(cmdbuf, water_verts, 1, 0, 0);
+                total_verts += water_verts;
+                polys += water_verts;
+        }
 
         if (mouselook) cursor(cmdbuf);
 

@@ -32,6 +32,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float sun_strength;    // offset 692
     float sun_warmth;      // offset 696
     float outside_cascade_lit; // offset 700
+    int water_frame;           // offset 704
 } ubo;
 
 layout(set = 0, binding = 1) uniform sampler2DArray tarray;
@@ -80,7 +81,13 @@ float sampleShadowPCF(sampler2DShadow shadowMap, vec3 shadowCoord, float radius,
 }
 
 void main(void) {
-    vec4 texel = texture(tarray, vec3(uv, tex));
+    float final_tex = tex;
+    if (alpha < 1.0) {
+        int bx = int(floor(world_pos.x / ubo.BS));
+        int bz = int(floor(world_pos.z / ubo.BS));
+        final_tex = 7.0 + float((ubo.water_frame / 10 + (bx ^ bz)) % 4);
+    }
+    vec4 texel = texture(tarray, vec3(uv, final_tex));
     if (texel.a < 0.5) discard;
 
     vec3 sky;

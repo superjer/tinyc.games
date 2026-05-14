@@ -95,9 +95,9 @@ void update_player(struct player *p, int real)
                 move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
         }
 
-        if (p->jumping && p->wet)
+        if (p->jump_held && p->wet)
         {
-                p->grav = GRAV_JUMP;
+                p->grav = GRAV_SWIM;
         }
         else if (p->jumping)
         {

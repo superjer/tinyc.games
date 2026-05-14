@@ -693,6 +693,8 @@ void glsetup()
         createDescriptorSetLayout(&main_descriptor_set_layout);
         main_pipe = vulkan_make_pipeline("main.vert", "main.geom", "main.frag",
                 1, &mainBindingDesc, 7, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, 0);
+        water_pipe = vulkan_make_pipeline("main.vert", "main.geom", "main.frag",
+                1, &mainBindingDesc, 7, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_BLEND);
 
         allocate_world();
 

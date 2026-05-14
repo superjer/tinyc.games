@@ -75,7 +75,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         if (steep)         TT_(x, y, z) = STON;
                         else if (y < lev1) TT_(x, y, z) = STON;
                         else if (y < lev2) TT_(x, y, z) = DIRT;
-                        else if (y < lev3) TT_(x, y, z) = solid_depth == 1 ? GRAS : DIRT;
+                        else if (y < lev3) TT_(x, y, z) = solid_depth == 1 ? (hmaph > 81 ? SAND : GRAS) : DIRT;
                         else if (y < lev4) TT_(x, y, z) = solid_depth <= 4 ? SAND : STON;
                         else               TT_(x, y, z) = HARD;
 

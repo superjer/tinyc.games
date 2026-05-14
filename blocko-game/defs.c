@@ -62,7 +62,8 @@
 #define NR_PLAYERS 1
 #define JUMP_BUFFER_FRAMES 6
 #define GRAV_JUMP 0
-#define GRAV_FLOAT 4
+#define GRAV_SWIM 8
+#define GRAV_FLOAT GRAV_ZERO
 #define GRAV_ZERO 14
 #define GRAV_MAX 49
 
@@ -162,6 +163,7 @@
 #define VAO_(x,z)    vbo[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define VBO_(x,z)    vao[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define VBOLEN_(x,z) vbo_len[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
+#define WBOSTART_(x,z) wbo_start[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 
 // for terrain/worker
 #define TAGEN_(x,z)   already_generated[(z - tchunk_scootz) & (VAOD-1)][(x - tchunk_scootx) & (VAOW-1)]
@@ -297,10 +299,12 @@ struct main_ubo {
     float sun_strength;   // float - offset 692
     float sun_warmth;     // float - offset 696
     float outside_cascade_lit; // float - offset 700
+    int water_frame;           // int   - offset 704
 } main_ubo;
 
 unsigned int vbo[VAOS], vao[VAOS];
 size_t vbo_len[VAOS];
+size_t wbo_start[VAOS];
 
 struct vbufv {
     float tex;     // Location 0
@@ -381,6 +385,7 @@ struct player {
         int goingl;
         int goingr;
         int jumping;
+        int jump_held;
         int sneaking;
         int running;
         int breaking;
@@ -451,6 +456,7 @@ float sun_yaw = .3f;
 float sun_roll = -1.3f;
 char alert[800]; // only for debugging
 int main_pipe;     // main terrain rendering pipeline
+int water_pipe;    // transparent water rendering pipeline
 
 // GPU timestamp queries
 #define GPU_TIMESTAMP_COUNT 8

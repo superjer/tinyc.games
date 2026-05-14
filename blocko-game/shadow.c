@@ -50,9 +50,10 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                         0, sizeof push, &push);
                 vkCmdBindVertexBuffers(cmdbuf, 0, 1, &world_buf[i * VAOD + j], &voffset);
-                vkCmdDraw(cmdbuf, VBOLEN_(i, j), 1, 0, 0);
-                shadow_polys += VBOLEN_(i, j);
-                shadow[cascade_idx].polys += VBOLEN_(i, j);
+                size_t terrain_verts = WBOSTART_(i, j);
+                vkCmdDraw(cmdbuf, terrain_verts, 1, 0, 0);
+                shadow_polys += terrain_verts;
+                shadow[cascade_idx].polys += terrain_verts;
                 cascade_x_draw_calls++;
         }
 
@@ -194,7 +195,7 @@ void do_shadows()
                 // Orthographic projection (Vulkan depth [0,1])
                 float snear = (s == 0 ? 10.f : s == 1 ? 40.f : s == 2 ? 80.f : 200.f);
                 float sfar = dist2sun * 2;
-                float mag = (s == 0 ? 5000.f : s == 1 ? 20000.f : s == 2 ? 50000.f : 150000.f);
+                float mag = (s == 0 ? 5000.f : s == 1 ? 20000.f : s == 2 ? 40000.f : 150000.f);
 
                 float ortho_mtrx[] = {
                         1.f/mag, 0,       0,                        0,

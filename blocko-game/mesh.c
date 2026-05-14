@@ -228,9 +228,8 @@ void build_meshes()
                                 {
                                         if (y == 0        || T_(x  , y-1, z  ) == OPEN)
                                         {
-                                                int f = 7 + (pframe / 10 + (x ^ z)) % 4;
-                                                *tw++ = (struct vbufv){ f,    UP, m, y+0.06f, n, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f, scale };
-                                                *tw++ = (struct vbufv){ f,  DOWN, m, y-0.94f, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f, scale };
+                                                                *tw++ = (struct vbufv){ 7,    UP, m, y+0.06f, n, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f, scale };
+                                                *tw++ = (struct vbufv){ 7,  DOWN, m, y-0.94f, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f, scale };
                                         }
                                 }
                                 else if (t == LITE)
@@ -274,6 +273,8 @@ void build_meshes()
                                 w += w_counts[tid];
                         }
                 }
+
+                WBOSTART_(myx, myz) = v - vbuf;
 
                 if (w - wbuf < v_limit - v) // room for water in vertex buffer?
                 {
