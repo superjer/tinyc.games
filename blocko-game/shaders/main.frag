@@ -33,6 +33,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float sun_warmth;      // offset 696
     float outside_cascade_lit; // offset 700
     int water_frame;           // offset 704
+    float underwater;          // offset 708 (camera eye is in water)
 } ubo;
 
 layout(set = 0, binding = 1) uniform sampler2DArray tarray;
@@ -64,6 +65,21 @@ const vec2 poissonDisk[16] = vec2[](
     vec2( 0.14383161, -0.14100790)
 );
 
+// cheap 2D value noise for breaking up water wave regularity
+float hash2(vec2 q) {
+    vec3 p3 = fract(vec3(q.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+float vnoise(vec2 q) {
+    vec2 i = floor(q);
+    vec2 f = fract(q);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash2(i),               hash2(i + vec2(1, 0)), u.x),
+               mix(hash2(i + vec2(0, 1)),  hash2(i + vec2(1, 1)), u.x), u.y);
+}
+
 // PCF shadow sampling with Poisson disk
 float sampleShadowPCF(sampler2DShadow shadowMap, vec3 shadowCoord, float radius, float rotation) {
     float shadow = 0.0;
@@ -83,23 +99,59 @@ float sampleShadowPCF(sampler2DShadow shadowMap, vec3 shadowCoord, float radius,
 void main(void) {
     float final_tex = tex;
     if (alpha < 1.0) {
-        int bx = int(floor(world_pos.x / ubo.BS));
-        int bz = int(floor(world_pos.z / ubo.BS));
-        final_tex = 7.0 + float((ubo.water_frame / 10 + (bx ^ bz)) % 4);
+        // uniform frame for all water: per-block offsets read as a checkerboard
+        final_tex = 7.0 + float((ubo.water_frame / 12) % 4);
     }
-    vec4 texel = texture(tarray, vec3(uv, final_tex));
+    vec2 final_uv = uv;
+    if (ubo.underwater > 0.5) {
+        // gentle ripple over everything while the camera is underwater
+        float t = float(ubo.water_frame) * 0.06;
+        final_uv += 0.01 * vec2(sin(t       + world_pos.y * 0.007 + world_pos.x * 0.004),
+                                sin(t * 1.3 + world_pos.x * 0.007 + world_pos.z * 0.004));
+    }
+    vec4 texel = texture(tarray, vec3(final_uv, final_tex));
     if (texel.a < 0.5) discard;
 
+    // water gets an animated rippled normal for lighting
+    vec3 N = normal;
+    if (alpha < 1.0) {
+        float t = float(ubo.water_frame) * 0.03;
+        vec2 p = world_pos.xz / ubo.BS;
+
+        // fade ripple detail with distance so normals flatten out
+        // long before a pixel spans a whole wave (kills moire)
+        float dist_b = length(ubo.view_pos.xz - world_pos.xz) / ubo.BS;
+        float swell_amt = 1.0 - smoothstep(20.0, 120.0, dist_b);
+        float chop_amt  = 1.0 - smoothstep(4.0, 28.0, dist_b);
+
+        // noise kills the repetition: warp bends the wavefronts so they
+        // wander, energy makes patches of calm and choppy water
+        float warp = 6.283 * vnoise(p * 0.13 + t * 0.06);
+        float energy = 0.5 + vnoise(p * 0.045 - t * 0.03);
+
+        // directional waves at odd angles and incommensurate
+        // frequencies so no grid or repeat pattern lines up
+        const vec2 D1 = vec2( 0.36,  0.93), D2 = vec2(-0.80,  0.60),
+                   D3 = vec2( 0.98, -0.17), D4 = vec2(-0.51, -0.86);
+        vec2 slope = energy * (
+            swell_amt * (0.055 * D1 * cos(dot(p, D1) *  2.9 + t * 1.6 + warp)
+                       + 0.045 * D2 * cos(dot(p, D2) *  4.3 - t * 1.2 + 1.7 * warp))
+          + chop_amt  * (0.040 * D3 * cos(dot(p, D3) * 14.7 + t * 4.1 + 2.6 * warp)
+                       + 0.035 * D4 * cos(dot(p, D4) * 18.3 - t * 3.3 + 3.4 * warp)));
+        N = normalize(N + vec3(slope.x, 0.0, slope.y));
+    }
+
+    vec3 glint = vec3(0.0);
     vec3 sky;
     if (ubo.shadow_mapping) {
         // Diffuse lighting
         vec3 light_dir = normalize(ubo.light_pos - world_pos.xyz);
-        float diff = max(dot(light_dir, normal), 0.0);
+        float diff = max(dot(light_dir, N), 0.0);
 
         // Specular lighting
         vec3 view_dir = normalize(ubo.view_pos - world_pos.xyz);
         vec3 halfway_dir = normalize(light_dir + view_dir);
-        float spec = pow(max(dot(normal, halfway_dir), 0), 16);
+        float spec = alpha < 1.0 ? 0.0 : pow(max(dot(N, halfway_dir), 0), 16);
 
         // Shadow sampling with Poisson disk PCF
         // Screen-space random rotation - no spatial coherence, should produce noise instead of moire
@@ -155,6 +207,12 @@ void main(void) {
         // At night, sun_strength = 1.0 to allow moonlight directional contribution
         float directional = unshadow * (diff + spec) * ubo.sun_strength;
 
+        // sharp sun/moon glitter on the rippled water surface,
+        // added after texturing so it reads as a reflection
+        if (alpha < 1.0)
+            glint = light_tint * (1.5 * unshadow * ubo.sun_strength
+                    * pow(max(dot(N, halfway_dir), 0.0), 80.0));
+
         sky = (s1 * illum + s0 * directional) * light_tint * ubo.day_color;
     } else {
         // No shadow mapping - just use ambient with day_color (no directional to warm/dim)
@@ -165,10 +223,27 @@ void main(void) {
     vec3 combined = sky + glo_contrib * (vec3(1.0) - sky);
     vec4 c = texel * vec4(combined, alpha);
 
-    // Fog based on distance from camera
-    float dist = length(ubo.view_pos.xz - world_pos.xz);
-    float fog_linear = smoothstep(ubo.fog_lo, ubo.fog_hi, dist);
-    float fog = fog_linear * fog_linear * fog_linear;
+    if (alpha < 1.0 && ubo.underwater < 0.5) {
+        // fresnel: mirror the horizon at grazing angles, clear straight down
+        vec3 vdir = normalize(ubo.view_pos - world_pos.xyz);
+        float fresnel = pow(1.0 - abs(dot(vdir, N)), 3.0);
+        c.rgb = mix(c.rgb, ubo.fog_color, fresnel);
+        c.a = mix(0.5, 0.95, fresnel);
+        c.rgb += glint;
+    }
 
-    color = mix(c, vec4(ubo.fog_color, 1.0), fog);
+    if (ubo.underwater > 0.5) {
+        // murky water: blue tint plus dense fog in every direction
+        vec3 water_color = vec3(0.05, 0.18, 0.35) * ubo.day_color;
+        c.rgb *= vec3(0.4, 0.7, 1.0);
+        float wfog = smoothstep(ubo.BS * 2.0, ubo.BS * 40.0, length(ubo.view_pos.xyz - world_pos.xyz));
+        color = mix(c, vec4(water_color, 1.0), wfog);
+    } else {
+        // Fog based on distance from camera
+        float dist = length(ubo.view_pos.xz - world_pos.xz);
+        float fog_linear = smoothstep(ubo.fog_lo, ubo.fog_hi, dist);
+        float fog = fog_linear * fog_linear * fog_linear;
+
+        color = mix(c, vec4(ubo.fog_color, 1.0), fog);
+    }
 }

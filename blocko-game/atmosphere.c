@@ -173,13 +173,14 @@ void sky_draw(VkCommandBuffer cmdbuf, float *proj, float *view)
         mat4_multiply(pv, proj, view_rot);
         mat4_multiply(pvm, pv, scale_mtrx);
 
-        struct { float pvm[16]; float sun_dir[3]; float night_amt; float time; } push;
+        struct { float pvm[16]; float sun_dir[3]; float night_amt; float time; float underwater; } push;
         memcpy(push.pvm, pvm, sizeof pvm);
         push.sun_dir[0] = cosf(sun_pitch) * cosf(sun_yaw);
         push.sun_dir[1] = sinf(sun_pitch);
         push.sun_dir[2] = -cosf(sun_pitch) * sinf(sun_yaw);
         push.night_amt = night_amt;
         push.time = (float)pframe;
+        push.underwater = main_ubo.underwater;
 
         vkCmdPushConstants(cmdbuf, vk.pipelines[sky_pipe].layout,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,

@@ -12,9 +12,7 @@ void resize()
 void jump(int down)
 {
         player[0].jump_held = down;
-        if (player[0].wet)
-                player[0].jumping = down;
-        else if (down)
+        if (down)
                 player[0].jumping = JUMP_BUFFER_FRAMES;
 }
 

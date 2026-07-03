@@ -99,11 +99,26 @@ void draw_stuff()
         TIMER(frame_setup);
         do_atmos_colors();
 
+        // eye position + underwater check (needed before proj for FOV)
+        peye0 = lerped_pos.x + PLYR_W / 2;
+        peye1 = lerped_pos.y + EYEDOWN * (camplayer.sneaking ? 2 : 1);
+        peye2 = lerped_pos.z + PLYR_W / 2;
+        int eyex = peye0 / BS;
+        int eyey = peye1 / BS;
+        int eyez = peye2 / BS;
+        main_ubo.underwater =
+                (legit_tile(eyex, eyey, eyez) && T_(eyex, eyey, eyez) == WATR) ? 1.f : 0.f;
+
+        // narrow the FOV underwater - refraction magnifies everything
+        static float underwater_zoom = 1.f;
+        float zoom_target = main_ubo.underwater ? 0.875f : 1.f;
+        underwater_zoom += (zoom_target - underwater_zoom) * 0.15f;
+
         // compute proj matrix
         float near = 100.f;
         float far = 1000 * BS;  // 1000 blocks with BS=1000
         float fov_degrees = 90.f;  // horizontal FOV in degrees
-        float frustw = near * tanf(fov_degrees * PI / 360.f) * zoom_amt;
+        float frustw = near * tanf(fov_degrees * PI / 360.f) * zoom_amt * underwater_zoom;
         float frusth = frustw * screenh / screenw;
         float proj_mtrx[] = {
                 near/frustw,            0,                                0,  0,
@@ -113,9 +128,6 @@ void draw_stuff()
         };
 
         // compute view matrix
-        peye0 = lerped_pos.x + PLYR_W / 2;
-        peye1 = lerped_pos.y + EYEDOWN * (camplayer.sneaking ? 2 : 1);
-        peye2 = lerped_pos.z + PLYR_W / 2;
         float f[3];
         float view_mtrx[16];
         lookit(view_mtrx, f, peye0, peye1, peye2, camplayer.pitch, camplayer.yaw);
@@ -403,7 +415,8 @@ void draw_stuff()
 
         // Render sky/sun between opaque terrain and transparent water
         sky_draw(cmdbuf, proj_mtrx, view_mtrx);
-        sun_draw(cmdbuf, proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll);
+        if (!main_ubo.underwater) // too murky to see the sun/moon
+                sun_draw(cmdbuf, proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll);
 
         // Pass 2: transparent water (back-to-front)
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[water_pipe].pipeline);

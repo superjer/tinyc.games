@@ -62,9 +62,11 @@
 #define NR_PLAYERS 1
 #define JUMP_BUFFER_FRAMES 6
 #define GRAV_JUMP 0
-#define GRAV_SWIM 8
+#define GRAV_EXIT 2                 // upward vel for hopping out of water onto land
+#define GRAV_SWIM 3                 // upward vel to swim toward (damped while wet)
 #define GRAV_FLOAT GRAV_ZERO
 #define GRAV_ZERO 14
+#define GRAV_WET_MAX 28             // terminal sinking vel in water
 #define GRAV_MAX 49
 
 #define UP    1
@@ -300,6 +302,7 @@ struct main_ubo {
     float sun_warmth;     // float - offset 696
     float outside_cascade_lit; // float - offset 700
     int water_frame;           // int   - offset 704
+    float underwater;          // float - offset 708 (camera eye is in water)
 } main_ubo;
 
 unsigned int vbo[VAOS], vao[VAOS];
@@ -378,6 +381,7 @@ struct player {
         float yaw;
         float pitch;
         int wet;
+        int submerged;
         int cooldownf;
         int runningf;
         int goingf;

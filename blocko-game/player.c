@@ -95,19 +95,23 @@ void update_player(struct player *p, int real)
                 move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
         }
 
-        if (p->jump_held && p->wet)
+        if (p->jumping && p->ground)
         {
-                p->grav = GRAV_SWIM;
+                p->grav = GRAV_JUMP; // normal jump, even off underwater ground
+                p->jumping = false;
         }
-        else if (p->jumping)
+        else if (p->jump_held && !p->ground && p->grav > GRAV_SWIM
+                        && (p->submerged || (p->wet && p->grav < GRAV_ZERO)))
         {
+                // swim: ease toward swim-up speed while submerged;
+                // once rising, keep thrusting until fully out of the water
+                p->grav -= 3;
+                if (p->grav < GRAV_SWIM)
+                        p->grav = GRAV_SWIM;
+        }
+
+        if (p->jumping)
                 p->jumping--; // reduce buffer frames
-                if (p->ground)
-                {
-                        p->grav = GRAV_JUMP;
-                        p->jumping = false;
-                }
-        }
 
         if (p->cooldown) p->cooldown--;
 
@@ -219,6 +223,7 @@ void update_player(struct player *p, int real)
                       p->sneaking                  ? PLYR_SPD_S :
                                                      PLYR_SPD;
         limit *= fast;
+        if (p->wet) limit /= 2; // water drag
         if (totalvel > limit)
         {
                 limit /= totalvel;
@@ -240,9 +245,16 @@ void update_player(struct player *p, int real)
 
         //detect water
         int was_wet = p->wet;
+        struct box torso = (struct box){
+                p->pos.x, p->pos.y, p->pos.z,
+                PLYR_W, PLYR_H/2, PLYR_W};
         p->wet = world_collide(p->pos, 1);
+        p->submerged = world_collide(torso, 1);
         if (was_wet && !p->wet && p->grav < GRAV_FLOAT)
-                p->grav = GRAV_FLOAT;
+        {
+                // breaking the surface: hop out if jumping, else don't launch
+                p->grav = p->jump_held ? MIN(p->grav, GRAV_EXIT) : GRAV_FLOAT;
+        }
 
         //gravity
         if (!p->ground || p->grav < GRAV_ZERO)
@@ -252,6 +264,9 @@ void update_player(struct player *p, int real)
                         p->grav = GRAV_ZERO;
                 else if (p->grav < GRAV_MAX)
                         p->grav++;
+
+                if (p->wet && p->grav > GRAV_WET_MAX) // water terminal velocity
+                        p->grav = GRAV_WET_MAX;
         }
 
         //detect ground

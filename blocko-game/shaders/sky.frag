@@ -10,6 +10,7 @@ layout(push_constant) uniform Push {
     vec3 sun_dir;
     float night_amt;  // 0 = day, 0.5 = dusk, 1 = night
     float time;
+    float underwater;
 } push;
 
 // Hash functions for procedural stars
@@ -147,6 +148,12 @@ void main()
         // Below horizon - gradient from horizon to ground
         float t = smoothstep(0.0, -0.3 * horizon_scale, y);
         final_color = mix(horizon_color, ground_color, t);
+    }
+
+    if (push.underwater > 0.5) {
+        // sink the whole sky toward deep-water murk (matches main.frag fog)
+        vec3 water_deep = mix(vec3(0.05, 0.18, 0.35), vec3(0.0, 0.01, 0.04), push.night_amt);
+        final_color = mix(final_color, water_deep, 0.9);
     }
 
     color = vec4(final_color, 1.0);
