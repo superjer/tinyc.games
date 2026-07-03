@@ -286,8 +286,7 @@ void build_meshes()
                 polys += VBOLEN_(myx, myz);
                 TIMER(gpu_upload)
 
-                int offset = myz * world_aligned_sz;
-                void *data = (char *)world_mapped[myx] + offset;
+                void *data = WMAPPED_(myx, myz);
                 memcpy(data, vbuf, (v - vbuf) * sizeof *vbuf);
 
                 // Mark chunk as clean after mesh rebuild and store LOD state

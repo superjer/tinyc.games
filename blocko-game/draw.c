@@ -142,6 +142,21 @@ void draw_stuff()
 
         mat4_multiply(proj_view_mtrx, proj_mtrx, translated_view_mtrx);
 
+        // Mark newly generated chunks dirty and hide the previous occupant's
+        // mesh - must happen before the visible list below or the stale mesh
+        // gets drawn for a frame
+        TIMER(sync_w_terrain_gen)
+        #pragma omp critical
+        {
+                for (size_t i = 0; i < just_gen_len; i++) {
+                        int cx = just_generated[i].x + chunk_scootx; // absolute -> window
+                        int cz = just_generated[i].z + chunk_scootz;
+                        DIRTY_(cx, cz) = 1;
+                        VBOLEN_(cx, cz) = 0;
+                }
+                just_gen_len = 0;
+        }
+
         // Build visible chunk list (single pass: check all frustums)
         visible_chunk_count = 0;
         int far_idx = (shadow_far_render_ab == 0) ? SHADOW_FAR_A : SHADOW_FAR_B;
@@ -149,6 +164,7 @@ void draw_stuff()
         for (int i = 0; i < VAOW; i++) {
                 for (int j = 0; j < VAOD; j++) {
                         if (!VBOLEN_(i, j)) continue;
+                        if (!AGEN_(i, j)) continue; // slot holds another chunk's stale mesh
 
                         // Check camera visibility
                         int camera_visible = chunk_in_frustum(proj_view_mtrx, i, j) && chunk_in_range(i, j);
@@ -278,18 +294,6 @@ void draw_stuff()
                 }
         }
 
-        // Mark newly generated chunks as dirty
-        TIMER(sync_w_terrain_gen)
-        #pragma omp critical
-        {
-                for (size_t i = 0; i < just_gen_len; i++) {
-                        int cx = just_generated[i].x;
-                        int cz = just_generated[i].z;
-                        DIRTY_(cx, cz) = 1;
-                }
-                just_gen_len = 0;
-        }
-
         // Check LOD chunks for face visibility changes (skip if lock_culling for debugging)
         if (!lock_culling)
         for (int i = 0; i < VAOW; i++) {
@@ -406,7 +410,7 @@ void draw_stuff()
                 push.chunk_z = j * BS * CHUNKD;
                 vkCmdPushConstants(cmdbuf, vk.pipelines[main_pipe].layout,
                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
-                vkCmdBindVertexBuffers(cmdbuf, 0, 1, &world_buf[i * VAOD + j], &voffset);
+                vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &voffset);
                 vkCmdDraw(cmdbuf, terrain_verts, 1, 0, 0);
                 chunks_drawn++;
                 total_verts += terrain_verts;
@@ -439,7 +443,7 @@ void draw_stuff()
                 VkDeviceSize water_offset = water_start * sizeof(struct vbufv);
                 vkCmdPushConstants(cmdbuf, vk.pipelines[water_pipe].layout,
                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
-                vkCmdBindVertexBuffers(cmdbuf, 0, 1, &world_buf[i * VAOD + j], &water_offset);
+                vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &water_offset);
                 vkCmdDraw(cmdbuf, water_verts, 1, 0, 0);
                 total_verts += water_verts;
                 polys += water_verts;

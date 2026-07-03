@@ -158,7 +158,10 @@
 #define TGNDH_(x,z)   gndheight[((z - tscootz) & (TILESD-1))              * (TILESW+0) + ((x - tscootx) & (TILESW-1))                   ]
 
 // chunk pos-to-mem-location macros
-#define AGEN_(x,z)   already_generated[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
+// a chunk is "generated" iff its ring slot is stamped with the absolute chunk
+// coords the window currently maps there - so scooting self-invalidates slots
+#define AGEN_SLOT(x,z)  chunk_stamp[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
+#define AGEN_(x,z)   (AGEN_SLOT(x, z).ax == (x) - chunk_scootx && AGEN_SLOT(x, z).az == (z) - chunk_scootz)
 #define DIRTY_(x,z)  chunk_dirty[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
 #define FACES_(x,z)  chunk_faces[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
 #define LOD_(x,z)    chunk_lod[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
@@ -166,9 +169,13 @@
 #define VBO_(x,z)    vao[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define VBOLEN_(x,z) vbo_len[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define WBOSTART_(x,z) wbo_start[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
+// GPU vertex buffers live in the ring too, so meshes follow their chunk
+#define WBUF_(x,z)    world_buf[((x - chunk_scootx) & (VAOW-1)) * VAOD + ((z - chunk_scootz) & (VAOD-1))]
+#define WMAPPED_(x,z) ((char *)world_mapped[(x - chunk_scootx) & (VAOW-1)] + ((z - chunk_scootz) & (VAOD-1)) * world_aligned_sz)
 
 // for terrain/worker
-#define TAGEN_(x,z)   already_generated[(z - tchunk_scootz) & (VAOD-1)][(x - tchunk_scootx) & (VAOW-1)]
+#define TAGEN_SLOT(x,z) chunk_stamp[(z - tchunk_scootz) & (VAOD-1)][(x - tchunk_scootx) & (VAOW-1)]
+#define TAGEN_(x,z)   (TAGEN_SLOT(x, z).ax == (x) - tchunk_scootx && TAGEN_SLOT(x, z).az == (z) - tchunk_scootz)
 
 // helper macros
 #define IS_OPAQUE(x,y,z) (T_(x, y, z) < LASTSOLID)
@@ -340,7 +347,8 @@ unsigned char *glolight;
 unsigned char gndheight[TILESW * TILESD];
 float *cornlight;
 float *kornlight;
-volatile char already_generated[VAOW][VAOD];
+struct chunk_stamp { int ax, az; };                  // absolute chunk coords a ring
+volatile struct chunk_stamp chunk_stamp[VAOD][VAOW]; // slot holds (INT_MIN = never)
 volatile char chunk_dirty[VAOW][VAOD];
 unsigned char chunk_faces[VAOW][VAOD];  // bitmask of faces included in mesh
 unsigned char chunk_lod[VAOW][VAOD];    // 0=full detail, 1=LOD mode (backface culled)
@@ -543,6 +551,7 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2);
 void move_to_ground(float *inout, int x, int y, int z);
 void recalc_gndheight(int x, int z);
 void scoot(int x, int z);
+void auto_scoot();
 void apply_scoot();
 
 #endif // BLOCKO_DEFS_C_INCLUDED

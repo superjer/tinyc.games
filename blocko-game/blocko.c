@@ -20,6 +20,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
 #include <time.h>
 #include <math.h>
 #include <stdbool.h>
@@ -102,6 +103,7 @@ void shutdown(int code)
 
 void main_loop()
 { for (;;) {
+        auto_scoot();
         apply_scoot();
 
         while (SDL_PollEvent(&event)) switch (event.type)
@@ -162,6 +164,12 @@ void main_loop()
 void startup()
 {
         noise_setup();
+
+        for (int i = 0; i < VAOD; i++) for (int j = 0; j < VAOW; j++)
+        {
+                chunk_stamp[i][j].ax = INT_MIN;
+                chunk_stamp[i][j].az = INT_MIN;
+        }
 
         tiles = calloc(TILESD * TILESH * TILESW, sizeof *tiles);
         sunlight = calloc(TILESD * TILESH * TILESW, sizeof *sunlight);
@@ -294,10 +302,43 @@ void scoot(int cx, int cz)
         }
 }
 
+// scoot the window whenever the player wanders off the center chunk,
+// so they never get far from the origin (no float precision problems)
+void auto_scoot()
+{
+        int cx = (int)(player[0].pos.x / (BS * CHUNKW));
+        int cz = (int)(player[0].pos.z / (BS * CHUNKD));
+        if (cx != VAOW/2 || cz != VAOD/2)
+                scoot(VAOW/2 - cx, VAOD/2 - cz);
+}
+
 void apply_scoot()
 {
         #pragma omp critical
         {
+                int dx = (future_scootx - chunk_scootx) * CHUNKW; // window coords of
+                int dz = (future_scootz - chunk_scootz) * CHUNKD; // everything move by this
+
+                if (dx || dz)
+                {
+                        player[0].pos.x += dx * BS;
+                        player[0].pos.z += dz * BS;
+
+                        // pending light updates hold window coords
+                        for (size_t i = 0; i < sq_curr_len; i++) { sunq_curr[i].x += dx; sunq_curr[i].z += dz; }
+                        for (size_t i = 0; i < sq_next_len; i++) { sunq_next[i].x += dx; sunq_next[i].z += dz; }
+                        for (size_t i = 0; i < gq_curr_len; i++) { gloq_curr[i].x += dx; gloq_curr[i].z += dz; }
+                        for (size_t i = 0; i < gq_next_len; i++) { gloq_next[i].x += dx; gloq_next[i].z += dz; }
+
+                        // so does the current block target
+                        if (target_x >= 0) { target_x += dx; target_z += dz; }
+                        if (place_x >= 0)  { place_x  += dx; place_z  += dz; }
+
+                        // stored shadow matrices expect the old window coords
+                        for (int i = 0; i < SHADOW_COUNT; i++)
+                                retranslate(shadow[i].matrix, -dx * (float)BS, 0.f, -dz * (float)BS);
+                }
+
                 scootx = future_scootx * CHUNKW;
                 scootz = future_scootz * CHUNKD;
                 chunk_scootx = future_scootx;

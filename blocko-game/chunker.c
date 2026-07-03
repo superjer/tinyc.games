@@ -5,12 +5,7 @@
 #include "../common/tinyc.games/taylor_noise.c"
 #include "../common/tinyc.games/terrain.c"
 
-float hmap[TILESW][TILESD];
-float hmap2[TILESW][TILESD];
-
 int tscootx, tscootz, tchunk_scootx, tchunk_scootz;
-
-#define THMAP(x,z) (hmap2[((x)-tscootx)%TILESW][((z)-tscootz)%TILESD])
 
 void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 {
@@ -19,7 +14,17 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         zlo = CLAMP(zlo, 0, TILESD-1);
         zhi = CLAMP(zhi, 0, TILESD-1);
 
-        static char column_already_generated[TILESW][TILESD];
+        // absolute coords each column ring slot was generated for, so slots
+        // wrapping to a new part of the world regenerate automatically
+        static int col_stamp_x[TILESW][TILESD];
+        static int col_stamp_z[TILESW][TILESD];
+        static int col_stamp_ready;
+        if (!col_stamp_ready)
+        {
+                memset(col_stamp_x, 0x80, sizeof col_stamp_x); // huge negative = never
+                col_stamp_ready = 1;
+        }
+
         int x;
 
         //#pragma omp parallel for
@@ -31,17 +36,23 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         //printf("gen_chunk threads: %d\n", omp_threads);
                 }
 
-                if (column_already_generated[(x-tscootx) & (TILESW-1)][(z-tscootz) & (TILESD-1)])
-                        continue; 
-                column_already_generated[(x-tscootx) & (TILESW-1)][(z-tscootz) & (TILESD-1)] = true;
+                int ax = x - tscootx; // absolute world coords: feed these to all
+                int az = z - tscootz; // noise/seeds so terrain survives scooting
+                int sx = ax & (TILESW-1);
+                int sz = az & (TILESD-1);
+
+                if (col_stamp_x[sx][sz] == ax && col_stamp_z[sx][sz] == az)
+                        continue;
+                col_stamp_x[sx][sz] = ax;
+                col_stamp_z[sx][sz] = az;
 
                 int solid_depth = 0;
-                int hmaph = (1.f - get_filtered_height(x, z)) * TILESH;
+                int hmaph = (1.f - get_filtered_height(ax, az)) * TILESH;
 
-                int hx0 = (1.f - get_filtered_height(x+1, z)) * TILESH;
-                int hz0 = (1.f - get_filtered_height(x, z+1)) * TILESH;
-                int hx1 = (1.f - get_filtered_height(x-1, z)) * TILESH;
-                int hz1 = (1.f - get_filtered_height(x, z-1)) * TILESH;
+                int hx0 = (1.f - get_filtered_height(ax+1, az)) * TILESH;
+                int hz0 = (1.f - get_filtered_height(ax, az+1)) * TILESH;
+                int hx1 = (1.f - get_filtered_height(ax-1, az)) * TILESH;
+                int hz1 = (1.f - get_filtered_height(ax, az-1)) * TILESH;
                 
                 bool sharp_dn = hmaph - hx0 < -1 || hmaph - hz0 < -1 || hmaph - hx1 < -1 || hmaph - hz1 < -1;
                 bool sharp_up = hmaph - hx0 >  1 || hmaph - hz0 >  1 || hmaph - hx1 >  1 || hmaph - hz1 >  1;
@@ -49,13 +60,13 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 bool sharper_up = hmaph - hx0 >  3 || hmaph - hz0 >  3 || hmaph - hx1 >  3 || hmaph - hz1 >  3;
                 bool steep = (sharp_dn && sharp_up) || sharper_dn;
 
-                float reejin = noise(x, z, 350, 12345, 1) - 0.5f;
+                float reejin = noise(ax, az, 350, 12345, 1) - 0.5f;
                 int lev1 = 20 + (int)(reejin * 100.f);
                 int lev2 = 50 + (int)(reejin * 100.f);
                 int lev3 = 80 + (int)(reejin * 50.f);
                 int lev4 = 125 + (int)(reejin * 50.f);
 
-                #define topsoil() ((noise(x, z, 690, 12345, 1) > .5f) ? GRAS : DIRT)
+                #define topsoil() ((noise(ax, az, 690, 12345, 1) > .5f) ? GRAS : DIRT)
 
                 for (int y = 0; y < TILESH; y++)
                 {
@@ -83,16 +94,14 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 }
         }
 
-        // find nearby bezier curvy caves
+        // find nearby bezier curvy caves - curves live in absolute coords
         #define REGW (CHUNKW*16)
         #define REGD (CHUNKD*16)
         // find region          ,-- have to add 1 bc we're overdrawing chunks
-        // lower bound         /
-        int rxlo = (int)((xlo-tscootx+1) / REGW) * REGW;
-        int rzlo = (int)((zlo-tscootz+1) / REGD) * REGD;
+        // lower bound         /   (& with power-of-2 floors correctly when negative)
+        int rxlo = (xlo - tscootx + 1) & ~(REGW-1);
+        int rzlo = (zlo - tscootz + 1) & ~(REGD-1);
         unsigned seed = SEED2(rxlo, rzlo);
-        rxlo = (int)((xlo+1) / REGW) * REGW; // now without scooting
-        rzlo = (int)((zlo+1) / REGD) * REGD;
         // find region center
         int rxcenter = rxlo + REGW/2;
         int rzcenter = rzlo + REGD/2;
@@ -142,8 +151,10 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         int y = (int)(s*s*s*P0.y + 3.f*t*s*s*P1.y + 3.f*t*t*s*P2.y + t*t*t*P3.y);
                         int z = (int)(s*s*s*P0.z + 3.f*t*s*s*P1.z + 3.f*t*t*s*P2.z + t*t*t*P3.z);
                         // TODO: don't store duplicate cave points?
-                        if (x >= xlo && x <= xhi && y >= 0 && y <= TILESD - 1 && z >= zlo && z <= zhi)
-                                cave_points[cave_p_len++] = QCAVE(x, y, z, radius_sq);
+                        int lx = x + tscootx; // store points in window coords
+                        int lz = z + tscootz; // for the carve pass
+                        if (lx >= xlo && lx <= xhi && y >= 0 && y <= TILESH - 1 && lz >= zlo && lz <= zhi)
+                                cave_points[cave_p_len++] = QCAVE(lx, y, lz, radius_sq);
                 }
         }
 
@@ -176,7 +187,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         }
 
         // trees?
-        float p191 = noise(zlo, xlo, 1300, 999, 1);
+        float p191 = noise(zlo - tscootz, xlo - tscootx, 1300, 999, 1);
         int randp = p191 > 0.51f ? 96 : p191 > 0.45f ? 85 : 0;
         if (randp) while (RANDP(randp))
         {
@@ -226,7 +237,12 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                                 if (y)
                                 {
                                         TSUN_(x, y-1, z) = 0;
-                                        sun_enqueue(x, y-1, z, 0, light_level);
+                                        // sun_enqueue works in the main thread's
+                                        // window mapping, which can differ mid-scoot
+                                        int mx = x - tscootx + scootx;
+                                        int mz = z - tscootz + scootz;
+                                        if (mx >= 0 && mx < TILESW && mz >= 0 && mz < TILESD)
+                                                sun_enqueue(mx, y-1, mz, 0, light_level);
                                 }
                                 light_level = 0;
                         }
@@ -307,12 +323,13 @@ void chunk_builder()
         nr_chunks_generated++;
         chunk_gen_ticks += SDL_GetTicks() - ticks_before;
 
-        TAGEN_(best_x, best_z) = true;
+        TAGEN_SLOT(best_x, best_z).ax = best_x - tchunk_scootx;
+        TAGEN_SLOT(best_x, best_z).az = best_z - tchunk_scootz;
 
         #pragma omp critical
         {
-                just_generated[just_gen_len].x = best_x;
-                just_generated[just_gen_len].z = best_z;
+                just_generated[just_gen_len].x = best_x - tchunk_scootx; // absolute, in
+                just_generated[just_gen_len].z = best_z - tchunk_scootz; // case of scoots
                 just_gen_len++;
         }
 
