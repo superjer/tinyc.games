@@ -5,8 +5,6 @@
 #include "../common/tinyc.games/taylor_noise.c"
 #include "../common/tinyc.games/terrain.c"
 
-int tscootx, tscootz, tchunk_scootx, tchunk_scootz;
-
 void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 {
         xlo = CLAMP(xlo, 0, TILESW-1);

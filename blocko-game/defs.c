@@ -92,7 +92,7 @@
 #define LOD_GEO_STEP 2             // sample every Nth block (2 = 1 per 2x2x2 cube = 1/8th)
 #define LOD_GEO_SCALE 2.0f         // scale factor for geometric LOD blocks
 
-#define VERTEX_BUFLEN 131072
+#define VERTEX_BUFLEN (CHUNKW*CHUNKD*32) // scales with chunk area (131072 at 64x64)
 #define MAX_MESH_THREADS 16
 #define SUNQLEN 40000
 #define GLOQLEN 40000
@@ -356,6 +356,8 @@ unsigned char chunk_lod[VAOW][VAOD];    // 0=full detail, 1=LOD mode (backface c
 int future_scootx, future_scootz; // pending global map offset
 int scootx, scootz;               // actual global map offset
 int chunk_scootx, chunk_scootz;   //  ^ in chunks
+int tscootx, tscootz;             // terrain thread's copies of the above
+int tchunk_scootx, tchunk_scootz; //  ^ in chunks
 
 #define TEST_AREA_SZ 32
 int test_area_x = -1;
@@ -553,5 +555,7 @@ void recalc_gndheight(int x, int z);
 void scoot(int x, int z);
 void auto_scoot();
 void apply_scoot();
+void remote_init();
+void remote_poll();
 
 #endif // BLOCKO_DEFS_C_INCLUDED

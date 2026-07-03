@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+# send one command to a running blocko's debug socket and print the reply
+#   bk fps          bk timings reset          bk tp 200 -1500
+import os, socket, sys
+
+path = os.environ.get("BLOCKO_SOCK", "/tmp/blocko.sock")
+s = socket.socket(socket.AF_UNIX)
+s.connect(path)
+s.sendall((" ".join(sys.argv[1:]) + "\n").encode())
+while True:
+    d = s.recv(4096)
+    if not d:
+        break
+    sys.stdout.write(d.decode())

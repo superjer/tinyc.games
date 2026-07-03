@@ -52,6 +52,7 @@
 #include "cursor.c"
 #include "glsetup.c"
 #include "interface.c"
+#include "remote.c"
 #include "blocklight.c"
 #include "player.c"
 #include "test.c"
@@ -94,7 +95,7 @@ int main()
         }
 }
 
-void shutdown(int code)
+void game_shutdown(int code) // "shutdown" collides with the sockets API
 {
         exit(code);
         vulkan_shutdown();
@@ -108,7 +109,7 @@ void main_loop()
 
         while (SDL_PollEvent(&event)) switch (event.type)
         {
-                case SDL_EVENT_QUIT:              shutdown(0);
+                case SDL_EVENT_QUIT:              game_shutdown(0);
                 case SDL_EVENT_KEY_DOWN:          key_move(1);       break;
                 case SDL_EVENT_KEY_UP:            key_move(0);       break;
                 case SDL_EVENT_MOUSE_MOTION:      mouse_move();      break;
@@ -154,6 +155,8 @@ void main_loop()
                 TIMECALL(update_player, (&camplayer, 0));
         }
 
+        remote_poll();
+
         lerp_camera(accumulated_elapsed / interval, &player[0], &camplayer);
         TIMECALL(step_sunlight, ());
         TIMECALL(step_glolight, ());
@@ -164,6 +167,7 @@ void main_loop()
 void startup()
 {
         noise_setup();
+        remote_init();
 
         for (int i = 0; i < VAOD; i++) for (int j = 0; j < VAOW; j++)
         {
