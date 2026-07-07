@@ -45,7 +45,9 @@
 #define VAOS (VAOW*VAOD)           // total nr of vbos
 #define MAX_MESHES_PER_FRAME 1     // max dirty chunks to rebuild per frame
 #define TILESW (CHUNKW*VAOW)       // total level width, height
-#define TILESH 160                 // ^
+#define TILESH 256                 // ^
+#define SEA_LEVEL (TILESH - 80)    // y of the water surface; keeps 80 blocks of sea-floor depth
+#define TERRAIN_VSCALE 160         // blocks per 1.0 of terrain height value
 #define TILESD (CHUNKD*VAOD)       // ^
 #define BS 1000                    // block size
 #define BS2 (BS/2)                 // block size in half
@@ -58,7 +60,7 @@
 #define EYEDOWN 500                 // how far down are the eyes from the top of the head
 #define STARTPX (553*BS)           // starting position
 #define STARTPY 0                  // ^
-#define STARTPZ (733*BS)           // ^
+#define STARTPZ (222*BS)           // ^ (coastal; 733 is open ocean now)
 #define NR_PLAYERS 1
 #define JUMP_BUFFER_FRAMES 6
 #define GRAV_JUMP 0
@@ -94,8 +96,8 @@
 
 #define VERTEX_BUFLEN (CHUNKW*CHUNKD*32) // scales with chunk area (131072 at 64x64)
 #define MAX_MESH_THREADS 16
-#define SUNQLEN 40000
-#define GLOQLEN 40000
+#define SUNQLEN 64000
+#define GLOQLEN 64000
 
 #define SHADOW_SZ 4096
 
@@ -163,6 +165,8 @@
 #define AGEN_SLOT(x,z)  chunk_stamp[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
 #define AGEN_(x,z)   (AGEN_SLOT(x, z).ax == (x) - chunk_scootx && AGEN_SLOT(x, z).az == (z) - chunk_scootz)
 #define DIRTY_(x,z)  chunk_dirty[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
+#define LIGHTDIRTY_(x,z) chunk_lightdirty[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
+#define DIRTY_LIGHT(x,z) (LIGHTDIRTY_(x, z) = frame + 1)
 #define FACES_(x,z)  chunk_faces[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
 #define LOD_(x,z)    chunk_lod[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
 #define VAO_(x,z)    vbo[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
@@ -349,7 +353,14 @@ float *cornlight;
 float *kornlight;
 struct chunk_stamp { int ax, az; };                  // absolute chunk coords a ring
 volatile struct chunk_stamp chunk_stamp[VAOD][VAOW]; // slot holds (INT_MIN = never)
+
+// absolute coords each column ring slot was generated for, so slots
+// wrapping to a new part of the world regenerate automatically
+int col_stamp_x[TILESW][TILESD];
+int col_stamp_z[TILESW][TILESD];
 volatile char chunk_dirty[VAOW][VAOD];
+volatile unsigned chunk_lightdirty[VAOW][VAOD]; // frame+1 of last light change (0 = clean)
+int remesh_debounce = 15; // remesh light-dirty chunks only after this many quiet frames
 unsigned char chunk_faces[VAOW][VAOD];  // bitmask of faces included in mesh
 unsigned char chunk_lod[VAOW][VAOD];    // 0=full detail, 1=LOD mode (backface culled)
 
@@ -499,7 +510,12 @@ volatile struct qitem just_generated[VAOW*VAOD];
 volatile size_t just_gen_len;
 
 int nr_chunks_generated = 0;
+int nr_meshes_built = 0;
 int chunk_gen_ticks = 0;
+int cave_enable = 1;
+// per-pass gen_chunk wall time, reported by the fps socket command
+enum { GEN_SOIL, GEN_CAVES, GEN_WATER, GEN_TREES, GEN_LIGHT, GEN_CORNERS, GEN_PASSES };
+int gen_pass_ms[GEN_PASSES];
 
 // glsetup.c protos
 int check_program_errors(unsigned int shader, char *name);

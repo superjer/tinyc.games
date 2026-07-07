@@ -32,6 +32,7 @@
 #include <SDL3/SDL_vulkan.h>
 #include "../common/tinyc.games/vulkan/main.c"
 #include "../common/tinyc.games/utils.c"
+#include "../common/tinyc.games/taylor_noise.c"
 
 #define STBI_NO_SIMD
 #define STB_IMAGE_IMPLEMENTATION
@@ -43,6 +44,8 @@
 #include "timer.c"
 #include "vector.c"
 #include "defs.c"
+#include "../common/tinyc.games/terrain.c"
+#include "formations.c"
 #include "atmosphere.c"
 #include "collision.c"
 #include "mesh.c"
@@ -51,13 +54,12 @@
 #include "../common/tinyc.games/font.c"
 #include "cursor.c"
 #include "glsetup.c"
-#include "interface.c"
 #include "remote.c"
+#include "interface.c"
 #include "blocklight.c"
 #include "player.c"
 #include "test.c"
 #include "chunker.c"
-#include "../common/tinyc.games/taylor_noise.c"
 
 //prototypes
 void startup();
@@ -65,8 +67,22 @@ void new_game();
 void main_loop();
 void update_world();
 
-int main()
+int main(int argc, char **argv)
 {
+        for (int i = 1; i < argc; i++)
+        {
+                if      (!strcmp(argv[i], "--noise-kernel2"))                    noise_kernel_sq = 1;
+                else if (!strcmp(argv[i], "--noise-nvary"))                      noise_nvary = 1;
+                else if (!strcmp(argv[i], "--noise-contrast") && i + 1 < argc)   noise_base_weight = atof(argv[++i]);
+                else if (!strcmp(argv[i], "--noise-aniso") && i + 1 < argc)      noise_aniso = atof(argv[++i]);
+                else
+                {
+                        fprintf(stderr, "usage: %s [--noise-kernel2] [--noise-nvary] "
+                                "[--noise-contrast <weight>] [--noise-aniso <0..1>]\n", argv[0]);
+                        return 1;
+                }
+        }
+
         omp_set_nested(1); // needed or omp won't parallelize chunk gen
         fprintf(stderr, "OpenMP threads available: %d\n", omp_get_max_threads());
         startup();
@@ -111,6 +127,7 @@ void main_loop()
         {
                 case SDL_EVENT_QUIT:              game_shutdown(0);
                 case SDL_EVENT_KEY_DOWN:          key_move(1);       break;
+                case SDL_EVENT_TEXT_INPUT:        console_text(event.text.text); break;
                 case SDL_EVENT_KEY_UP:            key_move(0);       break;
                 case SDL_EVENT_MOUSE_MOTION:      mouse_move();      break;
                 case SDL_EVENT_MOUSE_BUTTON_DOWN: mouse_button(1);   break;
@@ -174,6 +191,8 @@ void startup()
                 chunk_stamp[i][j].ax = INT_MIN;
                 chunk_stamp[i][j].az = INT_MIN;
         }
+        memset(col_stamp_x, 0x80, sizeof col_stamp_x); // huge negative = never
+        memset(col_stamp_z, 0x80, sizeof col_stamp_z);
 
         tiles = calloc(TILESD * TILESH * TILESW, sizeof *tiles);
         sunlight = calloc(TILESD * TILESH * TILESW, sizeof *sunlight);

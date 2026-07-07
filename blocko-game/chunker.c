@@ -12,18 +12,19 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         zlo = CLAMP(zlo, 0, TILESD-1);
         zhi = CLAMP(zhi, 0, TILESD-1);
 
-        // absolute coords each column ring slot was generated for, so slots
-        // wrapping to a new part of the world regenerate automatically
-        static int col_stamp_x[TILESW][TILESD];
-        static int col_stamp_z[TILESW][TILESD];
-        static int col_stamp_ready;
-        if (!col_stamp_ready)
-        {
-                memset(col_stamp_x, 0x80, sizeof col_stamp_x); // huge negative = never
-                col_stamp_ready = 1;
-        }
-
         int x;
+        unsigned gen_t0 = SDL_GetTicks();
+        #define GEN_PASS(which) { unsigned t = SDL_GetTicks(); \
+                gen_pass_ms[which] += t - gen_t0; gen_t0 = t; }
+
+        // heights for every column plus a 1-column border - the steepness
+        // test reads each neighbor's height, so compute each column once
+        // here instead of 5x in the soil loop below
+        static _Thread_local int hmap[CHUNKD+4][CHUNKW+4];
+        #define HMAP(xx, zz) hmap[(zz)-(zlo-1)][(xx)-(xlo-1)]
+        for (int z = zlo-1; z <= zhi; z++) for (int xx = xlo-1; xx <= xhi; xx++)
+                HMAP(xx, z) = TILESH
+                        - get_filtered_height(xx - tscootx, z - tscootz) * TERRAIN_VSCALE;
 
         //#pragma omp parallel for
         for (x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
@@ -45,12 +46,12 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 col_stamp_z[sx][sz] = az;
 
                 int solid_depth = 0;
-                int hmaph = (1.f - get_filtered_height(ax, az)) * TILESH;
+                int hmaph = HMAP(x, z);
 
-                int hx0 = (1.f - get_filtered_height(ax+1, az)) * TILESH;
-                int hz0 = (1.f - get_filtered_height(ax, az+1)) * TILESH;
-                int hx1 = (1.f - get_filtered_height(ax-1, az)) * TILESH;
-                int hz1 = (1.f - get_filtered_height(ax, az-1)) * TILESH;
+                int hx0 = HMAP(x+1, z);
+                int hz0 = HMAP(x, z+1);
+                int hx1 = HMAP(x-1, z);
+                int hz1 = HMAP(x, z-1);
                 
                 bool sharp_dn = hmaph - hx0 < -1 || hmaph - hz0 < -1 || hmaph - hx1 < -1 || hmaph - hz1 < -1;
                 bool sharp_up = hmaph - hx0 >  1 || hmaph - hz0 >  1 || hmaph - hx1 >  1 || hmaph - hz1 >  1;
@@ -59,12 +60,16 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 bool steep = (sharp_dn && sharp_up) || sharper_dn;
 
                 float reejin = noise(ax, az, 350, 12345, 1) - 0.5f;
-                int lev1 = 20 + (int)(reejin * 100.f);
-                int lev2 = 50 + (int)(reejin * 100.f);
-                int lev3 = 80 + (int)(reejin * 50.f);
-                int lev4 = 125 + (int)(reejin * 50.f);
+                int lev1 = SEA_LEVEL - 60 + (int)(reejin * 100.f);
+                int lev2 = SEA_LEVEL - 30 + (int)(reejin * 100.f);
+                int lev3 = SEA_LEVEL      + (int)(reejin * 50.f);
+                int lev4 = SEA_LEVEL + 45 + (int)(reejin * 50.f);
 
                 #define topsoil() ((noise(ax, az, 690, 12345, 1) > .5f) ? GRAS : DIRT)
+
+                int flo[16], fhi[16];
+                int fn = form_spans(ax, az, flo, fhi, 16);
+                int fdepth = 0; // consecutive formation blocks from pile top
 
                 for (int y = 0; y < TILESH; y++)
                 {
@@ -75,7 +80,27 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
 
                         if (y < hmaph)
                         {
-                                TT_(x, y, z) = y > 80 ? WATR : OPEN;
+                                int fs = 0;
+                                for (int i = 0; i < fn; i++)
+                                        if (y >= flo[i] && y <= fhi[i]) { fs = 1; break; }
+                                if (fs)
+                                {
+                                        // cap exposed formation tops with the
+                                        // same soil bands as the surrounding
+                                        // land; the core below stays stone
+                                        fdepth++;
+                                        if      (y < lev1 || fdepth > 3) TT_(x, y, z) = STON;
+                                        else if (y < lev2) TT_(x, y, z) = DIRT;
+                                        else if (y < lev3) TT_(x, y, z) = fdepth == 1 ?
+                                                (y > SEA_LEVEL ? SAND : GRAS) : DIRT;
+                                        else if (y < lev4) TT_(x, y, z) = SAND;
+                                        else               TT_(x, y, z) = STON;
+                                }
+                                else
+                                {
+                                        fdepth = 0;
+                                        TT_(x, y, z) = y > SEA_LEVEL ? WATR : OPEN;
+                                }
                                 continue;
                         }
 
@@ -84,13 +109,14 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         if (steep)         TT_(x, y, z) = STON;
                         else if (y < lev1) TT_(x, y, z) = STON;
                         else if (y < lev2) TT_(x, y, z) = DIRT;
-                        else if (y < lev3) TT_(x, y, z) = solid_depth == 1 ? (hmaph > 81 ? SAND : GRAS) : DIRT;
+                        else if (y < lev3) TT_(x, y, z) = solid_depth == 1 ? (hmaph > SEA_LEVEL + 1 ? SAND : GRAS) : DIRT;
                         else if (y < lev4) TT_(x, y, z) = solid_depth <= 4 ? SAND : STON;
                         else               TT_(x, y, z) = HARD;
 
                         //if (TT_(x, y, z) != HARD) TT_(x, y, z) = OPEN;
                 }
         }
+        GEN_PASS(GEN_SOIL);
 
         // find nearby bezier curvy caves - curves live in absolute coords
         #define REGW (CHUNKW*16)
@@ -108,7 +134,7 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
         struct point P1;
         struct point P2;
         struct point P3 = PC;
-        int nr_caves = RANDI(0, 100);
+        int nr_caves = cave_enable ? RANDI(0, 100) : 0;
 
         // cave system stretchiness
         int sx = RANDI(10, 60);
@@ -168,10 +194,11 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                                 break;
                         }
                 }
+        GEN_PASS(GEN_CAVES);
 
         // correcting pass over middle, contain floating water
-        #pragma omp parallel for
-        for (x = xlo+1; x < xhi-1; x++) for (int z = zlo+1; z < zhi-1; z++) for (int y = 100; y < TILESH-2; y++)
+        //#pragma omp parallel for
+        for (x = xlo+1; x < xhi-1; x++) for (int z = zlo+1; z < zhi-1; z++) for (int y = SEA_LEVEL + 20; y < TILESH-2; y++)
         {
                 if (TT_(x, y, z) == WATR)
                 {
@@ -183,8 +210,13 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                                 TT_(x, y, z) = WOOD;
                 }
         }
+        GEN_PASS(GEN_WATER);
 
         // trees?
+        // reseed per-chunk: the cave seed above is per-REGION, and cave gen
+        // consumes an identical sequence for every chunk in the region, so
+        // without this every chunk gets the same tree layout
+        seed = SEED2(xlo - tscootx, zlo - tscootz) ^ 0x5eed7ee5;
         float p191 = noise(zlo - tscootz, xlo - tscootx, 1300, 999, 1);
         int randp = p191 > 0.51f ? 96 : p191 > 0.45f ? 85 : 0;
         if (randp) while (RANDP(randp))
@@ -218,8 +250,10 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                 }
         }
 
+        GEN_PASS(GEN_TREES);
+
         // cleanup gndheight and set initial lighting
-        #pragma omp parallel for
+        //#pragma omp parallel for
         for (x = xlo+1; x < xhi-1; x++) for (int z = zlo+1; z < zhi-1; z++)
         {
                 int above_ground = true;
@@ -261,8 +295,12 @@ void gen_chunk(int xlo, int xhi, int zlo, int zhi)
                         TSUN_(x, y, z) = light_level;
                 }
         }
+        GEN_PASS(GEN_LIGHT);
 
         recalc_corner_lighting(xlo, xhi, zlo, zhi);
+        GEN_PASS(GEN_CORNERS);
+        #undef GEN_PASS
+        #undef HMAP
 }
 
 // update terrain worker thread(s) copies of scoot vars

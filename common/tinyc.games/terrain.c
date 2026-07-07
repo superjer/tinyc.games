@@ -1,10 +1,11 @@
 #ifndef TINYCGAMES_TERRAIN_C_INCLUDED
 #define TINYCGAMES_TERRAIN_C_INCLUDED
 
+#include <math.h>
 #include "taylor_noise.c"
 #include "utils.c"
 
-int get_height_hit, get_height_miss;
+_Thread_local int get_height_hit, get_height_miss;
 int seed = 160659;
 
 float zigzag(float val, int zags)
@@ -24,7 +25,7 @@ float get_height(int x, int y)
                 int x, y;
                 float val;
         };
-        static struct hmemo hmemos[37][1217];
+        static _Thread_local struct hmemo hmemos[37][1217];
         struct hmemo *m = &hmemos[(x + 0x01000000) % 37][(y + 0x01000000) % 1217];
         if (m->x == x && m->y == y && m->val)
         {
@@ -48,17 +49,6 @@ float get_height(int x, int y)
         
         //val += (zigzag(val, 100) - .5f) * .02f;
 
-        /*
-        float oceaniness = remap(noise(x, y, 2030, seed^41741741, 1), .55f, .7f, 0.f, 1.f);
-        if (oceaniness > 0.f && val < 0.51f)
-        {
-                float ocean_val = .2f * val;
-                float ocean_val2 = val * (1.f - oceaniness) + ocean_val * oceaniness;
-                float ocean_blend = remap(val, 0.46f, 0.49f, 0.f, 1.f);
-                val = val * (1.f - ocean_blend) + ocean_val2 * ocean_blend;
-        }
-        */
-
         float plateauness = remap(noise(x, y, 1200, seed^34899346, 1), .50f, .55f, 0.f, 1.f);
         if (plateauness > 0.f)
         {
@@ -81,6 +71,16 @@ float get_height(int x, int y)
                 else
                         shelf_val = excl_remap(shelf_val, .70f,  1.f, T3 + .0005f, 1.f        );
                 val = lerp(plateauness, val, shelf_val);
+        }
+
+        // big oceans: a very low frequency mask presses lowlands below sea
+        // level (0.5); the mountain pass in get_filtered_height runs after
+        // this and can still raise islands out of the water
+        float oceaniness = remap(noise(x, y, 9000, seed^41741741, 2), .53f, .61f, 0.f, 1.f);
+        if (oceaniness > 0.f)
+        {
+                float ocean_floor = .38f + .10f * val; // keep a little relief
+                val = lerp(oceaniness, val, MIN(val, ocean_floor));
         }
 
         m->x = x;
@@ -205,6 +205,25 @@ float get_filtered_height(int x, int y)
                   + get_height(x2 - s, y2 - s);
                 h /= 4.f;
         }
+
+        // mountain ranges: a broad mask picks range regions, folded ("ridged")
+        // noise carves crests and valleys inside them; amplitude rides the
+        // crests so ranges crossing ocean surface as island chains
+        float mrange = remap(noise(x, y, 4000, seed^11223344, 2), .60f, .72f, 0.f, 1.f);
+        if (mrange > 0.f)
+        {
+                float r1 = noise(x, y, 700, seed^22334455, 2);
+                float ridge = 1.f - 2.f * fabsf(r1 - .5f); // 1 at ridgelines
+                ridge *= ridge;
+                float r2 = noise(x, y, 250, seed^33445566, 2);
+                float ridge2 = 1.f - 2.f * fabsf(r2 - .5f);
+                h += mrange * (.05f + .55f * ridge + .18f * ridge2 * ridge2);
+        }
+
+        // soft ceiling: round peaks off rather than pancake at the world top
+        // (the game maps h=0.5 to sea level and gives ~1.0 of headroom above)
+        if (h > 1.25f) h = 1.25f + (h - 1.25f) * .5f;
+        if (h > 1.50f) h = 1.50f;
 
         return h;
 }

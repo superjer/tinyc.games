@@ -143,25 +143,51 @@ int step_glolight()
 // mid-generation, making scootx and tscootx briefly disagree)
 void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
 {
-        for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH; y++)
+        for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
         {
                 int x_ = (x == 0) ? 0 : x - 1;
-                int y_ = (y == 0) ? 0 : y - 1;
                 int z_ = (z == 0) ? 0 : z - 1;
 
-                TCORN_(x, y, z) = 0.030f * MAX(
-                                MAX(
-                                        MAX(TSUN_(x_, y_, z_), TSUN_(x , y_, z_)),
-                                        MAX(TSUN_(x_, y , z_), TSUN_(x , y , z_))
-                                ), MAX(
-                                        MAX(TSUN_(x_, y_, z ), TSUN_(x , y_, z )),
-                                        MAX(TSUN_(x_, y , z ), TSUN_(x , y , z ))
-                                )) + 0.001f * (
-                                TSUN_(x_, y_, z_) + TSUN_(x , y_, z_) + TSUN_(x_, y , z_) + TSUN_(x , y , z_) +
-                                TSUN_(x_, y_, z ) + TSUN_(x , y_, z ) + TSUN_(x_, y , z ) + TSUN_(x , y , z ));
-                TKORN_(x, y, z) = 0.008f * (
-                                TGLO_(x_, y_, z_) + TGLO_(x , y_, z_) + TGLO_(x_, y , z_) + TGLO_(x , y , z_) +
-                                TGLO_(x_, y_, z ) + TGLO_(x , y_, z ) + TGLO_(x_, y , z ) + TGLO_(x , y , z ));
+                // gen-time sunlight is zero below the ground line of all
+                // four columns meeting at this corner: compute down to just
+                // past the deepest one and zero the rest (the ring slot
+                // holds the previous occupant's values). Light flooding
+                // into caves later updates corners as it spreads.
+                int g = TGNDH_(x, z), g2;
+                g2 = TGNDH_(x_, z ); if (g2 > g) g = g2;
+                g2 = TGNDH_(x , z_); if (g2 > g) g = g2;
+                g2 = TGNDH_(x_, z_); if (g2 > g) g = g2;
+                int ylim = g + 2;
+                if (ylim > TILESH) ylim = TILESH;
+
+                // hoist the ring mapping out of the y loop: every array
+                // here stores columns contiguously in y
+                float *corn = &TCORN_(x, 0, z);
+                float *korn = &TKORN_(x, 0, z);
+                unsigned char *sa = &TSUN_(x_, 0, z_), *sb = &TSUN_(x, 0, z_),
+                              *sc = &TSUN_(x_, 0, z ), *sd = &TSUN_(x, 0, z );
+                unsigned char *ga = &TGLO_(x_, 0, z_), *gb = &TGLO_(x, 0, z_),
+                              *gc = &TGLO_(x_, 0, z ), *gd = &TGLO_(x, 0, z );
+
+                int a = sa[0], b = sb[0], c = sc[0], d = sd[0];       // y-1 row
+                int ka = ga[0], kb = gb[0], kc = gc[0], kd = gd[0];
+                for (int y = 0; y < ylim; y++)
+                {
+                        int a2 = sa[y], b2 = sb[y], c2 = sc[y], d2 = sd[y];
+                        corn[y] = 0.030f * MAX(
+                                        MAX(MAX(a, b), MAX(c, d)),
+                                        MAX(MAX(a2, b2), MAX(c2, d2)))
+                                + 0.001f * (a + b + c + d + a2 + b2 + c2 + d2);
+                        int ka2 = ga[y], kb2 = gb[y], kc2 = gc[y], kd2 = gd[y];
+                        korn[y] = 0.008f * (ka + kb + kc + kd + ka2 + kb2 + kc2 + kd2);
+                        a = a2; b = b2; c = c2; d = d2;
+                        ka = ka2; kb = kb2; kc = kc2; kd = kd2;
+                }
+                if (ylim < TILESH)
+                {
+                        memset(corn + ylim, 0, (TILESH - ylim) * sizeof *corn);
+                        memset(korn + ylim, 0, (TILESH - ylim) * sizeof *korn);
+                }
         }
 }
 
@@ -169,11 +195,12 @@ void set_sunlight(int xlo, int ylo, int zlo, int light)
 {
         SUN_(xlo, ylo, zlo) = light;
 
-        // Mark all chunks that could be affected by corner lighting update
-        DIRTY_(B2C(xlo), B2C(zlo)) = 1;
-        DIRTY_(B2C(xlo+1), B2C(zlo)) = 1;
-        DIRTY_(B2C(xlo), B2C(zlo+1)) = 1;
-        DIRTY_(B2C(xlo+1), B2C(zlo+1)) = 1;
+        // Mark all chunks that could be affected by corner lighting update.
+        // Soft mark: remeshing can wait until the light here stops changing
+        DIRTY_LIGHT(B2C(xlo), B2C(zlo));
+        DIRTY_LIGHT(B2C(xlo+1), B2C(zlo));
+        DIRTY_LIGHT(B2C(xlo), B2C(zlo+1));
+        DIRTY_LIGHT(B2C(xlo+1), B2C(zlo+1));
 
         for (int x = xlo; x < xlo + 2; x++) for (int z = zlo; z < zlo + 2; z++) for (int y = ylo; y < ylo + 2; y++)
         {
@@ -191,11 +218,12 @@ void set_glolight(int xlo, int ylo, int zlo, int light)
 {
         GLO_(xlo, ylo, zlo) = light;
 
-        // Mark all chunks that could be affected by corner lighting update
-        DIRTY_(B2C(xlo), B2C(zlo)) = 1;
-        DIRTY_(B2C(xlo+1), B2C(zlo)) = 1;
-        DIRTY_(B2C(xlo), B2C(zlo+1)) = 1;
-        DIRTY_(B2C(xlo+1), B2C(zlo+1)) = 1;
+        // Mark all chunks that could be affected by corner lighting update.
+        // Soft mark: remeshing can wait until the light here stops changing
+        DIRTY_LIGHT(B2C(xlo), B2C(zlo));
+        DIRTY_LIGHT(B2C(xlo+1), B2C(zlo));
+        DIRTY_LIGHT(B2C(xlo), B2C(zlo+1));
+        DIRTY_LIGHT(B2C(xlo+1), B2C(zlo+1));
 
         for (int x = xlo; x < xlo + 2; x++) for (int z = zlo; z < zlo + 2; z++) for (int y = ylo; y < ylo + 2; y++)
         {

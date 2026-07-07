@@ -60,7 +60,15 @@ void build_meshes()
 
         for (int i = 0; i < VAOW; i++) {
                 for (int j = 0; j < VAOD; j++) {
-                        if (!DIRTY_(i, j)) continue;
+                        unsigned light_stamp = LIGHTDIRTY_(i, j);
+                        if (!DIRTY_(i, j))
+                        {
+                                if (!light_stamp) continue;
+                                // light-only changes: wait for the light here
+                                // to stop changing before remeshing
+                                if ((unsigned)frame + 1 - light_stamp < (unsigned)remesh_debounce)
+                                        continue;
+                        }
                         if (!AGEN_(i, j)) continue;
 
                         int xd = i - player_chunk_x;
@@ -291,9 +299,11 @@ void build_meshes()
 
                 // Mark chunk as clean after mesh rebuild and store LOD state
                 DIRTY_(myx, myz) = 0;
+                LIGHTDIRTY_(myx, myz) = 0;
                 FACES_(myx, myz) = face_mask;
                 LOD_(myx, myz) = use_lod;
                 meshes_built++;
+                nr_meshes_built++;
         }
 }
 

@@ -177,8 +177,8 @@ void debrief()
 
         if (help_layer == 2)
         {
-                char *g1 = "Q     \nF   \nN       \nP       \nT       \nL         \nM             \nV    \nR             \n/   \nF1     \nF2          \nF3                    \nF4                \nF5";
-                char *g2 = "Go up!\nFast\nRev. sun\nFast sun\nTest box\nLight vals\nShadow mapping\nVsync\nFixed interval\nMSAA\nCulling\nLock culling\nFPS, timings, position\nShow fresh updates\nReload shaders";
+                char *g1 = "~          \nQ     \nF   \nN       \nP       \nT       \nL         \nM             \nV    \nR             \n/   \nF1     \nF2          \nF3                    \nF4                \nF5";
+                char *g2 = "Command console\nGo up!\nFast\nRev. sun\nFast sun\nTest box\nLight vals\nShadow mapping\nVsync\nFixed interval\nMSAA\nCulling\nLock culling\nFPS, timings, position\nShow fresh updates\nReload shaders";
                 font_begin(screenw, screenh);
                 font_add_text(g1, screenw/100.f, screenh/4.f, 0);
                 font_end(0.5, 1, 1);
@@ -208,6 +208,8 @@ void debrief()
                 font_add_text(alert, screenw/2.f, screenh/2.f, 0);
                 font_end(1, 0.5, 0);
         }
+
+        console_draw();
 }
 
 #endif // BLOCKO_TEST_C_INCLUDED
