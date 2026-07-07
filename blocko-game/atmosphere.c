@@ -183,7 +183,7 @@ void sky_draw(VkCommandBuffer cmdbuf, float *proj, float *view)
         push.underwater = main_ubo.underwater;
 
         vkCmdPushConstants(cmdbuf, vk.pipelines[sky_pipe].layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                 0, sizeof push, &push);
 
         VkDeviceSize offset = 0;
@@ -220,7 +220,7 @@ void sun_draw(VkCommandBuffer cmdbuf, float *proj, float *view, float pitch, flo
         vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
         vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
         vkCmdPushConstants(cmdbuf, vk.pipelines[sun_pipe].layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                 0, sizeof push, &push);
         vkCmdDraw(cmdbuf, 6, 1, 0, 0);
 
@@ -229,7 +229,7 @@ void sun_draw(VkCommandBuffer cmdbuf, float *proj, float *view, float pitch, flo
         vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
         vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
         vkCmdPushConstants(cmdbuf, vk.pipelines[moon_pipe].layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                 0, sizeof push, &push);
         vkCmdDraw(cmdbuf, 6, 1, 0, 0);
 }

@@ -394,7 +394,13 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         }
         else if (!strncmp(cmd, "sun ", 4))
         {
-                sun_pitch = atof(cmd + 4);
+                // "sun <pitch>" freezes the sun there; "sun run" resumes motion
+                if (!strcmp(cmd + 4, "run")) {
+                        sun_frozen = 0;
+                } else {
+                        sun_pitch = atof(cmd + 4);
+                        sun_frozen = 1;
+                }
                 p += snprintf(p, end-p, "ok\n");
         }
         else if (!strncmp(cmd, "unlock", 6))

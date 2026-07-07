@@ -135,7 +135,7 @@ void draw_end()
                -1, -1, 0, 1,
         };
         vkCmdPushConstants(cmd, vk.pipelines[main_pipe].layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                 0, sizeof ortho, ortho);
 
         VkDeviceSize vb_offset = base + vbuf_gpu_offset;

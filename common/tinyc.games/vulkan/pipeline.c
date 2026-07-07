@@ -2,7 +2,7 @@
 
 VkPipelineLayout createPipelineLayout(VkDevice *pDevice){
         VkPushConstantRange pushConstantRange = {0};
-        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         pushConstantRange.offset = 0;
         pushConstantRange.size = 128;
 
@@ -23,7 +23,7 @@ VkPipelineLayout createPipelineLayout(VkDevice *pDevice){
 
 VkPipelineLayout createPipelineLayoutWithDescriptors(VkDevice *pDevice, VkDescriptorSetLayout *pDescriptorSetLayout){
         VkPushConstantRange pushConstantRange = {0};
-        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         pushConstantRange.offset = 0;
         pushConstantRange.size = 128;
 
@@ -218,6 +218,7 @@ VkPipelineColorBlendStateCreateInfo configureColorBlendStateCreateInfo(VkPipelin
 #define PIPE_DEPTH_BIAS       32
 #define PIPE_DEPTH_LESS_EQUAL 64
 #define PIPE_POINTS           128 // vertex shader must write gl_PointSize
+#define PIPE_TRIANGLE_STRIP   256
 
 VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout, VkShaderModule *pVertexShaderModule, VkShaderModule *pGeometryShaderModule, VkShaderModule *pFragmentShaderModule, VkRenderPass *pRenderPass, VkExtent2D *pExtent,
         int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
@@ -237,6 +238,7 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
                 bindingDescCount, bindingDescs, attributeDescCount, attributeDescs
         );
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = configureInputAssemblyStateCreateInfo(
+		(flags & PIPE_TRIANGLE_STRIP) ? VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP :
 		(pGeometryShaderModule || (flags & PIPE_POINTS)) ? VK_PRIMITIVE_TOPOLOGY_POINT_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
         );
 	VkViewport viewport = configureViewport(pExtent);

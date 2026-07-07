@@ -476,6 +476,7 @@ int regulated = true;
 int shadow_mapping = true;
 int speedy_sun = false;
 int reverse_sun = false;
+int sun_frozen = false; // set via debug socket for deterministic screenshots
 float sun_pitch = .3f; //.6f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down
 float moon_pitch;
 float sun_yaw = .3f;

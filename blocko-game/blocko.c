@@ -226,7 +226,7 @@ void new_game()
 
 void update_world()
 {
-        float speed = speedy_sun ? 0.01f : 0.0001f;
+        float speed = sun_frozen ? 0.f : speedy_sun ? 0.01f : 0.0001f;
         sun_pitch += speed * (reverse_sun ? -1 : 1);
         if (sun_pitch > TAU) sun_pitch -= TAU;
         if (sun_pitch < 0.f) sun_pitch += TAU;

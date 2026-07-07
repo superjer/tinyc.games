@@ -53,7 +53,7 @@ void createDescriptorSetLayout(VkDescriptorSetLayout* descriptorSetLayout) {
     bindings[0].binding = 0;
     bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     bindings[0].descriptorCount = 1;
-    bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
     // Texture array binding
     bindings[1].binding = 1;
@@ -674,10 +674,11 @@ void vksetup()
         fprintf(stderr, "Vulkan: maxFrames=%u, swapchainImageCount=%u\n", vk.maxFrames, vk.swapchainImageCount);
 
         // Main terrain pipeline with vertex inputs matching struct vbufv
+        // One instance per face; the vertex shader expands 4 strip corners
         VkVertexInputBindingDescription mainBindingDesc = {
                 .binding = 0,
                 .stride = sizeof(struct vbufv),
-                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+                .inputRate = VK_VERTEX_INPUT_RATE_INSTANCE
         };
         VkVertexInputAttributeDescription mainAttrDescs[] = {
                 {.location = 0, .binding = 0, .format = VK_FORMAT_R32_SFLOAT, .offset = offsetof(struct vbufv, tex)},
@@ -690,10 +691,10 @@ void vksetup()
 
         // Must create descriptor set layout BEFORE using it in pipeline creation
         createDescriptorSetLayout(&main_descriptor_set_layout);
-        main_pipe = vulkan_make_pipeline("main.vert", "main.geom", "main.frag",
-                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, 0);
-        water_pipe = vulkan_make_pipeline("main.vert", "main.geom", "main.frag",
-                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_BLEND);
+        main_pipe = vulkan_make_pipeline("main.vert", NULL, "main.frag",
+                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP);
+        water_pipe = vulkan_make_pipeline("main.vert", NULL, "main.frag",
+                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP | PIPE_BLEND);
 
         allocate_world();
 
@@ -749,10 +750,10 @@ void vksetup()
         // Create shadow pipeline with same vertex layout as main pipeline
         // Use main_descriptor_set_layout to access texture for alpha testing leaves
         shadow_pipe = vulkan_make_pipeline(
-                "shadow.vert", "shadow.geom", "shadow.frag",
+                "shadow.vert", NULL, "shadow.frag",
                 1, &mainBindingDesc, 6, mainAttrDescs,
                 &main_descriptor_set_layout, shadow_render_pass,
-                PIPE_DEPTH_BIAS | PIPE_NO_CULL);
+                PIPE_TRIANGLE_STRIP | PIPE_DEPTH_BIAS | PIPE_NO_CULL);
 
         create_descriptor_pool_and_set();
 

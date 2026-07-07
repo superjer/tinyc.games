@@ -47,11 +47,11 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                 push.chunk_y = 0;
                 push.chunk_z = j * BS * CHUNKD;
                 vkCmdPushConstants(cmdbuf, vk.pipelines[shadow_pipe].layout,
-                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                         0, sizeof push, &push);
                 vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &voffset);
                 size_t terrain_verts = WBOSTART_(i, j);
-                vkCmdDraw(cmdbuf, terrain_verts, 1, 0, 0);
+                vkCmdDraw(cmdbuf, 4, terrain_verts, 0, 0);
                 shadow_polys += terrain_verts;
                 shadow[cascade_idx].polys += terrain_verts;
                 cascade_x_draw_calls++;

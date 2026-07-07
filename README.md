@@ -86,8 +86,6 @@ Anything that supports CMake should work. But here are some suggestions for vari
 
 4. Open the project file with Xcode
 
-Note: Blocko currently uses geometry shaders, which MoltenVK does not support, so it will not run on Mac. The other games should work.
-
 ## Next?
 
 After you're done playing an exhilirating demo game, open a .c file in your favorite text editor. You're now looking at the actual code you just ran. So feel free to tinker and run it with your changes. Or use it as a starting point for your own game!

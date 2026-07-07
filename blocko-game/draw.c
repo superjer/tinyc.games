@@ -416,9 +416,9 @@ void draw_stuff()
                 push.chunk_y = 0;
                 push.chunk_z = j * BS * CHUNKD;
                 vkCmdPushConstants(cmdbuf, vk.pipelines[main_pipe].layout,
-                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
                 vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &voffset);
-                vkCmdDraw(cmdbuf, terrain_verts, 1, 0, 0);
+                vkCmdDraw(cmdbuf, 4, terrain_verts, 0, 0);
                 chunks_drawn++;
                 total_verts += terrain_verts;
                 polys += terrain_verts;
@@ -449,9 +449,9 @@ void draw_stuff()
                 push.chunk_z = j * BS * CHUNKD;
                 VkDeviceSize water_offset = water_start * sizeof(struct vbufv);
                 vkCmdPushConstants(cmdbuf, vk.pipelines[water_pipe].layout,
-                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_GEOMETRY_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
                 vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &water_offset);
-                vkCmdDraw(cmdbuf, water_verts, 1, 0, 0);
+                vkCmdDraw(cmdbuf, 4, water_verts, 0, 0);
                 total_verts += water_verts;
                 polys += water_verts;
         }
