@@ -23,6 +23,10 @@ include(FetchContent)
 set(ONLY_LIBS ON)
 set(SDL_TEST_LIBRARY OFF)
 
+# SDL3_ttf's vendored freetype (used when no system freetype exists, e.g.
+# Windows) declares a cmake_minimum_required too old for CMake 4+
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+
 message(STATUS "fetching SDL3 from github")
 FetchContent_Declare(
   SDL3

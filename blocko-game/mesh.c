@@ -105,6 +105,10 @@ void build_meshes()
 
                 #pragma omp parallel
                 {
+                        // declared here (not in the for-init) for MSVC, whose
+                        // OpenMP 2.0 C mode rejects declarations in an omp for;
+                        // anything declared inside the parallel block is private
+                        int x, y, z;
                         int tid = omp_get_thread_num();
                         struct vbufv *tv = vbuf_mt[tid];
                         struct vbufv *tv_start = tv;
@@ -113,8 +117,8 @@ void build_meshes()
                         struct vbufv *tw_start = tw;
 
                         #pragma omp for schedule(static)
-                        for (int z = zlo; z < zhi; z++) {
-                        for (int x = xlo; x < xhi; x++) for (int y = 0; y < TILESH; y++)
+                        for (z = zlo; z < zhi; z++) {
+                        for (x = xlo; x < xhi; x++) for (y = 0; y < TILESH; y++)
                         {
                                 if (tv >= tv_limit) break;
 
