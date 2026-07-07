@@ -70,6 +70,8 @@ set(SHADER_FILES
   blocko-game/shaders/cursor.frag
   common/tinyc.games/shaders/font.vert
   common/tinyc.games/shaders/font.frag
+  tet-game/shaders/tet.vert
+  tet-game/shaders/tet.frag
   blocko-game/shaders/sky.vert
   blocko-game/shaders/sky.frag
   blocko-game/shaders/sun.vert
@@ -94,6 +96,7 @@ endforeach()
 # Target that depends on all compiled shaders
 add_custom_target(shaders DEPENDS ${COMPILED_SHADER_FILES})
 add_dependencies(blocko shaders)
+add_dependencies(tet shaders)
 
 if(WIN32)
   macro(copy_dlls target)

@@ -97,15 +97,19 @@ struct vk {
 
         // Shader source directory (for hot-reload)
         char shader_dir[256];
+
+        VkClearColorValue clear_color;
 } vk;
 
 void vulkan_create_swapchain();
 void vulkan_destroy_swapchain();
 void vulkan_recreate_swapchain();
 
-int vulkan_startup(char *window_title, char *icon_file, char *shader_dir)
+int vulkan_startup(char *window_title, char *icon_file, char *shader_dir, int win_w, int win_h)
 {
         SDL_Init(SDL_INIT_VIDEO);
+
+        vk.clear_color = (VkClearColorValue){{0.0f, 0.2f, 0.8f, 0.0f}};
 
         // Store shader source directory for hot-reload
         if (shader_dir)
@@ -153,7 +157,7 @@ int vulkan_startup(char *window_title, char *icon_file, char *shader_dir)
         vk.presentingQueue = getPresentingQueue(&vk.device, vk.bestGraphicsQueueFamilyindex, vk.graphicsQueueMode);
         deleteQueueFamilyProperties(&vk.queueFamilyProperties);
 
-        vk.window = createVulkanWindow(1440, 900, window_title, icon_file);
+        vk.window = createVulkanWindow(win_w, win_h, window_title, icon_file);
         vk.surface = createSurface(vk.window, &vk.instance);
         VkBool32 surfaceSupported = getSurfaceSupport(&vk.surface, vk.bestPhysicalDevice, vk.bestGraphicsQueueFamilyindex);
         if (!surfaceSupported)
@@ -537,7 +541,7 @@ void vulkan_start_recording(uint32_t imageIndex)
                 {vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height}
         };
         VkClearValue clearValues[2] = {
-                {.color = {{0.0f, 0.2f, 0.8f, 0.0f}}},
+                {.color = vk.clear_color},
                 {.depthStencil = {1.0f, 0}}
         };
 
@@ -661,7 +665,7 @@ void myDrawCallback(VkCommandBuffer cmdbuf)
 #ifdef TINYC_VULKAN_TRIANGLE_MAIN
 int main()
 {
-        vulkan_startup("TinyC.Games Vulkan test", "../assets/tinyc-icon.png", "./shaders/");
+        vulkan_startup("TinyC.Games Vulkan test", "../assets/tinyc-icon.png", "./shaders/", 1440, 900);
         int pipe = vulkan_make_pipeline(
                 "triangle.vert",
                 "triangle.geom",

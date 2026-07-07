@@ -663,7 +663,7 @@ void allocate_world()
 //initial setup to get the window and rendering going
 void glsetup()
 {
-        vulkan_startup("Blocko", TINYC_DIR "/blocko-game/assets/tinyc-icon.png", TINYC_DIR "/blocko-game/shaders/");
+        vulkan_startup("Blocko", TINYC_DIR "/blocko-game/assets/tinyc-icon.png", TINYC_DIR "/blocko-game/shaders/", 1440, 900);
 
         // Ensure swapchain image count doesn't exceed our descriptor set array size
         if (vk.maxFrames > MAX_FRAMES_IN_FLIGHT) {

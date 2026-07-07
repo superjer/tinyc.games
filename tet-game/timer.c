@@ -9,7 +9,7 @@
         X(draw_player), \
         X(draw_particles), \
         X(draw_end), \
-        X(SDL_GL_SwapWindow),
+        X(vulkan_submit),
 
 #include "../common/tinyc.games/timer.c"
 
