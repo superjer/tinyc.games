@@ -1,50 +1,50 @@
 #include "main.c"
 
-VkSemaphore *createSemaphores(VkDevice *pDevice, uint32_t maxFrames){
+VkSemaphore *createSemaphores(VkDevice *pDevice, uint32_t count){
 	VkSemaphoreCreateInfo semaphoreCreateInfo = {
 		VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		0
 	};
 
-	VkSemaphore *semaphore = (VkSemaphore *)malloc(maxFrames * sizeof(VkSemaphore));
-	for(uint32_t i = 0; i < maxFrames; i++){
-		vkCreateSemaphore(*pDevice, &semaphoreCreateInfo, VK_NULL_HANDLE, &semaphore[i]);
+	VkSemaphore *semaphore = (VkSemaphore *)malloc(count * sizeof(VkSemaphore));
+	for(uint32_t i = 0; i < count; i++){
+		VKCHECK(vkCreateSemaphore(*pDevice, &semaphoreCreateInfo, NULL, &semaphore[i]));
 	}
 	return semaphore;
 }
 
-void deleteSemaphores(VkDevice *pDevice, VkSemaphore **ppSemaphores, uint32_t maxFrames){
-	for(uint32_t i = 0; i < maxFrames; i++){
-		vkDestroySemaphore(*pDevice, (*ppSemaphores)[i], VK_NULL_HANDLE);
+void deleteSemaphores(VkDevice *pDevice, VkSemaphore **ppSemaphores, uint32_t count){
+	for(uint32_t i = 0; i < count; i++){
+		vkDestroySemaphore(*pDevice, (*ppSemaphores)[i], NULL);
 	}
 	free(*ppSemaphores);
 }
 
-VkFence *createFences(VkDevice *pDevice, uint32_t maxFrames){
+VkFence *createFences(VkDevice *pDevice, uint32_t count){
 	VkFenceCreateInfo fenceCreateInfo = {
 		VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		VK_FENCE_CREATE_SIGNALED_BIT
 	};
 
-	VkFence *fences = (VkFence *)malloc(maxFrames * sizeof(VkFence));
-	for(uint32_t i = 0; i < maxFrames; i++){
-		vkCreateFence(*pDevice, &fenceCreateInfo, VK_NULL_HANDLE, &fences[i]);
+	VkFence *fences = (VkFence *)malloc(count * sizeof(VkFence));
+	for(uint32_t i = 0; i < count; i++){
+		VKCHECK(vkCreateFence(*pDevice, &fenceCreateInfo, NULL, &fences[i]));
 	}
 	return fences;
 }
 
-void deleteFences(VkDevice *pDevice, VkFence **ppFences, uint32_t maxFrames){
-	for(uint32_t i = 0; i < maxFrames; i++){
-		vkDestroyFence(*pDevice, (*ppFences)[i], VK_NULL_HANDLE);
+void deleteFences(VkDevice *pDevice, VkFence **ppFences, uint32_t count){
+	for(uint32_t i = 0; i < count; i++){
+		vkDestroyFence(*pDevice, (*ppFences)[i], NULL);
 	}
 	free(*ppFences);
 }
 
-VkFence *createEmptyFences(uint32_t maxFrames){
-	VkFence *fences = (VkFence *)malloc(maxFrames * sizeof(VkFence));
-	for(uint32_t i = 0; i < maxFrames; i++){
+VkFence *createEmptyFences(uint32_t count){
+	VkFence *fences = (VkFence *)malloc(count * sizeof(VkFence));
+	for(uint32_t i = 0; i < count; i++){
 		fences[i] = VK_NULL_HANDLE;
 	}
 	return fences;

@@ -2,7 +2,7 @@
 
 uint32_t getPhysicalDeviceNumber(VkInstance *pInstance){
 	uint32_t physicalDeviceNumber = 0;
-	vkEnumeratePhysicalDevices(*pInstance, &physicalDeviceNumber, VK_NULL_HANDLE);
+	vkEnumeratePhysicalDevices(*pInstance, &physicalDeviceNumber, NULL);
 	return physicalDeviceNumber;
 }
 
@@ -17,9 +17,11 @@ void deletePhysicalDevices(VkPhysicalDevice **ppPhysicalDevices){
 	free(*ppPhysicalDevices);
 }
 
-uint32_t getPhysicalDeviceTotalMemory(VkPhysicalDeviceMemoryProperties *pPhysicalDeviceMemoryProperties){
-	uint32_t physicalDeviceTotalMemory = 0;
-	for(int i = 0; i < pPhysicalDeviceMemoryProperties->memoryHeapCount; i++){
+// VkDeviceSize (64-bit): summing heap sizes in a 32-bit int overflows on
+// cards with >= 4GB VRAM (an 8GB card would rank as exactly 0 bytes)
+VkDeviceSize getPhysicalDeviceTotalMemory(VkPhysicalDeviceMemoryProperties *pPhysicalDeviceMemoryProperties){
+	VkDeviceSize physicalDeviceTotalMemory = 0;
+	for(uint32_t i = 0; i < pPhysicalDeviceMemoryProperties->memoryHeapCount; i++){
 		if((pPhysicalDeviceMemoryProperties->memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0){
 			physicalDeviceTotalMemory += pPhysicalDeviceMemoryProperties->memoryHeaps[i].size;
 		}

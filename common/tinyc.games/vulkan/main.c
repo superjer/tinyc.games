@@ -28,6 +28,13 @@
 #define TINYC_SPV_DIR "shaders/"
 #endif
 
+// A failed Vulkan call usually leaves a garbage handle behind, and the
+// crash (or hang, if a fence never signals) shows up somewhere far away.
+// Dying loudly at the failing call is the kindest option.
+#define VKCHECK(x) do { VkResult vkcheck_r = (x); if (vkcheck_r != VK_SUCCESS) { \
+        fprintf(stderr, "%s:%d: %s failed (%d)\n", __FILE__, __LINE__, #x, vkcheck_r); \
+        exit(-1); } } while (0)
+
 #include "instance.c"
 #include "physical.c"
 #include "queue.c"
@@ -50,9 +57,7 @@ struct vk {
         VkQueueFamilyProperties *queueFamilyProperties;
         VkDevice device;
         uint32_t bestGraphicsQueueFamilyindex;
-        drawAndPresentQueues graphicsQueueMode;
-        VkQueue drawingQueue;
-        VkQueue presentingQueue;
+        VkQueue drawingQueue; // also the presenting queue
         SDL_Window *window;
         VkSurfaceKHR surface;
         VkSurfaceCapabilitiesKHR surfaceCapabilities;
@@ -112,7 +117,7 @@ void vulkan_create_swapchain();
 void vulkan_destroy_swapchain();
 void vulkan_recreate_swapchain();
 
-int vulkan_startup(char *window_title, char *icon_file, char *shader_dir, int win_w, int win_h)
+void vulkan_startup(char *window_title, char *icon_file, char *shader_dir, int win_w, int win_h)
 {
         SDL_Init(SDL_INIT_VIDEO);
 
@@ -127,6 +132,11 @@ int vulkan_startup(char *window_title, char *icon_file, char *shader_dir, int wi
         vk.instance = createInstance();
 
         vk.physicalDeviceCount = getPhysicalDeviceNumber(&vk.instance);
+        if (vk.physicalDeviceCount == 0)
+        {
+                fprintf(stderr, "no Vulkan devices found - is a Vulkan driver installed?\n");
+                exit(-1);
+        }
         vk.physicalDevices = getPhysicalDevices(&vk.instance, vk.physicalDeviceCount);
         vk.bestPhysicalDeviceIndex = getBestPhysicalDeviceIndex(vk.physicalDevices, vk.physicalDeviceCount);
         vk.bestPhysicalDevice = &vk.physicalDevices[vk.bestPhysicalDeviceIndex];
@@ -136,17 +146,21 @@ int vulkan_startup(char *window_title, char *icon_file, char *shader_dir, int wi
 
         for (uint32_t i = 0; i < mem_props.memoryHeapCount; i++) {
                 if (mem_props.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
-                        fprintf(stderr, "Heap %d: Total VRAM: %lu MB\n", i, 
-                               mem_props.memoryHeaps[i].size / (1024 * 1024));
+                        fprintf(stderr, "Heap %d: Total VRAM: %llu MB\n", i,
+                               (unsigned long long)(mem_props.memoryHeaps[i].size / (1024 * 1024)));
                 }
         }
 
+        // The window and surface come before device creation so the queue
+        // family can be chosen with present support in mind.
+        vk.window = createVulkanWindow(win_w, win_h, window_title, icon_file);
+        vk.surface = createSurface(vk.window, &vk.instance);
+
         vk.queueFamilyCount = getQueueFamilyNumber(vk.bestPhysicalDevice);
         vk.queueFamilyProperties = getQueueFamilyProperties(vk.bestPhysicalDevice, vk.queueFamilyCount);
-        vk.bestGraphicsQueueFamilyindex = getBestGraphicsQueueFamilyIndex(vk.queueFamilyProperties, vk.queueFamilyCount);
-        vk.graphicsQueueMode = getGraphicsQueueMode(vk.queueFamilyProperties, vk.bestGraphicsQueueFamilyindex);
+        vk.bestGraphicsQueueFamilyindex = getBestGraphicsQueueFamilyIndex(vk.bestPhysicalDevice, &vk.surface, vk.queueFamilyProperties, vk.queueFamilyCount);
 
-        vk.device = createDevice(vk.bestPhysicalDevice, vk.bestGraphicsQueueFamilyindex, vk.queueFamilyProperties);
+        vk.device = createDevice(vk.bestPhysicalDevice, vk.bestGraphicsQueueFamilyindex);
 
         // Print GPU info for debugging
         VkPhysicalDeviceProperties deviceProps;
@@ -155,23 +169,11 @@ int vulkan_startup(char *window_title, char *icon_file, char *shader_dir, int wi
                 VK_VERSION_MAJOR(deviceProps.driverVersion),
                 VK_VERSION_MINOR(deviceProps.driverVersion),
                 VK_VERSION_PATCH(deviceProps.driverVersion));
-        fprintf(stderr, "Queue family %u: %u queues, mode=%s\n",
-                vk.bestGraphicsQueueFamilyindex,
-                vk.queueFamilyProperties[vk.bestGraphicsQueueFamilyindex].queueCount,
-                vk.graphicsQueueMode == 0 ? "SINGLE_QUEUE" : "SEPARATE_QUEUES");
+        fprintf(stderr, "Queue family %u: draw and present on one queue\n",
+                vk.bestGraphicsQueueFamilyindex);
 
         vk.drawingQueue = getDrawingQueue(&vk.device, vk.bestGraphicsQueueFamilyindex);
-        vk.presentingQueue = getPresentingQueue(&vk.device, vk.bestGraphicsQueueFamilyindex, vk.graphicsQueueMode);
         deleteQueueFamilyProperties(&vk.queueFamilyProperties);
-
-        vk.window = createVulkanWindow(win_w, win_h, window_title, icon_file);
-        vk.surface = createSurface(vk.window, &vk.instance);
-        VkBool32 surfaceSupported = getSurfaceSupport(&vk.surface, vk.bestPhysicalDevice, vk.bestGraphicsQueueFamilyindex);
-        if (!surfaceSupported)
-        {
-                fprintf(stderr, "vulkan surface not supported!\n");
-                exit(-1);
-        }
 
         vk.bestSurfaceFormat = getBestSurfaceFormat(&vk.surface, vk.bestPhysicalDevice);
         vk.bestPresentMode = getBestPresentMode(&vk.surface, vk.bestPhysicalDevice);
@@ -188,10 +190,17 @@ int vulkan_startup(char *window_title, char *icon_file, char *shader_dir, int wi
 
         vk.commandBuffers = createCommandBuffers(&vk.device, &vk.commandPool, vk.swapchainImageCount);
 
-        vk.maxFrames = vk.swapchainImageCount;
-        vk.waitSemaphores = createSemaphores(&vk.device, vk.swapchainImageCount);
+        // Per-FRAME objects (indexed by currentFrame): the acquire semaphore
+        // and the fence that paces the CPU. Two frames in flight is the
+        // conventional choice - the CPU can record one frame while the GPU
+        // draws another; more would only add input latency.
+        // Per-IMAGE objects (indexed by imageIndex): the render-finished
+        // semaphore must belong to the image because presentation holds it
+        // until that specific image comes back around.
+        vk.maxFrames = 2;
+        vk.waitSemaphores = createSemaphores(&vk.device, vk.maxFrames);
+        vk.frontFences = createFences(&vk.device, vk.maxFrames);
         vk.signalSemaphores = createSemaphores(&vk.device, vk.swapchainImageCount);
-        vk.frontFences = createFences(&vk.device, vk.swapchainImageCount);
         vk.backFences = createEmptyFences(vk.swapchainImageCount);
 }
 
@@ -200,7 +209,7 @@ void vulkan_create_swapchain() {
         vk.surfaceCapabilities = getSurfaceCapabilities(&vk.surface, vk.bestPhysicalDevice);
         vk.bestSwapchainExtent = getBestSwapchainExtent(&vk.surfaceCapabilities, vk.window);
 
-        vk.swapchain = createSwapchain(&vk.device, &vk.surface, &vk.surfaceCapabilities, &vk.bestSurfaceFormat, &vk.bestSwapchainExtent, &vk.bestPresentMode, vk.imageArrayLayers, vk.graphicsQueueMode);
+        vk.swapchain = createSwapchain(&vk.device, &vk.surface, &vk.surfaceCapabilities, &vk.bestSurfaceFormat, &vk.bestSwapchainExtent, &vk.bestPresentMode, vk.imageArrayLayers);
 
         vk.swapchainImageCount = getSwapchainImageNumber(&vk.device, &vk.swapchain);
         vk.swapchainImages = getSwapchainImages(&vk.device, &vk.swapchain, vk.swapchainImageCount);
@@ -220,29 +229,36 @@ void vulkan_create_swapchain() {
                 .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
                 .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         };
-        vkCreateImage(vk.device, &depthImageInfo, NULL, &vk.depthImage);
+        VKCHECK(vkCreateImage(vk.device, &depthImageInfo, NULL, &vk.depthImage));
 
         VkMemoryRequirements depthMemReqs;
         vkGetImageMemoryRequirements(vk.device, vk.depthImage, &depthMemReqs);
 
+        // Prefer device-local memory, but any type the image accepts will work
         VkPhysicalDeviceMemoryProperties memProps;
         vkGetPhysicalDeviceMemoryProperties(*vk.bestPhysicalDevice, &memProps);
-        uint32_t depthMemType = 0;
+        uint32_t depthMemType = UINT32_MAX;
         for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
-                if ((depthMemReqs.memoryTypeBits & (1 << i)) &&
+                if ((depthMemReqs.memoryTypeBits & (1u << i)) &&
                     (memProps.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
                         depthMemType = i;
                         break;
                 }
         }
+        if (depthMemType == UINT32_MAX)
+                for (uint32_t i = 0; i < memProps.memoryTypeCount; i++)
+                        if (depthMemReqs.memoryTypeBits & (1u << i)) {
+                                depthMemType = i;
+                                break;
+                        }
 
         VkMemoryAllocateInfo depthAllocInfo = {
                 .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                 .allocationSize = depthMemReqs.size,
                 .memoryTypeIndex = depthMemType,
         };
-        vkAllocateMemory(vk.device, &depthAllocInfo, NULL, &vk.depthMemory);
-        vkBindImageMemory(vk.device, vk.depthImage, vk.depthMemory, 0);
+        VKCHECK(vkAllocateMemory(vk.device, &depthAllocInfo, NULL, &vk.depthMemory));
+        VKCHECK(vkBindImageMemory(vk.device, vk.depthImage, vk.depthMemory, 0));
 
         VkImageViewCreateInfo depthViewInfo = {
                 .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -257,31 +273,56 @@ void vulkan_create_swapchain() {
                         .layerCount = 1,
                 },
         };
-        vkCreateImageView(vk.device, &depthViewInfo, NULL, &vk.depthImageView);
+        VKCHECK(vkCreateImageView(vk.device, &depthViewInfo, NULL, &vk.depthImageView));
 
         vk.framebuffers = createFramebuffers(&vk.device, &vk.renderPass, &vk.bestSwapchainExtent, &vk.swapchainImageViews, vk.swapchainImageCount, &vk.depthImageView);
 }
 
 void vulkan_destroy_swapchain() {
-        for (uint32_t i = 0; i < vk.swapchainImageCount; i++) {
-                vkDestroyFramebuffer(vk.device, vk.framebuffers[i], NULL);
-                vkDestroyImageView(vk.device, vk.swapchainImageViews[i], NULL);
-        }
-        free(vk.framebuffers);
-        free(vk.swapchainImageViews);
-        free(vk.swapchainImages);
+        deleteFramebuffers(&vk.device, &vk.framebuffers, vk.swapchainImageCount);
+        deleteImageViews(&vk.device, &vk.swapchainImageViews, vk.swapchainImageCount);
+        deleteSwapchainImages(&vk.swapchainImages);
 
         vkDestroyImageView(vk.device, vk.depthImageView, NULL);
         vkDestroyImage(vk.device, vk.depthImage, NULL);
         vkFreeMemory(vk.device, vk.depthMemory, NULL);
 
-        vkDestroySwapchainKHR(vk.device, vk.swapchain, NULL);
+        deleteSwapchain(&vk.device, &vk.swapchain);
 }
 
 void vulkan_recreate_swapchain() {
+        // Block while the window has zero drawable size (e.g. minimized) -
+        // creating a 0-sized swapchain is invalid. PumpEvents keeps the OS
+        // window state current without stealing events from the game's loop.
+        int w = 0, h = 0;
+        SDL_GetWindowSizeInPixels(vk.window, &w, &h);
+        while (w == 0 || h == 0) {
+                SDL_Delay(10);
+                SDL_PumpEvents();
+                SDL_GetWindowSizeInPixels(vk.window, &w, &h);
+        }
+
         vkDeviceWaitIdle(vk.device);
+
+        uint32_t oldImageCount = vk.swapchainImageCount;
         vulkan_destroy_swapchain();
         vulkan_create_swapchain();
+
+        // The new swapchain may hand back a different number of images; the
+        // command buffers and per-image sync objects are sized to that count,
+        // so rebuild them when it changes. (The per-frame objects -
+        // waitSemaphores and frontFences - are sized to maxFrames and
+        // unaffected by the swapchain.)
+        if (vk.swapchainImageCount != oldImageCount) {
+                deleteCommandBuffers(&vk.device, vk.commandBuffers, &vk.commandPool, oldImageCount);
+                deleteSemaphores(&vk.device, &vk.signalSemaphores, oldImageCount);
+                deleteEmptyFences(&vk.backFences);
+
+                vk.commandBuffers = createCommandBuffers(&vk.device, &vk.commandPool, vk.swapchainImageCount);
+                vk.signalSemaphores = createSemaphores(&vk.device, vk.swapchainImageCount);
+                vk.backFences = createEmptyFences(vk.swapchainImageCount);
+        }
+
         fprintf(stderr, "Swapchain recreated: %dx%d\n", vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height);
 }
 
@@ -304,6 +345,13 @@ static void build_src_path(const char *filename, char *src, size_t src_size) {
         }
 }
 
+// Filename portion of a shader path, or the whole string if it has no '/'.
+// (strrchr(path,'/')+1 would dereference past NULL for a bare filename.)
+static const char *shader_basename(const char *path) {
+        const char *slash = strrchr(path, '/');
+        return slash ? slash + 1 : path;
+}
+
 // Compile a GLSL shader to SPIR-V using glslangValidator
 // Returns 0 on success, non-zero on failure
 static int compile_shader(const char *src_path, const char *spv_path) {
@@ -319,21 +367,23 @@ static int compile_shader(const char *src_path, const char *spv_path) {
         return ret;
 }
 
-// Internal: create/recreate pipeline at given index using stored metadata
-// If index == vk.pipelineCount, this is a new pipeline; otherwise it's a reload
+// Internal: create/recreate pipeline at given index using stored metadata.
+// The new pipeline is built completely before the old one (if any) is
+// destroyed, so a failed rebuild leaves the pipeline as it was - a shader
+// hot-reload with a broken shader keeps rendering the previous version.
 static int vulkan_create_pipeline_at(int index) {
         struct pipeline *p = &vk.pipelines[index];
 
         // Determine .spv paths from source paths
         char vert_spv[256], geom_spv[256], frag_spv[256];
-        snprintf(vert_spv, sizeof(vert_spv), TINYC_SPV_DIR "%s.spv", strrchr(p->vert_src, '/') + 1);
+        snprintf(vert_spv, sizeof(vert_spv), TINYC_SPV_DIR "%s.spv", shader_basename(p->vert_src));
         if (p->geom_src[0])
-                snprintf(geom_spv, sizeof(geom_spv), TINYC_SPV_DIR "%s.spv", strrchr(p->geom_src, '/') + 1);
-        snprintf(frag_spv, sizeof(frag_spv), TINYC_SPV_DIR "%s.spv", strrchr(p->frag_src, '/') + 1);
+                snprintf(geom_spv, sizeof(geom_spv), TINYC_SPV_DIR "%s.spv", shader_basename(p->geom_src));
+        snprintf(frag_spv, sizeof(frag_spv), TINYC_SPV_DIR "%s.spv", shader_basename(p->frag_src));
 
         uint32_t vertexShaderSize = 0;
         char *vertexShaderCode = getShaderCode(vert_spv, &vertexShaderSize);
-        if (vertexShaderCode == VK_NULL_HANDLE) {
+        if (vertexShaderCode == NULL) {
                 fprintf(stderr, "vertex shader %s not found\n", vert_spv);
                 return -1;
         }
@@ -344,7 +394,7 @@ static int vulkan_create_pipeline_at(int index) {
         if (p->geom_src[0]) {
                 uint32_t geometryShaderSize = 0;
                 geometryShaderCode = getShaderCode(geom_spv, &geometryShaderSize);
-                if (geometryShaderCode == VK_NULL_HANDLE) {
+                if (geometryShaderCode == NULL) {
                         fprintf(stderr, "geometry shader %s not found\n", geom_spv);
                         deleteShaderModule(&vk.device, &vertexShaderModule);
                         deleteShaderCode(&vertexShaderCode);
@@ -355,7 +405,7 @@ static int vulkan_create_pipeline_at(int index) {
 
         uint32_t fragmentShaderSize = 0;
         char *fragmentShaderCode = getShaderCode(frag_spv, &fragmentShaderSize);
-        if (fragmentShaderCode == VK_NULL_HANDLE) {
+        if (fragmentShaderCode == NULL) {
                 fprintf(stderr, "fragment shader %s not found\n", frag_spv);
                 if (geometryShaderModule) {
                         deleteShaderModule(&vk.device, &geometryShaderModule);
@@ -367,17 +417,18 @@ static int vulkan_create_pipeline_at(int index) {
         }
         VkShaderModule fragmentShaderModule = createShaderModule(&vk.device, fragmentShaderCode, fragmentShaderSize);
 
+        VkPipelineLayout newLayout;
         if (p->pDescriptorSetLayout)
-                p->layout = createPipelineLayoutWithDescriptors(&vk.device, p->pDescriptorSetLayout);
+                newLayout = createPipelineLayoutWithDescriptors(&vk.device, p->pDescriptorSetLayout);
         else
-                p->layout = createPipelineLayout(&vk.device);
+                newLayout = createPipelineLayout(&vk.device);
 
         VkRenderPass rp = p->renderPass ? p->renderPass : vk.renderPass;
-        p->pipeline = createGraphicsPipeline(
+        VkPipeline newPipeline = createGraphicsPipeline(
                 &vk.device,
-                &p->layout,
+                &newLayout,
                 &vertexShaderModule,
-                geometryShaderModule ? &geometryShaderModule : VK_NULL_HANDLE,
+                geometryShaderModule ? &geometryShaderModule : NULL,
                 &fragmentShaderModule,
                 &rp,
                 &vk.bestSwapchainExtent,
@@ -397,6 +448,19 @@ static int vulkan_create_pipeline_at(int index) {
         deleteShaderModule(&vk.device, &vertexShaderModule);
         deleteShaderCode(&vertexShaderCode);
 
+        if (newPipeline == VK_NULL_HANDLE) {
+                deletePipelineLayout(&vk.device, &newLayout);
+                return -1;
+        }
+
+        // Success: replace the old pipeline (present only on reload)
+        if (p->pipeline)
+                deleteGraphicsPipeline(&vk.device, &p->pipeline);
+        if (p->layout)
+                deletePipelineLayout(&vk.device, &p->layout);
+        p->pipeline = newPipeline;
+        p->layout = newLayout;
+
         return 0;
 }
 
@@ -411,24 +475,20 @@ int vulkan_reload_pipeline(int index) {
 
         // Determine .spv paths
         char vert_spv[256], geom_spv[256], frag_spv[256];
-        snprintf(vert_spv, sizeof(vert_spv), TINYC_SPV_DIR "%s.spv", strrchr(p->vert_src, '/') + 1);
+        snprintf(vert_spv, sizeof(vert_spv), TINYC_SPV_DIR "%s.spv", shader_basename(p->vert_src));
         if (p->geom_src[0])
-                snprintf(geom_spv, sizeof(geom_spv), TINYC_SPV_DIR "%s.spv", strrchr(p->geom_src, '/') + 1);
-        snprintf(frag_spv, sizeof(frag_spv), TINYC_SPV_DIR "%s.spv", strrchr(p->frag_src, '/') + 1);
+                snprintf(geom_spv, sizeof(geom_spv), TINYC_SPV_DIR "%s.spv", shader_basename(p->geom_src));
+        snprintf(frag_spv, sizeof(frag_spv), TINYC_SPV_DIR "%s.spv", shader_basename(p->frag_src));
 
         // Compile shaders
         if (compile_shader(p->vert_src, vert_spv) != 0) return -1;
         if (p->geom_src[0] && compile_shader(p->geom_src, geom_spv) != 0) return -1;
         if (compile_shader(p->frag_src, frag_spv) != 0) return -1;
 
-        // Wait for GPU to finish using old pipeline
+        // Wait for the GPU to finish with the old pipeline, which
+        // vulkan_create_pipeline_at destroys once the new one is ready
         vkDeviceWaitIdle(vk.device);
 
-        // Destroy old pipeline and layout
-        deleteGraphicsPipeline(&vk.device, &p->pipeline);
-        deletePipelineLayout(&vk.device, &p->layout);
-
-        // Create new pipeline
         int result = vulkan_create_pipeline_at(index);
 
         // Update mtimes on success
@@ -513,6 +573,9 @@ static void store_pipeline_metadata(int index, char *vert, char *geom, char *fra
         p->flags = flags;
 }
 
+// Note: pDescriptorSetLayout is kept (not copied) so shader hot-reload can
+// rebuild the pipeline layout later - it must point to storage that stays
+// valid for the life of the pipeline (the games pass globals).
 int vulkan_make_pipeline(char *vert, char *geom, char *frag,
         int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
         int attributeDescCount, VkVertexInputAttributeDescription *attributeDescs,
@@ -553,12 +616,12 @@ void vulkan_start_recording(uint32_t imageIndex)
         };
 
         commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        commandBufferBeginInfo.pNext = VK_NULL_HANDLE;
+        commandBufferBeginInfo.pNext = NULL;
         commandBufferBeginInfo.flags = 0;
-        commandBufferBeginInfo.pInheritanceInfo = VK_NULL_HANDLE;
+        commandBufferBeginInfo.pInheritanceInfo = NULL;
 
         renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        renderPassBeginInfo.pNext = VK_NULL_HANDLE;
+        renderPassBeginInfo.pNext = NULL;
         renderPassBeginInfo.renderPass = vk.renderPass;
         renderPassBeginInfo.framebuffer = vk.framebuffers[i];
         renderPassBeginInfo.renderArea = renderArea;
@@ -566,7 +629,7 @@ void vulkan_start_recording(uint32_t imageIndex)
         renderPassBeginInfo.pClearValues = clearValues;
 
         vkResetCommandBuffer(vk.commandBuffers[i], 0);
-        vkBeginCommandBuffer(vk.commandBuffers[i], &commandBufferBeginInfo);
+        VKCHECK(vkBeginCommandBuffer(vk.commandBuffers[i], &commandBufferBeginInfo));
         vkCmdBeginRenderPass(vk.commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 }
 
@@ -574,14 +637,29 @@ void vulkan_finish_recording(uint32_t imageIndex)
 {
         int i = imageIndex;
         vkCmdEndRenderPass(vk.commandBuffers[i]);
-        vkEndCommandBuffer(vk.commandBuffers[i]);
+        VKCHECK(vkEndCommandBuffer(vk.commandBuffers[i]));
 }
 
 void vulkan_acquire_next()
 {
         // Use currentFrame to select which semaphore to use for acquisition
         vkWaitForFences(vk.device, 1, &vk.frontFences[vk.currentFrame], VK_TRUE, UINT64_MAX);
-        vkAcquireNextImageKHR(vk.device, vk.swapchain, UINT64_MAX, vk.waitSemaphores[vk.currentFrame], VK_NULL_HANDLE, &vk.imageIndex);
+
+        // A stale swapchain (resized/rotated) makes acquire fail with
+        // OUT_OF_DATE; rebuild and try again. On OUT_OF_DATE the acquire
+        // semaphore is left unsignaled, so it is safe to reuse on retry.
+        VkResult result = vkAcquireNextImageKHR(vk.device, vk.swapchain, UINT64_MAX, vk.waitSemaphores[vk.currentFrame], VK_NULL_HANDLE, &vk.imageIndex);
+        while (result == VK_ERROR_OUT_OF_DATE_KHR) {
+                vulkan_recreate_swapchain();
+                result = vkAcquireNextImageKHR(vk.device, vk.swapchain, UINT64_MAX, vk.waitSemaphores[vk.currentFrame], VK_NULL_HANDLE, &vk.imageIndex);
+        }
+        // SUBOPTIMAL still acquired an image (and signaled the semaphore), so
+        // render this frame; present will recreate the swapchain. Anything
+        // else (e.g. DEVICE_LOST) is unrecoverable.
+        if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+                fprintf(stderr, "vkAcquireNextImageKHR failed (%d)\n", result);
+                exit(-1);
+        }
 
         // Wait for any previous work on this specific image to complete
         if(vk.backFences[vk.imageIndex] != VK_NULL_HANDLE){
@@ -598,7 +676,7 @@ void vulkan_submit()
         VkPipelineStageFlags pipelineStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submitInfo = {
                 VK_STRUCTURE_TYPE_SUBMIT_INFO,
-                VK_NULL_HANDLE,
+                NULL,
                 1,
                 &vk.waitSemaphores[vk.currentFrame],
                 &pipelineStage,
@@ -608,22 +686,26 @@ void vulkan_submit()
                 &vk.signalSemaphores[vk.imageIndex]  // Use imageIndex for signal semaphore
         };
         vkResetFences(vk.device, 1, &vk.frontFences[vk.currentFrame]);
-        vkQueueSubmit(vk.drawingQueue, 1, &submitInfo, vk.frontFences[vk.currentFrame]);
+        // An unchecked failed submit would leave the fence forever unsignaled
+        // and the next vkWaitForFences would hang with no diagnostics
+        VKCHECK(vkQueueSubmit(vk.drawingQueue, 1, &submitInfo, vk.frontFences[vk.currentFrame]));
 
         // Track which fence is now associated with this image
         vk.backFences[vk.imageIndex] = vk.frontFences[vk.currentFrame];
 
         VkPresentInfoKHR presentInfo = {
                 VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-                VK_NULL_HANDLE,
+                NULL,
                 1,
                 &vk.signalSemaphores[vk.imageIndex],  // Use imageIndex for present
                 1,
                 &vk.swapchain,
                 &vk.imageIndex,
-                VK_NULL_HANDLE
+                NULL
         };
-        vkQueuePresentKHR(vk.presentingQueue, &presentInfo);
+        VkResult result = vkQueuePresentKHR(vk.drawingQueue, &presentInfo);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+                vulkan_recreate_swapchain();
 
         vk.currentFrame = (vk.currentFrame + 1) % vk.maxFrames;
 }
@@ -633,7 +715,7 @@ void vulkan_shutdown()
         vkDeviceWaitIdle(vk.device);
         deleteEmptyFences(&vk.backFences);
         deleteFences(&vk.device, &vk.frontFences, vk.maxFrames);
-        deleteSemaphores(&vk.device, &vk.signalSemaphores, vk.maxFrames);
+        deleteSemaphores(&vk.device, &vk.signalSemaphores, vk.swapchainImageCount);
         deleteSemaphores(&vk.device, &vk.waitSemaphores, vk.maxFrames);
         deleteCommandBuffers(&vk.device, vk.commandBuffers, &vk.commandPool, vk.swapchainImageCount);
         deleteCommandPool(&vk.device, &vk.commandPool);
@@ -642,14 +724,8 @@ void vulkan_shutdown()
                 deleteGraphicsPipeline(&vk.device, &vk.pipelines[vk.pipelineCount].pipeline);
                 deletePipelineLayout(&vk.device, &vk.pipelines[vk.pipelineCount].layout);
         }
-        deleteFramebuffers(&vk.device, &vk.framebuffers, vk.swapchainImageCount);
+        vulkan_destroy_swapchain();
         deleteRenderPass(&vk.device, &vk.renderPass);
-        vkDestroyImageView(vk.device, vk.depthImageView, NULL);
-        vkDestroyImage(vk.device, vk.depthImage, NULL);
-        vkFreeMemory(vk.device, vk.depthMemory, NULL);
-        deleteImageViews(&vk.device, &vk.swapchainImageViews, vk.swapchainImageCount);
-        deleteSwapchainImages(&vk.swapchainImages);
-        deleteSwapchain(&vk.device, &vk.swapchain);
         deleteSurface(&vk.surface, &vk.instance);
         deleteWindow(vk.window);
         deleteDevice(&vk.device);

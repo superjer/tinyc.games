@@ -42,13 +42,13 @@ VkRenderPass createRenderPass(VkDevice *pDevice, VkSurfaceFormatKHR *pFormat){
 		0,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		0,
-		VK_NULL_HANDLE,
+		NULL,
 		1,
 		&colorReference,
-		VK_NULL_HANDLE,
+		NULL,
 		&depthReference,
 		0,
-		VK_NULL_HANDLE
+		NULL
 	};
 
 	VkSubpassDependency subpassDependency = {
@@ -63,7 +63,7 @@ VkRenderPass createRenderPass(VkDevice *pDevice, VkSurfaceFormatKHR *pFormat){
 
 	VkRenderPassCreateInfo renderPassCreateInfo = {
 		VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		0,
 		2,
 		attachments,
@@ -74,12 +74,12 @@ VkRenderPass createRenderPass(VkDevice *pDevice, VkSurfaceFormatKHR *pFormat){
 	};
 
 	VkRenderPass renderPass;
-	vkCreateRenderPass(*pDevice, &renderPassCreateInfo, VK_NULL_HANDLE, &renderPass);
+	VKCHECK(vkCreateRenderPass(*pDevice, &renderPassCreateInfo, NULL, &renderPass));
 	return renderPass;
 }
 
 void deleteRenderPass(VkDevice *pDevice, VkRenderPass *pRenderPass){
-	vkDestroyRenderPass(*pDevice, *pRenderPass, VK_NULL_HANDLE);
+	vkDestroyRenderPass(*pDevice, *pRenderPass, NULL);
 }
 
 VkFramebuffer *createFramebuffers(VkDevice *pDevice, VkRenderPass *pRenderPass, VkExtent2D *pExtent, VkImageView **ppImageViews, uint32_t imageViewNumber, VkImageView *pDepthImageView){
@@ -93,7 +93,7 @@ VkFramebuffer *createFramebuffers(VkDevice *pDevice, VkRenderPass *pRenderPass, 
 
 		VkFramebufferCreateInfo framebufferCreateInfo = {
 			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-			.pNext = VK_NULL_HANDLE,
+			.pNext = NULL,
 			.flags = 0,
 			.renderPass = *pRenderPass,
 			.attachmentCount = 2,
@@ -103,7 +103,7 @@ VkFramebuffer *createFramebuffers(VkDevice *pDevice, VkRenderPass *pRenderPass, 
 			.layers = 1,
 		};
 
-		vkCreateFramebuffer(*pDevice, &framebufferCreateInfo, VK_NULL_HANDLE, &framebuffers[i]);
+		VKCHECK(vkCreateFramebuffer(*pDevice, &framebufferCreateInfo, NULL, &framebuffers[i]));
 	}
 
 	return framebuffers;
@@ -111,7 +111,7 @@ VkFramebuffer *createFramebuffers(VkDevice *pDevice, VkRenderPass *pRenderPass, 
 
 void deleteFramebuffers(VkDevice *pDevice, VkFramebuffer **ppFramebuffers, uint32_t framebufferNumber){
 	for(uint32_t i = 0; i < framebufferNumber; i++){
-		vkDestroyFramebuffer(*pDevice, (*ppFramebuffers)[i], VK_NULL_HANDLE);
+		vkDestroyFramebuffer(*pDevice, (*ppFramebuffers)[i], NULL);
 	}
 	free(*ppFramebuffers);
 }

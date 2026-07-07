@@ -5,7 +5,6 @@ project(vulkan_test)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(SDL_TEST_LIBRARY OFF)
-set(TINYC_VULKAN_TRIANGLE_MAIN ON)
 
 include(FetchContent)
 
@@ -18,6 +17,8 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(SDL3)
 
 add_executable(vulkan-triangle main.c)
+# compiles in the demo main() and the stb_image implementation
+target_compile_definitions(vulkan-triangle PRIVATE TINYC_VULKAN_TRIANGLE_MAIN)
 
 if(UNIX AND NOT APPLE)
 	target_link_libraries(

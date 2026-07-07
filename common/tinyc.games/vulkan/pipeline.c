@@ -8,16 +8,16 @@ VkPipelineLayout createPipelineLayout(VkDevice *pDevice){
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		0,
 		0,
-		VK_NULL_HANDLE,
+		NULL,
 		1,
 		&pushConstantRange
 	};
 
 	VkPipelineLayout pipelineLayout;
-	vkCreatePipelineLayout(*pDevice, &pipelineLayoutCreateInfo, VK_NULL_HANDLE, &pipelineLayout);
+	VKCHECK(vkCreatePipelineLayout(*pDevice, &pipelineLayoutCreateInfo, NULL, &pipelineLayout));
 	return pipelineLayout;
 }
 
@@ -29,7 +29,7 @@ VkPipelineLayout createPipelineLayoutWithDescriptors(VkDevice *pDevice, VkDescri
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		0,
 		1,
 		pDescriptorSetLayout,
@@ -38,23 +38,23 @@ VkPipelineLayout createPipelineLayoutWithDescriptors(VkDevice *pDevice, VkDescri
 	};
 
 	VkPipelineLayout pipelineLayout;
-	vkCreatePipelineLayout(*pDevice, &pipelineLayoutCreateInfo, VK_NULL_HANDLE, &pipelineLayout);
+	VKCHECK(vkCreatePipelineLayout(*pDevice, &pipelineLayoutCreateInfo, NULL, &pipelineLayout));
 	return pipelineLayout;
 }
 
 void deletePipelineLayout(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout){
-	vkDestroyPipelineLayout(*pDevice, *pPipelineLayout, VK_NULL_HANDLE);
+	vkDestroyPipelineLayout(*pDevice, *pPipelineLayout, NULL);
 }
 
 VkPipelineShaderStageCreateInfo configureShaderStageCreateInfo(VkShaderStageFlagBits bits, VkShaderModule *shaderModule, const char *entryName){
 	VkPipelineShaderStageCreateInfo fragmentShaderStageCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		0,
 		bits,
 		*shaderModule,
 		entryName,
-		VK_NULL_HANDLE
+		NULL
 	};
 
 	return fragmentShaderStageCreateInfo;
@@ -66,7 +66,7 @@ VkPipelineVertexInputStateCreateInfo configureVertexInputStateCreateInfo(
 
 	VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		0,
 		bindingDescCount,
 		bindingDescs,
@@ -80,7 +80,7 @@ VkPipelineVertexInputStateCreateInfo configureVertexInputStateCreateInfo(
 VkPipelineInputAssemblyStateCreateInfo configureInputAssemblyStateCreateInfo(VkPrimitiveTopology primTop){
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		0,
 		primTop, // VK_PRIMITIVE_TOPOLOGY_POINT_LIST, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
 		VK_FALSE
@@ -89,10 +89,13 @@ VkPipelineInputAssemblyStateCreateInfo configureInputAssemblyStateCreateInfo(VkP
 	return inputAssemblyStateCreateInfo;
 }
 
+// Placeholder values only: viewport and scissor are dynamic state in every
+// pipeline this layer creates, so each draw sets the real ones with
+// vkCmdSetViewport/vkCmdSetScissor.
 VkViewport configureViewport(VkExtent2D *pExtent){
 	VkViewport viewport = {
-		1.0f,
-		1.0f,
+		0.0f,
+		0.0f,
 		pExtent->width,
 		pExtent->height,
 		0.0f,
@@ -133,7 +136,7 @@ VkRect2D configureScissor(VkExtent2D *pExtent, uint32_t left, uint32_t right, ui
 VkPipelineViewportStateCreateInfo configureViewportStateCreateInfo(VkViewport *pViewport, VkRect2D *pScissor){
 	VkPipelineViewportStateCreateInfo viewportStateCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		0,
 		1,
 		pViewport,
@@ -147,7 +150,7 @@ VkPipelineViewportStateCreateInfo configureViewportStateCreateInfo(VkViewport *p
 VkPipelineRasterizationStateCreateInfo configureRasterizationStateCreateInfo(){
 	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		0,
 		VK_FALSE,
 		VK_FALSE,
@@ -167,12 +170,12 @@ VkPipelineRasterizationStateCreateInfo configureRasterizationStateCreateInfo(){
 VkPipelineMultisampleStateCreateInfo configureMultisampleStateCreateInfo(){
 	VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		0,
 		VK_SAMPLE_COUNT_1_BIT,
 		VK_FALSE,
 		1.0f,
-		VK_NULL_HANDLE,
+		NULL,
 		VK_FALSE,
 		VK_FALSE
 	};
@@ -198,7 +201,7 @@ VkPipelineColorBlendAttachmentState configureColorBlendAttachmentState(){
 VkPipelineColorBlendStateCreateInfo configureColorBlendStateCreateInfo(VkPipelineColorBlendAttachmentState *pColorBlendAttachmentState){
 	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		0,
 		VK_FALSE,
 		VK_LOGIC_OP_COPY,
@@ -296,13 +299,13 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 
 	VkGraphicsPipelineCreateInfo graphicsPipelineCreateInfo = {
 		VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		0,
 		i,
 		shaderStageCreateInfo,
 		&vertexInputStateCreateInfo,
 		&inputAssemblyStateCreateInfo,
-		VK_NULL_HANDLE,
+		NULL,
 		&viewportStateCreateInfo,
 		&rasterizationStateCreateInfo,
 		&multisampleStateCreateInfo,
@@ -316,11 +319,17 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
 		-1
 	};
 
+	// Failure is not fatal here: shader hot-reload wants to keep running
+	// with the old pipeline when a rebuilt one doesn't come together.
 	VkPipeline graphicsPipeline;
-	vkCreateGraphicsPipelines(*pDevice, VK_NULL_HANDLE, 1, &graphicsPipelineCreateInfo, VK_NULL_HANDLE, &graphicsPipeline);
+	VkResult result = vkCreateGraphicsPipelines(*pDevice, VK_NULL_HANDLE, 1, &graphicsPipelineCreateInfo, NULL, &graphicsPipeline);
+	if (result != VK_SUCCESS){
+		fprintf(stderr, "vkCreateGraphicsPipelines failed (%d)\n", result);
+		return VK_NULL_HANDLE;
+	}
 	return graphicsPipeline;
 }
 
 void deleteGraphicsPipeline(VkDevice *pDevice, VkPipeline *pGraphicsPipeline){
-	vkDestroyPipeline(*pDevice, *pGraphicsPipeline, VK_NULL_HANDLE);
+	vkDestroyPipeline(*pDevice, *pGraphicsPipeline, NULL);
 }

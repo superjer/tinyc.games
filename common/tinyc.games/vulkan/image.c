@@ -37,7 +37,7 @@ VkImageView *createImageViews(VkDevice *pDevice, VkImage **ppImages, VkSurfaceFo
 
 	for(uint32_t i = 0; i < imageNumber; i++){
 		imageViewCreateInfo[i].sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		imageViewCreateInfo[i].pNext = VK_NULL_HANDLE;
+		imageViewCreateInfo[i].pNext = NULL;
 		imageViewCreateInfo[i].flags = 0;
 		imageViewCreateInfo[i].image = (*ppImages)[i];
 		imageViewCreateInfo[i].viewType = VK_IMAGE_VIEW_TYPE_2D;
@@ -45,7 +45,7 @@ VkImageView *createImageViews(VkDevice *pDevice, VkImage **ppImages, VkSurfaceFo
 		imageViewCreateInfo[i].components = componentMapping;
 		imageViewCreateInfo[i].subresourceRange = imageSubresourceRange;
 
-		vkCreateImageView(*pDevice, &(imageViewCreateInfo[i]), VK_NULL_HANDLE, &(imageViews[i]));
+		VKCHECK(vkCreateImageView(*pDevice, &(imageViewCreateInfo[i]), NULL, &(imageViews[i])));
 	}
 
 	free(imageViewCreateInfo);
@@ -54,6 +54,7 @@ VkImageView *createImageViews(VkDevice *pDevice, VkImage **ppImages, VkSurfaceFo
 
 void deleteImageViews(VkDevice *pDevice, VkImageView **ppImageViews, uint32_t imageViewNumber){
 	for(uint32_t i = 0; i < imageViewNumber; i++){
-		vkDestroyImageView(*pDevice, (*ppImageViews)[i], VK_NULL_HANDLE);
+		vkDestroyImageView(*pDevice, (*ppImageViews)[i], NULL);
 	}
+	free(*ppImageViews);
 }

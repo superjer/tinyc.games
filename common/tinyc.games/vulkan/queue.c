@@ -1,13 +1,8 @@
 #include "main.c"
 
-typedef enum drawAndPresentQueues {
-        SINGLE_QUEUE,
-        SEPARATE_QUEUES,
-} drawAndPresentQueues;
-
 uint32_t getQueueFamilyNumber(VkPhysicalDevice *pPhysicalDevice){
 	uint32_t queueFamilyNumber = 0;
-	vkGetPhysicalDeviceQueueFamilyProperties(*pPhysicalDevice, &queueFamilyNumber, VK_NULL_HANDLE);
+	vkGetPhysicalDeviceQueueFamilyProperties(*pPhysicalDevice, &queueFamilyNumber, NULL);
 	return queueFamilyNumber;
 }
 
@@ -21,45 +16,25 @@ void deleteQueueFamilyProperties(VkQueueFamilyProperties **ppQueueFamilyProperti
 	free(*ppQueueFamilyProperties);
 }
 
-uint32_t getBestGraphicsQueueFamilyIndex(VkQueueFamilyProperties *pQueueFamilyProperties, uint32_t queueFamilyNumber){
-	uint32_t bestCount = 0;
-        uint32_t bestIndex = 0;
-
+// The first queue family that can both draw and present to the surface.
+// Drawing and presenting on one queue is the normal desktop configuration.
+uint32_t getBestGraphicsQueueFamilyIndex(VkPhysicalDevice *pPhysicalDevice, VkSurfaceKHR *pSurface, VkQueueFamilyProperties *pQueueFamilyProperties, uint32_t queueFamilyNumber){
 	for (uint32_t i = 0; i < queueFamilyNumber; i++){
-		if ((pQueueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0){
-                        if (pQueueFamilyProperties[i].queueCount > bestCount){
-                                bestCount = pQueueFamilyProperties[i].queueCount;
-                                bestIndex = i;
-                        }
-		}
+		if ((pQueueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) == 0)
+			continue;
+
+		VkBool32 canPresent = VK_FALSE;
+		vkGetPhysicalDeviceSurfaceSupportKHR(*pPhysicalDevice, i, *pSurface, &canPresent);
+		if (canPresent)
+			return i;
 	}
 
-	return bestIndex;
-}
-
-drawAndPresentQueues getGraphicsQueueMode(VkQueueFamilyProperties *pQueueFamilyProperties, uint32_t graphicsQueueFamilyIndex){
-	// Force single queue mode - works around semaphore sync issues on some NVIDIA drivers
-	// when using separate queues for drawing and presenting
-	return SINGLE_QUEUE;
-	// if (pQueueFamilyProperties[graphicsQueueFamilyIndex].queueCount == 1){
-	// 	return SINGLE_QUEUE;
-	// }else{
-	// 	return SEPARATE_QUEUES;
-	// }
+	fprintf(stderr, "no queue family supports both graphics and present\n");
+	exit(-1);
 }
 
 VkQueue getDrawingQueue(VkDevice *pDevice, uint32_t graphicsQueueFamilyIndex){
 	VkQueue drawingQueue = VK_NULL_HANDLE;
 	vkGetDeviceQueue(*pDevice, graphicsQueueFamilyIndex, 0, &drawingQueue);
 	return drawingQueue;
-}
-
-VkQueue getPresentingQueue(VkDevice *pDevice, uint32_t graphicsQueueFamilyIndex, uint32_t graphicsQueueMode){
-	VkQueue presentingQueue = VK_NULL_HANDLE;
-	if (graphicsQueueMode == SINGLE_QUEUE){
-		vkGetDeviceQueue(*pDevice, graphicsQueueFamilyIndex, 0, &presentingQueue);
-	}else if (graphicsQueueMode == SEPARATE_QUEUES){
-		vkGetDeviceQueue(*pDevice, graphicsQueueFamilyIndex, 1, &presentingQueue);
-	}
-	return presentingQueue;
 }

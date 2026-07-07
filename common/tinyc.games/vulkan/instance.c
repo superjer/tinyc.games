@@ -3,10 +3,10 @@
 VkInstance createInstance(){
 	VkApplicationInfo applicationInfo = {
 		VK_STRUCTURE_TYPE_APPLICATION_INFO,
-		VK_NULL_HANDLE,
-		VK_NULL_HANDLE,
+		NULL,
+		NULL,
 		0,
-		VK_NULL_HANDLE,
+		NULL,
 		0,
 		VK_API_VERSION_1_0
 	};
@@ -20,7 +20,7 @@ VkInstance createInstance(){
 	uint32_t layerNumber = 0;
 	{
 		uint32_t count = 0;
-		vkEnumerateInstanceLayerProperties(&count, VK_NULL_HANDLE);
+		vkEnumerateInstanceLayerProperties(&count, NULL);
 		VkLayerProperties *props = calloc(count, sizeof *props);
 		vkEnumerateInstanceLayerProperties(&count, props);
 		for (uint32_t i = 0; i < count; i++)
@@ -33,6 +33,11 @@ VkInstance createInstance(){
 
 	uint32_t extensionNumber = 0;
 	const char *const *sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&extensionNumber);
+	if (!sdlExtensions)
+	{
+		fprintf(stderr, "SDL_Vulkan_GetInstanceExtensions failed: %s\n", SDL_GetError());
+		exit(-1);
+	}
 
 	// SDL's required extensions, with room for portability enumeration
 	const char *extensions[16];
@@ -46,9 +51,9 @@ VkInstance createInstance(){
 	#ifdef VK_KHR_portability_enumeration
 	{
 		uint32_t count = 0;
-		vkEnumerateInstanceExtensionProperties(VK_NULL_HANDLE, &count, VK_NULL_HANDLE);
+		vkEnumerateInstanceExtensionProperties(NULL, &count, NULL);
 		VkExtensionProperties *props = calloc(count, sizeof *props);
-		vkEnumerateInstanceExtensionProperties(VK_NULL_HANDLE, &count, props);
+		vkEnumerateInstanceExtensionProperties(NULL, &count, props);
 		for (uint32_t i = 0; i < count; i++)
 			if (strcmp(props[i].extensionName, VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME) == 0)
 			{
@@ -62,7 +67,7 @@ VkInstance createInstance(){
 
 	VkInstanceCreateInfo instanceCreateInfo = {
 		VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		flags,
 		&applicationInfo,
 		layerNumber,
@@ -72,7 +77,7 @@ VkInstance createInstance(){
 	};
 
 	VkInstance instance;
-	VkResult result = vkCreateInstance(&instanceCreateInfo, VK_NULL_HANDLE, &instance);
+	VkResult result = vkCreateInstance(&instanceCreateInfo, NULL, &instance);
 	if (result != VK_SUCCESS)
 	{
 		fprintf(stderr, "vkCreateInstance failed (%d) - is a Vulkan driver installed?\n", result);
@@ -82,5 +87,5 @@ VkInstance createInstance(){
 }
 
 void deleteInstance(VkInstance *pInstance){
-	vkDestroyInstance(*pInstance, VK_NULL_HANDLE);
+	vkDestroyInstance(*pInstance, NULL);
 }

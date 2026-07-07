@@ -1,16 +1,15 @@
 #include "main.c"
 
-VkDevice createDevice(VkPhysicalDevice *pPhysicalDevice, uint32_t queueFamilyIndex, VkQueueFamilyProperties *pQueueFamilyProperties){
-        float priorities[] = {1.0, 1.0};
-        uint32_t queueCount = (pQueueFamilyProperties[queueFamilyIndex].queueCount >= 2 ? 2 : 1);
+VkDevice createDevice(VkPhysicalDevice *pPhysicalDevice, uint32_t queueFamilyIndex){
+        float priority = 1.0f;
 
         VkDeviceQueueCreateInfo deviceQueueCreateInfo = {
                 VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                VK_NULL_HANDLE,
+                NULL,
                 0,
                 queueFamilyIndex,
-                queueCount,
-                priorities,
+                1,
+                &priority,
         };
 
         const char* extensions[] = {
@@ -23,37 +22,43 @@ VkDevice createDevice(VkPhysicalDevice *pPhysicalDevice, uint32_t queueFamilyInd
         // devices that advertise it (e.g. MoltenVK on Mac)
         {
                 uint32_t count = 0;
-                vkEnumerateDeviceExtensionProperties(*pPhysicalDevice, VK_NULL_HANDLE, &count, VK_NULL_HANDLE);
+                vkEnumerateDeviceExtensionProperties(*pPhysicalDevice, NULL, &count, NULL);
                 VkExtensionProperties *props = calloc(count, sizeof *props);
-                vkEnumerateDeviceExtensionProperties(*pPhysicalDevice, VK_NULL_HANDLE, &count, props);
+                vkEnumerateDeviceExtensionProperties(*pPhysicalDevice, NULL, &count, props);
                 for (uint32_t i = 0; i < count; i++)
                         if (strcmp(props[i].extensionName, extensions[1]) == 0)
                                 extensionNumber = 2;
                 free(props);
         }
 
-        VkPhysicalDeviceFeatures physicalDeviceFeatures;
-        vkGetPhysicalDeviceFeatures(*pPhysicalDevice, &physicalDeviceFeatures);
+        // Enable only the features we actually use. Enabling everything the
+        // GPU supports is legal but can cost performance (robustBufferAccess)
+        // and hides portability problems by letting shaders quietly rely on
+        // features another platform (e.g. MoltenVK) may lack.
+        VkPhysicalDeviceFeatures supportedFeatures;
+        vkGetPhysicalDeviceFeatures(*pPhysicalDevice, &supportedFeatures);
+        VkPhysicalDeviceFeatures enabledFeatures = {0};
+        enabledFeatures.geometryShader = supportedFeatures.geometryShader; // optional pipeline geometry stage
 
         VkDeviceCreateInfo deviceCreateInfo = {
                 VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-                VK_NULL_HANDLE,
+                NULL,
                 0,
                 1,
                 &deviceQueueCreateInfo,
                 0,
-                VK_NULL_HANDLE,
+                NULL,
                 extensionNumber,
                 extensions,
-                &physicalDeviceFeatures
+                &enabledFeatures
         };
 
         VkDevice device;
-        vkCreateDevice(*pPhysicalDevice, &deviceCreateInfo, VK_NULL_HANDLE, &device);
+        VKCHECK(vkCreateDevice(*pPhysicalDevice, &deviceCreateInfo, NULL, &device));
 
         return device;
 }
 
 void deleteDevice(VkDevice *pDevice){
-        vkDestroyDevice(*pDevice, VK_NULL_HANDLE);
+        vkDestroyDevice(*pDevice, NULL);
 }

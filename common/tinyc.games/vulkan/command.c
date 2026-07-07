@@ -3,31 +3,31 @@
 VkCommandPool createCommandPool(VkDevice *pDevice, uint32_t queueFamilyIndex){
 	VkCommandPoolCreateInfo commandPoolCreateInfo = {
 		VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
                 VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
 		queueFamilyIndex
 	};
 
 	VkCommandPool commandPool;
-	vkCreateCommandPool(*pDevice, &commandPoolCreateInfo, VK_NULL_HANDLE, &commandPool);
+	VKCHECK(vkCreateCommandPool(*pDevice, &commandPoolCreateInfo, NULL, &commandPool));
 	return commandPool;
 }
 
 void deleteCommandPool(VkDevice *pDevice, VkCommandPool *pCommandPool){
-	vkDestroyCommandPool(*pDevice, *pCommandPool, VK_NULL_HANDLE);
+	vkDestroyCommandPool(*pDevice, *pCommandPool, NULL);
 }
 
 VkCommandBuffer *createCommandBuffers(VkDevice *pDevice, VkCommandPool *pCommandPool, uint32_t commandBufferCount){
 	VkCommandBufferAllocateInfo commandBufferAllocateInfo = {
 		VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-		VK_NULL_HANDLE,
+		NULL,
 		*pCommandPool,
 		VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 		commandBufferCount
 	};
 
 	VkCommandBuffer *commandBuffers = (VkCommandBuffer *)malloc(commandBufferCount * sizeof(VkCommandBuffer));
-	vkAllocateCommandBuffers(*pDevice, &commandBufferAllocateInfo, commandBuffers);
+	VKCHECK(vkAllocateCommandBuffers(*pDevice, &commandBufferAllocateInfo, commandBuffers));
 	return commandBuffers;
 }
 
