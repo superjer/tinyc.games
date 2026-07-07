@@ -686,23 +686,20 @@ void glsetup()
                 {.location = 3, .binding = 0, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(struct vbufv, illum0)},
                 {.location = 4, .binding = 0, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(struct vbufv, glow0)},
                 {.location = 5, .binding = 0, .format = VK_FORMAT_R32_SFLOAT, .offset = offsetof(struct vbufv, alpha)},
-                {.location = 6, .binding = 0, .format = VK_FORMAT_R32_SFLOAT, .offset = offsetof(struct vbufv, scale)},
         };
 
         // Must create descriptor set layout BEFORE using it in pipeline creation
         createDescriptorSetLayout(&main_descriptor_set_layout);
         main_pipe = vulkan_make_pipeline("main.vert", "main.geom", "main.frag",
-                1, &mainBindingDesc, 7, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, 0);
+                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, 0);
         water_pipe = vulkan_make_pipeline("main.vert", "main.geom", "main.frag",
-                1, &mainBindingDesc, 7, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_BLEND);
+                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_BLEND);
 
         allocate_world();
 
         // Create per-frame UBOs to avoid race conditions
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
                 createUniformBuffer(&main_buffer[i], &main_memory[i]);
-
-        SDL_SetWindowRelativeMouseMode(vk.window, true);
 
         char *texture_files[] = {
                 TINYC_DIR "/blocko-game/assets/grass_top.png",       //  0
@@ -753,7 +750,7 @@ void glsetup()
         // Use main_descriptor_set_layout to access texture for alpha testing leaves
         shadow_pipe = vulkan_make_pipeline(
                 "shadow.vert", "shadow.geom", "shadow.frag",
-                1, &mainBindingDesc, 7, mainAttrDescs,
+                1, &mainBindingDesc, 6, mainAttrDescs,
                 &main_descriptor_set_layout, shadow_render_pass,
                 PIPE_DEPTH_BIAS | PIPE_NO_CULL);
 

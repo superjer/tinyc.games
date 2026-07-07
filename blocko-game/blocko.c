@@ -132,13 +132,14 @@ void main_loop()
 
         while (SDL_PollEvent(&event)) switch (event.type)
         {
-                case SDL_EVENT_QUIT:              game_shutdown(0);
+                case SDL_EVENT_QUIT:              if (!test_lock) game_shutdown(0);
+                                                  break;
                 case SDL_EVENT_KEY_DOWN:          key_move(1);       break;
                 case SDL_EVENT_TEXT_INPUT:        console_text(event.text.text); break;
                 case SDL_EVENT_KEY_UP:            key_move(0);       break;
-                case SDL_EVENT_MOUSE_MOTION:      mouse_move();      break;
-                case SDL_EVENT_MOUSE_BUTTON_DOWN: mouse_button(1);   break;
-                case SDL_EVENT_MOUSE_BUTTON_UP:   mouse_button(0);   break;
+                case SDL_EVENT_MOUSE_MOTION:      if (!test_lock) mouse_move();    break;
+                case SDL_EVENT_MOUSE_BUTTON_DOWN: if (!test_lock) mouse_button(1); break;
+                case SDL_EVENT_MOUSE_BUTTON_UP:   if (!test_lock) mouse_button(0); break;
                 case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                         resize();
                         break;
@@ -221,37 +222,6 @@ void new_game()
 
 void update_world()
 {
-        int i, x, y, z;
-        unsigned seed = SEED1(pframe);
-        for (i = 0; i < grass_enable * 500; i++) {
-                x = RANDI(1, TILESW - 2);
-                z = RANDI(1, TILESD - 2);
-
-                for (y = 1; y < TILESH - 1; y++) {
-                        if (0) ;
-                        else if (T_(x, y, z) == GRG1) T_(x, y, z) = GRG2;
-                        else if (T_(x, y, z) == GRG2) T_(x, y, z) = GRAS;
-                        else if (T_(x, y, z) == DIRT) {
-                                if (T_(x  , y-1, z  ) == OPEN && (
-                                    (T_(x  , y  , z+1) | 1) == GRAS ||
-                                    (T_(x  , y  , z-1) | 1) == GRAS ||
-                                    (T_(x+1, y  , z  ) | 1) == GRAS ||
-                                    (T_(x-1, y  , z  ) | 1) == GRAS ||
-                                    (T_(x  , y+1, z+1) | 1) == GRAS ||
-                                    (T_(x  , y+1, z-1) | 1) == GRAS ||
-                                    (T_(x+1, y+1, z  ) | 1) == GRAS ||
-                                    (T_(x-1, y+1, z  ) | 1) == GRAS ||
-                                    (T_(x  , y-1, z+1) | 1) == GRAS ||
-                                    (T_(x  , y-1, z-1) | 1) == GRAS ||
-                                    (T_(x+1, y-1, z  ) | 1) == GRAS ||
-                                    (T_(x-1, y-1, z  ) | 1) == GRAS) ) {
-                                        T_(x, y, z) = GRG1;
-                                }
-                                break;
-                        }
-                }
-        }
-
         float speed = speedy_sun ? 0.01f : 0.0001f;
         sun_pitch += speed * (reverse_sun ? -1 : 1);
         if (sun_pitch > TAU) sun_pitch -= TAU;

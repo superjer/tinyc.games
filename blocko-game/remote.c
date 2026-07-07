@@ -314,13 +314,6 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "(send 'regen' to rebuild the world with these)\n",
                         tree_enable);
         }
-        else if (!strncmp(cmd, "grass", 5))
-        {
-                int v;
-                if (sscanf(cmd + 5, "%d", &v) == 1)
-                        grass_enable = v;
-                p += snprintf(p, end-p, "grass %d\n", grass_enable);
-        }
         else if (!strncmp(cmd, "dump", 4))
         {
                 // raw world arrays to a file, for offline diffing
@@ -367,21 +360,44 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 sun_pitch = atof(cmd + 4);
                 p += snprintf(p, end-p, "ok\n");
         }
+        else if (!strncmp(cmd, "unlock", 6))
+        {
+                test_lock = 0;
+                p += snprintf(p, end-p, "unlocked\n");
+        }
+        else if (!strncmp(cmd, "lock", 4))
+        {
+                // "lock 0" unlocks; "lock <any message>" locks and shows it
+                // in the banner, so test scripts can report their progress
+                const char *m = cmd + 4;
+                while (*m == ' ') m++;
+                if (!strcmp(m, "0"))
+                        test_lock = 0;
+                else
+                {
+                        test_lock = 1;
+                        snprintf(test_lock_msg, sizeof test_lock_msg, "%s", m);
+                }
+                p += snprintf(p, end-p, "lock %d\n", test_lock);
+        }
         else if (!strncmp(cmd, "quit", 4))
         {
-                SDL_Event ev = { .type = SDL_EVENT_QUIT };
-                SDL_PushEvent(&ev);
+                // shut down after the reply is written - directly, not via
+                // SDL_EVENT_QUIT, which the test lock swallows
+                remote_want_quit = 1;
                 p += snprintf(p, end-p, "ok\n");
         }
         else
         {
-                p += snprintf(p, end-p, "commands: fps [reset] | timings [reset] | "
-                        "pos | tp <ax> <az> | walk <frames> | fly <frames> <bl/s> | "
-                        "turn <deg> | dist <blocks> | debounce <frames> | "
-                        "find <tile> <ax0> <az0> <ax1> <az1> | "
-                        "noise [<knob> <val>] | form [near <r>|<knob> <val>] | "
-                        "caves [<0|1>] | trees [<0|1>] | grass [<0|1>] | "
-                        "sum | regen | sun <pitch> | quit\n");
+                // one line per group so it fits the on-screen console
+                p += snprintf(p, end-p, "commands:\n"
+                        "fps [reset] | timings [reset] | pos | tp <ax> <az>\n"
+                        "walk <frames> | fly <frames> <bl/s> | turn <deg>\n"
+                        "dist <blocks> | debounce <frames>\n"
+                        "find <tile> <ax0> <az0> <ax1> <az1>\n"
+                        "noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
+                        "caves [<0|1>] | trees [<0|1>] | sum | dump [<path>]\n"
+                        "lock [<msg>|0] | regen | sun <pitch> | quit\n");
         }
 }
 
@@ -390,6 +406,8 @@ void remote_reply(int fd, const char *cmd)
         char out[8000];
         remote_dispatch(cmd, out, sizeof out);
         write(fd, out, strlen(out));
+        if (remote_want_quit)
+                game_shutdown(0);
 }
 
 // call once per rendered frame from the main loop
@@ -517,6 +535,8 @@ int console_key(int down)
                         if (console_input_len)
                         {
                                 remote_dispatch(console_input, console_reply, sizeof console_reply);
+                                if (remote_want_quit)
+                                        game_shutdown(0);
                                 console_input_len = 0;
                                 console_input[0] = '\0';
                         }

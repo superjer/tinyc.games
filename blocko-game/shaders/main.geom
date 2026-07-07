@@ -9,7 +9,6 @@ layout(location = 2) in vec4 illum_vs[];
 layout(location = 3) in vec4 glow_vs[];
 layout(location = 4) in float alpha_vs[];
 layout(location = 5) in vec4 world_pos_vs[];
-layout(location = 6) in float scale_vs[];
 
 layout(location = 0) flat out float tex;
 layout(location = 1) out float illum;
@@ -52,7 +51,7 @@ void main(void) {
     float sidel = 0.0f;
     vec4 a, b, c, d;
     vec3 face_normal;
-    float bs = push.bs * scale_vs[0];  // Apply LOD scale to block size
+    float bs = push.bs;
 
     switch (int(orient_vs[0])) {
         case 1: // UP (Y-)

@@ -10,43 +10,13 @@ static int sorter(const void * _a, const void * _b)
                (a->d <  b->d) ? -1 : 1;  // closest first
 }
 
-// LOD face visibility helpers - check if any block in the adjacent step x step area is see-through
-// For step=1 these reduce to the original single-block checks
-#define LOD_UP_VISIBLE(x, y, z, s) \
-        (y == 0 || IS_SEE_THROUGH(T_(x, y-1, z)) || \
-         (s > 1 && (IS_SEE_THROUGH(T_(x+1, y-1, z)) || \
-                    IS_SEE_THROUGH(T_(x, y-1, z+1)) || \
-                    IS_SEE_THROUGH(T_(x+1, y-1, z+1)))))
-
-#define LOD_DOWN_VISIBLE(x, y, z, s) \
-        (y+s >= TILESH || IS_SEE_THROUGH(T_(x, y+s, z)) || \
-         (s > 1 && (IS_SEE_THROUGH(T_(x+1, y+s, z)) || \
-                    IS_SEE_THROUGH(T_(x, y+s, z+1)) || \
-                    IS_SEE_THROUGH(T_(x+1, y+s, z+1)))))
-
-#define LOD_SOUTH_VISIBLE(x, y, z, s) \
-        (z == 0 || IS_SEE_THROUGH(T_(x, y, z-1)) || \
-         (s > 1 && (IS_SEE_THROUGH(T_(x+1, y, z-1)) || \
-                    IS_SEE_THROUGH(T_(x, y+1, z-1)) || \
-                    IS_SEE_THROUGH(T_(x+1, y+1, z-1)))))
-
-#define LOD_NORTH_VISIBLE(x, y, z, s) \
-        (z+s >= TILESD || IS_SEE_THROUGH(T_(x, y, z+s)) || \
-         (s > 1 && (IS_SEE_THROUGH(T_(x+1, y, z+s)) || \
-                    IS_SEE_THROUGH(T_(x, y+1, z+s)) || \
-                    IS_SEE_THROUGH(T_(x+1, y+1, z+s)))))
-
-#define LOD_WEST_VISIBLE(x, y, z, s) \
-        (x == 0 || IS_SEE_THROUGH(T_(x-1, y, z)) || \
-         (s > 1 && (IS_SEE_THROUGH(T_(x-1, y+1, z)) || \
-                    IS_SEE_THROUGH(T_(x-1, y, z+1)) || \
-                    IS_SEE_THROUGH(T_(x-1, y+1, z+1)))))
-
-#define LOD_EAST_VISIBLE(x, y, z, s) \
-        (x+s >= TILESW || IS_SEE_THROUGH(T_(x+s, y, z)) || \
-         (s > 1 && (IS_SEE_THROUGH(T_(x+s, y+1, z)) || \
-                    IS_SEE_THROUGH(T_(x+s, y, z+1)) || \
-                    IS_SEE_THROUGH(T_(x+s, y+1, z+1)))))
+// face visibility - draw a face only against a see-through neighbor
+#define UP_VISIBLE(x, y, z)    (y == 0          || IS_SEE_THROUGH(T_(x, y-1, z)))
+#define DOWN_VISIBLE(x, y, z)  (y+1 >= TILESH   || IS_SEE_THROUGH(T_(x, y+1, z)))
+#define SOUTH_VISIBLE(x, y, z) (z == 0          || IS_SEE_THROUGH(T_(x, y, z-1)))
+#define NORTH_VISIBLE(x, y, z) (z+1 >= TILESD   || IS_SEE_THROUGH(T_(x, y, z+1)))
+#define WEST_VISIBLE(x, y, z)  (x == 0          || IS_SEE_THROUGH(T_(x-1, y, z)))
+#define EAST_VISIBLE(x, y, z)  (x+1 >= TILESW   || IS_SEE_THROUGH(T_(x+1, y, z)))
 
 void build_meshes()
 {
@@ -108,9 +78,6 @@ void build_meshes()
 
                 unsigned char face_mask;
                 int use_lod;
-                int use_geo_lod = (dist_blocks >= LOD_GEO_DIST_THRESHOLD);
-                int step = use_geo_lod ? LOD_GEO_STEP : 1;
-                float scale = use_geo_lod ? LOD_GEO_SCALE : 1.0f;
 
                 if (dist_blocks < LOD_DIST_THRESHOLD) {
                         // Close chunk: full detail
@@ -146,28 +113,12 @@ void build_meshes()
                         struct vbufv *tw_start = tw;
 
                         #pragma omp for schedule(static)
-                        for (int z = zlo; z < zhi; z += step) {
-                        for (int x = xlo; x < xhi; x += step) for (int y = 0; y < TILESH; y += step)
+                        for (int z = zlo; z < zhi; z++) {
+                        for (int x = xlo; x < xhi; x++) for (int y = 0; y < TILESH; y++)
                         {
                                 if (tv >= tv_limit) break;
 
-                                // For LOD, scan all blocks in the step x step x step cell
-                                // Prefer blocks from top layer (lower y)
-                                int t = OPEN;
-                                if (step > 1) {
-                                        for (int dy = 0; dy < step && t == OPEN; dy++) {
-                                                if (y + dy >= TILESH) break;
-                                                for (int dz = 0; dz < step; dz++) {
-                                                        for (int dx = 0; dx < step; dx++) {
-                                                                int block = T_(x+dx, y+dy, z+dz);
-                                                                if (block != OPEN) { t = block; break; }
-                                                        }
-                                                        if (t != OPEN) break;
-                                                }
-                                        }
-                                } else {
-                                        t = T_(x, y, z);
-                                }
+                                int t = T_(x, y, z);
 
                                 if (t == OPEN && (!show_light_values || !in_test_area(x, y, z)))
                                         continue;
@@ -194,23 +145,21 @@ void build_meshes()
 
                                 if (t == GRAS)
                                 {
-                                        if ((face_mask & FACE_UP)    && LOD_UP_VISIBLE(x, y, z, step))    *tv++ = (struct vbufv){ 0,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1, scale };
-                                        if ((face_mask & FACE_SOUTH) && LOD_SOUTH_VISIBLE(x, y, z, step)) *tv++ = (struct vbufv){ 1, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1, scale };
-                                        if ((face_mask & FACE_NORTH) && LOD_NORTH_VISIBLE(x, y, z, step)) *tv++ = (struct vbufv){ 1, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1, scale };
-                                        if ((face_mask & FACE_WEST)  && LOD_WEST_VISIBLE(x, y, z, step))  *tv++ = (struct vbufv){ 1,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1, scale };
-                                        if ((face_mask & FACE_EAST)  && LOD_EAST_VISIBLE(x, y, z, step))  *tv++ = (struct vbufv){ 1,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1, scale };
-                                        if ((face_mask & FACE_DOWN)  && LOD_DOWN_VISIBLE(x, y, z, step))  *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1, scale };
+                                        if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ 0,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                        if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 1, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                        if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 1, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                        if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 1,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                        if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 1,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                        if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                                 }
-                                else if (t == DIRT || t == GRG1 || t == GRG2)
+                                else if (t == DIRT)
                                 {
-                                        int u = (t == DIRT) ? 2 :
-                                                (t == GRG1) ? 3 : 4;
-                                        if ((face_mask & FACE_UP)    && LOD_UP_VISIBLE(x, y, z, step))    *tv++ = (struct vbufv){ u,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1, scale };
-                                        if ((face_mask & FACE_SOUTH) && LOD_SOUTH_VISIBLE(x, y, z, step)) *tv++ = (struct vbufv){ 2, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1, scale };
-                                        if ((face_mask & FACE_NORTH) && LOD_NORTH_VISIBLE(x, y, z, step)) *tv++ = (struct vbufv){ 2, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1, scale };
-                                        if ((face_mask & FACE_WEST)  && LOD_WEST_VISIBLE(x, y, z, step))  *tv++ = (struct vbufv){ 2,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1, scale };
-                                        if ((face_mask & FACE_EAST)  && LOD_EAST_VISIBLE(x, y, z, step))  *tv++ = (struct vbufv){ 2,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1, scale };
-                                        if ((face_mask & FACE_DOWN)  && LOD_DOWN_VISIBLE(x, y, z, step))  *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1, scale };
+                                        if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ 2,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                        if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 2, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                        if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 2, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                        if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                        if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                        if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                                 }
                                 else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN ||
                                          t == RLEF || t == YLEF)
@@ -225,27 +174,27 @@ void build_meshes()
                                                 (t == RLEF) ? 16 :
                                                 (t == YLEF) ? 17 :
                                                                0 ;
-                                        if ((face_mask & FACE_UP)    && LOD_UP_VISIBLE(x, y, z, step))    *tv++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1, scale };
-                                        if ((face_mask & FACE_SOUTH) && LOD_SOUTH_VISIBLE(x, y, z, step)) *tv++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1, scale };
-                                        if ((face_mask & FACE_NORTH) && LOD_NORTH_VISIBLE(x, y, z, step)) *tv++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1, scale };
-                                        if ((face_mask & FACE_WEST)  && LOD_WEST_VISIBLE(x, y, z, step))  *tv++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1, scale };
-                                        if ((face_mask & FACE_EAST)  && LOD_EAST_VISIBLE(x, y, z, step))  *tv++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1, scale };
-                                        if ((face_mask & FACE_DOWN)  && LOD_DOWN_VISIBLE(x, y, z, step))  *tv++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1, scale };
+                                        if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                        if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                        if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                        if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                        if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                        if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                                 }
                                 else if (t == WATR)
                                 {
                                         if (y == 0        || T_(x  , y-1, z  ) == OPEN)
                                         {
-                                                                *tw++ = (struct vbufv){ 7,    UP, m, y+0.06f, n, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f, scale };
-                                                *tw++ = (struct vbufv){ 7,  DOWN, m, y-0.94f, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f, scale };
+                                                                *tw++ = (struct vbufv){ 7,    UP, m, y+0.06f, n, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f };
+                                                *tw++ = (struct vbufv){ 7,  DOWN, m, y-0.94f, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f };
                                         }
                                 }
                                 else if (t == LITE)
                                 {
-                                        *tw++ = (struct vbufv){ 18, SOUTH, m     , y, n+0.5f, use, usw, dse, dsw, 1.3f, 1.3f, 1.3f, 1.3f, 1, scale };
-                                        *tw++ = (struct vbufv){ 18, NORTH, m     , y, n-0.5f, unw, une, dnw, dne, 1.3f, 1.3f, 1.3f, 1.3f, 1, scale };
-                                        *tw++ = (struct vbufv){ 18,  WEST, m+0.5f, y, n     , usw, unw, dsw, dnw, 1.3f, 1.3f, 1.3f, 1.3f, 1, scale };
-                                        *tw++ = (struct vbufv){ 18,  EAST, m-0.5f, y, n     , une, use, dne, dse, 1.3f, 1.3f, 1.3f, 1.3f, 1, scale };
+                                        *tw++ = (struct vbufv){ 18, SOUTH, m     , y, n+0.5f, use, usw, dse, dsw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                        *tw++ = (struct vbufv){ 18, NORTH, m     , y, n-0.5f, unw, une, dnw, dne, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                        *tw++ = (struct vbufv){ 18,  WEST, m+0.5f, y, n     , usw, unw, dsw, dnw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                        *tw++ = (struct vbufv){ 18,  EAST, m-0.5f, y, n     , une, use, dne, dse, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
                                 }
 
                                 if (show_light_values && in_test_area(x, y, z))
@@ -258,8 +207,8 @@ void build_meshes()
                                                 ty = y - 1;
                                                 lit = 0.1f;
                                         }
-                                        *tw++ = (struct vbufv){ f,    UP, m, ty+0.99f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f, scale };
-                                        *tw++ = (struct vbufv){ f,  DOWN, m, ty-0.01f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f, scale };
+                                        *tw++ = (struct vbufv){ f,    UP, m, ty+0.99f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
+                                        *tw++ = (struct vbufv){ f,  DOWN, m, ty-0.01f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
                                 }
                         }
                         }

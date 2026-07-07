@@ -19,6 +19,7 @@ void jump(int down)
 void key_move(int down)
 {
         if (console_key(down)) return;
+        if (test_lock) return; // test running: only the console works
         if (event.key.repeat) return;
 
         switch (event.key.key)

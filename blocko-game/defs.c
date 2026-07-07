@@ -90,9 +90,6 @@
 // LOD settings
 #define LOD_DIST_THRESHOLD 160.0f  // distance in blocks before backface culling LOD kicks in
 #define LOD_ANGLE_SIN 0.259f       // sin(15°) - angular tolerance for face culling
-#define LOD_GEO_DIST_THRESHOLD 400.0f  // distance in blocks before geometric LOD kicks in
-#define LOD_GEO_STEP 2             // sample every Nth block (2 = 1 per 2x2x2 cube = 1/8th)
-#define LOD_GEO_SCALE 2.0f         // scale factor for geometric LOD blocks
 
 #define VERTEX_BUFLEN (CHUNKW*CHUNKD*32) // scales with chunk area (131072 at 64x64)
 #define MAX_MESH_THREADS 16
@@ -212,7 +209,9 @@ unsigned dumb_rand(unsigned *seed) { return (*seed = (1103515245 * *seed + 12345
 // random float in the range 0-1
 #define RAND01 ((double)RAND / 2147483648.0)
 // random int in the range lo to hi
-#define RANDI(lo,hi) ((RAND % (1 + (hi) - (lo))) + (lo))
+// the (int) cast matters: RAND is unsigned, so a negative result would
+// otherwise wrap to a huge value in float contexts (e.g. point structs)
+#define RANDI(lo,hi) ((int)(RAND % (1 + (hi) - (lo))) + (lo))
 // random float in the range lo to hi
 #define RANDF(lo,hi) (RAND01 * ((hi) - (lo)) + (lo))
 // random true/false, true pct percent of the time
@@ -329,7 +328,6 @@ struct vbufv {
     float illum0, illum1, illum2, illum3; // Location 3
     float glow0, glow1, glow2, glow3;  // Location 4
     float alpha;   // Location 5
-    float scale;   // Location 6 - LOD scale factor (1.0 = normal, 2.0 = LOD)
 } ShaderInput;
 
 struct vbufv vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding
@@ -460,7 +458,7 @@ unsigned int shadow_prog_id;
 //globals
 int frame = 0;
 int pframe = 0;
-unsigned world_seed = 160659;
+unsigned world_seed = 60659;
 int noisy = false;
 int vsync = false;
 int show_fresh_updates = false;
@@ -488,6 +486,13 @@ float moon_pitch;
 float sun_yaw = .3f;
 float sun_roll = -1.3f;
 char alert[800]; // only for debugging
+
+// test lock: automated test runs disable all input except the tilde
+// console (unlock by typing "lock 0" there) and show a banner
+int test_lock;
+char test_lock_msg[256];
+int remote_want_quit; // quit after the current reply is flushed
+void game_shutdown(int code);
 int main_pipe;     // main terrain rendering pipeline
 int water_pipe;    // transparent water rendering pipeline
 
@@ -509,7 +514,7 @@ enum {
     GPU_TS_COUNT
 };
 
-int mouselook = true;
+int mouselook = false; // start with the mouse free; click the window to capture
 int target_x, target_y, target_z;
 int place_x, place_y, place_z;
 int screenw = W;
@@ -522,7 +527,6 @@ int nr_meshes_built = 0;
 int chunk_gen_ticks = 0;
 int cave_enable = 1;
 int tree_enable = 1;
-int grass_enable = 1;
 // per-pass gen_chunk wall time, reported by the fps socket command
 enum { GEN_HMAP, GEN_SOIL, GEN_CAVES, GEN_WATER, GEN_TREES, GEN_LIGHT, GEN_CORNERS, GEN_PASSES };
 int gen_pass_ms[GEN_PASSES];

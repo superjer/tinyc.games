@@ -209,6 +209,17 @@ void debrief()
                 font_end(1, 0.5, 0);
         }
 
+        if (test_lock)
+        {
+                char banner[400];
+                snprintf(banner, sizeof banner,
+                        "TEST RUNNING - INPUT LOCKED\n%s\n(press ~ and type 'lock 0' to unlock)",
+                        test_lock_msg);
+                font_begin(screenw, screenh);
+                font_add_text(banner, screenw/2.5f, screenh/20.f, 0);
+                font_end(1, 0.6, 0.2);
+        }
+
         console_draw();
 }
 

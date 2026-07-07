@@ -7,7 +7,6 @@ layout(location = 0) in float tex_vs[];
 layout(location = 1) in float orient_vs[];
 layout(location = 2) in float alpha_vs[];
 layout(location = 3) in vec4 world_pos_vs[];
-layout(location = 4) in float scale_vs[];
 
 layout(location = 0) flat out float tex;
 layout(location = 1) out vec2 uv;
@@ -23,7 +22,7 @@ layout(push_constant) uniform Push {
 
 void main(void) {
     vec4 a, b, c, d;
-    float bs = push.bs * scale_vs[0];  // Apply LOD scale to block size
+    float bs = push.bs;
 
     switch (int(orient_vs[0])) {
         case 1: // UP

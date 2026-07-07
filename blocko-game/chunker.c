@@ -5,11 +5,14 @@
 #include "../common/tinyc.games/taylor_noise.c"
 #include "../common/tinyc.games/terrain.c"
 
-// cave systems live in absolute coords, one per region
-#define REGW (CHUNKW*16)
-#define REGD (CHUNKD*16)
-#define MAX_CAVE_POINTS 10000
+// cave systems live in absolute coords, one per region. the walk reflects
+// off the region walls and the world top/bottom, so caves stay where the
+// region's own chunks will carve them instead of wandering off unseen
+#define REGW (CHUNKW*4)
+#define REGD (CHUNKD*4)
+#define MAX_CAVE_POINTS 16000
 #define QCAVE(x,y,z,radius_sq) ((struct qcave){x, y, z, radius_sq})
+#define REFLECT(v, lo, hi) { if (v < (lo)) v = 2*(lo) - v; if (v > (hi)) v = 2*(hi) - v; }
 
 static void gen_pass(unsigned *t0, int which)
 {
@@ -141,11 +144,12 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
         int rxcenter = rxlo + REGW/2;
         int rzcenter = rzlo + REGD/2;
         struct point PC = (struct point){rxcenter, TILESH - RANDI(1, 25), rzcenter};
+        REFLECT(PC.y, 8, TILESH - 8);
         struct point P0;
         struct point P1;
         struct point P2;
         struct point P3 = PC;
-        int nr_caves = cave_enable ? RANDI(0, 100) : 0;
+        int nr_caves = cave_enable ? RANDI(0, 12) : 0;
 
         // cave system stretchiness
         int sx = RANDI(10, 60);
@@ -162,6 +166,17 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 P1 = (struct point){P0.x + RANDI(-sx, sx), P0.y + RANDI(-sy, sy), P0.z + RANDI(-sz, sz)};
                 P2 = (struct point){P1.x + RANDI(-sx, sx), P1.y + RANDI(-sy, sy), P1.z + RANDI(-sz, sz)};
                 P3 = (struct point){P2.x + RANDI(-sx, sx), P2.y + RANDI(-sy, sy), P2.z + RANDI(-sz, sz)};
+                // a bezier stays inside its control points' box, so
+                // reflecting the controls keeps the whole curve in bounds
+                REFLECT(P1.x, rxlo + 8, rxlo + REGW - 8);
+                REFLECT(P2.x, rxlo + 8, rxlo + REGW - 8);
+                REFLECT(P3.x, rxlo + 8, rxlo + REGW - 8);
+                REFLECT(P1.z, rzlo + 8, rzlo + REGD - 8);
+                REFLECT(P2.z, rzlo + 8, rzlo + REGD - 8);
+                REFLECT(P3.z, rzlo + 8, rzlo + REGD - 8);
+                REFLECT(P1.y, 8, TILESH - 8);
+                REFLECT(P2.y, 8, TILESH - 8);
+                REFLECT(P3.y, 8, TILESH - 8);
 
                 float root_radius = 0.f, delta = 0.f;
 
@@ -192,17 +207,20 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 }
         }
 
-        // carve caves
-        for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH-2; y++)
-                for (int i = 0; i < cave_p_len; i++)
-                {
-                        int dist_sq = DIST_SQ(cave_points[i].x - x, cave_points[i].y - y, cave_points[i].z - z);
-                        if (dist_sq <= cave_points[i].radius_sq)
-                        {
-                                TT_(x, y, z) = OPEN;
-                                break;
-                        }
-                }
+        // carve caves: each point hollows its little sphere, clipped to the
+        // range - cost scales with cave volume, not with column count
+        for (int i = 0; i < cave_p_len; i++)
+        {
+                struct qcave c = cave_points[i];
+                int r = (int)sqrtf((float)c.radius_sq);
+                int cxlo = MAX(c.x - r, xlo), cxhi = MIN(c.x + r, xhi - 1);
+                int czlo = MAX(c.z - r, zlo), czhi = MIN(c.z + r, zhi - 1);
+                int cylo = MAX(c.y - r, 0),   cyhi = MIN(c.y + r, TILESH - 3);
+                for (int x = cxlo; x <= cxhi; x++) for (int z = czlo; z <= czhi; z++)
+                        for (int y = cylo; y <= cyhi; y++)
+                                if (DIST_SQ(c.x - x, c.y - y, c.z - z) <= c.radius_sq)
+                                        TT_(x, y, z) = OPEN;
+        }
         gen_pass(&t0, GEN_CAVES);
 
         // set gndheight and initial lighting
