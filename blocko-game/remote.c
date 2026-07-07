@@ -12,12 +12,16 @@
 //   echo "tp 200 -1500" | nc -U /tmp/blocko.sock
 //
 // The tilde-key console runs the same commands through remote_dispatch().
+//
+// The socket transport is unix-only; on Windows only the console works.
 
+#ifndef _WIN32
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#endif
 
 #define REMOTE_RING 8192
 
@@ -44,6 +48,9 @@ int remote_walk_frames; // hold forward key for this many frames
 int remote_fly_frames;  // noclip along yaw for this many frames...
 float remote_fly_speed; // ...at this many blocks/sec (deterministic traversal)
 
+#ifdef _WIN32
+void remote_init() { fps_reset_count = SDL_GetPerformanceCounter(); }
+#else
 void remote_init()
 {
         const char *path = getenv("BLOCKO_SOCK");
@@ -70,6 +77,7 @@ void remote_init()
         fps_reset_count = SDL_GetPerformanceCounter();
         fprintf(stderr, "remote: listening on %s\n", path);
 }
+#endif // _WIN32
 
 int floatcmp(const void *a, const void *b)
 {
@@ -314,6 +322,15 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "(send 'regen' to rebuild the world with these)\n",
                         tree_enable);
         }
+        else if (!strncmp(cmd, "seed", 4))
+        {
+                int v;
+                if (sscanf(cmd + 4, "%d", &v) == 1)
+                        world_seed = v;
+                p += snprintf(p, end-p, "seed %d\n"
+                        "(send 'regen' to rebuild the world with these)\n",
+                        world_seed);
+        }
         else if (!strncmp(cmd, "cull", 4))
         {
                 // freeze/unfreeze chunk culling (same as the F2 key)
@@ -416,11 +433,12 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "dist <blocks> | debounce <frames>\n"
                         "find <tile> <ax0> <az0> <ax1> <az1>\n"
                         "noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
-                        "caves [<0|1>] | trees [<0|1>] | sum | dump [<path>]\n"
+                        "caves [<0|1>] | trees [<0|1>] | seed [<n>] | sum | dump [<path>]\n"
                         "cull [<0|1>] | lock [<msg>|0] | regen | sun <pitch> | quit\n");
         }
 }
 
+#ifndef _WIN32
 void remote_reply(int fd, const char *cmd)
 {
         char out[8000];
@@ -429,6 +447,7 @@ void remote_reply(int fd, const char *cmd)
         if (remote_want_quit)
                 game_shutdown(0);
 }
+#endif
 
 // call once per rendered frame from the main loop
 void remote_poll()
@@ -457,6 +476,7 @@ void remote_poll()
                 player[0].grav = GRAV_ZERO;
         }
 
+#ifndef _WIN32
         if (remote_listen_fd < 0) return;
 
         if (remote_client_fd < 0)
@@ -502,6 +522,7 @@ void remote_poll()
                         return; // no complete line yet - try again next frame
                 }
         }
+#endif // _WIN32
 }
 
 // ---- in-game console: tilde to open, runs the same commands ----

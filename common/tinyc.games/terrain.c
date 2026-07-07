@@ -6,7 +6,7 @@
 #include "utils.c"
 
 _Thread_local int get_height_hit, get_height_miss;
-int seed = 160659;
+int world_seed = 160659;
 
 float zigzag(float val, int zags)
 {
@@ -22,12 +22,12 @@ float zigzag(float val, int zags)
 float get_height(int x, int y)
 {
         struct hmemo {
-                int x, y;
+                int x, y, seed;
                 float val;
         };
         static _Thread_local struct hmemo hmemos[37][1217];
         struct hmemo *m = &hmemos[(x + 0x01000000) % 37][(y + 0x01000000) % 1217];
-        if (m->x == x && m->y == y && m->val)
+        if (m->x == x && m->y == y && m->seed == world_seed && m->val)
         {
                 get_height_hit++;
                 return m->val;
@@ -38,23 +38,23 @@ float get_height(int x, int y)
         //if (x < 20 && y < 640) return (y - 240) / 20 / 20.f;
 
         float val = .05f 
-                + noise(x, y, 1300, seed, 2) * .6f
-                + noise(x, y,  800, seed, 1) * .30f
-                + noise(x, y,  400, seed, 1) * .15f
-                + noise(x, y,  200, seed, 1) * .08f
-                + noise(x, y,  100, seed, 1) * .04f;
+                + noise(x, y, 1300, world_seed, 2) * .6f
+                + noise(x, y,  800, world_seed, 1) * .30f
+                + noise(x, y,  400, world_seed, 1) * .15f
+                + noise(x, y,  200, world_seed, 1) * .08f
+                + noise(x, y,  100, world_seed, 1) * .04f;
         
         // basic slope
         //val = x * .0007f + .3f;
         
         //val += (zigzag(val, 100) - .5f) * .02f;
 
-        float plateauness = remap(noise(x, y, 1200, seed^34899346, 1), .50f, .55f, 0.f, 1.f);
+        float plateauness = remap(noise(x, y, 1200, world_seed^34899346, 1), .50f, .55f, 0.f, 1.f);
         if (plateauness > 0.f)
         {
-                float T1 = remap(noise(x, y, 700, seed, 8), 0.f, 1.f, .47f, .51f);
-                float T2 = T1 + remap(noise(x, y, 212, seed, 2), 0.f, 1.f, -.02f, .12f);
-                float T3 = T2 + remap(noise(x, y, 274, seed, 2), 0.f, 1.f, -.02f, .12f);
+                float T1 = remap(noise(x, y, 700, world_seed, 8), 0.f, 1.f, .47f, .51f);
+                float T2 = T1 + remap(noise(x, y, 212, world_seed, 2), 0.f, 1.f, -.02f, .12f);
+                float T3 = T2 + remap(noise(x, y, 274, world_seed, 2), 0.f, 1.f, -.02f, .12f);
                 float shelf_val = val;
                 if (shelf_val <= .48f)
                         shelf_val = excl_remap(shelf_val, .46f, .48f, .46f       , T1         );
@@ -76,7 +76,7 @@ float get_height(int x, int y)
         // big oceans: a very low frequency mask presses lowlands below sea
         // level (0.5); the mountain pass in get_filtered_height runs after
         // this and can still raise islands out of the water
-        float oceaniness = remap(noise(x, y, 9000, seed^41741741, 2), .53f, .61f, 0.f, 1.f);
+        float oceaniness = remap(noise(x, y, 9000, world_seed^41741741, 2), .53f, .61f, 0.f, 1.f);
         if (oceaniness > 0.f)
         {
                 float ocean_floor = .38f + .10f * val; // keep a little relief
@@ -85,6 +85,7 @@ float get_height(int x, int y)
 
         m->x = x;
         m->y = y;
+        m->seed = world_seed;
         m->val = val;
         return val;
 }
@@ -104,7 +105,7 @@ float get_filtered_height(int x, int y)
                 if (dist < 1.f)
                 {
                         float ang =  .7f * (1.f - dist) * (1.f - dist) * (1.f - dist)
-                                * remap(noise(x, y, 1080, seed, 3), .5f, 1.f, 0.f, 10.f);
+                                * remap(noise(x, y, 1080, world_seed, 3), .5f, 1.f, 0.f, 10.f);
                         x2 = originx + tx * cosf(ang) - ty * sinf(ang);
                         y2 = originy + tx * sinf(ang) + ty * cosf(ang);
                 }
@@ -120,7 +121,7 @@ float get_filtered_height(int x, int y)
                 if (dist < 1.f)
                 {
                         float ang = -.7f * (1.f - dist) * (1.f - dist) * (1.f - dist)
-                                * remap(noise(x, y, 1120, seed, 3), .5f, 1.f, 0.f, 10.f);
+                                * remap(noise(x, y, 1120, world_seed, 3), .5f, 1.f, 0.f, 10.f);
                         x2 = originx + tx * cosf(ang) - ty * sinf(ang);
                         y2 = originy + tx * sinf(ang) + ty * cosf(ang);
                 }
@@ -146,13 +147,13 @@ float get_filtered_height(int x, int y)
 
         float h = get_height(x2, y2);
 
-        float mountains = noise(x, y, 1200, seed^46447731, 2);
+        float mountains = noise(x, y, 1200, world_seed^46447731, 2);
         if (mountains > .7f)
         {
                 mountains -= .7f;
                 mountains *= 3.f;
 
-                float calds = noise(x, y, 140, seed^96264448, 2);
+                float calds = noise(x, y, 140, world_seed^96264448, 2);
                 if (calds > .59f)
                 {
                         mountains -= (calds - .59f);
@@ -163,7 +164,7 @@ float get_filtered_height(int x, int y)
                         mountains -= (calds - .59f);
                 }
 
-                float stacks = noise(x, y, 205, seed^77000325, 1);
+                float stacks = noise(x, y, 205, world_seed^77000325, 1);
                 if (stacks > .61f)
                 {
                         stacks -= .61f;
@@ -174,28 +175,28 @@ float get_filtered_height(int x, int y)
                         h += mountains;
         }
 
-        float mounds = noise(x, y, 290, seed^98453517, 1);
+        float mounds = noise(x, y, 290, world_seed^98453517, 1);
         if (mounds > .65f)
         {
                 mounds -= .65f;
                 h += mounds;
         }
 
-        float lumps = noise(x, y, 175, seed^36447731, 1);
+        float lumps = noise(x, y, 175, world_seed^36447731, 1);
         if (lumps > .65f)
         {
                 lumps -= .65f;
                 h += lumps;
         }
 
-        float pits = noise(x, y, 430, seed^77488339, 2);
+        float pits = noise(x, y, 430, world_seed^77488339, 2);
         if (pits > .65f)
         {
                 pits -= .65f;
                 h -= pits;
         }
 
-        float smoothouts = noise(x, y, 990, seed^13546936, 1);
+        float smoothouts = noise(x, y, 990, world_seed^13546936, 1);
         if (smoothouts > .65f)
         {
                 float s = remap(smoothouts, .65f, 1.f, 0.f, 1000.f);
@@ -209,13 +210,13 @@ float get_filtered_height(int x, int y)
         // mountain ranges: a broad mask picks range regions, folded ("ridged")
         // noise carves crests and valleys inside them; amplitude rides the
         // crests so ranges crossing ocean surface as island chains
-        float mrange = remap(noise(x, y, 4000, seed^11223344, 2), .60f, .72f, 0.f, 1.f);
+        float mrange = remap(noise(x, y, 4000, world_seed^11223344, 2), .60f, .72f, 0.f, 1.f);
         if (mrange > 0.f)
         {
-                float r1 = noise(x, y, 700, seed^22334455, 2);
+                float r1 = noise(x, y, 700, world_seed^22334455, 2);
                 float ridge = 1.f - 2.f * fabsf(r1 - .5f); // 1 at ridgelines
                 ridge *= ridge;
-                float r2 = noise(x, y, 250, seed^33445566, 2);
+                float r2 = noise(x, y, 250, world_seed^33445566, 2);
                 float ridge2 = 1.f - 2.f * fabsf(r2 - .5f);
                 h += mrange * (.05f + .55f * ridge + .18f * ridge2 * ridge2);
         }

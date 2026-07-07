@@ -1,6 +1,17 @@
 cmake_minimum_required(VERSION 3.11)
 project(TinyCGames C)
 
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+# Multi-config generators (Visual Studio, Xcode) default to per-config output
+# dirs like build/Debug; keep executables in the build root, next to shaders/
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+foreach(CONFIG ${CMAKE_CONFIGURATION_TYPES})
+  string(TOUPPER ${CONFIG} CONFIG_UPPER)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${CONFIG_UPPER} ${CMAKE_BINARY_DIR})
+endforeach()
+
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/common/build-config.h.in
   ${CMAKE_CURRENT_BINARY_DIR}/build-config.h
@@ -29,8 +40,17 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(SDL3_ttf)
 
 find_library(MATH_LIBRARY m)
-find_package(OpenMP REQUIRED)
+find_package(OpenMP) # optional: Apple Clang has none; blocko falls back to NO_OMPH
 find_package(Vulkan REQUIRED)
+
+# glslangValidator ships with the Vulkan SDK
+find_program(GLSLANG_VALIDATOR glslangValidator
+  HINTS $ENV{VULKAN_SDK}/bin $ENV{VULKAN_SDK}/Bin)
+if(NOT GLSLANG_VALIDATOR)
+  message(FATAL_ERROR "glslangValidator not found - install the Vulkan SDK "
+    "(https://vulkan.lunarg.com) and make sure its bin directory is in PATH "
+    "or VULKAN_SDK is set")
+endif()
 
 add_executable(flappy flappy-game/flappy.c)
 add_executable(tet tet-game/tet.c)
@@ -48,7 +68,13 @@ target_include_directories(noise PRIVATE ${CMAKE_BINARY_DIR})
 
 target_link_libraries(flappy PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
 target_link_libraries(tet PRIVATE SDL3::SDL3 Vulkan::Vulkan)
-target_link_libraries(blocko PRIVATE OpenMP::OpenMP_C SDL3::SDL3 Vulkan::Vulkan)
+target_link_libraries(blocko PRIVATE SDL3::SDL3 Vulkan::Vulkan)
+if(OpenMP_C_FOUND)
+  target_link_libraries(blocko PRIVATE OpenMP::OpenMP_C)
+else()
+  message(STATUS "OpenMP not found - building blocko without it (NO_OMPH)")
+  target_compile_definitions(blocko PRIVATE NO_OMPH)
+endif()
 target_link_libraries(maker PRIVATE SDL3::SDL3)
 target_link_libraries(zel PRIVATE SDL3::SDL3)
 target_link_libraries(noise PRIVATE SDL3::SDL3 Vulkan::Vulkan)
@@ -92,7 +118,7 @@ foreach(SHADER ${SHADER_FILES})
   set(COMPILED_SHADER ${CMAKE_BINARY_DIR}/shaders/${SHADER_NAME}.spv)
   add_custom_command(
     OUTPUT ${COMPILED_SHADER}
-    COMMAND glslangValidator --quiet -V ${CMAKE_SOURCE_DIR}/${SHADER} -o ${COMPILED_SHADER}
+    COMMAND ${GLSLANG_VALIDATOR} --quiet -V ${CMAKE_SOURCE_DIR}/${SHADER} -o ${COMPILED_SHADER}
     DEPENDS ${CMAKE_SOURCE_DIR}/${SHADER}
     COMMENT "Compiling shader: ${SHADER}"
   )
@@ -124,4 +150,5 @@ if(WIN32)
   copy_dlls(blocko)
   copy_dlls(maker)
   copy_dlls(zel)
+  copy_dlls(noise)
 endif()

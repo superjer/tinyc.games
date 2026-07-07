@@ -388,8 +388,13 @@ void font_init()
 
         // === Create font pipeline with alpha blending ===
         uint32_t vert_size = 0, frag_size = 0;
-        char *vert_code = getShaderCode("shaders/font.vert.spv", &vert_size);
-        char *frag_code = getShaderCode("shaders/font.frag.spv", &frag_size);
+        char *vert_code = getShaderCode(TINYC_SPV_DIR "font.vert.spv", &vert_size);
+        char *frag_code = getShaderCode(TINYC_SPV_DIR "font.frag.spv", &frag_size);
+        if (!vert_code || !frag_code)
+        {
+                fprintf(stderr, "font shaders not found in " TINYC_SPV_DIR "\n");
+                exit(-1);
+        }
 
         VkShaderModule vert_module = createShaderModule(&vk.device, vert_code, vert_size);
         VkShaderModule frag_module = createShaderModule(&vk.device, frag_code, frag_size);

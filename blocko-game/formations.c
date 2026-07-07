@@ -12,7 +12,7 @@
 // construction. The chunker asks each column for extra solid y-spans
 // (form_spans) and stamps them as stone.
 //
-// Everything derives from noise_hash(cell, seed): deterministic across
+// Everything derives from noise_hash(cell, world_seed): deterministic across
 // platforms and threads, same guarantees as taylor noise.
 
 #define FORM_CELL 64            // one formation max per cell of this size
@@ -126,12 +126,12 @@ struct formation *get_formation(int ci, int cj)
         f->state = 1;
         f->n = 0;
 
-        unsigned s = noise_hash(ci, cj, seed ^ 0xB10B);
+        unsigned s = noise_hash(ci, cj, world_seed ^ 0xB10B);
         if (!s) s = 1;
 
         // clustered, not sprinkled: only cells inside a low-frequency mask
         float region = noise(ci * FORM_CELL + FORM_CELL/2, cj * FORM_CELL + FORM_CELL/2,
-                        2500, seed ^ 0x0F0F0F0F, 2);
+                        2500, world_seed ^ 0x0F0F0F0F, 2);
         if (region < form_region || FRAND01(s) > form_chance)
                 return f;
 
@@ -226,7 +226,7 @@ int form_spans(int ax, int az, int *lo, int *hi, int max)
                         float hu = hd;
                         if (sq < .5f)
                         {
-                                unsigned bs = noise_hash(i * FORM_MAX_SPHERES + k, j, seed ^ 0x715A);
+                                unsigned bs = noise_hash(i * FORM_MAX_SPHERES + k, j, world_seed ^ 0x715A);
                                 if (!bs) bs = 1;
                                 float ex = dx - (FRAND01(bs) - .5f) * .8f * r;
                                 float ez = dz - (FRAND01(bs) - .5f) * .8f * r;
@@ -242,7 +242,7 @@ int form_spans(int ax, int az, int *lo, int *hi, int max)
                         // per-column grit chews pits into the top surface
                         if (grit < 0.f)
                         {
-                                unsigned es = noise_hash(ax, az, seed ^ 0xE60DE);
+                                unsigned es = noise_hash(ax, az, world_seed ^ 0xE60DE);
                                 if (!es) es = 1;
                                 grit = 1.6f * FRAND01(es) - .8f;
                                 if (grit < 0.f) grit = 0.f; // half the columns unchewed

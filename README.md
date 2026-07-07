@@ -39,9 +39,11 @@ Anything that supports CMake should work. But here are some suggestions for vari
 1. Install Visual Studio (you can use the free Community Edition)
    Make sure to check the box for "C++ CMake Tools for Windows." This may be under "Desktop development with C++"
 
-2. Open the tinyc.games folder in Visual Studio. It should detect the CMake config and set everything up
+2. Install the [Vulkan SDK](https://vulkan.lunarg.com) (needed for the Vulkan headers and the shader compiler)
 
-3. Use the play button to build & run, e.g. `blocko.exe`
+3. Open the tinyc.games folder in Visual Studio. It should detect the CMake config and set everything up
+
+4. Use the play button to build & run, e.g. `blocko.exe`
 
 ### Linux
 
@@ -73,9 +75,18 @@ Anything that supports CMake should work. But here are some suggestions for vari
 
 1. Install CMake. For example if you have Homebrew, run `brew install cmake`
 
-2. In the tinyc.games directory, run `cmake . -G Xcode` to generate an Xcode project file
+2. Install the [Vulkan SDK](https://vulkan.lunarg.com) for macOS (provides MoltenVK, which runs Vulkan on top of Metal)
 
-3. Open the project file with Xcode
+3. Create a build directory and generate an Xcode project file
+    ```
+    mkdir build
+    cd build
+    cmake .. -G Xcode
+    ```
+
+4. Open the project file with Xcode
+
+Note: Blocko currently uses geometry shaders, which MoltenVK does not support, so it will not run on Mac. The other games should work.
 
 ## Next?
 

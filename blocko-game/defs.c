@@ -31,7 +31,11 @@
 
 
 #ifndef TERRAIN_THREAD
+#ifdef NO_OMPH // without OpenMP the worker sections in main() never run
+#define TERRAIN_THREAD 0
+#else
 #define TERRAIN_THREAD 1           // whether to put terrain generation in its own thread
+#endif
 #endif
 
 #define W 1920                     // window width, height
@@ -453,7 +457,6 @@ unsigned int shadow_prog_id;
 //globals
 int frame = 0;
 int pframe = 0;
-unsigned world_seed = 60659;
 int noisy = false;
 int show_shadow_map = false;
 int help_layer = 0;

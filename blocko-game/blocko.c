@@ -26,6 +26,9 @@
 #include <stdbool.h>
 #define GL3_PROTOTYPES 1
 
+#define TINYC_DIR ".."
+#include "build-config.h"
+
 #define SDL_DISABLE_IMMINTRIN_H
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -37,9 +40,6 @@
 #define STBI_NO_SIMD
 #define STB_IMAGE_IMPLEMENTATION
 #include "../common/nothings/stb_image.h"
-
-#define TINYC_DIR ".."
-#include "build-config.h"
 
 #include "timer.c"
 #include "vector.c"
@@ -69,20 +69,24 @@ void update_world();
 
 int main(int argc, char **argv)
 {
+        world_seed = time(NULL);
+
         for (int i = 1; i < argc; i++)
         {
                 if      (!strcmp(argv[i], "--noise-kernel2"))                    noise_kernel_sq = 1;
                 else if (!strcmp(argv[i], "--noise-nvary"))                      noise_nvary = 1;
                 else if (!strcmp(argv[i], "--noise-contrast") && i + 1 < argc)   noise_base_weight = atof(argv[++i]);
                 else if (!strcmp(argv[i], "--noise-aniso") && i + 1 < argc)      noise_aniso = atof(argv[++i]);
+                else if (!strcmp(argv[i], "--seed") && i + 1 < argc)             world_seed = atoi(argv[++i]);
                 else
                 {
-                        fprintf(stderr, "usage: %s [--noise-kernel2] [--noise-nvary] "
+                        fprintf(stderr, "usage: %s [--seed <n>] [--noise-kernel2] [--noise-nvary] "
                                 "[--noise-contrast <weight>] [--noise-aniso <0..1>]\n", argv[0]);
                         return 1;
                 }
         }
 
+        fprintf(stderr, "world seed: %d\n", world_seed);
         omp_set_nested(1); // needed or omp won't parallelize chunk gen
         fprintf(stderr, "OpenMP threads available: %d\n", omp_get_max_threads());
         startup();
