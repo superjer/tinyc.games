@@ -2,64 +2,6 @@
 #ifndef BLOCKO_TEST_C_INCLUDED
 #define BLOCKO_TEST_C_INCLUDED
 
-int in_test_area(int x, int y, int z)
-{
-        return fabsf(x - player[0].pos.x / BS) < 16 &&
-               floorf(y - player[0].pos.y / BS) == 0 &&
-               fabsf(z - player[0].pos.z / BS) < 16;
-}
-
-void build_test_area()
-{
-        int tx = test_area_x = CLAMP(player[0].pos.x / BS - TEST_AREA_SZ/2, 0, TILESW - TEST_AREA_SZ);
-        int ty = test_area_y = CLAMP(player[0].pos.y / BS + 1             , 0, TILESH - 10          );
-        int tz = test_area_z = CLAMP(player[0].pos.z / BS - TEST_AREA_SZ/2, 0, TILESD - TEST_AREA_SZ);
-
-        show_light_values = true;
-
-        for (int x = tx; x < tx+TEST_AREA_SZ; x++) for (int z = tz; z < tz+TEST_AREA_SZ; z++) for (int y = 0; y < ty+20; y++)
-        {
-                int on_edge = (x == tx || x == tx+TEST_AREA_SZ-1 || z == tz || z == tz+TEST_AREA_SZ-1);
-                if (y == ty - 5) // ceiling
-                {
-                        if (on_edge)
-                        {
-                                T_(x, y, z) = OPEN;
-                                SUN_(x, y, z) = 15;
-                        }
-                        else
-                        {
-                                T_(x, y, z) = GRAN;
-                                SUN_(x, y, z) = 0;
-                                GNDH_(x, z) = y;
-                        }
-                }
-                else if (y < ty + 1) // space inside
-                {
-                        T_(x, y, z) = OPEN;
-                        SUN_(x, y, z) = 0;
-                        if (on_edge)
-                        {
-                                GNDH_(x, z) = y;
-                                sun_enqueue(x, y, z, 0, 15);
-                        }
-                }
-                else // floor
-                {
-                        T_(x, y, z) = GRAN;
-                        SUN_(x, y, z) = 0;
-                }
-
-        }
-
-        recalc_corner_lighting(tx, tx + TEST_AREA_SZ, tz, tz + TEST_AREA_SZ);
-
-        // Mark all affected chunks as dirty
-        for (int cx = B2C(tx); cx <= B2C(tx + TEST_AREA_SZ); cx++)
-                for (int cz = B2C(tz); cz <= B2C(tz + TEST_AREA_SZ); cz++)
-                        DIRTY_(cx, cz) = 1;
-}
-
 void debrief()
 {
         font_frame_reset();  // Reset font buffer offset for this frame
@@ -136,14 +78,11 @@ void debrief()
         {
                 char xyzbuf[100];
                 snprintf(xyzbuf, 100,
-                                "X=%0.0f Y=%0.0f Z=%0.0f drawdist=%.0f %svsync %sreg %smsaa %sfast %scull %slock",
+                                "X=%0.0f Y=%0.0f Z=%0.0f drawdist=%.0f %sreg %sfast %slock",
                                 player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS,
                                 draw_dist,
-                                vsync           ? "" : "no",
                                 regulated       ? "" : "no",
-                                antialiasing    ? "" : "no",
                                 fast > 1        ? "" : "no",
-                                frustum_culling ? "" : "no",
                                 lock_culling    ? "" : "no");
 
                 font_begin(screenw, screenh);
@@ -177,8 +116,8 @@ void debrief()
 
         if (help_layer == 2)
         {
-                char *g1 = "~          \nQ     \nF   \nN       \nP       \nT       \nL         \nM             \nV    \nR             \n/   \nF1     \nF2          \nF3                    \nF4                \nF5";
-                char *g2 = "Command console\nGo up!\nFast\nRev. sun\nFast sun\nTest box\nLight vals\nShadow mapping\nVsync\nFixed interval\nMSAA\nCulling\nLock culling\nFPS, timings, position\nShow fresh updates\nReload shaders";
+                char *g1 = "~\nQ\nF\nN\nP\nM\nR\nF2\nF3\nF5";
+                char *g2 = "Command console\nGo up!\nFast\nRev. sun\nFast sun\nShadow mapping\nFixed interval\nLock culling\nFPS, timings, position\nReload shaders";
                 font_begin(screenw, screenh);
                 font_add_text(g1, screenw/100.f, screenh/4.f, 0);
                 font_end(0.5, 1, 1);

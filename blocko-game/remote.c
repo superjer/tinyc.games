@@ -314,6 +314,26 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "(send 'regen' to rebuild the world with these)\n",
                         tree_enable);
         }
+        else if (!strncmp(cmd, "cull", 4))
+        {
+                // freeze/unfreeze chunk culling (same as the F2 key)
+                int v;
+                if (sscanf(cmd + 4, "%d", &v) == 1)
+                        lock_culling = v;
+                int cam = 0, x0 = VAOW, x1 = -1, z0 = VAOD, z1 = -1;
+                for (int k = 0; k < visible_chunk_count; k++)
+                {
+                        if (!visible_chunks[k].camera_visible) continue;
+                        cam++;
+                        if (visible_chunks[k].x < x0) x0 = visible_chunks[k].x;
+                        if (visible_chunks[k].x > x1) x1 = visible_chunks[k].x;
+                        if (visible_chunks[k].z < z0) z0 = visible_chunks[k].z;
+                        if (visible_chunks[k].z > z1) z1 = visible_chunks[k].z;
+                }
+                p += snprintf(p, end-p, "lock_culling %d camera_chunks %d total_chunks %d "
+                        "bounds x %d..%d z %d..%d\n",
+                        lock_culling, cam, visible_chunk_count, x0, x1, z0, z1);
+        }
         else if (!strncmp(cmd, "dump", 4))
         {
                 // raw world arrays to a file, for offline diffing
@@ -397,7 +417,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "find <tile> <ax0> <az0> <ax1> <az1>\n"
                         "noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
                         "caves [<0|1>] | trees [<0|1>] | sum | dump [<path>]\n"
-                        "lock [<msg>|0] | regen | sun <pitch> | quit\n");
+                        "cull [<0|1>] | lock [<msg>|0] | regen | sun <pitch> | quit\n");
         }
 }
 

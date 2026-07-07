@@ -120,7 +120,7 @@ void build_meshes()
 
                                 int t = T_(x, y, z);
 
-                                if (t == OPEN && (!show_light_values || !in_test_area(x, y, z)))
+                                if (t == OPEN)
                                         continue;
 
                                 //lighting
@@ -197,19 +197,6 @@ void build_meshes()
                                         *tw++ = (struct vbufv){ 18,  EAST, m-0.5f, y, n     , une, use, dne, dse, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
                                 }
 
-                                if (show_light_values && in_test_area(x, y, z))
-                                {
-                                        int f = MAX(GLO_(x, y, z), SUN_(x, y, z)) + PNG0;
-                                        int ty = y;
-                                        float lit = 1.f;
-                                        if (IS_OPAQUE(x, y, z))
-                                        {
-                                                ty = y - 1;
-                                                lit = 0.1f;
-                                        }
-                                        *tw++ = (struct vbufv){ f,    UP, m, ty+0.99f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
-                                        *tw++ = (struct vbufv){ f,  DOWN, m, ty-0.01f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
-                                }
                         }
                         }
 

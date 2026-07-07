@@ -337,6 +337,11 @@ void apply_scoot()
                         // stored shadow matrices expect the old window coords
                         for (int i = 0; i < SHADOW_COUNT; i++)
                                 retranslate(shadow[i].matrix, -dx * (float)BS, 0.f, -dz * (float)BS);
+
+                        // so does the (possibly locked) chunk-culling frustum
+                        retranslate(cull_mtrx, -dx * (float)BS, 0.f, -dz * (float)BS);
+                        cull_x += dx * BS;
+                        cull_z += dz * BS;
                 }
 
                 scootx = future_scootx * CHUNKW;

@@ -45,24 +45,26 @@ Anything that supports CMake should work. But here are some suggestions for vari
 
 ### Linux
 
-1. Create a build directory inside tinyc.games
+1. Install CMake and Vulkan-SDK (Depends on your system)
+
+2. Create a build directory inside tinyc.games
     ```
     mkdir build
     cd build
     ```
 
-2. Run CMake to fetch libraries and create build scripts
+3. Run CMake to fetch libraries and create build scripts
     ```
     cmake ..
     ```
 
-3. Build!
+4. Build!
     ```
     cmake --build .                   # build all games
     cmake --build . --target=blocko   # build only blocko
     ```
 
-4. Run, for example, blocko
+5. Run, for example, blocko
     ```
     ./blocko
     ```

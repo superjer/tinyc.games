@@ -78,29 +78,8 @@ void key_move(int down)
                                 fprintf(stderr, "%s\n", regulated ? "regulated" : "unregulated");
                         }
                         break;
-                case SDLK_V: // toggle vsync
-                        if (down)
-                        {
-                                vsync = !vsync;
-                                SDL_GL_SetSwapInterval(vsync);
-                                fprintf(stderr, "%s\n", vsync ? "vsync" : "no vsync");
-                        }
-                        break;
-                case SDLK_SLASH: // toggle antialiasing
-                        if (down)
-                        {
-                                antialiasing = !antialiasing;
-                                fprintf(stderr, "%s\n", antialiasing ? "antialiasing" : "no antialiasing");
-                        }
-                        break;
-                case SDLK_T: // build lighting testing area
-                        if (down) build_test_area();
-                        break;
                 case SDLK_N: // night mode on/off
                         if (down) reverse_sun = !reverse_sun;
-                        break;
-                case SDLK_L: // toggle light values
-                        if (down) show_light_values = !show_light_values;
                         break;
                 case SDLK_P: // speed of the sun
                         if (down) speedy_sun = !speedy_sun;
@@ -121,17 +100,11 @@ void key_move(int down)
                                 fprintf(stderr, "draw_dist: %f\n", draw_dist);
                         }
                         break;
-                case SDLK_F1: // do frustum culling
-                        if (down) frustum_culling = !frustum_culling;
-                        break;
-                case SDLK_F2: // stop updating frustum culling
+                case SDLK_F2: // freeze culling to see what gets culled
                         if (down) lock_culling = !lock_culling;
                         break;
                 case SDLK_F3: // show FPS and timings etc.
                         if (!down) noisy = !noisy;
-                        break;
-                case SDLK_F4: // show which chunks are being sent to gl
-                        if (!down) show_fresh_updates = !show_fresh_updates;
                         break;
                 case SDLK_F5: // hot-reload shaders
                         if (!down) {

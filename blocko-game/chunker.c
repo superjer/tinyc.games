@@ -218,7 +218,8 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 int cylo = MAX(c.y - r, 0),   cyhi = MIN(c.y + r, TILESH - 3);
                 for (int x = cxlo; x <= cxhi; x++) for (int z = czlo; z <= czhi; z++)
                         for (int y = cylo; y <= cyhi; y++)
-                                if (DIST_SQ(c.x - x, c.y - y, c.z - z) <= c.radius_sq)
+                                if (DIST_SQ(c.x - x, c.y - y, c.z - z) <= c.radius_sq
+                                                && TT_(x, y, z) != WATR)
                                         TT_(x, y, z) = OPEN;
         }
         gen_pass(&t0, GEN_CAVES);

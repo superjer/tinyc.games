@@ -44,8 +44,8 @@ int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z)
 int chunk_in_range(int chunk_x, int chunk_z)
 {
         float draw_dist_sq = draw_dist * BS * draw_dist * BS;
-        float delta_x = camplayer.pos.x - (chunk_x + .5f) * BS * CHUNKW;
-        float delta_z = camplayer.pos.z - (chunk_z + .5f) * BS * CHUNKD;
+        float delta_x = cull_x - (chunk_x + .5f) * BS * CHUNKW;
+        float delta_z = cull_z - (chunk_z + .5f) * BS * CHUNKD;
         float dist_sq = delta_x * delta_x + delta_z * delta_z;
         return dist_sq < draw_dist_sq;
 }
@@ -142,6 +142,13 @@ void draw_stuff()
 
         mat4_multiply(proj_view_mtrx, proj_mtrx, translated_view_mtrx);
 
+        if (!lock_culling)
+        {
+                memcpy(cull_mtrx, proj_view_mtrx, sizeof cull_mtrx);
+                cull_x = camplayer.pos.x;
+                cull_z = camplayer.pos.z;
+        }
+
         // Mark newly generated chunks dirty and hide the previous occupant's
         // mesh - must happen before the visible list below or the stale mesh
         // gets drawn for a frame
@@ -167,7 +174,7 @@ void draw_stuff()
                         if (!AGEN_(i, j)) continue; // slot holds another chunk's stale mesh
 
                         // Check camera visibility
-                        int camera_visible = chunk_in_frustum(proj_view_mtrx, i, j) && chunk_in_range(i, j);
+                        int camera_visible = chunk_in_frustum(cull_mtrx, i, j) && chunk_in_range(i, j);
 
                         // Check shadow frustums
                         unsigned char shadow_mask = 0;

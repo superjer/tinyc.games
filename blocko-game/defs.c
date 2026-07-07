@@ -376,11 +376,6 @@ int chunk_scootx, chunk_scootz;   //  ^ in chunks
 _Thread_local int tscootx, tscootz;
 _Thread_local int tchunk_scootx, tchunk_scootz;
 
-#define TEST_AREA_SZ 32
-int test_area_x = -1;
-int test_area_y;
-int test_area_z;
-
 struct box { float x, y, z, w, h ,d; };
 struct point { float x, y, z; };
 struct qchunk { int x, y, z, sqdist; };
@@ -460,9 +455,6 @@ int frame = 0;
 int pframe = 0;
 unsigned world_seed = 60659;
 int noisy = false;
-int vsync = false;
-int show_fresh_updates = false;
-int show_light_values = false;
 int show_shadow_map = false;
 int help_layer = 0;
 int polys = 0;
@@ -471,13 +463,13 @@ int sunq_outta_room = 0;
 int gloq_outta_room = 0;
 int omp_threads = 0;
 int lock_culling = false;
-int frustum_culling = true;
+float cull_mtrx[16]; // camera frustum used for chunk culling - F2 freezes it
+float cull_x, cull_z; // camera position for range culling, frozen with it
 float draw_dist = 640.f;
 int zooming = false;
 float zoom_amt = 1.f;
 float fast = 1.f;
 int regulated = true;
-int antialiasing = false;
 int shadow_mapping = true;
 int speedy_sun = false;
 int reverse_sun = false;
@@ -559,8 +551,6 @@ int collide(struct box l, struct box r);
 int world_collide(struct box box, int wet);
 
 // test.c protos
-int in_test_area(int x, int y, int z);
-void build_test_area();
 void debrief();
 
 // blocklight.c protos
