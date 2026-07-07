@@ -1,6 +1,6 @@
 #include "blocko.c"
-#ifndef BLOCKO_GLSETUP_C_INCLUDED
-#define BLOCKO_GLSETUP_C_INCLUDED
+#ifndef BLOCKO_VKSETUP_C_INCLUDED
+#define BLOCKO_VKSETUP_C_INCLUDED
 
 void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
                   VkMemoryPropertyFlags properties, VkBuffer* buffer, VkDeviceMemory* bufferMemory) {
@@ -661,7 +661,7 @@ void allocate_world()
 }
 
 //initial setup to get the window and rendering going
-void glsetup()
+void vksetup()
 {
         vulkan_startup("Blocko", TINYC_DIR "/blocko-game/assets/tinyc-icon.png", TINYC_DIR "/blocko-game/shaders/", 1440, 900);
 
@@ -773,4 +773,4 @@ void glsetup()
         }
 }
 
-#endif // BLOCKO_GLSETUP_C_INCLUDED
+#endif // BLOCKO_VKSETUP_C_INCLUDED

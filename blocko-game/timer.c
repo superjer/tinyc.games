@@ -18,7 +18,7 @@
         X(upload_ubo), \
         X(draw_terrain), \
         X(frame_submit), \
-        X(glsetup), \
+        X(vksetup), \
         X(font_init), \
         X(cursor_init), \
         X(sun_init), \

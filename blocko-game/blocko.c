@@ -1,6 +1,6 @@
 // Blocko -- http://tinyc.games -- (c) 2025 Jer Wilson
 //
-// Blocko is a 1st-person block building game using OpenGL via GLEW.
+// Blocko is a 1st-person block building game using Vulkan.
 //
 // Blocko is part of the TinyC.games project
 //   http://tinyc.games
@@ -53,7 +53,7 @@
 #include "draw.c"
 #include "../common/tinyc.games/font.c"
 #include "cursor.c"
-#include "glsetup.c"
+#include "vksetup.c"
 #include "remote.c"
 #include "interface.c"
 #include "blocklight.c"
@@ -91,7 +91,7 @@ int main(int argc, char **argv)
         {
                 #pragma omp section
                 { // main thread
-                        TIMECALL(glsetup, ());
+                        TIMECALL(vksetup, ());
                         TIMECALL(font_init, ());
                         TIMECALL(cursor_init, ());
                         TIMECALL(sun_init, ());

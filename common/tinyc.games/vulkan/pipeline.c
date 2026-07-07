@@ -217,6 +217,7 @@ VkPipelineColorBlendStateCreateInfo configureColorBlendStateCreateInfo(VkPipelin
 #define PIPE_FRONT_CULL       16
 #define PIPE_DEPTH_BIAS       32
 #define PIPE_DEPTH_LESS_EQUAL 64
+#define PIPE_POINTS           128 // vertex shader must write gl_PointSize
 
 VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipelineLayout, VkShaderModule *pVertexShaderModule, VkShaderModule *pGeometryShaderModule, VkShaderModule *pFragmentShaderModule, VkRenderPass *pRenderPass, VkExtent2D *pExtent,
         int bindingDescCount, VkVertexInputBindingDescription *bindingDescs,
@@ -236,7 +237,7 @@ VkPipeline createGraphicsPipeline(VkDevice *pDevice, VkPipelineLayout *pPipeline
                 bindingDescCount, bindingDescs, attributeDescCount, attributeDescs
         );
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = configureInputAssemblyStateCreateInfo(
-		pGeometryShaderModule ? VK_PRIMITIVE_TOPOLOGY_POINT_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
+		(pGeometryShaderModule || (flags & PIPE_POINTS)) ? VK_PRIMITIVE_TOPOLOGY_POINT_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST
         );
 	VkViewport viewport = configureViewport(pExtent);
 	VkRect2D scissor = configureScissor(pExtent, 0, 0, 0, 0);

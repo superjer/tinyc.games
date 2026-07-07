@@ -37,23 +37,27 @@ add_executable(tet tet-game/tet.c)
 add_executable(blocko blocko-game/blocko.c)
 add_executable(maker maker-game/maker.c)
 add_executable(zel zel-game/zel.c)
+add_executable(noise noise-demo/noise_demo.c)
 
 target_include_directories(flappy PRIVATE ${CMAKE_BINARY_DIR})
 target_include_directories(tet PRIVATE ${CMAKE_BINARY_DIR})
 target_include_directories(blocko PRIVATE ${CMAKE_BINARY_DIR})
 target_include_directories(maker PRIVATE ${CMAKE_BINARY_DIR})
 target_include_directories(zel PRIVATE ${CMAKE_BINARY_DIR})
+target_include_directories(noise PRIVATE ${CMAKE_BINARY_DIR})
 
 target_link_libraries(flappy PRIVATE SDL3::SDL3 SDL3_ttf::SDL3_ttf)
 target_link_libraries(tet PRIVATE SDL3::SDL3 Vulkan::Vulkan)
 target_link_libraries(blocko PRIVATE OpenMP::OpenMP_C SDL3::SDL3 Vulkan::Vulkan)
 target_link_libraries(maker PRIVATE SDL3::SDL3)
 target_link_libraries(zel PRIVATE SDL3::SDL3)
+target_link_libraries(noise PRIVATE SDL3::SDL3 Vulkan::Vulkan)
 
 if(MATH_LIBRARY)
   target_link_libraries(tet PUBLIC ${MATH_LIBRARY})
   target_link_libraries(blocko PUBLIC ${MATH_LIBRARY})
   target_link_libraries(zel PUBLIC ${MATH_LIBRARY})
+  target_link_libraries(noise PUBLIC ${MATH_LIBRARY})
 endif()
 
 # Create shader output directory
@@ -78,6 +82,8 @@ set(SHADER_FILES
   blocko-game/shaders/sun.frag
   blocko-game/shaders/moon.vert
   blocko-game/shaders/moon.frag
+  noise-demo/shaders/noise.vert
+  noise-demo/shaders/noise.frag
 )
 
 # Use add_custom_command with OUTPUT for proper dependency tracking
@@ -97,6 +103,7 @@ endforeach()
 add_custom_target(shaders DEPENDS ${COMPILED_SHADER_FILES})
 add_dependencies(blocko shaders)
 add_dependencies(tet shaders)
+add_dependencies(noise shaders)
 
 if(WIN32)
   macro(copy_dlls target)

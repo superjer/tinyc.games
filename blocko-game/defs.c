@@ -523,7 +523,7 @@ int tree_enable = 1;
 enum { GEN_HMAP, GEN_SOIL, GEN_CAVES, GEN_WATER, GEN_TREES, GEN_LIGHT, GEN_CORNERS, GEN_PASSES };
 int gen_pass_ms[GEN_PASSES];
 
-// glsetup.c protos
+// vksetup.c protos
 int check_program_errors(unsigned int shader, char *name);
 unsigned int file2shader(unsigned int type, char *filename);
 
