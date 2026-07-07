@@ -112,12 +112,13 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                                 "frames %d\nelapsed_s %.3f\nfps %.1f\n"
                                 "avg_ms %.3f\np50_ms %.3f\np99_ms %.3f\nworst_ms %.3f\n"
                                 "meshes_built %d\nchunks_generated %d\ngen_ms %d\n"
-                                "gen_pass soil %d caves %d water %d trees %d light %d corners %d\n",
+                                "gen_pass hmap %d soil %d caves %d water %d trees %d light %d corners %d\n",
                                 n, elapsed, n / elapsed, sum / n,
                                 sorted[n/2], sorted[n*99/100], sorted[n-1],
                                 nr_meshes_built - fps_base_meshes,
                                 nr_chunks_generated - fps_base_chunks,
                                 chunk_gen_ticks - fps_base_gen_ticks,
+                                gen_pass_ms[GEN_HMAP],
                                 gen_pass_ms[GEN_SOIL], gen_pass_ms[GEN_CAVES],
                                 gen_pass_ms[GEN_WATER], gen_pass_ms[GEN_TREES],
                                 gen_pass_ms[GEN_LIGHT], gen_pass_ms[GEN_CORNERS]);
@@ -237,12 +238,14 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         else if (!strcmp(which, "contrast")) noise_base_weight = val;
                         else if (!strcmp(which, "aniso"))    noise_aniso = val;
                         else if (!strcmp(which, "nvary"))    noise_nvary = val;
+                        else if (!strcmp(which, "interp"))   noise_interp = val;
                         noise_config_gen++; // stale memos refill
                         form_config_gen++;  // formations sit on the old surface
                 }
-                p += snprintf(p, end-p, "kernel2 %d\ncontrast %g\naniso %g\nnvary %d\n"
+                p += snprintf(p, end-p, "kernel2 %d\ncontrast %g\naniso %g\nnvary %d\ninterp %d\n"
                         "(send 'regen' to rebuild the world with these)\n",
-                        noise_kernel_sq, noise_base_weight, noise_aniso, noise_nvary);
+                        noise_kernel_sq, noise_base_weight, noise_aniso, noise_nvary,
+                        noise_interp);
         }
         else if (!strncmp(cmd, "form near", 9))
         {
@@ -302,16 +305,60 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "(send 'regen' to rebuild the world with these)\n",
                         cave_enable);
         }
+        else if (!strncmp(cmd, "trees", 5))
+        {
+                int v;
+                if (sscanf(cmd + 5, "%d", &v) == 1)
+                        tree_enable = v;
+                p += snprintf(p, end-p, "trees %d\n"
+                        "(send 'regen' to rebuild the world with these)\n",
+                        tree_enable);
+        }
+        else if (!strncmp(cmd, "grass", 5))
+        {
+                int v;
+                if (sscanf(cmd + 5, "%d", &v) == 1)
+                        grass_enable = v;
+                p += snprintf(p, end-p, "grass %d\n", grass_enable);
+        }
+        else if (!strncmp(cmd, "dump", 4))
+        {
+                // raw world arrays to a file, for offline diffing
+                char path[256] = "/tmp/blocko_dump.bin";
+                sscanf(cmd + 4, "%255s", path);
+                FILE *f = fopen(path, "wb");
+                if (f)
+                {
+                        fwrite(tiles, 1, TILESD * TILESH * TILESW, f);
+                        fwrite(gndheight, 1, TILESW * TILESD, f);
+                        fclose(f);
+                        p += snprintf(p, end-p, "ok %s\n", path);
+                }
+                else
+                        p += snprintf(p, end-p, "can't write %s\n", path);
+        }
+        else if (!strncmp(cmd, "sum", 3))
+        {
+                // FNV-1a over the raw world arrays, for A/B-ing gen changes
+                unsigned th = 2166136261u, sh = 2166136261u, gh = 2166136261u;
+                for (int i = 0; i < TILESD * TILESH * TILESW; i++)
+                        th = (th ^ tiles[i]) * 16777619u;
+                for (int i = 0; i < TILESD * TILESH * TILESW; i++)
+                        sh = (sh ^ sunlight[i]) * 16777619u;
+                for (int i = 0; i < TILESW * TILESD; i++)
+                        gh = (gh ^ gndheight[i]) * 16777619u;
+                p += snprintf(p, end-p, "tiles %08x sun %08x gndh %08x\n", th, sh, gh);
+        }
         else if (!strncmp(cmd, "regen", 5))
         {
                 // invalidate all generation stamps: the whole ring regenerates
                 // in place, nearest chunks first
-                memset(col_stamp_x, 0x80, sizeof col_stamp_x);
-                memset(col_stamp_z, 0x80, sizeof col_stamp_z);
                 for (int i = 0; i < VAOD; i++) for (int j = 0; j < VAOW; j++)
                 {
                         chunk_stamp[i][j].ax = INT_MIN;
                         chunk_stamp[i][j].az = INT_MIN;
+                        chunk_estamp[i][j].ax = INT_MIN;
+                        chunk_estamp[i][j].az = INT_MIN;
                 }
                 p += snprintf(p, end-p, "ok - world regenerating\n");
         }
@@ -333,8 +380,8 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "turn <deg> | dist <blocks> | debounce <frames> | "
                         "find <tile> <ax0> <az0> <ax1> <az1> | "
                         "noise [<knob> <val>] | form [near <r>|<knob> <val>] | "
-                        "caves [<0|1>] | "
-                        "regen | sun <pitch> | quit\n");
+                        "caves [<0|1>] | trees [<0|1>] | grass [<0|1>] | "
+                        "sum | regen | sun <pitch> | quit\n");
         }
 }
 

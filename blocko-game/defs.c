@@ -180,6 +180,8 @@
 // for terrain/worker
 #define TAGEN_SLOT(x,z) chunk_stamp[(z - tchunk_scootz) & (VAOD-1)][(x - tchunk_scootx) & (VAOW-1)]
 #define TAGEN_(x,z)   (TAGEN_SLOT(x, z).ax == (x) - tchunk_scootx && TAGEN_SLOT(x, z).az == (z) - tchunk_scootz)
+#define TEDGE_SLOT(x,z) chunk_estamp[(z - tchunk_scootz) & (VAOD-1)][(x - tchunk_scootx) & (VAOW-1)]
+#define TEDGE_(x,z)   (TEDGE_SLOT(x, z).ax == (x) - tchunk_scootx && TEDGE_SLOT(x, z).az == (z) - tchunk_scootz)
 
 // helper macros
 #define IS_OPAQUE(x,y,z) (T_(x, y, z) < LASTSOLID)
@@ -353,11 +355,14 @@ float *cornlight;
 float *kornlight;
 struct chunk_stamp { int ax, az; };                  // absolute chunk coords a ring
 volatile struct chunk_stamp chunk_stamp[VAOD][VAOW]; // slot holds (INT_MIN = never)
-
-// absolute coords each column ring slot was generated for, so slots
-// wrapping to a new part of the world regenerate automatically
-int col_stamp_x[TILESW][TILESD];
-int col_stamp_z[TILESW][TILESD];
+// pass 1 (chunk edge columns) stamps: a chunk's interior can generate only
+// after its own and all 8 neighbors' edges exist, so nothing ever reads or
+// writes outside its own chunk
+volatile struct chunk_stamp chunk_estamp[VAOD][VAOW];
+// transient marks so builder threads never work the same slot at once,
+// guarded by the (chunks) critical section in chunk_builder
+volatile char chunk_claim1[VAOD][VAOW]; // pass 1 running
+volatile char chunk_claim2[VAOD][VAOW]; // pass 2 running
 volatile char chunk_dirty[VAOW][VAOD];
 volatile unsigned chunk_lightdirty[VAOW][VAOD]; // frame+1 of last light change (0 = clean)
 int remesh_debounce = 15; // remesh light-dirty chunks only after this many quiet frames
@@ -367,8 +372,11 @@ unsigned char chunk_lod[VAOW][VAOD];    // 0=full detail, 1=LOD mode (backface c
 int future_scootx, future_scootz; // pending global map offset
 int scootx, scootz;               // actual global map offset
 int chunk_scootx, chunk_scootz;   //  ^ in chunks
-int tscootx, tscootz;             // terrain thread's copies of the above
-int tchunk_scootx, tchunk_scootz; //  ^ in chunks
+// each builder thread's private copies of the scoot vars: a thread's window
+// mapping must hold still for its whole iteration even if another thread
+// applies a newer scoot (ring slots are absolute-derived, so slots agree)
+_Thread_local int tscootx, tscootz;
+_Thread_local int tchunk_scootx, tchunk_scootz;
 
 #define TEST_AREA_SZ 32
 int test_area_x = -1;
@@ -466,7 +474,7 @@ int gloq_outta_room = 0;
 int omp_threads = 0;
 int lock_culling = false;
 int frustum_culling = true;
-float draw_dist = 320.f;
+float draw_dist = 640.f;
 int zooming = false;
 float zoom_amt = 1.f;
 float fast = 1.f;
@@ -513,8 +521,10 @@ int nr_chunks_generated = 0;
 int nr_meshes_built = 0;
 int chunk_gen_ticks = 0;
 int cave_enable = 1;
+int tree_enable = 1;
+int grass_enable = 1;
 // per-pass gen_chunk wall time, reported by the fps socket command
-enum { GEN_SOIL, GEN_CAVES, GEN_WATER, GEN_TREES, GEN_LIGHT, GEN_CORNERS, GEN_PASSES };
+enum { GEN_HMAP, GEN_SOIL, GEN_CAVES, GEN_WATER, GEN_TREES, GEN_LIGHT, GEN_CORNERS, GEN_PASSES };
 int gen_pass_ms[GEN_PASSES];
 
 // glsetup.c protos

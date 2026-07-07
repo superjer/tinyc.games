@@ -108,6 +108,13 @@ int main(int argc, char **argv)
                         if (TERRAIN_THREAD)
                                 chunk_builder();
                 }
+
+                #pragma omp section
+                { // second terrain worker - two-pass chunk ownership plus
+                  // the claim table make whole-chunk generation parallel
+                        if (TERRAIN_THREAD)
+                                chunk_builder();
+                }
         }
 }
 
@@ -190,9 +197,9 @@ void startup()
         {
                 chunk_stamp[i][j].ax = INT_MIN;
                 chunk_stamp[i][j].az = INT_MIN;
+                chunk_estamp[i][j].ax = INT_MIN;
+                chunk_estamp[i][j].az = INT_MIN;
         }
-        memset(col_stamp_x, 0x80, sizeof col_stamp_x); // huge negative = never
-        memset(col_stamp_z, 0x80, sizeof col_stamp_z);
 
         tiles = calloc(TILESD * TILESH * TILESW, sizeof *tiles);
         sunlight = calloc(TILESD * TILESH * TILESW, sizeof *sunlight);
@@ -216,7 +223,7 @@ void update_world()
 {
         int i, x, y, z;
         unsigned seed = SEED1(pframe);
-        for (i = 0; i < 500; i++) {
+        for (i = 0; i < grass_enable * 500; i++) {
                 x = RANDI(1, TILESW - 2);
                 z = RANDI(1, TILESD - 2);
 
