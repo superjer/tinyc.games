@@ -16,6 +16,7 @@
         #define omp_get_thread_num() 0
         #define omp_get_max_threads() 1
         #define omp_set_nested(n)
+        #define omp_set_num_threads(n)
 #endif
 
 #include <stdio.h>
@@ -58,6 +59,7 @@
 #include "interface.c"
 #include "blocklight.c"
 #include "player.c"
+#include "mob.c"
 #include "test.c"
 #include "chunker.c"
 
@@ -66,6 +68,10 @@ void startup();
 void new_game();
 void main_loop();
 void update_world();
+void chunk_builder();
+
+// SDL-thread entry point for the terrain workers (see main)
+static int chunk_builder_thread(void *unused) { chunk_builder(); return 0; }
 
 int main(int argc, char **argv)
 {
@@ -87,39 +93,32 @@ int main(int argc, char **argv)
         }
 
         fprintf(stderr, "world seed: %d\n", world_seed);
-        omp_set_nested(1); // needed or omp won't parallelize chunk gen
         fprintf(stderr, "OpenMP threads available: %d\n", omp_get_max_threads());
         startup();
 
-        #pragma omp parallel sections
+        // Terrain workers run as plain SDL threads, launched once and left
+        // running, rather than as OpenMP sections. That keeps the per-frame
+        // mesh build's #pragma omp parallel at the TOP level, where libgomp
+        // reuses its pooled team (cheap) instead of spinning up a nested team
+        // every rebuild (which cost ~11ms of fork/join). The workers only use
+        // #pragma omp critical/atomic, which are plain global locks that work
+        // from any thread.
+        if (TERRAIN_THREAD)
         {
-                #pragma omp section
-                { // main thread
-                        TIMECALL(vksetup, ());
-                        TIMECALL(font_init, ());
-                        TIMECALL(cursor_init, ());
-                        TIMECALL(sun_init, ());
-                        char timings_buf[8000];
-                        timer_print(timings_buf, 8000, true);
-                        printf("%s", timings_buf);
-                        if (TERRAIN_THREAD)
-                                new_game();
-                        main_loop();
-                }
-
-                #pragma omp section
-                { // worker thread for terrain generation
-                        if (TERRAIN_THREAD)
-                                chunk_builder();
-                }
-
-                #pragma omp section
-                { // second terrain worker - two-pass chunk ownership plus
-                  // the claim table make whole-chunk generation parallel
-                        if (TERRAIN_THREAD)
-                                chunk_builder();
-                }
+                SDL_DetachThread(SDL_CreateThread(chunk_builder_thread, "terrain0", NULL));
+                SDL_DetachThread(SDL_CreateThread(chunk_builder_thread, "terrain1", NULL));
         }
+
+        TIMECALL(vksetup, ());
+        TIMECALL(font_init, ());
+        TIMECALL(cursor_init, ());
+        TIMECALL(sun_init, ());
+        char timings_buf[8000];
+        timer_print(timings_buf, 8000, true);
+        printf("%s", timings_buf);
+        if (TERRAIN_THREAD)
+                new_game();
+        main_loop();
 }
 
 void game_shutdown(int code) // "shutdown" collides with the sockets API
@@ -172,6 +171,7 @@ void main_loop()
         while (accumulated_elapsed >= interval)
         {
                 TIMECALL(update_player, (&player[0], 1));
+                TIMECALL(update_mobs, ());
                 TIMECALL(update_world, ());
                 pframe++;
                 accumulated_elapsed -= interval;
@@ -186,6 +186,7 @@ void main_loop()
 
         remote_poll();
 
+        mob_lerp_t = accumulated_elapsed / interval;
         lerp_camera(accumulated_elapsed / interval, &player[0], &camplayer);
         TIMECALL(step_sunlight, ());
         TIMECALL(step_glolight, ());
@@ -197,6 +198,10 @@ void startup()
 {
         noise_setup();
         remote_init();
+
+        // size the mesh-build thread team: enough to hide memory latency,
+        // but leaving cores for the two terrain workers and the main thread
+        mesh_threads = ICLAMP(omp_get_max_threads() - 4, 2, 8);
 
         for (int i = 0; i < VAOD; i++) for (int j = 0; j < VAOW; j++)
         {
@@ -327,6 +332,8 @@ void apply_scoot()
                 {
                         player[0].pos.x += dx * BS;
                         player[0].pos.z += dz * BS;
+
+                        mob_scoot(dx, dz);
 
                         // pending light updates hold window coords
                         for (size_t i = 0; i < sq_curr_len; i++) { sunq_curr[i].x += dx; sunq_curr[i].z += dz; }

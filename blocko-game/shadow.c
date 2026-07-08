@@ -57,6 +57,14 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                 cascade_x_draw_calls++;
         }
 
+        // mobs and the block being mined cast shadows into the near cascade
+        // only (they're small and always right next to the player)
+        if (cascade_idx == SHADOW_NEAR)
+        {
+                mob_render(cmdbuf, shadow_pipe, shadow_pv);
+                mine_overlay_render(cmdbuf, shadow_pipe, shadow_pv);
+        }
+
         vkCmdEndRenderPass(cmdbuf);
 }
 

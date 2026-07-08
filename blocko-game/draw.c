@@ -365,6 +365,11 @@ void draw_stuff()
                 vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_FRAME_START);
         }
 
+        // Build mob + mining geometry once so both the shadow pass (near
+        // cascade) and the main pass can draw the same vertex buffers
+        mob_build();
+        mine_overlay_build();
+
         // Render shadow maps (before main render pass)
         TIMER(shadow_render);
         shadow_render(cmdbuf);
@@ -423,6 +428,11 @@ void draw_stuff()
                 total_verts += terrain_verts;
                 polys += terrain_verts;
         }
+
+        // Draw mobs and the block-breaking overlay with the (still-bound)
+        // opaque terrain pipeline
+        mob_render(cmdbuf, main_pipe, proj_view_mtrx);
+        mine_overlay_render(cmdbuf, main_pipe, proj_view_mtrx);
 
         // Render sky/sun between opaque terrain and transparent water
         sky_draw(cmdbuf, proj_mtrx, view_mtrx);

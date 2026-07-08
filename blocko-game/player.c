@@ -17,7 +17,8 @@ void lerp_camera(float t, struct player *a, struct player *b)
 }
 
 //return 0 iff we couldn't actually move
-int move_player(struct player *p, int velx, int vely, int velz)
+//swept collision against the world, one unit at a time
+int move_box(struct box *pos, int velx, int vely, int velz)
 {
         int last_was_x = false;
         int last_was_z = false;
@@ -27,12 +28,12 @@ int move_player(struct player *p, int velx, int vely, int velz)
         if (!velx && !vely && !velz)
                 return 1;
 
-        if (world_collide(p->pos, 0))
+        if (world_collide(*pos, 0))
                 already_stuck = true;
 
         while (velx || vely || velz)
         {
-                struct box testpos = p->pos;
+                struct box testpos = *pos;
                 int amt;
 
                 if ((!velx && !velz) || ((last_was_x || last_was_z) && vely))
@@ -78,13 +79,33 @@ int move_player(struct player *p, int velx, int vely, int velz)
                         continue;
                 }
 
-                p->pos = testpos;
+                *pos = testpos;
                 moved = true;
         }
 
         return moved;
 }
 
+int move_player(struct player *p, int velx, int vely, int velz)
+{
+        return move_box(&p->pos, velx, vely, velz);
+}
+
+
+// put the mined block back and forget the current dig: the mesh hole (carved
+// in mesh.c while mine_hole is set) heals on the rebuild we trigger here
+void mine_heal()
+{
+        if (mine_hole)
+        {
+                DIRTY_(B2C(mine_x), B2C(mine_z)) = 1;
+                mine_hole = 0;
+        }
+        mine_x = mine_y = mine_z = -1;
+        mine_tile = -1;
+        mine_frac = 0.f;
+        player[0].mine_progress = 0;
+}
 
 void update_player(struct player *p, int real)
 {
@@ -115,7 +136,34 @@ void update_player(struct player *p, int real)
 
         if (p->cooldown) p->cooldown--;
 
-        if (real && p->breaking && !p->cooldown && target_x >= 0)
+        // hold left click to mine: progress builds only while aimed at the
+        // same block, so releasing (a quick click) never breaks anything.
+        // The block is carved out of its chunk mesh (mesh.c) and a shaking
+        // stand-in drawn in its place (mob.c) - like jostling it loose.
+        if (real && p->breaking && target_x >= 0)
+        {
+                if (target_x == mine_x && target_y == mine_y && target_z == mine_z)
+                        p->mine_progress++;
+                else
+                {
+                        if (mine_hole) // aim moved: heal the old hole first
+                                DIRTY_(B2C(mine_x), B2C(mine_z)) = 1;
+                        mine_x = target_x;
+                        mine_y = target_y;
+                        mine_z = target_z;
+                        mine_tile = T_(mine_x, mine_y, mine_z);
+                        mine_hole = 1;
+                        p->mine_progress = 1;
+                        DIRTY_(B2C(mine_x), B2C(mine_z)) = 1; // rebuild w/ hole
+                }
+                mine_frac = (float)p->mine_progress / MINE_TIME;
+        }
+        else if (real)
+        {
+                mine_heal();
+        }
+
+        if (real && p->breaking && p->mine_progress >= MINE_TIME && target_x >= 0)
         {
                 int x = target_x;
                 int y = target_y;
@@ -171,6 +219,7 @@ void update_player(struct player *p, int real)
                 glo_enqueue(x, y, z, 0, max ? max - 1 : 0);
 
                 out:
+                mine_heal(); // block is really gone now; heal clears the dig
                 p->cooldown = 5;
         }
 

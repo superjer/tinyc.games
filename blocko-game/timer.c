@@ -2,6 +2,7 @@
         X(create_hmap), \
         X(update_world), \
         X(update_player), \
+        X(update_mobs), \
         X(step_sunlight), \
         X(step_sunlight_building), \
         X(step_glolight), \

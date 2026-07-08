@@ -18,6 +18,157 @@ static int sorter(const void * _a, const void * _b)
 #define WEST_VISIBLE(x, y, z)  (x == 0          || IS_SEE_THROUGH(T_(x-1, y, z)))
 #define EAST_VISIBLE(x, y, z)  (x+1 >= TILESW   || IS_SEE_THROUGH(T_(x+1, y, z)))
 
+// Emit terrain vertices for an arbitrary box of cells into the global vbuf
+// (opaque, v points past the end) and wbuf (water/glow, w past the end).
+// Parameterized bounds let build_meshes mesh a whole chunk while the spike
+// command (remote.c) measures the cost of smaller regions.
+void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned char face_mask)
+{
+        v = vbuf; // reset vertex buffer pointer
+        w = wbuf; // same for water buffer
+
+        // Track per-thread vertex counts for merging
+        int v_counts[MAX_MESH_THREADS] = {0};
+        int w_counts[MAX_MESH_THREADS] = {0};
+
+        // carve the block being mined out of this mesh so a shaking
+        // stand-in (mob.c) can take its place. Only a transient swap
+        // here - rayshot and collision still see the block as solid.
+        int mine_carved = 0, mine_save = 0;
+        if (mine_hole && mine_x >= xlo && mine_x < xhi
+                      && mine_y >= ylo && mine_y < yhi
+                      && mine_z >= zlo && mine_z < zhi)
+        {
+                mine_save = T_(mine_x, mine_y, mine_z);
+                if (mine_save != OPEN)
+                {
+                        T_(mine_x, mine_y, mine_z) = OPEN;
+                        mine_carved = 1;
+                }
+        }
+
+        #pragma omp parallel num_threads(mesh_threads)
+        {
+                // declared here (not in the for-init) for MSVC, whose
+                // OpenMP 2.0 C mode rejects declarations in an omp for;
+                // anything declared inside the parallel block is private
+                int x, y, z;
+                int tid = omp_get_thread_num();
+                struct vbufv *tv = vbuf_mt[tid];
+                struct vbufv *tv_start = tv;
+                struct vbufv *tv_limit = tv + VERTEX_BUFLEN;
+                struct vbufv *tw = wbuf_mt[tid];
+                struct vbufv *tw_start = tw;
+
+                #pragma omp for schedule(static)
+                for (z = zlo; z < zhi; z++) {
+                for (x = xlo; x < xhi; x++) for (y = ylo; y < yhi; y++)
+                {
+                        if (tv >= tv_limit) break;
+
+                        int t = T_(x, y, z);
+
+                        if (t == OPEN)
+                                continue;
+
+                        //lighting
+                        float usw = CORN_(x  , y  , z  );
+                        float use = CORN_(x+1, y  , z  );
+                        float unw = CORN_(x  , y  , z+1);
+                        float une = CORN_(x+1, y  , z+1);
+                        float dsw = CORN_(x  , y+1, z  );
+                        float dse = CORN_(x+1, y+1, z  );
+                        float dnw = CORN_(x  , y+1, z+1);
+                        float dne = CORN_(x+1, y+1, z+1);
+                        float USW = KORN_(x  , y  , z  );
+                        float USE = KORN_(x+1, y  , z  );
+                        float UNW = KORN_(x  , y  , z+1);
+                        float UNE = KORN_(x+1, y  , z+1);
+                        float DSW = KORN_(x  , y+1, z  );
+                        float DSE = KORN_(x+1, y+1, z  );
+                        float DNW = KORN_(x  , y+1, z+1);
+                        float DNE = KORN_(x+1, y+1, z+1);
+                        int m = x & (CHUNKW-1);
+                        int n = z & (CHUNKD-1);
+
+                        if (t == GRAS)
+                        {
+                                if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ 0,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 1, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 1, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 1,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 1,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                        }
+                        else if (t == DIRT)
+                        {
+                                if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ 2,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 2, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 2, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                        }
+                        else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN ||
+                                 t == RLEF || t == YLEF)
+                        {
+                                int f = (t == STON) ?  5 :
+                                        (t == SAND) ?  6 :
+                                        (t == ORE ) ? 11 :
+                                        (t == OREH) ? 12 :
+                                        (t == HARD) ? 13 :
+                                        (t == WOOD) ? 14 :
+                                        (t == GRAN) ? 15 :
+                                        (t == RLEF) ? 16 :
+                                        (t == YLEF) ? 17 :
+                                                       0 ;
+                                if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                        }
+                        else if (t == WATR)
+                        {
+                                if (y == 0        || T_(x  , y-1, z  ) == OPEN)
+                                {
+                                                        *tw++ = (struct vbufv){ 7,    UP, m, y+0.06f, n, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f };
+                                        *tw++ = (struct vbufv){ 7,  DOWN, m, y-0.94f, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f };
+                                }
+                        }
+                        else if (t == LITE)
+                        {
+                                *tw++ = (struct vbufv){ 18, SOUTH, m     , y, n+0.5f, use, usw, dse, dsw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                *tw++ = (struct vbufv){ 18, NORTH, m     , y, n-0.5f, unw, une, dnw, dne, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                *tw++ = (struct vbufv){ 18,  WEST, m+0.5f, y, n     , usw, unw, dsw, dnw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                *tw++ = (struct vbufv){ 18,  EAST, m-0.5f, y, n     , une, use, dne, dse, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                        }
+
+                }
+                }
+
+                // Store counts for this thread
+                v_counts[tid] = tv - tv_start;
+                w_counts[tid] = tw - tw_start;
+        }
+
+        if (mine_carved) T_(mine_x, mine_y, mine_z) = mine_save;
+
+        // Merge thread buffers into main buffer
+        for (int tid = 0; tid < MAX_MESH_THREADS; tid++)
+        {
+                if (v_counts[tid] > 0) {
+                        memcpy(v, vbuf_mt[tid], v_counts[tid] * sizeof *v);
+                        v += v_counts[tid];
+                }
+                if (w_counts[tid] > 0) {
+                        memcpy(w, wbuf_mt[tid], w_counts[tid] * sizeof *w);
+                        w += w_counts[tid];
+                }
+        }
+}
+
 void build_meshes()
 {
         // Collect all dirty chunks with distances from current player position
@@ -94,133 +245,9 @@ void build_meshes()
                         use_lod = 1;
                 }
 
-                v = vbuf; // reset vertex buffer pointer
-                w = wbuf; // same for water buffer
-
                 TIMER(build_meshes);
 
-                // Track per-thread vertex counts for merging
-                int v_counts[MAX_MESH_THREADS] = {0};
-                int w_counts[MAX_MESH_THREADS] = {0};
-
-                #pragma omp parallel
-                {
-                        // declared here (not in the for-init) for MSVC, whose
-                        // OpenMP 2.0 C mode rejects declarations in an omp for;
-                        // anything declared inside the parallel block is private
-                        int x, y, z;
-                        int tid = omp_get_thread_num();
-                        struct vbufv *tv = vbuf_mt[tid];
-                        struct vbufv *tv_start = tv;
-                        struct vbufv *tv_limit = tv + VERTEX_BUFLEN;
-                        struct vbufv *tw = wbuf_mt[tid];
-                        struct vbufv *tw_start = tw;
-
-                        #pragma omp for schedule(static)
-                        for (z = zlo; z < zhi; z++) {
-                        for (x = xlo; x < xhi; x++) for (y = 0; y < TILESH; y++)
-                        {
-                                if (tv >= tv_limit) break;
-
-                                int t = T_(x, y, z);
-
-                                if (t == OPEN)
-                                        continue;
-
-                                //lighting
-                                float usw = CORN_(x  , y  , z  );
-                                float use = CORN_(x+1, y  , z  );
-                                float unw = CORN_(x  , y  , z+1);
-                                float une = CORN_(x+1, y  , z+1);
-                                float dsw = CORN_(x  , y+1, z  );
-                                float dse = CORN_(x+1, y+1, z  );
-                                float dnw = CORN_(x  , y+1, z+1);
-                                float dne = CORN_(x+1, y+1, z+1);
-                                float USW = KORN_(x  , y  , z  );
-                                float USE = KORN_(x+1, y  , z  );
-                                float UNW = KORN_(x  , y  , z+1);
-                                float UNE = KORN_(x+1, y  , z+1);
-                                float DSW = KORN_(x  , y+1, z  );
-                                float DSE = KORN_(x+1, y+1, z  );
-                                float DNW = KORN_(x  , y+1, z+1);
-                                float DNE = KORN_(x+1, y+1, z+1);
-                                int m = x & (CHUNKW-1);
-                                int n = z & (CHUNKD-1);
-
-                                if (t == GRAS)
-                                {
-                                        if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ 0,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                        if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 1, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                        if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 1, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                        if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 1,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                        if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 1,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                        if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
-                                }
-                                else if (t == DIRT)
-                                {
-                                        if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ 2,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                        if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 2, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                        if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 2, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                        if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                        if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                        if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
-                                }
-                                else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN ||
-                                         t == RLEF || t == YLEF)
-                                {
-                                        int f = (t == STON) ?  5 :
-                                                (t == SAND) ?  6 :
-                                                (t == ORE ) ? 11 :
-                                                (t == OREH) ? 12 :
-                                                (t == HARD) ? 13 :
-                                                (t == WOOD) ? 14 :
-                                                (t == GRAN) ? 15 :
-                                                (t == RLEF) ? 16 :
-                                                (t == YLEF) ? 17 :
-                                                               0 ;
-                                        if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                        if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                        if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                        if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                        if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                        if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
-                                }
-                                else if (t == WATR)
-                                {
-                                        if (y == 0        || T_(x  , y-1, z  ) == OPEN)
-                                        {
-                                                                *tw++ = (struct vbufv){ 7,    UP, m, y+0.06f, n, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f };
-                                                *tw++ = (struct vbufv){ 7,  DOWN, m, y-0.94f, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f };
-                                        }
-                                }
-                                else if (t == LITE)
-                                {
-                                        *tw++ = (struct vbufv){ 18, SOUTH, m     , y, n+0.5f, use, usw, dse, dsw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                        *tw++ = (struct vbufv){ 18, NORTH, m     , y, n-0.5f, unw, une, dnw, dne, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                        *tw++ = (struct vbufv){ 18,  WEST, m+0.5f, y, n     , usw, unw, dsw, dnw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                        *tw++ = (struct vbufv){ 18,  EAST, m-0.5f, y, n     , une, use, dne, dse, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                }
-
-                        }
-                        }
-
-                        // Store counts for this thread
-                        v_counts[tid] = tv - tv_start;
-                        w_counts[tid] = tw - tw_start;
-                }
-
-                // Merge thread buffers into main buffer
-                for (int tid = 0; tid < MAX_MESH_THREADS; tid++)
-                {
-                        if (v_counts[tid] > 0) {
-                                memcpy(v, vbuf_mt[tid], v_counts[tid] * sizeof *v);
-                                v += v_counts[tid];
-                        }
-                        if (w_counts[tid] > 0) {
-                                memcpy(w, wbuf_mt[tid], w_counts[tid] * sizeof *w);
-                                w += w_counts[tid];
-                        }
-                }
+                mesh_region(xlo, xhi, 0, TILESH, zlo, zhi, face_mask);
 
                 WBOSTART_(myx, myz) = v - vbuf;
 

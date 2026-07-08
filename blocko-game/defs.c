@@ -97,6 +97,12 @@
 
 #define VERTEX_BUFLEN (CHUNKW*CHUNKD*32) // scales with chunk area (131072 at 64x64)
 #define MAX_MESH_THREADS 16
+// Mesh rebuilds are memory-bandwidth bound: measured, the sweet spot is
+// ~cores-4 threads (enough to hide memory latency, but leaving cores for the
+// two terrain workers + main; beyond that, fork/join overhead wins). Set from
+// the core count in startup(); tunable at runtime via the meshthr command.
+// (MAX_MESH_THREADS only sizes the per-thread scratch buffers.)
+int mesh_threads = 8;
 #define SUNQLEN 64000
 #define GLOQLEN 64000
 
@@ -422,6 +428,7 @@ struct player {
         int building;
         int lighting;
         int cooldown;
+        int mine_progress; // frames held on the current target block
         int fvel;
         int rvel;
         int grav;
@@ -439,6 +446,28 @@ struct player player[NR_PLAYERS] = {{
         .grav = GRAV_ZERO,
 }};
 struct player camplayer;
+
+#define NR_MOBS 8
+struct mob {
+        struct box pos;
+        struct box prev;          // last tick, for smooth drawing in >60FPS
+        struct point vel;
+        int alive;
+        int hp;
+        int grav;
+        int ground;
+        int wet;
+        int hop_cooldown;         // frames of rest before the next hop
+        int bonk_cooldown;        // frames until it can hit the player again
+        int hurt;                 // hurt-flash frames remaining
+        int dying;                // death-animation frames remaining
+        int facing;               // EAST, NORTH, WEST or SOUTH
+};
+struct mob mob[NR_MOBS];
+int mob_enable = 1;
+int mob_kills;
+float mob_lerp_t; // how far past the last physics tick the frame is drawn
+
 struct point lerped_pos;
 struct point sun_pos;
 struct point moon_pos;
@@ -513,6 +542,13 @@ enum {
 int mouselook = false; // start with the mouse free; click the window to capture
 int target_x, target_y, target_z;
 int place_x, place_y, place_z;
+// hold-to-break: mining the target block takes MINE_TIME held frames, so a
+// quick click punches mobs (see mob.c) without chipping the terrain
+#define MINE_TIME 45
+int mine_x = -1, mine_y = -1, mine_z = -1; // block progress is accumulating on
+int mine_tile = -1; // that block's tile type, for the shaking stand-in
+int mine_hole;      // carve the block out of its chunk mesh while mining
+float mine_frac;    // 0..1 mining progress, shown on the crosshair
 int screenw = W;
 int screenh = H;
 volatile struct qitem just_generated[VAOW*VAOD];
@@ -549,6 +585,18 @@ void sky_draw(VkCommandBuffer cmdbuf, float *proj, float *view);
 // player.c protos
 void lerp_camera(float t, struct player *a, struct player *b);
 void update_player(struct player * p, int real);
+int move_box(struct box *pos, int velx, int vely, int velz);
+int move_player(struct player *p, int velx, int vely, int velz);
+void mine_heal();
+
+// mob.c protos
+void update_mobs();
+void mob_build();
+void mob_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
+void mine_overlay_build();
+void mine_overlay_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
+void mob_scoot(int dx, int dz);
+int mob_spawn(int bx, int bz);
 
 // collision.c protos
 int collide(struct box l, struct box r);
@@ -564,6 +612,9 @@ int step_sunlight();
 int step_glolight();
 void remove_sunlight(int px, int py, int pz);
 void remove_glolight(int px, int py, int pz);
+
+// mesh.c protos
+void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned char face_mask);
 
 // draw.c protos
 int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z);

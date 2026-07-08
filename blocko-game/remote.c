@@ -403,6 +403,96 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 }
                 p += snprintf(p, end-p, "ok\n");
         }
+        else if (!strncmp(cmd, "mob", 3))
+        {
+                // "mob"          - report living slimes and kill count
+                // "mob spawn"    - force a slime to spawn near the player
+                // "mob <0|1>"    - toggle auto-spawning
+                char arg[32] = "";
+                sscanf(cmd + 3, "%31s", arg);
+                if (!strcmp(arg, "spawn"))
+                {
+                        int pax = player[0].pos.x / BS;
+                        int paz = player[0].pos.z / BS;
+                        int ok = 0;
+                        for (int r = 3; r < 20 && !ok; r++)
+                                ok = mob_spawn(pax + r, paz) || mob_spawn(pax - r, paz)
+                                   || mob_spawn(pax, paz + r) || mob_spawn(pax, paz - r);
+                        p += snprintf(p, end-p, ok ? "spawned\n" : "no room to spawn\n");
+                }
+                else if (arg[0] == '0' || arg[0] == '1')
+                {
+                        mob_enable = arg[0] - '0';
+                        p += snprintf(p, end-p, "mob_enable %d\n", mob_enable);
+                }
+                int live = 0;
+                for (int i = 0; i < NR_MOBS; i++) if (mob[i].alive) live++;
+                p += snprintf(p, end-p, "living %d kills %d enable %d\n",
+                        live, mob_kills, mob_enable);
+                for (int i = 0; i < NR_MOBS; i++)
+                {
+                        if (!mob[i].alive) continue;
+                        if (end-p < 60) break;
+                        p += snprintf(p, end-p, "  mob %d at %.1f %.1f %.1f hp %d\n", i,
+                                mob[i].pos.x / BS - scootx, mob[i].pos.y / BS,
+                                mob[i].pos.z / BS - scootz, mob[i].hp);
+                }
+        }
+        else if (!strncmp(cmd, "redirty", 7))
+        {
+                // mark every chunk mesh dirty, to force a full remesh pass
+                // (for measuring rebuild cost under controlled, equal work)
+                for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
+                        chunk_dirty[i][j] = 1;
+                p += snprintf(p, end-p, "ok\n");
+        }
+        else if (!strncmp(cmd, "meshthr", 7))
+        {
+                // set the mesh-build OpenMP thread cap (persists)
+                int n;
+                if (sscanf(cmd + 7, "%d", &n) == 1)
+                        mesh_threads = ICLAMP(n, 1, MAX_MESH_THREADS);
+                p += snprintf(p, end-p, "mesh_threads %d\n", mesh_threads);
+        }
+        else if (!strncmp(cmd, "spike", 5))
+        {
+                // spike [w] [d] [h] [reps] [threads] - time meshing a w*d*h
+                // region of cells at the player, to compare rebuild cost vs
+                // region size (and vs OpenMP thread count)
+                int w_ = CHUNKW, d_ = 0, h_ = TILESH, reps = 50, threads = 0;
+                int got = sscanf(cmd + 5, "%d %d %d %d %d", &w_, &d_, &h_, &reps, &threads);
+                if (got < 2) d_ = w_;
+                if (got < 3) h_ = TILESH;
+                if (got < 4) reps = 50;
+                w_ = ICLAMP(w_, 1, CHUNKW);
+                d_ = ICLAMP(d_, 1, CHUNKD);
+                h_ = ICLAMP(h_, 1, TILESH);
+                int orig_threads = mesh_threads;
+                if (threads > 0) mesh_threads = threads;
+
+                // center the region on the player, clamped inside the window
+                int px = player[0].pos.x / BS;
+                int pz = player[0].pos.z / BS;
+                int xlo = ICLAMP(px - w_/2, 0, TILESW - w_);
+                int zlo = ICLAMP(pz - d_/2, 0, TILESD - d_);
+                int ylo = ICLAMP(TILESH/2 - h_/2, 0, TILESH - h_);
+
+                unsigned long long freq = SDL_GetPerformanceFrequency();
+                unsigned long long t0 = SDL_GetPerformanceCounter();
+                for (int r = 0; r < reps; r++)
+                        mesh_region(xlo, xlo + w_, ylo, ylo + h_, zlo, zlo + d_, FACE_ALL);
+                unsigned long long t1 = SDL_GetPerformanceCounter();
+
+                int used_threads = mesh_threads;
+                if (threads > 0) mesh_threads = orig_threads;
+
+                float ms = 1000.f * (t1 - t0) / freq / reps;
+                p += snprintf(p, end-p,
+                        "region %dx%dx%d = %d cells, threads %d\n%.3f ms/build (%d reps)\n"
+                        "verts %ld opaque + %ld water\n",
+                        w_, d_, h_, w_ * d_ * h_, used_threads,
+                        ms, reps, (long)(v - vbuf), (long)(w - wbuf));
+        }
         else if (!strncmp(cmd, "unlock", 6))
         {
                 test_lock = 0;

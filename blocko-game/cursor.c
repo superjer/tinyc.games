@@ -159,9 +159,10 @@ void cursor(VkCommandBuffer cmdbuf)
         );
         vkCmdDraw(cmdbuf, outer_n, 1, 0, 0);
 
+        // crosshair whitens normally but reddens as a block is being mined
         push.incolor[0] = 1.0f;
-        push.incolor[1] = 1.0f;
-        push.incolor[2] = 1.0f;
+        push.incolor[1] = 1.0f - mine_frac;
+        push.incolor[2] = 1.0f - mine_frac;
         vkCmdPushConstants(
                 cmdbuf,
                 vk.pipelines[cursor_pipe].layout,
