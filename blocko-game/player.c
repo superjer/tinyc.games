@@ -184,11 +184,15 @@ void update_player(struct player *p, int real)
 
                 if (ABOVE_GROUND(x, y, z))
                 {
-                        while (y <= TILESH-1)
+                        // flood sunlight down the newly-opened column, but with a
+                        // scratch index - mutating y here corrupts the coords
+                        // handed to patch_edit/glo below (the reject+patch box
+                        // would land at the wrong height, leaving the broken
+                        // block uncovered - a one-frame-late "ghost" on trunks)
+                        for (int yy = y; yy <= TILESH-1; yy++)
                         {
-                                sun_enqueue(x, y, z, 0, 15);
-                                y++;
-                                if (!ABOVE_GROUND(x, y, z)) break;
+                                sun_enqueue(x, yy, z, 0, 15);
+                                if (!ABOVE_GROUND(x, yy+1, z)) break;
                         }
                 }
                 else
