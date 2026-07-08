@@ -39,32 +39,34 @@ Anything that supports CMake should work. But here are some suggestions for vari
 1. Install Visual Studio (you can use the free Community Edition)
    Make sure to check the box for "C++ CMake Tools for Windows." This may be under "Desktop development with C++"
 
-2. Open the tinyc.games folder in Visual Studio. It should detect the CMake config and set everything up
+2. Install the [Vulkan SDK](https://vulkan.lunarg.com) (needed for the Vulkan headers and the shader compiler)
 
-3. Use the play button to build & run, e.g. `blocko.exe`
+3. Open the tinyc.games folder in Visual Studio. It should detect the CMake config and set everything up
+
+4. Use the play button to build & run, e.g. `blocko.exe`
 
 ### Linux
 
-1. Create a build directory inside tinyc.games
+1. Install CMake and Vulkan-SDK (Depends on your system)
+
+2. Create a build directory inside tinyc.games
     ```
     mkdir build
     cd build
     ```
 
-2. Run CMake to fetch libraries and create build scripts
+3. Run CMake to fetch libraries and create build scripts
     ```
     cmake ..
     ```
 
-    You make need to run `cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..` if your CMake is very new.
-
-3. Build!
+4. Build!
     ```
     cmake --build .                   # build all games
     cmake --build . --target=blocko   # build only blocko
     ```
 
-4. Run, for example, blocko
+5. Run, for example, blocko
     ```
     ./blocko
     ```
@@ -73,9 +75,16 @@ Anything that supports CMake should work. But here are some suggestions for vari
 
 1. Install CMake. For example if you have Homebrew, run `brew install cmake`
 
-2. In the tinyc.games directory, run `cmake . -G Xcode` to generate an Xcode project file
+2. Install the [Vulkan SDK](https://vulkan.lunarg.com) for macOS (provides MoltenVK, which runs Vulkan on top of Metal)
 
-3. Open the project file with Xcode
+3. Create a build directory and generate an Xcode project file
+    ```
+    mkdir build
+    cd build
+    cmake .. -G Xcode
+    ```
+
+4. Open the project file with Xcode
 
 ## Next?
 

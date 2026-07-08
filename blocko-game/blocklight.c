@@ -24,24 +24,70 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
 
         set_sunlight(x, y, z, incoming_light);
 
-        if (sq_next_len >= SUNQLEN)
+        // builder threads and the main thread all enqueue here
+        #pragma omp critical (sunq)
         {
-                sunq_outta_room++;
-                return; // out of room in sun queue
+                if (sq_next_len >= SUNQLEN)
+                {
+                        sunq_outta_room++; // out of room in sun queue
+                }
+                else
+                {
+                        int queued = 0;
+                        for (size_t i = base; i < sq_curr_len && !queued; i++)
+                                if (sunq_curr[i].x == x && sunq_curr[i].y == y && sunq_curr[i].z == z)
+                                        queued = 1;
+                        for (size_t i = 0; i < sq_next_len && !queued; i++)
+                                if (sunq_next[i].x == x && sunq_next[i].y == y && sunq_next[i].z == z)
+                                        queued = 1;
+                        if (!queued)
+                        {
+                                sunq_next[sq_next_len].x = x;
+                                sunq_next[sq_next_len].y = y;
+                                sunq_next[sq_next_len].z = z;
+                                sq_next_len++;
+                        }
+                }
+        }
+}
+
+// gen-time variant: same light rules, but skips the duplicate scan - the
+// chunk builders enqueue each column once, and a stray dupe just re-floods
+// one block. keeps the lock hold tiny so builder threads don't fight
+void sun_enqueue_raw(int x, int y, int z, unsigned char incoming_light)
+{
+        if (incoming_light == 0)
+                return;
+
+        if (T_(x, y, z) == WATR)
+                incoming_light--; // water blocks more light
+
+        if (T_(x, y, z) == RLEF || T_(x, y, z) == YLEF)
+        {
+                incoming_light--; // leaves block more light
+                if (incoming_light) incoming_light--;
         }
 
-        for (size_t i = base; i < sq_curr_len; i++)
-                if (sunq_curr[i].x == x && sunq_curr[i].y == y && sunq_curr[i].z == z)
-                        return; // already queued in current queue
+        if (SUN_(x, y, z) >= incoming_light)
+                return; // already brighter
 
-        for (size_t i = 0; i < sq_next_len; i++)
-                if (sunq_next[i].x == x && sunq_next[i].y == y && sunq_next[i].z == z)
-                        return; // already queued in next queue
+        if (T_(x, y, z) < OPEN)
+                return; // no lighting for solid blocks
 
-        sunq_next[sq_next_len].x = x;
-        sunq_next[sq_next_len].y = y;
-        sunq_next[sq_next_len].z = z;
-        sq_next_len++;
+        set_sunlight(x, y, z, incoming_light);
+
+        #pragma omp critical (sunq)
+        {
+                if (sq_next_len >= SUNQLEN)
+                        sunq_outta_room++;
+                else
+                {
+                        sunq_next[sq_next_len].x = x;
+                        sunq_next[sq_next_len].y = y;
+                        sunq_next[sq_next_len].z = z;
+                        sq_next_len++;
+                }
+        }
 }
 
 void glo_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
@@ -89,10 +135,13 @@ void glo_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
 int step_sunlight()
 {
         // swap the queues
-        sunq_curr = sunq_next;
-        sq_curr_len = sq_next_len;
-        sq_next_len = 0;
-        sunq_next = (sunq_curr == sunq0_) ? sunq1_ : sunq0_;
+        #pragma omp critical (sunq)
+        {
+                sunq_curr = sunq_next;
+                sq_curr_len = sq_next_len;
+                sq_next_len = 0;
+                sunq_next = (sunq_curr == sunq0_) ? sunq1_ : sunq0_;
+        }
 
         for (size_t i = 0; i < sq_curr_len; i++)
         {
@@ -138,33 +187,69 @@ int step_glolight()
         return gq_curr_len;
 }
 
+// runs on the terrain thread - coords are in the terrain thread's window
+// mapping, so only the T-variant macros are safe here (a scoot can land
+// mid-generation, making scootx and tscootx briefly disagree)
 void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
 {
-        for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH; y++)
+        for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
         {
                 int x_ = (x == 0) ? 0 : x - 1;
-                int y_ = (y == 0) ? 0 : y - 1;
                 int z_ = (z == 0) ? 0 : z - 1;
 
-                CORN_(x, y, z) = 0.030f * MAX(
-                                MAX(
-                                        MAX(SUN_(x_, y_, z_), SUN_(x , y_, z_)),
-                                        MAX(SUN_(x_, y , z_), SUN_(x , y , z_))
-                                ), MAX(
-                                        MAX(SUN_(x_, y_, z ), SUN_(x , y_, z )),
-                                        MAX(SUN_(x_, y , z ), SUN_(x , y , z ))
-                                )) + 0.001f * (
-                                SUN_(x_, y_, z_) + SUN_(x , y_, z_) + SUN_(x_, y , z_) + SUN_(x , y , z_) +
-                                SUN_(x_, y_, z ) + SUN_(x , y_, z ) + SUN_(x_, y , z ) + SUN_(x , y , z ));
-                KORN_(x, y, z) = 0.008f * (
-                                GLO_(x_, y_, z_) + GLO_(x , y_, z_) + GLO_(x_, y , z_) + GLO_(x , y , z_) +
-                                GLO_(x_, y_, z ) + GLO_(x , y_, z ) + GLO_(x_, y , z ) + GLO_(x , y , z ));
+                // gen-time sunlight is zero below the ground line of all
+                // four columns meeting at this corner: compute down to just
+                // past the deepest one and zero the rest (the ring slot
+                // holds the previous occupant's values). Light flooding
+                // into caves later updates corners as it spreads.
+                int g = TGNDH_(x, z), g2;
+                g2 = TGNDH_(x_, z ); if (g2 > g) g = g2;
+                g2 = TGNDH_(x , z_); if (g2 > g) g = g2;
+                g2 = TGNDH_(x_, z_); if (g2 > g) g = g2;
+                int ylim = g + 2;
+                if (ylim > TILESH) ylim = TILESH;
+
+                // hoist the ring mapping out of the y loop: every array
+                // here stores columns contiguously in y
+                float *corn = &TCORN_(x, 0, z);
+                float *korn = &TKORN_(x, 0, z);
+                unsigned char *sa = &TSUN_(x_, 0, z_), *sb = &TSUN_(x, 0, z_),
+                              *sc = &TSUN_(x_, 0, z ), *sd = &TSUN_(x, 0, z );
+                unsigned char *ga = &TGLO_(x_, 0, z_), *gb = &TGLO_(x, 0, z_),
+                              *gc = &TGLO_(x_, 0, z ), *gd = &TGLO_(x, 0, z );
+
+                int a = sa[0], b = sb[0], c = sc[0], d = sd[0];       // y-1 row
+                int ka = ga[0], kb = gb[0], kc = gc[0], kd = gd[0];
+                for (int y = 0; y < ylim; y++)
+                {
+                        int a2 = sa[y], b2 = sb[y], c2 = sc[y], d2 = sd[y];
+                        corn[y] = 0.030f * MAX(
+                                        MAX(MAX(a, b), MAX(c, d)),
+                                        MAX(MAX(a2, b2), MAX(c2, d2)))
+                                + 0.001f * (a + b + c + d + a2 + b2 + c2 + d2);
+                        int ka2 = ga[y], kb2 = gb[y], kc2 = gc[y], kd2 = gd[y];
+                        korn[y] = 0.008f * (ka + kb + kc + kd + ka2 + kb2 + kc2 + kd2);
+                        a = a2; b = b2; c = c2; d = d2;
+                        ka = ka2; kb = kb2; kc = kc2; kd = kd2;
+                }
+                if (ylim < TILESH)
+                {
+                        memset(corn + ylim, 0, (TILESH - ylim) * sizeof *corn);
+                        memset(korn + ylim, 0, (TILESH - ylim) * sizeof *korn);
+                }
         }
 }
 
 void set_sunlight(int xlo, int ylo, int zlo, int light)
 {
         SUN_(xlo, ylo, zlo) = light;
+
+        // Mark all chunks that could be affected by corner lighting update.
+        // Soft mark: remeshing can wait until the light here stops changing
+        DIRTY_LIGHT(B2C(xlo), B2C(zlo));
+        DIRTY_LIGHT(B2C(xlo+1), B2C(zlo));
+        DIRTY_LIGHT(B2C(xlo), B2C(zlo+1));
+        DIRTY_LIGHT(B2C(xlo+1), B2C(zlo+1));
 
         for (int x = xlo; x < xlo + 2; x++) for (int z = zlo; z < zlo + 2; z++) for (int y = ylo; y < ylo + 2; y++)
         {
@@ -181,6 +266,13 @@ void set_sunlight(int xlo, int ylo, int zlo, int light)
 void set_glolight(int xlo, int ylo, int zlo, int light)
 {
         GLO_(xlo, ylo, zlo) = light;
+
+        // Mark all chunks that could be affected by corner lighting update.
+        // Soft mark: remeshing can wait until the light here stops changing
+        DIRTY_LIGHT(B2C(xlo), B2C(zlo));
+        DIRTY_LIGHT(B2C(xlo+1), B2C(zlo));
+        DIRTY_LIGHT(B2C(xlo), B2C(zlo+1));
+        DIRTY_LIGHT(B2C(xlo+1), B2C(zlo+1));
 
         for (int x = xlo; x < xlo + 2; x++) for (int z = zlo; z < zlo + 2; z++) for (int y = ylo; y < ylo + 2; y++)
         {

@@ -1,6 +1,6 @@
 // Blocko -- http://tinyc.games -- (c) 2025 Jer Wilson
 //
-// Blocko is a 1st-person block building game using OpenGL via GLEW.
+// Blocko is a 1st-person block building game using Vulkan.
 //
 // Blocko is part of the TinyC.games project
 //   http://tinyc.games
@@ -12,105 +12,140 @@
 #ifndef NO_OMPH
         #include <omp.h>
 #else
-        #define omp_get_num_threads() 0
+        #define omp_get_num_threads() 1
+        #define omp_get_thread_num() 0
+        #define omp_get_max_threads() 1
         #define omp_set_nested(n)
+        #define omp_set_num_threads(n)
 #endif
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
 #include <time.h>
 #include <math.h>
 #include <stdbool.h>
 #define GL3_PROTOTYPES 1
 
-#ifdef SDL_PLATFORM_APPLE
-#include <OpenGL/gl3.h>
-#else
-#include <GL/glew.h>
-#endif
+#define TINYC_DIR ".."
+#include "build-config.h"
 
 #define SDL_DISABLE_IMMINTRIN_H
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include <SDL3/SDL_vulkan.h>
+#include "../common/tinyc.games/vulkan/main.c"
+#include "../common/tinyc.games/utils.c"
+#include "../common/tinyc.games/taylor_noise.c"
 
 #define STBI_NO_SIMD
 #define STB_IMAGE_IMPLEMENTATION
 #include "../common/nothings/stb_image.h"
 
-#include "../common/smcameron/open-simplex-noise.c"
-struct osn_context *osn_context;
-#define noise(x,y,z,scale) open_simplex_noise3(osn_context,(float)((x)-tscootx+0.5f)/(scale),(float)((y)+0.5f)/(scale),(float)((z)-tscootz+0.5f)/(scale))
-
-#define TINYC_DIR ".."
-#include "build-config.h"
-
 #include "timer.c"
 #include "vector.c"
 #include "defs.c"
+#include "../common/tinyc.games/terrain.c"
+#include "formations.c"
 #include "atmosphere.c"
 #include "collision.c"
+#include "mesh.c"
+#include "shadow.c"
 #include "draw.c"
-#include "font.c"
+#include "../common/tinyc.games/font.c"
 #include "cursor.c"
-#include "glsetup.c"
+#include "vksetup.c"
+#include "remote.c"
 #include "interface.c"
 #include "blocklight.c"
 #include "player.c"
+#include "mob.c"
+#include "mine.c"
+#include "item.c"
+#include "patch.c"
 #include "test.c"
-#include "terrain.c"
+#include "chunker.c"
 
 //prototypes
 void startup();
 void new_game();
 void main_loop();
 void update_world();
+void chunk_builder();
 
-int main()
+// SDL-thread entry point for the terrain workers (see main)
+static int chunk_builder_thread(void *unused) { chunk_builder(); return 0; }
+
+int main(int argc, char **argv)
 {
-        omp_set_nested(1); // needed or omp won't parallelize chunk gen
-        startup();
+        world_seed = time(NULL);
 
-        #pragma omp parallel sections
+        for (int i = 1; i < argc; i++)
         {
-                #pragma omp section
-                { // main thread
-                        TIMECALL(glsetup, ());
-                        TIMECALL(font_init, ());
-                        TIMECALL(cursor_init, ());
-                        TIMECALL(sun_init, ());
-                        char timings_buf[8000];
-                        timer_print(timings_buf, 8000, true);
-                        printf("%s", timings_buf);
-                        if (TERRAIN_THREAD)
-                                new_game();
-                        else
-                                create_hmap();
-                        main_loop();
-                }
-
-                #pragma omp section
-                { // worker thread for terrain generation
-                        if (TERRAIN_THREAD)
-                        {
-                                create_hmap();
-                                chunk_builder();
-                        }
+                if      (!strcmp(argv[i], "--noise-kernel2"))                    noise_kernel_sq = 1;
+                else if (!strcmp(argv[i], "--noise-nvary"))                      noise_nvary = 1;
+                else if (!strcmp(argv[i], "--noise-contrast") && i + 1 < argc)   noise_base_weight = atof(argv[++i]);
+                else if (!strcmp(argv[i], "--noise-aniso") && i + 1 < argc)      noise_aniso = atof(argv[++i]);
+                else if (!strcmp(argv[i], "--seed") && i + 1 < argc)             world_seed = atoi(argv[++i]);
+                else
+                {
+                        fprintf(stderr, "usage: %s [--seed <n>] [--noise-kernel2] [--noise-nvary] "
+                                "[--noise-contrast <weight>] [--noise-aniso <0..1>]\n", argv[0]);
+                        return 1;
                 }
         }
+
+        fprintf(stderr, "world seed: %d\n", world_seed);
+        fprintf(stderr, "OpenMP threads available: %d\n", omp_get_max_threads());
+        startup();
+
+        // Terrain workers run as plain SDL threads, launched once and left
+        // running, rather than as OpenMP sections. That keeps the per-frame
+        // mesh build's #pragma omp parallel at the TOP level, where libgomp
+        // reuses its pooled team (cheap) instead of spinning up a nested team
+        // every rebuild (which cost ~11ms of fork/join). The workers only use
+        // #pragma omp critical/atomic, which are plain global locks that work
+        // from any thread.
+        if (TERRAIN_THREAD)
+        {
+                SDL_DetachThread(SDL_CreateThread(chunk_builder_thread, "terrain0", NULL));
+                SDL_DetachThread(SDL_CreateThread(chunk_builder_thread, "terrain1", NULL));
+        }
+
+        TIMECALL(vksetup, ());
+        TIMECALL(font_init, ());
+        TIMECALL(cursor_init, ());
+        TIMECALL(sun_init, ());
+        char timings_buf[8000];
+        timer_print(timings_buf, 8000, true);
+        printf("%s", timings_buf);
+        if (TERRAIN_THREAD)
+                new_game();
+        main_loop();
+}
+
+void game_shutdown(int code) // "shutdown" collides with the sockets API
+{
+        exit(code);
+        vulkan_shutdown();
+        exit(code);
 }
 
 void main_loop()
 { for (;;) {
+        auto_scoot();
         apply_scoot();
 
         while (SDL_PollEvent(&event)) switch (event.type)
         {
-                case SDL_EVENT_QUIT:            exit(0);
-                case SDL_EVENT_KEY_DOWN:         key_move(1);       break;
-                case SDL_EVENT_KEY_UP:           key_move(0);       break;
-                case SDL_EVENT_MOUSE_MOTION:     mouse_move();      break;
-                case SDL_EVENT_MOUSE_BUTTON_DOWN: mouse_button(1);   break;
-                case SDL_EVENT_MOUSE_BUTTON_UP:   mouse_button(0);   break;
+                case SDL_EVENT_QUIT:              if (!test_lock) game_shutdown(0);
+                                                  break;
+                case SDL_EVENT_KEY_DOWN:          key_move(1);       break;
+                case SDL_EVENT_TEXT_INPUT:        console_text(event.text.text); break;
+                case SDL_EVENT_KEY_UP:            key_move(0);       break;
+                case SDL_EVENT_MOUSE_MOTION:      if (!test_lock) mouse_move();    break;
+                case SDL_EVENT_MOUSE_BUTTON_DOWN: if (!test_lock) mouse_button(1); break;
+                case SDL_EVENT_MOUSE_BUTTON_UP:   if (!test_lock) mouse_button(0); break;
                 case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                         resize();
                         break;
@@ -132,13 +167,15 @@ void main_loop()
         int ticks = SDL_GetTicks();
         accumulated_elapsed += ticks - last_ticks;
         last_ticks = ticks;
-        CLAMP(accumulated_elapsed, 0, interval * 3 - 1);
+        accumulated_elapsed = CLAMP(accumulated_elapsed, 0, interval * 3 - 1);
 
         if (!regulated) accumulated_elapsed = interval;
 
         while (accumulated_elapsed >= interval)
         {
                 TIMECALL(update_player, (&player[0], 1));
+                TIMECALL(update_mobs, ());
+                update_items();
                 TIMECALL(update_world, ());
                 pframe++;
                 accumulated_elapsed -= interval;
@@ -151,6 +188,9 @@ void main_loop()
                 TIMECALL(update_player, (&camplayer, 0));
         }
 
+        remote_poll();
+
+        mob_lerp_t = accumulated_elapsed / interval;
         lerp_camera(accumulated_elapsed / interval, &player[0], &camplayer);
         TIMECALL(step_sunlight, ());
         TIMECALL(step_glolight, ());
@@ -160,7 +200,20 @@ void main_loop()
 
 void startup()
 {
-        open_simplex_noise(world_seed, &osn_context);
+        noise_setup();
+        remote_init();
+
+        // size the mesh-build thread team: enough to hide memory latency,
+        // but leaving cores for the two terrain workers and the main thread
+        mesh_threads = ICLAMP(omp_get_max_threads() - 4, 2, 8);
+
+        for (int i = 0; i < VAOD; i++) for (int j = 0; j < VAOW; j++)
+        {
+                chunk_stamp[i][j].ax = INT_MIN;
+                chunk_stamp[i][j].az = INT_MIN;
+                chunk_estamp[i][j].ax = INT_MIN;
+                chunk_estamp[i][j].az = INT_MIN;
+        }
 
         tiles = calloc(TILESD * TILESH * TILESW, sizeof *tiles);
         sunlight = calloc(TILESD * TILESH * TILESW, sizeof *sunlight);
@@ -182,38 +235,7 @@ void new_game()
 
 void update_world()
 {
-        int i, x, y, z;
-        unsigned seed = SEED1(pframe);
-        for (i = 0; i < 500; i++) {
-                x = RANDI(1, TILESW - 2);
-                z = RANDI(1, TILESD - 2);
-
-                for (y = 1; y < TILESH - 1; y++) {
-                        if (0) ;
-                        else if (T_(x, y, z) == GRG1) T_(x, y, z) = GRG2;
-                        else if (T_(x, y, z) == GRG2) T_(x, y, z) = GRAS;
-                        else if (T_(x, y, z) == DIRT) {
-                                if (T_(x  , y-1, z  ) == OPEN && (
-                                    (T_(x  , y  , z+1) | 1) == GRAS ||
-                                    (T_(x  , y  , z-1) | 1) == GRAS ||
-                                    (T_(x+1, y  , z  ) | 1) == GRAS ||
-                                    (T_(x-1, y  , z  ) | 1) == GRAS ||
-                                    (T_(x  , y+1, z+1) | 1) == GRAS ||
-                                    (T_(x  , y+1, z-1) | 1) == GRAS ||
-                                    (T_(x+1, y+1, z  ) | 1) == GRAS ||
-                                    (T_(x-1, y+1, z  ) | 1) == GRAS ||
-                                    (T_(x  , y-1, z+1) | 1) == GRAS ||
-                                    (T_(x  , y-1, z-1) | 1) == GRAS ||
-                                    (T_(x+1, y-1, z  ) | 1) == GRAS ||
-                                    (T_(x-1, y-1, z  ) | 1) == GRAS) ) {
-                                        T_(x, y, z) = GRG1;
-                                }
-                                break;
-                        }
-                }
-        }
-
-        float speed = speedy_sun ? 0.01f : 0.0001f;
+        float speed = sun_frozen ? 0.f : speedy_sun ? 0.01f : 0.0001f;
         sun_pitch += speed * (reverse_sun ? -1 : 1);
         if (sun_pitch > TAU) sun_pitch -= TAU;
         if (sun_pitch < 0.f) sun_pitch += TAU;
@@ -266,7 +288,10 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
                 if (x < 0 || y < 0 || z < 0 || x >= TILESW || y >= TILESH || z >= TILESD)
                         goto bad;
 
-                if (T_(x, y, z) != OPEN)
+                // pass through water like air: mining hits the solid block behind
+                // it, and building lands on the water cell before that block (so it
+                // replaces the water). you can't target/mine water itself.
+                if (T_(x, y, z) != OPEN && T_(x, y, z) != WATR)
                         break;
 
                 if (i == 6)
@@ -293,10 +318,51 @@ void scoot(int cx, int cz)
         }
 }
 
+// scoot the window whenever the player wanders off the center chunk,
+// so they never get far from the origin (no float precision problems)
+void auto_scoot()
+{
+        int cx = (int)(player[0].pos.x / (BS * CHUNKW));
+        int cz = (int)(player[0].pos.z / (BS * CHUNKD));
+        if (cx != VAOW/2 || cz != VAOD/2)
+                scoot(VAOW/2 - cx, VAOD/2 - cz);
+}
+
 void apply_scoot()
 {
         #pragma omp critical
         {
+                int dx = (future_scootx - chunk_scootx) * CHUNKW; // window coords of
+                int dz = (future_scootz - chunk_scootz) * CHUNKD; // everything move by this
+
+                if (dx || dz)
+                {
+                        player[0].pos.x += dx * BS;
+                        player[0].pos.z += dz * BS;
+
+                        mob_scoot(dx, dz);
+                        item_scoot(dx, dz);
+
+                        // pending light updates hold window coords
+                        for (size_t i = 0; i < sq_curr_len; i++) { sunq_curr[i].x += dx; sunq_curr[i].z += dz; }
+                        for (size_t i = 0; i < sq_next_len; i++) { sunq_next[i].x += dx; sunq_next[i].z += dz; }
+                        for (size_t i = 0; i < gq_curr_len; i++) { gloq_curr[i].x += dx; gloq_curr[i].z += dz; }
+                        for (size_t i = 0; i < gq_next_len; i++) { gloq_next[i].x += dx; gloq_next[i].z += dz; }
+
+                        // so does the current block target
+                        if (target_x >= 0) { target_x += dx; target_z += dz; }
+                        if (place_x >= 0)  { place_x  += dx; place_z  += dz; }
+
+                        // stored shadow matrices expect the old window coords
+                        for (int i = 0; i < SHADOW_COUNT; i++)
+                                retranslate(shadow[i].matrix, -dx * (float)BS, 0.f, -dz * (float)BS);
+
+                        // so does the (possibly locked) chunk-culling frustum
+                        retranslate(cull_mtrx, -dx * (float)BS, 0.f, -dz * (float)BS);
+                        cull_x += dx * BS;
+                        cull_z += dz * BS;
+                }
+
                 scootx = future_scootx * CHUNKW;
                 scootz = future_scootz * CHUNKD;
                 chunk_scootx = future_scootx;

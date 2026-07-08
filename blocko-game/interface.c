@@ -6,18 +6,20 @@ void resize()
 {
         screenw = event.window.data1;
         screenh = event.window.data2;
+        vulkan_recreate_swapchain();
 }
 
 void jump(int down)
 {
-        if (player[0].wet)
-                player[0].jumping = down;
-        else if (down)
+        player[0].jump_held = down;
+        if (down)
                 player[0].jumping = JUMP_BUFFER_FRAMES;
 }
 
 void key_move(int down)
 {
+        if (console_key(down)) return;
+        if (test_lock) return; // test running: only the console works
         if (event.key.repeat) return;
 
         switch (event.key.key)
@@ -43,9 +45,15 @@ void key_move(int down)
                         player[0].lighting = down;
                         break;
 
+                // spawn a slime where the crosshair points
+                case SDLK_B:
+                        if (down && place_x >= 0)
+                                mob_spawn_at(place_x, place_y, place_z);
+                        break;
+
                 // menu stuff
                 case SDLK_ESCAPE:
-                        SDL_SetWindowRelativeMouseMode(win, false);
+                        SDL_SetWindowRelativeMouseMode(vk.window, false);
                         mouselook = false;
                         break;
 
@@ -53,8 +61,8 @@ void key_move(int down)
                 case SDLK_Q: // go up alot
                         if (!down)
                         {
-                                player[0].pos.y -= 1000;
-                                player[0].grav = GRAV_ZERO;
+                                player[0].pos.y -= 16000;
+                                player[0].grav = GRAV_ZERO - 5;
                         }
                         break;
                 case SDLK_F: // go fast
@@ -76,29 +84,8 @@ void key_move(int down)
                                 fprintf(stderr, "%s\n", regulated ? "regulated" : "unregulated");
                         }
                         break;
-                case SDLK_V: // toggle vsync
-                        if (down)
-                        {
-                                vsync = !vsync;
-                                SDL_GL_SetSwapInterval(vsync);
-                                fprintf(stderr, "%s\n", vsync ? "vsync" : "no vsync");
-                        }
-                        break;
-                case SDLK_SLASH: // toggle antialiasing
-                        if (down)
-                        {
-                                antialiasing = !antialiasing;
-                                fprintf(stderr, "%s\n", antialiasing ? "antialiasing" : "no antialiasing");
-                        }
-                        break;
-                case SDLK_T: // build lighting testing area
-                        if (down) build_test_area();
-                        break;
                 case SDLK_N: // night mode on/off
                         if (down) reverse_sun = !reverse_sun;
-                        break;
-                case SDLK_L: // toggle light values
-                        if (down) show_light_values = !show_light_values;
                         break;
                 case SDLK_P: // speed of the sun
                         if (down) speedy_sun = !speedy_sun;
@@ -119,39 +106,33 @@ void key_move(int down)
                                 fprintf(stderr, "draw_dist: %f\n", draw_dist);
                         }
                         break;
-                case SDLK_F1: // do frustum culling
-                        if (down) frustum_culling = !frustum_culling;
-                        break;
-                case SDLK_F2: // stop updating frustum culling
+                case SDLK_F2: // freeze culling to see what gets culled
                         if (down) lock_culling = !lock_culling;
                         break;
                 case SDLK_F3: // show FPS and timings etc.
                         if (!down) noisy = !noisy;
                         break;
-                case SDLK_F4: // show which chunks are being sent to gl
-                        if (!down) show_fresh_updates = !show_fresh_updates;
-                        break;
-                case SDLK_F5: // delete test chunk
-                        if (!down) for(int x=0;x<CHUNKW;x++) for(int y=0;y<TILESH;y++) for(int z=0;z<CHUNKD;z++)
-                        {
-                                T_(C2B(32) + x, y, C2B(32) + z) = OPEN;
+                case SDLK_F5: // hot-reload shaders
+                        if (!down) {
+                                vulkan_reload_all_pipelines();
                         }
                         break;
                 case SDLK_F12: // draw shadow map on the sun
                         if (!down) show_shadow_map = !show_shadow_map;
                         break;
 
-                /*
-                case SDLK_LEFT:  if (down) scoot(-1,  0); break;
-                case SDLK_RIGHT: if (down) scoot( 1,  0); break;
-                case SDLK_DOWN:  if (down) scoot( 0, -1); break;
-                case SDLK_UP:    if (down) scoot( 0,  1); break;
-                */
+                // teleport a whole chunk - auto_scoot recenters the window after
+                case SDLK_LEFT:  if (down) player[0].pos.x -= CHUNKW * BS; break;
+                case SDLK_RIGHT: if (down) player[0].pos.x += CHUNKW * BS; break;
+                case SDLK_DOWN:  if (down) player[0].pos.z -= CHUNKD * BS; break;
+                case SDLK_UP:    if (down) player[0].pos.z += CHUNKD * BS; break;
 
+                /*
                 case SDLK_LEFT:     if (down) sun_yaw   -= .1f; break;
                 case SDLK_RIGHT:    if (down) sun_yaw   += .1f; break;
                 case SDLK_DOWN:     if (down) sun_pitch -= .1f; break;
                 case SDLK_UP:       if (down) sun_pitch += .1f; break;
+                */
                 case SDLK_PAGEDOWN: if (down) sun_roll  -= .1f; break;
                 case SDLK_PAGEUP:   if (down) sun_roll  += .1f; break;
         }
@@ -178,7 +159,7 @@ void mouse_button(int down)
         {
                 if (down)
                 {
-                        SDL_SetWindowRelativeMouseMode(win, true);
+                        SDL_SetWindowRelativeMouseMode(vk.window, true);
                         mouselook = true;
                 }
         }

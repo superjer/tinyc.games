@@ -1,2 +1,4 @@
 #undef TINYC_DIR
 #define TINYC_DIR "@CMAKE_CURRENT_SOURCE_DIR@"
+#undef TINYC_SPV_DIR
+#define TINYC_SPV_DIR "@CMAKE_BINARY_DIR@/shaders/"

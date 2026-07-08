@@ -2,68 +2,14 @@
 #ifndef BLOCKO_TEST_C_INCLUDED
 #define BLOCKO_TEST_C_INCLUDED
 
-#define GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX    0x9048
-#define GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX  0x9049
-
-int in_test_area(int x, int y, int z)
-{
-        return fabsf(x - player[0].pos.x / BS) < 16 &&
-               floorf(y - player[0].pos.y / BS) == 0 &&
-               fabsf(z - player[0].pos.z / BS) < 16;
-}
-
-void build_test_area()
-{
-        int tx = test_area_x = ICLAMP(player[0].pos.x / BS - TEST_AREA_SZ/2, 0, TILESW - TEST_AREA_SZ);
-        int ty = test_area_y = ICLAMP(player[0].pos.y / BS + 1             , 0, TILESH - 10          );
-        int tz = test_area_z = ICLAMP(player[0].pos.z / BS - TEST_AREA_SZ/2, 0, TILESD - TEST_AREA_SZ);
-
-        show_light_values = true;
-
-        for (int x = tx; x < tx+TEST_AREA_SZ; x++) for (int z = tz; z < tz+TEST_AREA_SZ; z++) for (int y = 0; y < ty+20; y++)
-        {
-                int on_edge = (x == tx || x == tx+TEST_AREA_SZ-1 || z == tz || z == tz+TEST_AREA_SZ-1);
-                if (y == ty - 5) // ceiling
-                {
-                        if (on_edge)
-                        {
-                                T_(x, y, z) = OPEN;
-                                SUN_(x, y, z) = 15;
-                        }
-                        else
-                        {
-                                T_(x, y, z) = GRAN;
-                                SUN_(x, y, z) = 0;
-                                GNDH_(x, z) = y;
-                        }
-                }
-                else if (y < ty + 1) // space inside
-                {
-                        T_(x, y, z) = OPEN;
-                        SUN_(x, y, z) = 0;
-                        if (on_edge)
-                        {
-                                GNDH_(x, z) = y;
-                                sun_enqueue(x, y, z, 0, 15);
-                        }
-                }
-                else // floor
-                {
-                        T_(x, y, z) = GRAN;
-                        SUN_(x, y, z) = 0;
-                }
-
-        }
-
-        recalc_corner_lighting(tx, tx + TEST_AREA_SZ, tz, tz + TEST_AREA_SZ);
-}
-
 void debrief()
 {
+        font_frame_reset();  // Reset font buffer offset for this frame
+
         static unsigned last_ticks = 0;
         static unsigned last_frame = 0;
-        static GLint total_kb = 0;
-        static GLint avail_kb = 0;
+        static int total_kb = 0;
+        static int avail_kb = 0;
         unsigned ticks = SDL_GetTicks();
         static char buf[8000];
         static char timings_buf[8000];
@@ -73,23 +19,37 @@ void debrief()
                 float elapsed = ((float)ticks - last_ticks);
                 float frames = frame - last_frame;
 
-                if (GLEW_NVX_gpu_memory_info) {
-                        p += snprintf(p, 8000 - (p-buf),
-                                      "vmem %0.0fm used of %0.0fm (%0.0f%% free)\n",
-                                      (float)(total_kb - avail_kb) / 1000.f,
-                                      (float)(total_kb)            / 1000.f,
-                                      ((float)avail_kb / total_kb) * 100.f);
-                }
-
                 p += snprintf(p, 8000 - (p-buf),
                                 "%d omp, %0.2f chunk/s\n",
                                 omp_threads,
                                 (float)nr_chunks_generated / (chunk_gen_ticks / 1000.f));
 
                 p += snprintf(p, 8000 - (p-buf),
-                                "%.3fm poly/s, %.3f shadow poly/s\n",
+                                "%.1fm poly/s, shadow: %.1fm (n:%.1fm m:%.1fm f:%.1fm x:%.1fm)\n",
                                 1000.f * (float)polys / elapsed / 1000000.f,
-                                1000.f * (float)shadow_polys / elapsed / 1000000.f);
+                                1000.f * (float)shadow_polys / elapsed / 1000000.f,
+                                1000.f * (float)shadow[SHADOW_NEAR].polys / elapsed / 1000000.f,
+                                1000.f * (float)shadow[SHADOW_MID].polys / elapsed / 1000000.f,
+                                1000.f * (float)(shadow[SHADOW_FAR_A].polys + shadow[SHADOW_FAR_B].polys) / elapsed / 1000000.f,
+                                1000.f * (float)(shadow[SHADOW_EXT_A].polys + shadow[SHADOW_EXT_B].polys) / elapsed / 1000000.f);
+
+                // GPU timing display (accumulated averages)
+                static float gpu_shadow_n_ms = 0, gpu_shadow_m_ms = 0;
+                static float gpu_shadow_f_ms = 0, gpu_shadow_x_ms = 0;
+                static float gpu_terrain_ms = 0, gpu_total_ms = 0;
+                if (gpu_timestamps_valid && gpu_timestamp_period > 0) {
+                        float ns_to_ms = gpu_timestamp_period / 1e6f;
+                        gpu_shadow_n_ms = (gpu_timestamps[GPU_TS_SHADOW_N_END] - gpu_timestamps[GPU_TS_FRAME_START]) * ns_to_ms;
+                        gpu_shadow_m_ms = (gpu_timestamps[GPU_TS_SHADOW_M_END] - gpu_timestamps[GPU_TS_SHADOW_N_END]) * ns_to_ms;
+                        gpu_shadow_f_ms = (gpu_timestamps[GPU_TS_SHADOW_F_END] - gpu_timestamps[GPU_TS_SHADOW_M_END]) * ns_to_ms;
+                        gpu_shadow_x_ms = (gpu_timestamps[GPU_TS_SHADOW_X_END] - gpu_timestamps[GPU_TS_SHADOW_F_END]) * ns_to_ms;
+                        gpu_terrain_ms = (gpu_timestamps[GPU_TS_TERRAIN_END] - gpu_timestamps[GPU_TS_SHADOW_X_END]) * ns_to_ms;
+                        gpu_total_ms = (gpu_timestamps[GPU_TS_FRAME_END] - gpu_timestamps[GPU_TS_FRAME_START]) * ns_to_ms;
+                }
+                p += snprintf(p, 8000 - (p-buf),
+                                "GPU: %.1fms (sN:%.1f sM:%.1f sF:%.1f sX:%.1f terr:%.1f)\n",
+                                gpu_total_ms, gpu_shadow_n_ms, gpu_shadow_m_ms,
+                                gpu_shadow_f_ms, gpu_shadow_x_ms, gpu_terrain_ms);
 
                 p += snprintf(p, 8000 - (p-buf),
                                 "%.1f fps\n", 1000.f * frames / elapsed );
@@ -104,15 +64,12 @@ void debrief()
                                         "Out of room in the glo queue (%d times)\n", gloq_outta_room);
                 gloq_outta_room = 0;
 
-                if (GLEW_NVX_gpu_memory_info) {
-                        glGetIntegerv(GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &total_kb);
-                        glGetIntegerv(GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &avail_kb);
-                }
-
                 last_ticks = ticks;
                 last_frame = frame;
                 polys = 0;
                 shadow_polys = 0;
+                for (int i = 0; i < SHADOW_COUNT; i++)
+                        shadow[i].polys = 0;
 
                 timer_print(timings_buf, 8000, false);
         }
@@ -121,14 +78,11 @@ void debrief()
         {
                 char xyzbuf[100];
                 snprintf(xyzbuf, 100,
-                                "X=%0.0f Y=%0.0f Z=%0.0f drawdist=%.0f %svsync %sreg %smsaa %sfast %scull %slock",
+                                "X=%0.0f Y=%0.0f Z=%0.0f drawdist=%.0f %sreg %sfast %slock",
                                 player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS,
                                 draw_dist,
-                                vsync           ? "" : "no",
                                 regulated       ? "" : "no",
-                                antialiasing    ? "" : "no",
                                 fast > 1        ? "" : "no",
-                                frustum_culling ? "" : "no",
                                 lock_culling    ? "" : "no");
 
                 font_begin(screenw, screenh);
@@ -162,8 +116,8 @@ void debrief()
 
         if (help_layer == 2)
         {
-                char *g1 = "Q     \nF   \nN       \nP       \nT       \nL         \nM             \nV    \nR             \n/   \nF1     \nF2          \nF3                    \nF4 ";
-                char *g2 = "Go up!\nFast\nRev. sun\nFast sun\nTest box\nLight vals\nShadow mapping\nVsync\nFixed interval\nMSAA\nCulling\nLock culling\nFPS, timings, position\nShow fresh updates";
+                char *g1 = "~\nQ\nF\nB\nN\nP\nM\nR\nF2\nF3\nF5";
+                char *g2 = "Command console\nGo up!\nFast\nSpawn slime\nRev. sun\nFast sun\nShadow mapping\nFixed interval\nLock culling\nFPS, timings, position\nReload shaders";
                 font_begin(screenw, screenh);
                 font_add_text(g1, screenw/100.f, screenh/4.f, 0);
                 font_end(0.5, 1, 1);
@@ -174,19 +128,15 @@ void debrief()
 
         // compass
         {
-                char compass_buf[10] = {0};
-                snprintf(compass_buf, 10, "Yaw: %d", (int)(player[0].yaw / PI * 180.f));
-
-                font_begin(screenw, screenh);
-                font_add_text(compass_buf, screenw/2.f, 0.f, 0);
-                font_end(1, 1, 1);
-
-                static char dir[][4] = {
-                        "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW", "N",
+                char compass_buf[20] = {0};
+                static char dir[][8] = {
+                        "N (+Z)", "NNE", "NE", "ENE", "E (+X)", "ESE", "SE", "SSE", "S (-Z)", "SSW", "SW", "WSW", "W (-X)", "WNW", "NW", "NNW", "N (+Z)",
                 };
                 int idx = (int)floorf((player[0].yaw + PI / 16.f) / (PI / 8.f));
+
+                snprintf(compass_buf, 20, "%d  %s", (int)(player[0].yaw / PI * 180.f), dir[idx]);
                 font_begin(screenw, screenh);
-                font_add_text(dir[idx], screenw/2.f, screenh/20.f, 0);
+                font_add_text(compass_buf, screenw/2.1f, 0.f, 0);
                 font_end(1, 1, 1);
         }
 
@@ -197,6 +147,19 @@ void debrief()
                 font_add_text(alert, screenw/2.f, screenh/2.f, 0);
                 font_end(1, 0.5, 0);
         }
+
+        if (test_lock)
+        {
+                char banner[400];
+                snprintf(banner, sizeof banner,
+                        "TEST RUNNING - INPUT LOCKED\n%s\n(press ~ and type 'lock 0' to unlock)",
+                        test_lock_msg);
+                font_begin(screenw, screenh);
+                font_add_text(banner, screenw/2.5f, screenh/20.f, 0);
+                font_end(1, 0.6, 0.2);
+        }
+
+        console_draw();
 }
 
 #endif // BLOCKO_TEST_C_INCLUDED

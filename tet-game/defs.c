@@ -193,10 +193,8 @@ int npart;
 int seed;
 int lightning_round;
 
-SDL_GLContext ctx;
 SDL_Event event;
 SDL_Window *win;
-SDL_Renderer *renderer;
 
 void do_events();
 void setup();

@@ -1,3 +1,6 @@
+#ifndef BLOCKO_VECTOR_C_INCLUDED
+#define BLOCKO_VECTOR_C_INCLUDED
+
 #include <stdio.h>
 #include <math.h>
 #include <memory.h>
@@ -112,7 +115,19 @@ void translate(float *mat, float x, float y, float z)
         mat[14] = (mat[2] * x) + (mat[6] * y) + (mat[10] * z);
 }
 
+// post-multiply by a translation, keeping existing translation -
+// shifts what a stored world-space matrix expects its input coords to be
+void retranslate(float *mat, float x, float y, float z)
+{
+        mat[12] += (mat[0] * x) + (mat[4] * y) + (mat[ 8] * z);
+        mat[13] += (mat[1] * x) + (mat[5] * y) + (mat[ 9] * z);
+        mat[14] += (mat[2] * x) + (mat[6] * y) + (mat[10] * z);
+        mat[15] += (mat[3] * x) + (mat[7] * y) + (mat[11] * z);
+}
+
 float distance3d(float x, float y, float z, float a, float b, float c)
 {
         return sqrtf((x-a) * (x-a) + (y-b) * (y-b) + (z-c) * (z-c));
 }
+
+#endif // BLOCKO_VECTOR_C_INCLUDED

@@ -3,10 +3,13 @@
 #define TET_GRAPHICS_C_INCLUDED
 
 #define VBUFLEN 40000
+#define VBUF_REGION (8 * sizeof vbuf) // per-swapchain-image GPU space, all draw_end()s in a frame must fit
 
-unsigned main_prog_id;
-GLuint main_vao;
-GLuint main_vbo;
+int main_pipe;
+VkBuffer vbuf_gpu;
+VkDeviceMemory vbuf_gpu_memory;
+char *vbuf_mapped;
+size_t vbuf_gpu_offset;
 float vbuf[VBUFLEN];
 int vbuf_n;
 float color_r, color_g, color_b;
@@ -18,25 +21,59 @@ void text(char *fstr, int value)
         char str[100];
         snprintf(str, 99, fstr, value);
         font_begin(win_x, win_y);
-        font_add_text(str, text_x, text_y, 3 * bs / 4);
+        font_add_text(str, text_x, text_y, 3.f * bs / 4 / FONT_CH_H); // scale is a multiple of the base glyph size
         font_end(1, 1, 1);
         text_y += bs * 125 / 100 + (fstr[strlen(fstr) - 1] == ' ' ? bs : 0);
 }
 
 void draw_setup()
 {
-        fprintf(stderr, "GLSL version on this system is %s\n", (char *)glGetString(GL_SHADING_LANGUAGE_VERSION));
-        unsigned int vertex = file2shader(GL_VERTEX_SHADER, TINYC_DIR "/tet-game/shaders/main.vert");
-        unsigned int fragment = file2shader(GL_FRAGMENT_SHADER, TINYC_DIR "/tet-game/shaders/main.frag");
-        main_prog_id = glCreateProgram();
-        glAttachShader(main_prog_id, vertex);
-        glAttachShader(main_prog_id, fragment);
-        glLinkProgram(main_prog_id);
-        check_program_errors(main_prog_id, "main");
-        glDeleteShader(vertex);
-        glDeleteShader(fragment);
-        glGenVertexArrays(1, &main_vao);
-        glGenBuffers(1, &main_vbo);
+        VkVertexInputBindingDescription bindingDesc = {
+                .binding = 0,
+                .stride = 5 * sizeof(float),
+                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+        };
+        VkVertexInputAttributeDescription attributeDescs[] = {
+                {.location = 0, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = 0},
+                {.location = 1, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = 2 * sizeof(float)},
+        };
+        main_pipe = vulkan_make_pipeline("tet.vert", NULL, "tet.frag",
+                1, &bindingDesc, 2, attributeDescs, NULL, VK_NULL_HANDLE,
+                PIPE_NO_DEPTH_TEST | PIPE_NO_CULL);
+
+        // vertex buffer with one region per swapchain image, so we never
+        // overwrite vertices a frame in flight is still reading
+        VkBufferCreateInfo buf_info = {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = VBUF_REGION * vk.swapchainImageCount,
+                .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        };
+        vkCreateBuffer(vk.device, &buf_info, NULL, &vbuf_gpu);
+
+        VkMemoryRequirements mem_reqs;
+        vkGetBufferMemoryRequirements(vk.device, vbuf_gpu, &mem_reqs);
+
+        VkPhysicalDeviceMemoryProperties mem_props;
+        vkGetPhysicalDeviceMemoryProperties(*vk.bestPhysicalDevice, &mem_props);
+        uint32_t mem_type = 0;
+        VkMemoryPropertyFlags wanted = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
+                if ((mem_reqs.memoryTypeBits & (1 << i)) &&
+                                (mem_props.memoryTypes[i].propertyFlags & wanted) == wanted)
+                {
+                        mem_type = i;
+                        break;
+                }
+
+        VkMemoryAllocateInfo alloc_info = {
+                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                .allocationSize = mem_reqs.size,
+                .memoryTypeIndex = mem_type,
+        };
+        vkAllocateMemory(vk.device, &alloc_info, NULL, &vbuf_gpu_memory);
+        vkBindBufferMemory(vk.device, vbuf_gpu, vbuf_gpu_memory, 0);
+        vkMapMemory(vk.device, vbuf_gpu_memory, 0, buf_info.size, 0, (void **)&vbuf_mapped);
 }
 
 void vertex(float x, float y, float r, float g, float b)
@@ -61,43 +98,53 @@ void rect(float x, float y, float w, float h)
 
 void draw_start()
 {
-        glViewport(0, 0, win_x, win_y);
-        glClear(GL_COLOR_BUFFER_BIT);
+        vulkan_acquire_next();
+        font_frame_reset();
+        vbuf_gpu_offset = 0;
+        vbuf_n = 0;
 }
 
 void draw_end()
 {
-        glUseProgram(main_prog_id);
+        if (vbuf_n == 0) return;
 
-        float near = -1.f;
-        float far = 1.f;
-        float x = 1.f / (win_x / 2.f);
-        float y = -1.f / (win_y / 2.f);
-        float z = -1.f / ((far - near) / 2.f);
-        float tz = -(far + near) / (far - near);
-        float ortho[] = {
-                x, 0, 0,  0,
-                0, y, 0,  0,
-                0, 0, z,  0,
-               -1, 1, tz, 1,
+        size_t bytes = vbuf_n * sizeof(float);
+        if (vbuf_gpu_offset + bytes > VBUF_REGION)
+        {
+                fprintf(stderr, "vbuf GPU region overflow (%zu + %zu)\n", vbuf_gpu_offset, bytes);
+                vbuf_n = 0;
+                return;
+        }
+
+        size_t base = vk.imageIndex * VBUF_REGION;
+        memcpy(vbuf_mapped + base + vbuf_gpu_offset, vbuf, bytes);
+
+        VkCommandBuffer cmd = vk.commandBuffers[vk.imageIndex];
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);
+
+        VkViewport viewport = { 0, 0, vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height, 0, 1 };
+        VkRect2D scissor = { {0, 0}, {vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height} };
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+        // pixel coords to Vulkan clip space, origin top-left, Y down
+        float ortho[16] = {
+                2.f / win_x, 0, 0, 0,
+                0, 2.f / win_y, 0, 0,
+                0, 0, 1, 0,
+               -1, -1, 0, 1,
         };
-        glUniformMatrix4fv(glGetUniformLocation(main_prog_id, "proj"), 1, GL_FALSE, ortho);
+        vkCmdPushConstants(cmd, vk.pipelines[main_pipe].layout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                0, sizeof ortho, ortho);
 
-        glBindVertexArray(main_vao);
-        glBindBuffer(GL_ARRAY_BUFFER, main_vbo);
-        glBufferData(GL_ARRAY_BUFFER, sizeof vbuf, vbuf, GL_STATIC_DRAW);
+        VkDeviceSize vb_offset = base + vbuf_gpu_offset;
+        vkCmdBindVertexBuffers(cmd, 0, 1, &vbuf_gpu, &vb_offset);
+        vkCmdDraw(cmd, vbuf_n / 5, 1, 0, 0);
 
-        // show GL where the position data is
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), 0);
-        glEnableVertexAttribArray(0);
-
-        // show GL where the color data is
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(2 * sizeof(float)));
-        glEnableVertexAttribArray(1);
-
-        glDrawArrays(GL_TRIANGLES, 0, vbuf_n / 5);
         if (vbuf_n > VBUFLEN * 3 / 4)
                 fprintf(stderr, "vbuf fullness (%d/%d)\n", vbuf_n, VBUFLEN);
+        vbuf_gpu_offset += bytes;
         vbuf_n = 0;
 }
 

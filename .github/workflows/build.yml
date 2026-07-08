@@ -1,0 +1,82 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libvulkan-dev glslang-tools libfreetype-dev \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev \
+            libxi-dev libxss-dev libxtst-dev libxkbcommon-dev \
+            libwayland-dev libdecor-0-dev libdrm-dev libgbm-dev \
+            libgl1-mesa-dev libegl1-mesa-dev libdbus-1-dev libudev-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install vulkan-headers vulkan-loader molten-vk glslang
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix)" >> "$GITHUB_ENV"
+
+      - name: Resolve Vulkan SDK version (Windows)
+        if: runner.os == 'Windows'
+        id: vulkan-version
+        shell: pwsh
+        run: |
+          $ver = (Invoke-WebRequest -UseBasicParsing https://vulkan.lunarg.com/sdk/latest/windows.txt).Content.Trim()
+          "version=$ver" >> $env:GITHUB_OUTPUT
+          "VULKAN_SDK=C:\VulkanSDK\$ver" >> $env:GITHUB_ENV
+
+      - name: Cache Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        id: vulkan-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\VulkanSDK
+          key: vulkan-sdk-${{ steps.vulkan-version.outputs.version }}
+
+      - name: Install Vulkan SDK (Windows)
+        if: runner.os == 'Windows' && steps.vulkan-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.vulkan-version.outputs.version }}"
+          Invoke-WebRequest -UseBasicParsing "https://sdk.lunarg.com/sdk/download/$ver/windows/vulkansdk-windows-X64-$ver.exe" -OutFile vulkan_sdk.exe
+          Start-Process -Wait .\vulkan_sdk.exe -ArgumentList '--accept-licenses','--default-answer','--confirm-command','install'
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: tinyc-games-${{ matrix.os }}
+          path: |
+            build/blocko*
+            build/tet*
+            build/flappy*
+            build/maker*
+            build/zel*
+            build/noise*
+            build/*.dll
+            build/shaders/*.spv
+          if-no-files-found: error

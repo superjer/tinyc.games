@@ -2,30 +2,11 @@
 #ifndef BLOCKO_DRAW_C_INCLUDED
 #define BLOCKO_DRAW_C_INCLUDED
 
-int is_framebuffer_incomplete()
+static int chunk_dist_compare(const struct visible_chunk *a, const struct visible_chunk *b)
 {
-        int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-        switch (status)
-        {
-                case GL_FRAMEBUFFER_COMPLETE:
-                        return 0;
-                case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
-                        printf("framebuffer status: %d incomplete attachment\n", status); return 1;
-                case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
-                        printf("framebuffer status: %d missing attachment\n", status); return 1;
-                case GL_FRAMEBUFFER_UNSUPPORTED:
-                        printf("framebuffer status: %d unsupported\n", status); return 1;
-                default:
-                        printf("framebuffer status: %d (unknown)\n", status); return 1;
-        }
-}
-
-int sorter(const void * _a, const void * _b)
-{
-        const struct qitem *a = _a;
-        const struct qitem *b = _b;
-        return (a->y == b->y) ?  0 :
-               (a->y <  b->y) ?  1 : -1;
+        if (a->dist_sq < b->dist_sq) return -1;
+        if (a->dist_sq > b->dist_sq) return 1;
+        return 0;
 }
 
 int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z)
@@ -63,526 +44,464 @@ int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z)
 int chunk_in_range(int chunk_x, int chunk_z)
 {
         float draw_dist_sq = draw_dist * BS * draw_dist * BS;
-        float delta_x = camplayer.pos.x - (chunk_x + .5f) * BS * CHUNKW;
-        float delta_z = camplayer.pos.z - (chunk_z + .5f) * BS * CHUNKD;
+        float delta_x = cull_x - (chunk_x + .5f) * BS * CHUNKW;
+        float delta_z = cull_z - (chunk_z + .5f) * BS * CHUNKD;
         float dist_sq = delta_x * delta_x + delta_z * delta_z;
         return dist_sq < draw_dist_sq;
-}
-
-// prevent shaking shadows by quantizing sun or moon pitch
-float quantize(float p)
-{
-        float quantizer;
-        float qbracket = sinf(p);
-
-        if      (qbracket > 0.8f) quantizer = 0.001f;
-        else if (qbracket > 0.6f) quantizer = 0.0005f;
-        else if (qbracket > 0.4f) quantizer = 0.00025f;
-        else if (qbracket > 0.2f) quantizer = 0.000125f;
-        else                      quantizer = 0.0000625f;
-
-        return roundf(p / quantizer) * quantizer;
 }
 
 //draw everything in the game on the screen
 void draw_stuff()
 {
+        TIMER(gpu_sync);
+        vulkan_acquire_next();
+
+        TIMER(draw_start);
+        // Read GPU timestamps from previous frame (non-blocking, from 2 frames ago)
+        if (gpu_timestamp_pool && frame > 1) {
+                VkResult result = vkGetQueryPoolResults(vk.device, gpu_timestamp_pool,
+                        0, GPU_TS_COUNT, sizeof(gpu_timestamps), gpu_timestamps,
+                        sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
+                gpu_timestamps_valid = (result == VK_SUCCESS);
+        }
+
+        memset(&main_ubo, 0, sizeof main_ubo);
+
         float identity_mtrx[] = {
                 1, 0, 0, 0,
                 0, 1, 0, 0,
                 0, 0, 1, 0,
                 0, 0, 0, 1,
         };
-        float shadow_space[16];
-        float shadow2_space[16];
 
-        glDisable(GL_MULTISAMPLE);
+        memcpy(main_ubo.model, identity_mtrx, sizeof identity_mtrx);
 
-        float model_mtrx[16];
-        memcpy(model_mtrx, identity_mtrx, sizeof identity_mtrx);
+        // Calculate sun/moon positions (used for lighting and shadows)
+        float chunk_size = BS * CHUNKW;
+        shadow_target[0] = camplayer.pos.x;
+        shadow_target[1] = camplayer.pos.y;
+        shadow_target[2] = camplayer.pos.z;
 
-        // make shadow map
-        if (shadow_mapping) for(int s = 0; s < 2; s++)
-        {
-                glBindFramebuffer(GL_FRAMEBUFFER, s == 0 ? shadow_fbo : shadow2_fbo);
-                if (is_framebuffer_incomplete()) goto fb_is_bad;
+        // Original tilted sun path (non-equatorial for interesting lighting)
+        sun_pos.x = shadow_target[0] + dist2sun * (cosf(sun_pitch) * cosf(sun_yaw));
+        sun_pos.y = shadow_target[1] + dist2sun * (cosf(sun_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(sun_pitch) * sinf(sun_roll));
+        sun_pos.z = shadow_target[2] + dist2sun * (cosf(sun_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(sun_pitch) * cosf(sun_roll));
 
-                glViewport(0, 0, SHADOW_SZ, SHADOW_SZ);
-                glClear(GL_DEPTH_BUFFER_BIT);
+        moon_pitch = sun_pitch + PI;
+        if (moon_pitch >= TAU) moon_pitch -= TAU;
+        moon_pos.x = shadow_target[0] + dist2sun * (cosf(moon_pitch) * cosf(sun_yaw));
+        moon_pos.y = shadow_target[1] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(moon_pitch) * sinf(sun_roll));
+        moon_pos.z = shadow_target[2] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(moon_pitch) * cosf(sun_roll));
 
-                glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                glEnable(GL_DEPTH_TEST);
-                glDepthFunc(GL_LEQUAL);
-                glDepthMask(GL_TRUE);
-                glEnable(GL_CULL_FACE);
-                glCullFace(GL_FRONT);
-                glEnable(GL_POLYGON_OFFSET_FILL);
-                glPolygonOffset(4.f, 4.f);
+        TIMER(shadow_calc);
+        do_shadows();
 
-                //render shadows here
-                glUseProgram(shadow_prog_id);
-                // view matrix
-                float view_mtrx[16];
-
-                float moon_pitch = sun_pitch + PI;
-                if (moon_pitch >= TAU) moon_pitch -= TAU;
-
-                float dist2sun = TILESW * BS;
-
-                float f[3] = {
-                        camplayer.pos.x,
-                        100 * BS,
-                        camplayer.pos.z,
-                };
-
-                sun_pos.x = f[0] + dist2sun * (cosf(sun_pitch) * cosf(sun_yaw));
-                sun_pos.y = f[1] + dist2sun * (cosf(sun_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(sun_pitch) * sinf(sun_roll));
-                sun_pos.z = f[2] + dist2sun * (cosf(sun_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(sun_pitch) * cosf(sun_roll));
-
-                moon_pos.x = f[0] + dist2sun * (cosf(moon_pitch) * cosf(sun_yaw));
-                moon_pos.y = f[1] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(moon_pitch) * sinf(sun_roll));
-                moon_pos.z = f[2] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(moon_pitch) * cosf(sun_roll));
-
-                /*
-                T_((int)(sun_pos.x / BS), (int)(sun_pos.y / BS), (int)(sun_pos.z / BS)) = GRAS;
-                T_((int)(moon_pos.x / BS), (int)(moon_pos.y / BS), (int)(moon_pos.z / BS)) = GRAN;
-                */
-
-                if (sun_pitch < PI)
-                {
-                        lookit(view_mtrx, f, sun_pos.x, sun_pos.y, sun_pos.z, NO_PITCH, 0.f);
-                        translate(view_mtrx, -sun_pos.x, -sun_pos.y, -sun_pos.z);
-                }
-                else
-                {
-                        lookit(view_mtrx, f, moon_pos.x, moon_pos.y, moon_pos.z, NO_PITCH, 0.f);
-                        translate(view_mtrx, -moon_pos.x, -moon_pos.y, -moon_pos.z);
-                }
-
-                // proj matrix
-                float snear = (s == 0 ? 10.f : 80.f);
-                float sfar = dist2sun + (s == 0 ? 9000.f : 72000.f);
-                float mag = (s == 0 ? 3000.f : 24000.f);
-                float x = 1.f / mag;
-                float y = -1.f / mag;
-                float z = -1.f / ((sfar - snear) / 2.f);
-                float tz = -(sfar + snear) / (sfar - snear);
-                float ortho_mtrx[] = {
-                        x, 0, 0,  0,
-                        0, y, 0,  0,
-                        0, 0, z,  0,
-                        0, 0, tz, 1,
-                };
-
-                float shadow_pv_mtrx[16];
-                if (!lock_culling)
-                        mat4_multiply(shadow_pv_mtrx, ortho_mtrx, view_mtrx);
-
-                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "proj"), 1, GL_FALSE, ortho_mtrx);
-                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "view"), 1, GL_FALSE, view_mtrx);
-                glUniform1i(glGetUniformLocation(shadow_prog_id, "tarray"), 0);
-                glUniform1f(glGetUniformLocation(shadow_prog_id, "BS"), BS);
-
-                float bias_mtrx[] = {
-                        .5f,   0,   0, 1.f,
-                          0, .5f,   0, 1.f,
-                          0,   0, .5f, 1.f,
-                        .5f, .5f, .5f, 1.f,
-                };
-                float tmp_mtrx[16];
-                mat4_multiply(tmp_mtrx, ortho_mtrx, view_mtrx);
-
-                if (s == 0)
-                        mat4_multiply(shadow_space, bias_mtrx, tmp_mtrx);
-                else
-                        mat4_multiply(shadow2_space, bias_mtrx, tmp_mtrx);
-
-                for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
-                {
-                        if (!VBOLEN_(i, j)) continue;
-                        int passes_vis_test = chunk_in_frustum(shadow_pv_mtrx, i, j) && chunk_in_range(i, j);
-                        if (!frustum_culling || passes_vis_test)
-                        {
-                                glBindVertexArray(VAO_(i, j));
-                                model_mtrx[12] = i * BS * CHUNKW;
-                                model_mtrx[14] = j * BS * CHUNKD;
-                                glUniformMatrix4fv(glGetUniformLocation(shadow_prog_id, "model"), 1, GL_FALSE, model_mtrx);
-                                glDrawArrays(GL_POINTS, 0, VBOLEN_(i, j));
-                                shadow_polys += VBOLEN_(i, j);
-                        }
-                }
-
-                fb_is_bad:
-                glBindFramebuffer(GL_FRAMEBUFFER, 0);
-                glDisable(GL_POLYGON_OFFSET_FILL);
-        }
-
+        TIMER(frame_setup);
         do_atmos_colors();
 
-        glViewport(0, 0, screenw, screenh);
-        glClearColor(fog_r, fog_g, fog_b, 1.f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // eye position + underwater check (needed before proj for FOV)
+        peye0 = lerped_pos.x + PLYR_W / 2;
+        peye1 = lerped_pos.y + EYEDOWN * (camplayer.sneaking ? 2 : 1);
+        peye2 = lerped_pos.z + PLYR_W / 2;
+        int eyex = peye0 / BS;
+        int eyey = peye1 / BS;
+        int eyez = peye2 / BS;
+        main_ubo.underwater =
+                (legit_tile(eyex, eyey, eyez) && T_(eyex, eyey, eyez) == WATR) ? 1.f : 0.f;
 
-        if (antialiasing)
-                glEnable(GL_MULTISAMPLE);
+        // narrow the FOV underwater - refraction magnifies everything
+        static float underwater_zoom = 1.f;
+        float zoom_target = main_ubo.underwater ? 0.875f : 1.f;
+        underwater_zoom += (zoom_target - underwater_zoom) * 0.15f;
 
         // compute proj matrix
-        float near = 8.f;
-        float far = 99999.f;
-        float frustw = 4.5f * zoom_amt * screenw / screenh;
-        float frusth = 4.5f * zoom_amt;
+        float near = 100.f;
+        float far = 1000 * BS;  // 1000 blocks with BS=1000
+        float fov_degrees = 90.f;  // horizontal FOV in degrees
+        float frustw = near * tanf(fov_degrees * PI / 360.f) * zoom_amt * underwater_zoom;
+        float frusth = frustw * screenh / screenw;
         float proj_mtrx[] = {
-                near/frustw,           0,                                  0,  0,
-                          0, near/frusth,                                  0,  0,
-                          0,           0,       -(far + near) / (far - near), -1,
-                          0,           0, -(2.f * far * near) / (far - near),  0
+                near/frustw,            0,                                0,  0,
+                          0, -near/frusth,                                0,  0,
+                          0,            0,          -far / (far - near), -1,
+                          0,            0, -(far * near) / (far - near),  0
         };
 
         // compute view matrix
-        float eye0 = lerped_pos.x + PLYR_W / 2;
-        float eye1 = lerped_pos.y + EYEDOWN * (camplayer.sneaking ? 2 : 1);
-        float eye2 = lerped_pos.z + PLYR_W / 2;
         float f[3];
         float view_mtrx[16];
-        lookit(view_mtrx, f, eye0, eye1, eye2, camplayer.pitch, camplayer.yaw);
-
-        sun_draw(proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll, shadow_tex_id);
+        lookit(view_mtrx, f, peye0, peye1, peye2, camplayer.pitch, camplayer.yaw);
 
         // find where we are pointing at
-        rayshot(eye0, eye1, eye2, f[0], f[1], f[2]);
+        rayshot(peye0, peye1, peye2, f[0], f[1], f[2]);
 
         // translate by hand
         float translated_view_mtrx[16];
         memcpy(translated_view_mtrx, view_mtrx, sizeof view_mtrx);
-        translate(translated_view_mtrx, -eye0, -eye1, -eye2);
+        translate(translated_view_mtrx, -peye0, -peye1, -peye2);
 
-        static float proj_view_mtrx[16];
+        mat4_multiply(proj_view_mtrx, proj_mtrx, translated_view_mtrx);
+
         if (!lock_culling)
-                mat4_multiply(proj_view_mtrx, proj_mtrx, translated_view_mtrx);
+        {
+                memcpy(cull_mtrx, proj_view_mtrx, sizeof cull_mtrx);
+                cull_x = camplayer.pos.x;
+                cull_z = camplayer.pos.z;
+        }
 
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LEQUAL);
-        glDepthMask(GL_TRUE);
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
+        // Mark newly generated chunks dirty and hide the previous occupant's
+        // mesh - must happen before the visible list below or the stale mesh
+        // gets drawn for a frame
+        TIMER(sync_w_terrain_gen)
+        #pragma omp critical
+        {
+                for (size_t i = 0; i < just_gen_len; i++) {
+                        int cx = just_generated[i].x + chunk_scootx; // absolute -> window
+                        int cz = just_generated[i].z + chunk_scootz;
+                        DIRTY_(cx, cz) = 1;
+                        VBOLEN_(cx, cz) = 0;
+                }
+                just_gen_len = 0;
+        }
 
-        glUseProgram(prog_id);
+        // Build visible chunk list (single pass: check all frustums)
+        visible_chunk_count = 0;
+        int far_idx = (shadow_far_render_ab == 0) ? SHADOW_FAR_A : SHADOW_FAR_B;
+        int ext_idx = (shadow_ext_render_ab == 0) ? SHADOW_EXT_A : SHADOW_EXT_B;
+        for (int i = 0; i < VAOW; i++) {
+                for (int j = 0; j < VAOD; j++) {
+                        if (!VBOLEN_(i, j)) continue;
+                        if (!AGEN_(i, j)) continue; // slot holds another chunk's stale mesh
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, material_tex_id);
-        glUniform1i(glGetUniformLocation(prog_id, "tarray"), 0);
+                        // Check camera visibility
+                        int camera_visible = chunk_in_frustum(cull_mtrx, i, j) && chunk_in_range(i, j);
 
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, shadow_tex_id);
-        glUniform1i(glGetUniformLocation(prog_id, "shadow_map"), 1);
+                        // Check shadow frustums
+                        unsigned char shadow_mask = 0;
+                        if (shadow_mapping) {
+                                if (chunk_in_frustum(shadow[SHADOW_NEAR].matrix, i, j)) shadow_mask |= 1;  // Near
+                                if (chunk_in_frustum(shadow[SHADOW_MID].matrix, i, j)) shadow_mask |= 2;  // Mid
+                                if (shadow_far_render_ab >= 0 && chunk_in_frustum(shadow[far_idx].matrix, i, j)) shadow_mask |= 4;  // Far
+                                // Extreme cascade: only include if camera-visible (too far to cast visible shadows from behind)
+                                if (camera_visible && shadow_ext_render_ab >= 0 && chunk_in_frustum(shadow[ext_idx].matrix, i, j)) shadow_mask |= 8;
+                        }
 
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, shadow2_tex_id);
-        glUniform1i(glGetUniformLocation(prog_id, "shadow2_map"), 2);
+                        // Include if visible to camera OR any shadow frustum
+                        if (!camera_visible && !shadow_mask) continue;
 
-        glUniform1i(glGetUniformLocation(prog_id, "shadow_mapping"), shadow_mapping);
+                        // Calculate squared distance to camera for sorting
+                        float chunk_cx = (i + 0.5f) * CHUNKW * BS;
+                        float chunk_cz = (j + 0.5f) * CHUNKD * BS;
+                        float dx = peye0 - chunk_cx;
+                        float dz = peye2 - chunk_cz;
 
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "proj"), 1, GL_FALSE, proj_mtrx);
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"), 1, GL_FALSE, translated_view_mtrx);
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "shadow_space"), 1, GL_FALSE, shadow_space);
-        glUniformMatrix4fv(glGetUniformLocation(prog_id, "shadow2_space"), 1, GL_FALSE, shadow2_space);
+                        visible_chunks[visible_chunk_count].x = i;
+                        visible_chunks[visible_chunk_count].z = j;
+                        visible_chunks[visible_chunk_count].shadow_mask = shadow_mask;
+                        visible_chunks[visible_chunk_count].camera_visible = camera_visible;
+                        visible_chunks[visible_chunk_count].dist_sq = dx*dx + dz*dz;
+                        visible_chunk_count++;
+                }
+        }
 
-        glUniform1f(glGetUniformLocation(prog_id, "BS"), BS);
+        // Sort visible chunks front-to-back for early-Z optimization
+        qsort(visible_chunks, visible_chunk_count, sizeof(struct visible_chunk),
+              (int (*)(const void *, const void *))chunk_dist_compare);
+
+        main_ubo.shadow_mapping = shadow_mapping;
+
+        memcpy(main_ubo.proj, proj_mtrx, sizeof proj_mtrx);
+        memcpy(main_ubo.view, translated_view_mtrx, sizeof translated_view_mtrx);
+
+        main_ubo.bs = BS;
 
         if (sun_pitch < PI)
-                glUniform3f(glGetUniformLocation(prog_id, "light_pos"), sun_pos.x, sun_pos.y, sun_pos.z);
+        {
+                main_ubo.light_pos[0] = sun_pos.x;
+                main_ubo.light_pos[1] = sun_pos.y;
+                main_ubo.light_pos[2] = sun_pos.z;
+        }
         else
-                glUniform3f(glGetUniformLocation(prog_id, "light_pos"), moon_pos.x, moon_pos.y, moon_pos.z);
+        {
+                main_ubo.light_pos[0] = moon_pos.x;
+                main_ubo.light_pos[1] = moon_pos.y;
+                main_ubo.light_pos[2] = moon_pos.z;
+        }
 
-        glUniform3f(glGetUniformLocation(prog_id, "view_pos"), eye0, eye1, eye2);
+        main_ubo.view_pos[0] = peye0;
+        main_ubo.view_pos[1] = peye1;
+        main_ubo.view_pos[2] = peye2;
 
         {
                 float m = ICLAMP(night_amt * 2.f, 0.f, 1.f);
-                glUniform1f(glGetUniformLocation(prog_id, "sharpness"), m*m*m*(m*(m*6.f-15.f)+10.f));
+                main_ubo.sharpness = m*m*m*(m*(m*6.f-15.f)+10.f);
 
                 float r = lerp(night_amt * night_amt, DAY_R, NIGHT_R);
                 float g = lerp(night_amt, DAY_G, NIGHT_G);
                 float b = lerp(night_amt, DAY_B, NIGHT_B);
-                glUniform3f(glGetUniformLocation(prog_id, "day_color"), r, g, b);
-                glUniform3f(glGetUniformLocation(prog_id, "glo_color"), 0.92f, 0.83f, 0.69f);
-                glUniform3f(glGetUniformLocation(prog_id, "fog_color"), fog_r, fog_g, fog_b);
-                glUniform1f(glGetUniformLocation(prog_id, "fog_lo"), draw_dist * BS * 0.667f);
-                glUniform1f(glGetUniformLocation(prog_id, "fog_hi"), draw_dist * BS * 1.000f);
-        }
+                main_ubo.day_color[0] = r;
+                main_ubo.day_color[1] = g;
+                main_ubo.day_color[2] = b;
+                main_ubo.glo_color[0] = 0.92f;
+                main_ubo.glo_color[1] = 0.83f;
+                main_ubo.glo_color[2] = 0.69f;
+                main_ubo.fog_color[0] = fog_r;
+                main_ubo.fog_color[1] = fog_g;
+                main_ubo.fog_color[2] = fog_b;
+                main_ubo.fog_lo = BS * 50.0f;
+                main_ubo.fog_hi = draw_dist * BS * 0.9f;
 
-        // determine which chunks to send to gl
-        TIMER(rings)
-        int x0 = (eye0 - BS * CHUNKW2) / (BS * CHUNKW);
-        int z0 = (eye2 - BS * CHUNKW2) / (BS * CHUNKD);
-        CLAMP(x0, 0, VAOW - 2);
-        CLAMP(z0, 0, VAOD - 2);
-        int x1 = x0 + 1;
-        int z1 = z0 + 1;
+                // Sun strength and warmth for day/night cycle
+                // Full brightness between PI/16 and PI-PI/16, dimming/warming only near horizons
+                // During night: moonlight at constant strength, no warmth
+                if (sun_pitch < PI) {
+                        // Daytime
+                        float transition = PI / 16.0f;  // ~11 degrees transition zone
+                        float sunrise_end = transition;
+                        float sunset_start = PI - transition;
 
-        int x0d = ((x0 * BS * CHUNKW + BS * CHUNKW2) - eye0);
-        int x1d = ((x1 * BS * CHUNKW + BS * CHUNKW2) - eye0);
-        int z0d = ((z0 * BS * CHUNKD + BS * CHUNKD2) - eye2);
-        int z1d = ((z1 * BS * CHUNKD + BS * CHUNKD2) - eye2);
+                        if (sun_pitch < sunrise_end) {
+                                // Sunrise transition: dim/warm → bright/white
+                                float t = sun_pitch / sunrise_end;
+                                main_ubo.sun_strength = t * t;
+                                main_ubo.sun_warmth = 1.0f - t;
+                        } else if (sun_pitch > sunset_start) {
+                                // Sunset transition: bright/white → dim/warm
+                                float t = (sun_pitch - sunset_start) / transition;
+                                main_ubo.sun_strength = 1.0f - t * t;
+                                main_ubo.sun_warmth = t;
+                        } else {
+                                // Full day: constant brightness, no warmth
+                                main_ubo.sun_strength = 1.0f;
+                                main_ubo.sun_warmth = 0.0f;
+                        }
+                        main_ubo.outside_cascade_lit = main_ubo.sun_strength;
+                } else {
+                        // Nighttime - moonlight fades in/out near horizons
+                        float transition = PI / 16.0f;
+                        float moonrise_end = PI + transition;
+                        float moonset_start = TAU - transition;
 
-        // initialize with ring0 chunks
-        struct qitem fresh[VAOW*VAOD] = { // chunkx, distance sq, chunkz
-                {x0, (x0d * x0d + z0d * z0d), z0},
-                {x0, (x0d * x0d + z1d * z1d), z1},
-                {x1, (x1d * x1d + z0d * z0d), z0},
-                {x1, (x1d * x1d + z1d * z1d), z1}
-        };
-        size_t fresh_len = 4;
-
-        qsort(fresh, fresh_len, sizeof(struct qitem), sorter);
-
-        #pragma omp critical
-        {
-                memcpy(fresh + fresh_len,
-                                (struct qitem *)just_generated,
-                                just_gen_len * sizeof *just_generated);
-                fresh_len += just_gen_len;
-                just_gen_len = 0;
-        }
-
-        // position within each ring that we're at this frame
-	static struct qitem ringpos[VAOW + VAOD] = {0};
-        for (int r = 1; r < VAOW + VAOD; r++)
-        {
-		// expand ring in all directions
-		x0--; x1++; z0--; z1++;
-
-                // freshen farther rings less and less often
-                if (r >= 3 && r <= 6 && frame % 2 != r % 2)   continue;
-                if (r >= 7 && r <= 14 && frame % 4 != r % 4)  continue;
-                if (r >= 15 && r <= 30 && frame % 8 != r % 8) continue;
-                if (r >= 31 && frame % 16 != r % 16)          continue;
-
-                int *x = &ringpos[r].x;
-                int *z = &ringpos[r].z;
-
-                // move to next chunk, maybe on ring
-                --(*x);
-
-                // wrap around the ring
-		int x_too_low = (*x < x0);
-                if (x_too_low) { *x = x1; --(*z); }
-
-                // reset if out of the ring
-		int z_too_low = (*z < z0);
-                if (z_too_low) { *x = x1; *z = z1; }
-
-                // get out of the middle
-		int is_on_ring = (*z == z0 || *z == z1 || *x == x1);
-                if (!is_on_ring) { *x = x0; }
-
-                // render if in bounds
-                if (*x >= 0 && *x < VAOW && *z >= 0 && *z < VAOD)
-                {
-                        fresh[fresh_len].x = *x;
-                        fresh[fresh_len].z = *z;
-                        fresh_len++;
+                        if (sun_pitch < moonrise_end) {
+                                // Moonrise transition: dim → bright, warm → cool
+                                float t = (sun_pitch - PI) / transition;
+                                main_ubo.sun_strength = t * t;
+                                main_ubo.sun_warmth = 1.0f - t;  // Fade out warmth from sunset
+                        } else if (sun_pitch > moonset_start) {
+                                // Moonset transition: bright → dim, cool → warm
+                                float t = (sun_pitch - moonset_start) / transition;
+                                main_ubo.sun_strength = 1.0f - t * t;
+                                main_ubo.sun_warmth = t;  // Fade in warmth for sunrise
+                        } else {
+                                // Full night: constant moonlight, no warmth
+                                main_ubo.sun_strength = 1.0f;
+                                main_ubo.sun_warmth = 0.0f;
+                        }
+                        main_ubo.outside_cascade_lit = 0.0f;      // Areas outside shadow cascade always dark at night
                 }
         }
 
-        // render non-fresh chunks
-        TIMER(drawstale)
-        struct qitem stale[VAOW * VAOD] = {0}; // chunkx, distance sq, chunkz
-        size_t stale_len = 0;
-        for (int i = 0; i < VAOW; i++) for (int j = 0; j < VAOD; j++)
-        {
-                // skip chunks we will draw fresh this frame
-                size_t limit = show_fresh_updates ? fresh_len : 4;
-                for (size_t k = 0; k < limit; k++)
-                        if (fresh[k].x == i && fresh[k].z == j)
-                                goto skip;
+        // Check LOD chunks for face visibility changes (skip if lock_culling for debugging)
+        if (!lock_culling)
+        for (int i = 0; i < VAOW; i++) {
+                for (int j = 0; j < VAOD; j++) {
+                        if (!LOD_(i, j)) continue;  // skip full-detail chunks
+                        if (DIRTY_(i, j)) continue; // already dirty
+                        if (!AGEN_(i, j)) continue; // not generated yet
 
-                stale[stale_len].x = i;
-                stale[stale_len].z = j;
-                int xd = ((i * BS * CHUNKW + BS * CHUNKW2) - eye0);
-                int zd = ((j * BS * CHUNKD + BS * CHUNKD2) - eye2);
-                stale[stale_len].y = (xd * xd + zd * zd);
+                        // Calculate current face needs
+                        float chunk_cx = (i + 0.5f) * CHUNKW * BS;
+                        float chunk_cz = (j + 0.5f) * CHUNKD * BS;
+                        float dx = camplayer.pos.x - chunk_cx;
+                        float dz = camplayer.pos.z - chunk_cz;
+                        float dist = sqrtf(dx*dx + dz*dz);
+                        float dist_blocks = dist / BS;
 
-                // only queue chunks we could see
-                int passes_vis_test = chunk_in_frustum(proj_view_mtrx, i, j) && chunk_in_range(i, j);
-                if (passes_vis_test)
-                        stale_len++;
-
-                skip: ;
-        }
-
-        qsort(stale, stale_len, sizeof *stale, sorter);
-        for (size_t my = 0; my < stale_len; my++)
-        {
-                int myx = stale[my].x;
-                int myz = stale[my].z;
-                model_mtrx[12] = myx * BS * CHUNKW;
-                model_mtrx[14] = myz * BS * CHUNKD;
-                glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, model_mtrx);
-                glBindVertexArray(VAO_(myx, myz));
-                glDrawArrays(GL_POINTS, 0, VBOLEN_(myx, myz));
-                polys += VBOLEN_(myx, myz);
-        }
-
-        // package, ship and render fresh chunks (while the stales are rendering!)
-        TIMER(buildvbo);
-        for (size_t my = 0; my < fresh_len; my++)
-        {
-                int myx = fresh[my].x;
-                int myz = fresh[my].z;
-                int xlo = myx * CHUNKW;
-                int xhi = xlo + CHUNKW;
-                int zlo = myz * CHUNKD;
-                int zhi = zlo + CHUNKD;
-                int ungenerated = false;
-
-                #pragma omp critical
-                if (!AGEN_(myx, myz))
-                {
-                        ungenerated = true;
-                }
-
-                if (ungenerated)
-                        continue; // don't bother with ungenerated chunks
-
-                glBindVertexArray(VAO_(myx, myz));
-                glBindBuffer(GL_ARRAY_BUFFER, VBO_(myx, myz));
-                v = vbuf; // reset vertex buffer pointer
-                w = wbuf; // same for water buffer
-
-                TIMER(buildvbo);
-
-                for (int z = zlo; z < zhi; z++) for (int y = 0; y < TILESH; y++) for (int x = xlo; x < xhi; x++)
-                {
-                        if (v >= v_limit) break; // out of vertex space, shouldnt reasonably happen
-
-                        if (w >= w_limit) w -= 10; // just overwrite water if we run out of space
-
-                        if (T_(x, y, z) == OPEN && (!show_light_values || !in_test_area(x, y, z)))
+                        // If close enough, switch to full detail
+                        if (dist_blocks < LOD_DIST_THRESHOLD) {
+                                DIRTY_(i, j) = 1;
                                 continue;
-
-                        //lighting
-                        float usw = CORN_(x  , y  , z  );
-                        float use = CORN_(x+1, y  , z  );
-                        float unw = CORN_(x  , y  , z+1);
-                        float une = CORN_(x+1, y  , z+1);
-                        float dsw = CORN_(x  , y+1, z  );
-                        float dse = CORN_(x+1, y+1, z  );
-                        float dnw = CORN_(x  , y+1, z+1);
-                        float dne = CORN_(x+1, y+1, z+1);
-                        float USW = KORN_(x  , y  , z  );
-                        float USE = KORN_(x+1, y  , z  );
-                        float UNW = KORN_(x  , y  , z+1);
-                        float UNE = KORN_(x+1, y  , z+1);
-                        float DSW = KORN_(x  , y+1, z  );
-                        float DSE = KORN_(x+1, y+1, z  );
-                        float DNW = KORN_(x  , y+1, z+1);
-                        float DNE = KORN_(x+1, y+1, z+1);
-                        int t = T_(x, y, z);
-                        int m = x & (CHUNKW-1);
-                        int n = z & (CHUNKD-1);
-
-                        if (t == GRAS)
-                        {
-                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ 0,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ 1, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ 1, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 1,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 1,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
-                        }
-                        else if (t == DIRT || t == GRG1 || t == GRG2)
-                        {
-                                int u = (t == DIRT) ? 2 :
-                                        (t == GRG1) ? 3 : 4;
-                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ u,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ 2, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ 2, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 2,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ 2,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
-                        }
-                        else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN ||
-                                 t == RLEF || t == YLEF)
-                        {
-                                int f = (t == STON) ?  5 :
-                                        (t == SAND) ?  6 :
-                                        (t == ORE ) ? 11 :
-                                        (t == OREH) ? 12 :
-                                        (t == HARD) ? 13 :
-                                        (t == WOOD) ? 14 :
-                                        (t == GRAN) ? 15 :
-                                        (t == RLEF) ? 16 :
-                                        (t == YLEF) ? 17 :
-                                                       0 ;
-                                if (y == 0        || T_(x  , y-1, z  ) >= OPEN) *v++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if (z == 0        || T_(x  , y  , z-1) >= OPEN) *v++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if (z == TILESD-1 || T_(x  , y  , z+1) >= OPEN) *v++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if (x == 0        || T_(x-1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if (x == TILESW-1 || T_(x+1, y  , z  ) >= OPEN) *v++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if (y <  TILESH-1 && T_(x  , y+1, z  ) >= OPEN) *v++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
-                        }
-                        else if (t == WATR)
-                        {
-                                if (y == 0        || T_(x  , y-1, z  ) == OPEN)
-                                {
-                                        int f = 7 + (pframe / 10 + (x ^ z)) % 4;
-                                        *w++ = (struct vbufv){ f,    UP, m, y+0.06f, n, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f };
-                                        *w++ = (struct vbufv){ f,  DOWN, m, y-0.94f, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f };
-                                }
-                        }
-                        else if (t == LITE)
-                        {
-                                *w++ = (struct vbufv){ 18, SOUTH, m     , y, n+0.5f, use, usw, dse, dsw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                *w++ = (struct vbufv){ 18, NORTH, m     , y, n-0.5f, unw, une, dnw, dne, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                *w++ = (struct vbufv){ 18,  WEST, m+0.5f, y, n     , usw, unw, dsw, dnw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                *w++ = (struct vbufv){ 18,  EAST, m-0.5f, y, n     , une, use, dne, dse, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
                         }
 
-                        if (show_light_values && in_test_area(x, y, z))
-                        {
-                                int f = MAX(GLO_(x, y, z), SUN_(x, y, z)) + PNG0;
-                                int ty = y;
-                                float lit = 1.f;
-                                if (IS_OPAQUE(x, y, z))
-                                {
-                                        ty = y - 1;
-                                        lit = 0.1f;
-                                }
-                                *w++ = (struct vbufv){ f,    UP, m, ty+0.99f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
-                                *w++ = (struct vbufv){ f,  DOWN, m, ty-0.01f, n, lit, lit, lit, lit, lit, lit, lit, lit, 1.f };
-                        }
-                }
+                        // Check if any excluded face is now needed
+                        float thresh = dist * LOD_ANGLE_SIN;
+                        unsigned char needed = FACE_UP | FACE_DOWN;
+                        if (dz > -thresh) needed |= FACE_NORTH;
+                        if (dz <  thresh) needed |= FACE_SOUTH;
+                        if (dx > -thresh) needed |= FACE_EAST;
+                        if (dx <  thresh) needed |= FACE_WEST;
 
-                if (w - wbuf < v_limit - v) // room for water in vertex buffer?
-                {
-                        memcpy(v, wbuf, (w - wbuf) * sizeof *wbuf);
-                        v += w - wbuf;
-                }
-
-                VBOLEN_(myx, myz) = v - vbuf;
-                polys += VBOLEN_(myx, myz);
-                TIMER(glBufferData)
-                glBufferData(GL_ARRAY_BUFFER, VBOLEN_(myx, myz) * sizeof *vbuf, vbuf, GL_STATIC_DRAW);
-                if (my < 4) // draw the newly buffered verts
-                {
-                        TIMER(glDrawArrays)
-                        model_mtrx[12] = myx * BS * CHUNKW;
-                        model_mtrx[13] = 0.f;
-                        model_mtrx[14] = myz * BS * CHUNKD;
-                        glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"), 1, GL_FALSE, model_mtrx);
-                        glDrawArrays(GL_POINTS, 0, VBOLEN_(myx, myz));
+                        if (needed & ~FACES_(i, j))
+                                DIRTY_(i, j) = 1;
                 }
         }
 
-        if (mouselook) cursor(screenw, screenh);
+        TIMER(build_meshes);
+        build_meshes();
+
+        // refresh (or retire) the reject+patch for any pending block edit; must
+        // run after build_meshes so it sees which chunks just rebuilt
+        patch_update();
+
+        main_ubo.water_frame = pframe;
+
+        TIMER(upload_ubo);
+        // Upload UBO to per-frame buffer
+        {
+                int frame = vk.currentFrame;
+                if (frame >= MAX_FRAMES_IN_FLIGHT) {
+                        fprintf(stderr, "ERROR: frame %d >= MAX_FRAMES_IN_FLIGHT %d\n", frame, MAX_FRAMES_IN_FLIGHT);
+                }
+                void* data;
+                vkMapMemory(vk.device, main_memory[frame], 0, sizeof main_ubo, 0, &data);
+                memcpy(data, &main_ubo, sizeof main_ubo);
+                vkUnmapMemory(vk.device, main_memory[frame]);
+        }
+
+        VkCommandBuffer cmdbuf = vk.commandBuffers[vk.imageIndex];
+
+        // End the auto-started render pass so we can reset query pool and do shadow passes
+        vkCmdEndRenderPass(cmdbuf);
+
+        // Reset and start GPU timestamp queries (must be outside render pass)
+        if (gpu_timestamp_pool) {
+                vkCmdResetQueryPool(cmdbuf, gpu_timestamp_pool, 0, GPU_TS_COUNT);
+                vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_FRAME_START);
+        }
+
+        // Build mob + mining geometry once so both the shadow pass (near
+        // cascade) and the main pass can draw the same vertex buffers
+        mob_build();
+        mine_overlay_build();
+        item_build();
+
+        // Render shadow maps (before main render pass)
+        TIMER(shadow_render);
+        shadow_render(cmdbuf);
+
+        // Start main render pass
+        TIMER(draw_terrain);
+        VkClearValue clearValues[2] = {
+                {},
+                {.depthStencil = {1.0f, 0}}
+        };
+        VkRenderPassBeginInfo renderPassBeginInfo = {
+                .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                .renderPass = vk.renderPass,
+                .framebuffer = vk.framebuffers[vk.imageIndex],
+                .renderArea = {{0, 0}, {vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height}},
+                .clearValueCount = 2,
+                .pClearValues = clearValues,
+        };
+        vkCmdBeginRenderPass(cmdbuf, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+        // Render opaque terrain (front-to-back for early-Z optimization)
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);
+
+        VkViewport viewport = { 0, 0, vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height, 0, 1 };
+        VkRect2D scissor = { {0, 0}, {vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height} };
+        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
+        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+
+        vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                vk.pipelines[main_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
+
+        struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
+                 float reject_lo[4], reject_hi[4]; } push;
+        memcpy(push.pv, proj_view_mtrx, sizeof push.pv);
+        push.bs = BS;
+
+        // opaque terrain rejects the faces of any cell in the pending edit box
+        // (window tile coords this frame); patch_render redraws them. Empty box
+        // (lo > hi) when no edit is pending, so nothing is rejected.
+        patch_reject_box(push.reject_lo, push.reject_hi);
+
+        VkDeviceSize voffset = 0;
+        int chunks_drawn = 0;
+        int total_verts = 0;
+
+        // Pass 1: opaque terrain (front-to-back)
+        for (int k = 0; k < visible_chunk_count; k++) {
+                if (!visible_chunks[k].camera_visible) continue;
+                int i = visible_chunks[k].x;
+                int j = visible_chunks[k].z;
+                size_t terrain_verts = WBOSTART_(i, j);
+                if (!terrain_verts) continue;
+
+                push.chunk_x = i * BS * CHUNKW;
+                push.chunk_y = 0;
+                push.chunk_z = j * BS * CHUNKD;
+                vkCmdPushConstants(cmdbuf, vk.pipelines[main_pipe].layout,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
+                vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &voffset);
+                vkCmdDraw(cmdbuf, 4, terrain_verts, 0, 0);
+                chunks_drawn++;
+                total_verts += terrain_verts;
+                polys += terrain_verts;
+        }
+
+        // Mobs draw on their own pipeline (mob.vert); rebind the opaque terrain
+        // pipeline afterward for the block-breaking overlay and the edit patch.
+        mob_render(cmdbuf, mob_pipe, proj_view_mtrx);
+        item_render(cmdbuf, mob_pipe, proj_view_mtrx); // spins on the mob pipeline
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);
+        mine_overlay_render(cmdbuf, main_pipe, proj_view_mtrx);
+
+        // Draw the patch: the corrected mesh of the pending edit box, filling in
+        // the faces the reject test just culled from the big chunk buffers
+        patch_render(cmdbuf, main_pipe, proj_view_mtrx);
+
+        // Render sky/sun between opaque terrain and transparent water
+        sky_draw(cmdbuf, proj_mtrx, view_mtrx);
+        if (!main_ubo.underwater) // too murky to see the sun/moon
+                sun_draw(cmdbuf, proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll);
+
+        // Pass 2: transparent water (back-to-front)
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[water_pipe].pipeline);
+        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
+        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+        vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                vk.pipelines[water_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
+
+        // reject stale water faces inside the pending edit box; patch_render_water
+        // redraws them (Phase 2). Empty box when no edit is pending.
+        patch_reject_box(push.reject_lo, push.reject_hi);
+
+        for (int k = visible_chunk_count - 1; k >= 0; k--) {
+                if (!visible_chunks[k].camera_visible) continue;
+                int i = visible_chunks[k].x;
+                int j = visible_chunks[k].z;
+                size_t water_start = WBOSTART_(i, j);
+                size_t water_verts = VBOLEN_(i, j) - water_start;
+                if (!water_verts) continue;
+
+                push.chunk_x = i * BS * CHUNKW;
+                push.chunk_y = 0;
+                push.chunk_z = j * BS * CHUNKD;
+                VkDeviceSize water_offset = water_start * sizeof(struct vbufv);
+                vkCmdPushConstants(cmdbuf, vk.pipelines[water_pipe].layout,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
+                vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &water_offset);
+                vkCmdDraw(cmdbuf, 4, water_verts, 0, 0);
+                total_verts += water_verts;
+                polys += water_verts;
+        }
+
+        // patch the edit box's water/glow faces the reject test just culled
+        patch_render_water(cmdbuf, water_pipe, proj_view_mtrx);
+
+        if (mouselook) cursor(cmdbuf);
+
+        // GPU timestamp after terrain
+        if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_TERRAIN_END);
 
         debrief();
 
-        TIMER(swapwindow);
-        SDL_GL_SwapWindow(win);
+        // GPU timestamp at frame end
+        if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_FRAME_END);
+
+        TIMER(frame_submit);
+        vulkan_submit();
         TIMER();
 }
 

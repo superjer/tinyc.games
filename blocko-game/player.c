@@ -17,7 +17,8 @@ void lerp_camera(float t, struct player *a, struct player *b)
 }
 
 //return 0 iff we couldn't actually move
-int move_player(struct player *p, int velx, int vely, int velz)
+//swept collision against the world, one unit at a time
+int move_box(struct box *pos, int velx, int vely, int velz)
 {
         int last_was_x = false;
         int last_was_z = false;
@@ -27,12 +28,12 @@ int move_player(struct player *p, int velx, int vely, int velz)
         if (!velx && !vely && !velz)
                 return 1;
 
-        if (world_collide(p->pos, 0))
+        if (world_collide(*pos, 0))
                 already_stuck = true;
 
         while (velx || vely || velz)
         {
-                struct box testpos = p->pos;
+                struct box testpos = *pos;
                 int amt;
 
                 if ((!velx && !velz) || ((last_was_x || last_was_z) && vely))
@@ -78,13 +79,31 @@ int move_player(struct player *p, int velx, int vely, int velz)
                         continue;
                 }
 
-                p->pos = testpos;
+                *pos = testpos;
                 moved = true;
         }
 
         return moved;
 }
 
+int move_player(struct player *p, int velx, int vely, int velz)
+{
+        return move_box(&p->pos, velx, vely, velz);
+}
+
+
+// forget the current dig. The block stays solid in tiles the whole time, so
+// there's nothing to "put back" - dropping mine_frac/mine_hole retires the
+// transient reject+patch (patch.c) and the untouched chunk buffer shows the
+// block again next frame.
+void mine_heal()
+{
+        mine_hole = 0;
+        mine_x = mine_y = mine_z = -1;
+        mine_tile = -1;
+        mine_frac = 0.f;
+        player[0].mine_progress = 0;
+}
 
 void update_player(struct player *p, int real)
 {
@@ -95,23 +114,54 @@ void update_player(struct player *p, int real)
                 move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
         }
 
-        if (p->jumping && p->wet)
+        if (p->jumping && p->ground)
         {
-                p->grav = GRAV_JUMP;
+                p->grav = GRAV_JUMP; // normal jump, even off underwater ground
+                p->jumping = false;
         }
-        else if (p->jumping)
+        else if (p->jump_held && !p->ground && p->grav > GRAV_SWIM
+                        && (p->submerged || (p->wet && p->grav < GRAV_ZERO)))
         {
+                // swim: ease toward swim-up speed while submerged;
+                // once rising, keep thrusting until fully out of the water
+                p->grav -= 3;
+                if (p->grav < GRAV_SWIM)
+                        p->grav = GRAV_SWIM;
+        }
+
+        if (p->jumping)
                 p->jumping--; // reduce buffer frames
-                if (p->ground)
-                {
-                        p->grav = GRAV_JUMP;
-                        p->jumping = false;
-                }
-        }
 
         if (p->cooldown) p->cooldown--;
 
-        if (real && p->breaking && !p->cooldown && target_x >= 0)
+        // hold left click to mine: progress builds only while aimed at the
+        // same block, so releasing (a quick click) never breaks anything.
+        // The block shows as a hole instantly via the shader reject box + patch
+        // mesh (patch.c), with a shaking stand-in drawn in its place (mine.c) -
+        // no chunk rebuild, so nothing hitches while you dig.
+        if (real && p->breaking && target_x >= 0)
+        {
+                if (target_x == mine_x && target_y == mine_y && target_z == mine_z)
+                        p->mine_progress++;
+                else
+                {
+                        // aim moved: the reject box just follows mine_x next frame,
+                        // so the old block reappears with no rebuild
+                        mine_x = target_x;
+                        mine_y = target_y;
+                        mine_z = target_z;
+                        mine_tile = T_(mine_x, mine_y, mine_z);
+                        mine_hole = 1;
+                        p->mine_progress = 1;
+                }
+                mine_frac = (float)p->mine_progress / MINE_TIME;
+        }
+        else if (real)
+        {
+                mine_heal();
+        }
+
+        if (real && p->breaking && p->mine_progress >= MINE_TIME && target_x >= 0)
         {
                 int x = target_x;
                 int y = target_y;
@@ -119,6 +169,8 @@ void update_player(struct player *p, int real)
                 unsigned char max = 0;
                 int broken = T_(x, y, z);
                 T_(x, y, z) = OPEN;
+                // no immediate chunk rebuild: patch_edit (below) shows the hole
+                // instantly and schedules a debounced rebuild to fold it in
 
                 if (broken == LITE)
                 {
@@ -132,11 +184,15 @@ void update_player(struct player *p, int real)
 
                 if (ABOVE_GROUND(x, y, z))
                 {
-                        while (y <= TILESH-1)
+                        // flood sunlight down the newly-opened column, but with a
+                        // scratch index - mutating y here corrupts the coords
+                        // handed to patch_edit/glo below (the reject+patch box
+                        // would land at the wrong height, leaving the broken
+                        // block uncovered - a one-frame-late "ghost" on trunks)
+                        for (int yy = y; yy <= TILESH-1; yy++)
                         {
-                                sun_enqueue(x, y, z, 0, 15);
-                                y++;
-                                if (!ABOVE_GROUND(x, y, z)) break;
+                                sun_enqueue(x, yy, z, 0, 15);
+                                if (!ABOVE_GROUND(x, yy+1, z)) break;
                         }
                 }
                 else
@@ -160,6 +216,14 @@ void update_player(struct player *p, int real)
                 glo_enqueue(x, y, z, 0, max ? max - 1 : 0);
 
                 out:
+                // pop a little half-size copy of the block loose to tumble to the
+                // ground (cosmetic; catches every break path, lights included)
+                item_spawn(x, y, z, broken);
+                // hand the dig off to a persistent edit patch: the block is now
+                // OPEN in tiles, so schedule the debounced rebuild and let the
+                // reject+patch cover the hole until it lands. mine_heal ends the dig.
+                patch_edit(x, y, z);
+                mine_heal();
                 p->cooldown = 5;
         }
 
@@ -167,6 +231,7 @@ void update_player(struct player *p, int real)
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
                 {
                         T_(place_x, place_y, place_z) = HARD;
+                        patch_edit(place_x, place_y, place_z); // instant, debounced rebuild
 
                         if (ABOVE_GROUND(place_x, place_y, place_z))
                                 GNDH_(place_x, place_z) = place_y;
@@ -183,6 +248,7 @@ void update_player(struct player *p, int real)
 
         if (real && p->lighting && !p->cooldown && place_x >= 0) {
                 T_(place_x, place_y, place_z) = LITE;
+                DIRTY_(B2C(place_x), B2C(place_z)) = 1;
                 glo_enqueue(place_x, place_y, place_z, 0, 15);
                 p->cooldown = 10;
         }
@@ -192,17 +258,17 @@ void update_player(struct player *p, int real)
         if (p->cooldownf > 0) p->cooldownf--;
         if (!p->goingf) p->runningf = false;
 
-        if (p->goingf && !p->goingb) { p->fvel++; }
-        else if (p->fvel > 0)        { p->fvel--; }
+        if (p->goingf && !p->goingb) { p->fvel += PLYR_ACCEL; }
+        else if (p->fvel > 0)        { p->fvel -= PLYR_ACCEL; if (p->fvel < 0) p->fvel = 0; }
 
-        if (p->goingb && !p->goingf) { p->fvel--; }
-        else if (p->fvel < 0)        { p->fvel++; }
+        if (p->goingb && !p->goingf) { p->fvel -= PLYR_ACCEL; }
+        else if (p->fvel < 0)        { p->fvel += PLYR_ACCEL; if (p->fvel > 0) p->fvel = 0; }
 
-        if (p->goingr && !p->goingl) { p->rvel++; }
-        else if (p->rvel > 0)        { p->rvel--; }
+        if (p->goingr && !p->goingl) { p->rvel += PLYR_ACCEL; }
+        else if (p->rvel > 0)        { p->rvel -= PLYR_ACCEL; if (p->rvel < 0) p->rvel = 0; }
 
-        if (p->goingl && !p->goingr) { p->rvel--; }
-        else if (p->rvel < 0)        { p->rvel++; }
+        if (p->goingl && !p->goingr) { p->rvel -= PLYR_ACCEL; }
+        else if (p->rvel < 0)        { p->rvel += PLYR_ACCEL; if (p->rvel > 0) p->rvel = 0; }
 
         //limit speed
         float totalvel = sqrt(p->fvel * p->fvel + p->rvel * p->rvel);
@@ -210,6 +276,7 @@ void update_player(struct player *p, int real)
                       p->sneaking                  ? PLYR_SPD_S :
                                                      PLYR_SPD;
         limit *= fast;
+        if (p->wet) limit /= 2; // water drag
         if (totalvel > limit)
         {
                 limit /= totalvel;
@@ -231,9 +298,16 @@ void update_player(struct player *p, int real)
 
         //detect water
         int was_wet = p->wet;
+        struct box torso = (struct box){
+                p->pos.x, p->pos.y, p->pos.z,
+                PLYR_W, PLYR_H/2, PLYR_W};
         p->wet = world_collide(p->pos, 1);
+        p->submerged = world_collide(torso, 1);
         if (was_wet && !p->wet && p->grav < GRAV_FLOAT)
-                p->grav = GRAV_FLOAT;
+        {
+                // breaking the surface: hop out if jumping, else don't launch
+                p->grav = p->jump_held ? MIN(p->grav, GRAV_EXIT) : GRAV_FLOAT;
+        }
 
         //gravity
         if (!p->ground || p->grav < GRAV_ZERO)
@@ -243,6 +317,9 @@ void update_player(struct player *p, int real)
                         p->grav = GRAV_ZERO;
                 else if (p->grav < GRAV_MAX)
                         p->grav++;
+
+                if (p->wet && p->grav > GRAV_WET_MAX) // water terminal velocity
+                        p->grav = GRAV_WET_MAX;
         }
 
         //detect ground
@@ -258,7 +335,7 @@ void update_player(struct player *p, int real)
         if (real)
         {
                 zoom_amt *= zooming ? 0.9f : 1.2f;
-                CLAMP(zoom_amt, 0.25f, 1.0f);
+                zoom_amt = CLAMP(zoom_amt, 0.25f, 1.0f);
         }
 }
 

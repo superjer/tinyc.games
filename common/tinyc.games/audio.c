@@ -4,6 +4,9 @@
 // 2. Call audio_init() before playing sound
 // 3. Play tones with audio_tone()
 
+#ifndef TINYCGAMES_AUDIO_C_INCLUDED
+#define TINYCGAMES_AUDIO_C_INCLUDED
+
 #include <stdlib.h>
 #include <math.h>
 #include <SDL3/SDL_audio.h>
@@ -134,3 +137,5 @@ int music_toggle()
         music_on = !music_on;
         return music_on;
 }
+
+#endif // TINYCGAMES_AUDIO_C_INCLUDED
