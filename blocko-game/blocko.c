@@ -61,6 +61,7 @@
 #include "player.c"
 #include "mob.c"
 #include "mine.c"
+#include "item.c"
 #include "patch.c"
 #include "test.c"
 #include "chunker.c"
@@ -174,6 +175,7 @@ void main_loop()
         {
                 TIMECALL(update_player, (&player[0], 1));
                 TIMECALL(update_mobs, ());
+                update_items();
                 TIMECALL(update_world, ());
                 pframe++;
                 accumulated_elapsed -= interval;
@@ -286,7 +288,10 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
                 if (x < 0 || y < 0 || z < 0 || x >= TILESW || y >= TILESH || z >= TILESD)
                         goto bad;
 
-                if (T_(x, y, z) != OPEN)
+                // pass through water like air: mining hits the solid block behind
+                // it, and building lands on the water cell before that block (so it
+                // replaces the water). you can't target/mine water itself.
+                if (T_(x, y, z) != OPEN && T_(x, y, z) != WATR)
                         break;
 
                 if (i == 6)
@@ -336,6 +341,7 @@ void apply_scoot()
                         player[0].pos.z += dz * BS;
 
                         mob_scoot(dx, dz);
+                        item_scoot(dx, dz);
 
                         // pending light updates hold window coords
                         for (size_t i = 0; i < sq_curr_len; i++) { sunq_curr[i].x += dx; sunq_curr[i].z += dz; }

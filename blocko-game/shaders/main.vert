@@ -58,7 +58,14 @@ void main(void) {
     vec3 face_normal;
     float bs = push.bs;
 
-    switch (int(orient_in)) {
+    // water surface faces are tagged with orient + 10: the top edge is pulled
+    // down to the recessed water line (see below) while the bottom stays put,
+    // so the wall is shortened (not lowered) to meet the lowered top face.
+    int o = int(orient_in);
+    bool recess_top = o >= 10;
+    if (recess_top) o -= 10;
+
+    switch (o) {
         case 1: // UP (Y-)
             a = vec4(0, 0, 0, 0);
             b = vec4(bs, 0, 0, 0);
@@ -107,6 +114,17 @@ void main(void) {
             sidel = 0.6f;
             face_normal = vec3(0, 1, 0);
             break;
+    }
+
+    // pull the top edge (the verts at local y == 0) down to the water line. top
+    // faces have all four verts there (whole face drops); side faces only the top
+    // two (wall shortens); bottom faces none (untouched).
+    if (recess_top) {
+        float r = 0.06 * bs;
+        if (a.y < bs * 0.5) a.y = r;
+        if (b.y < bs * 0.5) b.y = r;
+        if (c.y < bs * 0.5) c.y = r;
+        if (d.y < bs * 0.5) d.y = r;
     }
 
     vec3 world = push.bs * pos_in + vec3(push.chunk_x, push.chunk_y, push.chunk_z);

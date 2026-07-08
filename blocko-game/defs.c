@@ -629,6 +629,13 @@ int mob_spawn_at(int bx, int by, int bz);
 void mine_overlay_build();
 void mine_overlay_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 
+// item.c protos
+void item_spawn(int x, int y, int z, int tile);
+void update_items();
+void item_scoot(int dx, int dz);
+void item_build();
+void item_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
+
 // patch.c protos
 void patch_edit(int wx, int wy, int wz);
 void patch_update();

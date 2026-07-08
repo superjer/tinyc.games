@@ -693,8 +693,10 @@ void vksetup()
         createDescriptorSetLayout(&main_descriptor_set_layout);
         main_pipe = vulkan_make_pipeline("main.vert", NULL, "main.frag",
                 1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP);
+        // no-cull so every water face is visible from both sides (you can see the
+        // surface and the exposed walls/floor from inside the water as well as out)
         water_pipe = vulkan_make_pipeline("main.vert", NULL, "main.frag",
-                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP | PIPE_BLEND);
+                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP | PIPE_BLEND | PIPE_NO_CULL);
         // mobs share the vertex layout and the lit fragment shader, but use their
         // own vertex shader (spins to face heading; no reject box)
         mob_pipe = vulkan_make_pipeline("mob.vert", NULL, "main.frag",

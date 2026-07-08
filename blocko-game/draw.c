@@ -373,6 +373,7 @@ void draw_stuff()
         // cascade) and the main pass can draw the same vertex buffers
         mob_build();
         mine_overlay_build();
+        item_build();
 
         // Render shadow maps (before main render pass)
         TIMER(shadow_render);
@@ -442,6 +443,7 @@ void draw_stuff()
         // Mobs draw on their own pipeline (mob.vert); rebind the opaque terrain
         // pipeline afterward for the block-breaking overlay and the edit patch.
         mob_render(cmdbuf, mob_pipe, proj_view_mtrx);
+        item_render(cmdbuf, mob_pipe, proj_view_mtrx); // spins on the mob pipeline
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);
         mine_overlay_render(cmdbuf, main_pipe, proj_view_mtrx);
 

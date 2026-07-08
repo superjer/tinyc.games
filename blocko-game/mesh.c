@@ -18,6 +18,16 @@ static int sorter(const void * _a, const void * _b)
 #define WEST_VISIBLE(x, y, z)  (x == 0          || IS_SEE_THROUGH(T_(x-1, y, z)))
 #define EAST_VISIBLE(x, y, z)  (x+1 >= TILESW   || IS_SEE_THROUGH(T_(x+1, y, z)))
 
+// water face visibility - draw a side/bottom face wherever water meets air (or
+// any see-through non-water neighbor), but never against solid or more water, so
+// a body of water shows its exposed walls and floor with no internal faces
+#define WATER_OPEN(x, y, z)      (IS_SEE_THROUGH(T_(x, y, z)) && T_(x, y, z) != WATR)
+#define W_SOUTH_VISIBLE(x, y, z) (z == 0          || WATER_OPEN(x, y, z-1))
+#define W_NORTH_VISIBLE(x, y, z) (z+1 >= TILESD   || WATER_OPEN(x, y, z+1))
+#define W_WEST_VISIBLE(x, y, z)  (x == 0          || WATER_OPEN(x-1, y, z))
+#define W_EAST_VISIBLE(x, y, z)  (x+1 >= TILESW   || WATER_OPEN(x+1, y, z))
+#define W_DOWN_VISIBLE(x, y, z)  (y+1 >= TILESH   || WATER_OPEN(x, y+1, z))
+
 // Emit terrain vertices for an arbitrary box of cells into the global vbuf
 // (opaque, v points past the end) and wbuf (water/glow, w past the end).
 // Parameterized bounds let build_meshes mesh a whole chunk while the spike
@@ -68,12 +78,13 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                 struct vbufv *tv_limit = tv + VERTEX_BUFLEN;
                 struct vbufv *tw = wbuf_mt[tid];
                 struct vbufv *tw_start = tw;
+                struct vbufv *tw_limit = tw + VERTEX_BUFLEN;
 
                 #pragma omp for schedule(static)
                 for (z = zlo; z < zhi; z++) {
                 for (x = xlo; x < xhi; x++) for (y = ylo; y < yhi; y++)
                 {
-                        if (tv >= tv_limit) break;
+                        if (tv >= tv_limit || tw >= tw_limit) break;
 
                         int t = T_(x, y, z);
 
@@ -140,18 +151,35 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                         }
                         else if (t == WATR)
                         {
-                                if (y == 0        || T_(x  , y-1, z  ) == OPEN)
-                                {
-                                                        *tw++ = (struct vbufv){ 7,    UP, m, y+0.06f, n, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f };
-                                        *tw++ = (struct vbufv){ 7,  DOWN, m, y-0.94f, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f };
-                                }
+                                // the water pipe is no-cull, so one quad per face is
+                                // visible from both sides. the top layer (air above) has
+                                // its surface recessed slightly below the block top; its
+                                // faces are tagged with orient + 10 so the shader pulls
+                                // the top EDGE down (top face drops, side walls shorten,
+                                // bottom untouched). covered water (solid or more water
+                                // above) stays full height - a recess there would leave a
+                                // nonsense gap of air below the water above it.
+                                int surf = (y == 0 || T_(x, y-1, z) == OPEN);
+                                int rec = surf ? 10 : 0;
+                                // top surface: only where air is directly above
+                                if (surf)
+                                        *tw++ = (struct vbufv){ 7,  UP+10, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f };
+                                // sides + bottom: the exposed walls and floor, so a body
+                                // of water doesn't look like it's hovering
+                                if (W_SOUTH_VISIBLE(x, y, z)) *tw++ = (struct vbufv){ 7, SOUTH+rec, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 0.5f };
+                                if (W_NORTH_VISIBLE(x, y, z)) *tw++ = (struct vbufv){ 7, NORTH+rec, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 0.5f };
+                                if (W_WEST_VISIBLE(x, y, z))  *tw++ = (struct vbufv){ 7,  WEST+rec, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 0.5f };
+                                if (W_EAST_VISIBLE(x, y, z))  *tw++ = (struct vbufv){ 7,  EAST+rec, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 0.5f };
+                                if (W_DOWN_VISIBLE(x, y, z))  *tw++ = (struct vbufv){ 7,      DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f };
                         }
                         else if (t == LITE)
                         {
+                                // a two-plane billboard (one quad per axis) crossed at
+                                // the cell center. the water pipe is no-cull, so a single
+                                // quad on each axis shows from both sides - emitting the
+                                // opposite-facing twin too would just z-fight it.
                                 *tw++ = (struct vbufv){ 18, SOUTH, m     , y, n+0.5f, use, usw, dse, dsw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                *tw++ = (struct vbufv){ 18, NORTH, m     , y, n-0.5f, unw, une, dnw, dne, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
                                 *tw++ = (struct vbufv){ 18,  WEST, m+0.5f, y, n     , usw, unw, dsw, dnw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                *tw++ = (struct vbufv){ 18,  EAST, m-0.5f, y, n     , une, use, dne, dse, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
                         }
 
                 }

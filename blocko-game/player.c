@@ -216,6 +216,9 @@ void update_player(struct player *p, int real)
                 glo_enqueue(x, y, z, 0, max ? max - 1 : 0);
 
                 out:
+                // pop a little half-size copy of the block loose to tumble to the
+                // ground (cosmetic; catches every break path, lights included)
+                item_spawn(x, y, z, broken);
                 // hand the dig off to a persistent edit patch: the block is now
                 // OPEN in tiles, so schedule the debounced rebuild and let the
                 // reject+patch cover the hole until it lands. mine_heal ends the dig.
