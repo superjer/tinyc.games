@@ -10,6 +10,8 @@ layout(location = 4) in vec2 uv;
 layout(location = 5) in vec4 world_pos;
 layout(location = 6) in vec4 shadow_pos;
 layout(location = 8) flat in vec3 normal;
+layout(location = 9) flat in float shiny;  // >0 = wet/glossy surface (slimes); set by the vertex shader
+layout(location = 10) flat in float tint;  // >0 = debug: blend this fragment 50% red (patch viz)
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 model;            // offset 0
@@ -36,19 +38,9 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float underwater;          // offset 708 (camera eye is in water)
 } ubo;
 
-layout(push_constant) uniform Push {
-    mat4 pv;
-    float chunk_x;
-    float chunk_y;
-    float chunk_z;
-    float bs;
-    vec4 reject_lo;   // .xyz = reject box (vertex shader); .w = debug patch tint flag
-    vec4 reject_hi;
-    float yaw;
-    float cx;
-    float cz;
-    float shiny;  // >0 = wet/glossy surface (slimes)
-} push;
+// No push constants here: this fragment shader is shared by the terrain
+// (main.vert), water, and mob (mob.vert) pipelines, which have different push
+// layouts. The per-draw scalars it needs (shiny, tint) arrive as flat varyings.
 
 layout(set = 0, binding = 1) uniform sampler2DArray tarray;
 // Shadow maps at bindings 2-7 (must match descriptor layout in glsetup.c)
@@ -228,7 +220,7 @@ void main(void) {
                     * pow(max(dot(N, halfway_dir), 0.0), 80.0));
 
         // slimes read as wet: a tight glossy hotspot plus a fresnel sheen
-        if (push.shiny > 0.5) {
+        if (shiny > 0.5) {
             float wet = pow(max(dot(N, halfway_dir), 0.0), 64.0);
             float fres = pow(1.0 - max(dot(view_dir, N), 0.0), 3.0);
             glint += light_tint * (2.0 * unshadow * ubo.sun_strength * wet)
@@ -245,7 +237,7 @@ void main(void) {
     vec3 combined = sky + glo_contrib * (vec3(1.0) - sky);
     vec4 c = texel * vec4(combined, alpha);
 
-    if (push.shiny > 0.5) c.rgb += glint;
+    if (shiny > 0.5) c.rgb += glint;
 
     if (alpha < 1.0 && ubo.underwater < 0.5) {
         // fresnel: mirror the horizon at grazing angles, clear straight down
@@ -272,6 +264,6 @@ void main(void) {
     }
 
     // debug viz: tint the reject+patch mesh red (socket `tint`, via reject_lo.w)
-    if (push.reject_lo.w > 0.5)
+    if (tint > 0.5)
         color.rgb = mix(color.rgb, vec3(1.0, 0.0, 0.0), 0.5);
 }

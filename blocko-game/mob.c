@@ -680,20 +680,18 @@ void mob_build()
         vulkan_populate_vertex_buffer(mbuf, (b - mbuf) * sizeof *mbuf, &mob_alloc[fr]);
 }
 
-// draw the built mobs with the given pipeline (already bound) and pv matrix
+// draw the built mobs on the mob pipeline (mob.vert / mob_shadow.vert). Binds
+// the pipeline itself; the caller must rebind its terrain pipeline afterward.
 void mob_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
 {
         if (!mob_count) return;
 
         int fr = vk.currentFrame;
-        // reject_lo/hi match the terrain push layout so drawing mobs on the main
-        // pipeline doesn't inherit a stale reject box; empty box = reject nothing
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[pipe].pipeline);
+
         struct { float pv[16]; float x, y, z, bs;
-                 float reject_lo[4], reject_hi[4];
                  float yaw, cx, cz, shiny; } push;
         memcpy(push.pv, pv, sizeof push.pv);
-        push.reject_lo[0] = 1; push.reject_lo[1] = push.reject_lo[2] = push.reject_lo[3] = 0;
-        push.reject_hi[0] = 0; push.reject_hi[1] = push.reject_hi[2] = push.reject_hi[3] = 0;
         push.shiny = 1; // slimes are wet and glossy
 
         for (int i = 0; i < mob_count; i++)

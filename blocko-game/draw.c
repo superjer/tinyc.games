@@ -406,11 +406,9 @@ void draw_stuff()
                 vk.pipelines[main_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
         struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
-                 float reject_lo[4], reject_hi[4];
-                 float yaw, cx, cz, shiny; } push;
+                 float reject_lo[4], reject_hi[4]; } push;
         memcpy(push.pv, proj_view_mtrx, sizeof push.pv);
         push.bs = BS;
-        push.yaw = push.cx = push.cz = push.shiny = 0; // terrain never rotates
 
         // opaque terrain rejects the faces of any cell in the pending edit box
         // (window tile coords this frame); patch_render redraws them. Empty box
@@ -441,9 +439,10 @@ void draw_stuff()
                 polys += terrain_verts;
         }
 
-        // Draw mobs and the block-breaking overlay with the (still-bound)
-        // opaque terrain pipeline
-        mob_render(cmdbuf, main_pipe, proj_view_mtrx);
+        // Mobs draw on their own pipeline (mob.vert); rebind the opaque terrain
+        // pipeline afterward for the block-breaking overlay and the edit patch.
+        mob_render(cmdbuf, mob_pipe, proj_view_mtrx);
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);
         mine_overlay_render(cmdbuf, main_pipe, proj_view_mtrx);
 
         // Draw the patch: the corrected mesh of the pending edit box, filling in

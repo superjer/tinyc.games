@@ -695,6 +695,10 @@ void vksetup()
                 1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP);
         water_pipe = vulkan_make_pipeline("main.vert", NULL, "main.frag",
                 1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP | PIPE_BLEND);
+        // mobs share the vertex layout and the lit fragment shader, but use their
+        // own vertex shader (spins to face heading; no reject box)
+        mob_pipe = vulkan_make_pipeline("mob.vert", NULL, "main.frag",
+                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP);
 
         allocate_world();
 
@@ -753,6 +757,13 @@ void vksetup()
         // Use main_descriptor_set_layout to access texture for alpha testing leaves
         shadow_pipe = vulkan_make_pipeline(
                 "shadow.vert", NULL, "shadow.frag",
+                1, &mainBindingDesc, 6, mainAttrDescs,
+                &main_descriptor_set_layout, shadow_render_pass,
+                PIPE_TRIANGLE_STRIP | PIPE_DEPTH_BIAS | PIPE_NO_CULL);
+
+        // mob shadow caster: spins with the mob, no reject box
+        mob_shadow_pipe = vulkan_make_pipeline(
+                "mob_shadow.vert", NULL, "shadow.frag",
                 1, &mainBindingDesc, 6, mainAttrDescs,
                 &main_descriptor_set_layout, shadow_render_pass,
                 PIPE_TRIANGLE_STRIP | PIPE_DEPTH_BIAS | PIPE_NO_CULL);

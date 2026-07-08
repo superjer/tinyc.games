@@ -1,7 +1,9 @@
 #version 450
 
-// Instanced quads: one instance per face, 4 vertices via triangle strip.
-// All inputs are instance-rate attributes (one struct vbufv per face).
+// Mob shadow pass: same instanced quads as mob.vert, spun about the vertical
+// axis so a mob's shadow matches its facing. Depth-only; pairs with shadow.frag.
+// No reject box (mobs are never patched). Push layout matches mob.vert so
+// mob_render can push one struct for both the color and shadow pipelines.
 
 layout(location = 0) in float tex_in;
 layout(location = 1) in float orient_in;
@@ -20,8 +22,10 @@ layout(push_constant) uniform Push {
     float chunk_y;
     float chunk_z;
     float bs;
-    vec4 reject_lo;   // .xyz = window-tile box lo (inclusive); box empty when lo > hi
-    vec4 reject_hi;   // faces of cells inside the box are culled (the patch redraws them)
+    float yaw;    // rotate geometry about a vertical axis (0 = none)
+    float cx;     // rotation pivot, world x
+    float cz;     // rotation pivot, world z
+    float shiny;  // unused here; keeps the push layout matching mob.vert
 } push;
 
 void main(void) {
@@ -75,14 +79,15 @@ void main(void) {
 
     tex = tex_in;
     alpha = alpha_in;
-    vec4 world_pos = vertex_pos + offsets[i];
-    gl_Position = push.pv * world_pos;
 
-    // reject: cull the shadow of any face whose block-cell is in the pending edit
-    // box (the patch casts the corrected shadow instead). Mirrors main.vert.
-    vec3 cell = vec3(push.chunk_x, push.chunk_y, push.chunk_z) / push.bs + pos_in;
-    if (all(greaterThanEqual(cell, push.reject_lo.xyz - 0.5)) &&
-        all(lessThanEqual(cell, push.reject_hi.xyz + 0.5)))
-        gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
+    vec4 world_pos = vertex_pos + offsets[i];
+    if (push.yaw != 0.0) {
+        float s = sin(push.yaw), c = cos(push.yaw);
+        vec2 rel = world_pos.xz - vec2(push.cx, push.cz);
+        world_pos.xz = vec2(rel.x * c - rel.y * s, rel.x * s + rel.y * c)
+                     + vec2(push.cx, push.cz);
+    }
+
+    gl_Position = push.pv * world_pos;
     uv = uvs[i];
 }

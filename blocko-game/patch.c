@@ -206,8 +206,7 @@ void patch_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
 
         int fr = vk.currentFrame;
         struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
-                 float reject_lo[4], reject_hi[4];
-                 float yaw, cx, cz, shiny; } push;
+                 float reject_lo[4], reject_hi[4]; } push;
         memcpy(push.pv, pv, sizeof push.pv);
         push.chunk_x = push.chunk_y = push.chunk_z = 0;
         push.bs = BS;
@@ -215,7 +214,6 @@ void patch_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
         push.reject_lo[1] = push.reject_lo[2] = 0;
         push.reject_hi[1] = push.reject_hi[2] = push.reject_hi[3] = 0;
         push.reject_lo[3] = patch_tint ? 1.f : 0.f; // debug: tint the patch red
-        push.yaw = push.cx = push.cz = push.shiny = 0; // the patch is axis-aligned terrain
 
         vkCmdPushConstants(cmdbuf, vk.pipelines[pipe].layout,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
@@ -233,8 +231,7 @@ void patch_render_water(VkCommandBuffer cmdbuf, int pipe, float *pv)
 
         int fr = vk.currentFrame;
         struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
-                 float reject_lo[4], reject_hi[4];
-                 float yaw, cx, cz, shiny; } push;
+                 float reject_lo[4], reject_hi[4]; } push;
         memcpy(push.pv, pv, sizeof push.pv);
         push.chunk_x = push.chunk_y = push.chunk_z = 0;
         push.bs = BS;
@@ -242,7 +239,6 @@ void patch_render_water(VkCommandBuffer cmdbuf, int pipe, float *pv)
         push.reject_lo[1] = push.reject_lo[2] = 0;
         push.reject_hi[1] = push.reject_hi[2] = push.reject_hi[3] = 0;
         push.reject_lo[3] = patch_tint ? 1.f : 0.f; // debug: tint the patch red
-        push.yaw = push.cx = push.cz = push.shiny = 0; // the patch is axis-aligned terrain
 
         vkCmdPushConstants(cmdbuf, vk.pipelines[pipe].layout,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);

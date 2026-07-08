@@ -76,7 +76,8 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
         // only (they're small and always right next to the player)
         if (cascade_idx == SHADOW_NEAR)
         {
-                mob_render(cmdbuf, shadow_pipe, shadow_pv);
+                mob_render(cmdbuf, mob_shadow_pipe, shadow_pv);
+                vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[shadow_pipe].pipeline);
                 mine_overlay_render(cmdbuf, shadow_pipe, shadow_pv);
                 // patch the edit box's shadow the reject test just culled above
                 patch_render(cmdbuf, shadow_pipe, shadow_pv);

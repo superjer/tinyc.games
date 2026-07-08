@@ -1,7 +1,9 @@
 #version 450
 
-// Instanced quads: one instance per face, 4 vertices via triangle strip.
-// All inputs are instance-rate attributes (one struct vbufv per face).
+// Mob geometry: instanced quads (one instance per face) like the terrain, but
+// each piece spins about a vertical axis so the mob faces its heading. Shares
+// main.frag with the terrain/water pipelines; the varying interface below must
+// match main.vert's outputs exactly. No reject box (mobs are never patched).
 
 layout(location = 0) in float tex_in;
 layout(location = 1) in float orient_in;
@@ -18,8 +20,8 @@ layout(location = 4) out vec2 uv;
 layout(location = 5) out vec4 world_pos_out;
 layout(location = 6) out vec4 shadow_pos;
 layout(location = 8) flat out vec3 normal;
-layout(location = 9) flat out float shiny;  // terrain is never glossy -> 0
-layout(location = 10) flat out float tint;  // debug patch tint flag (reject_lo.w)
+layout(location = 9) flat out float shiny;  // slimes read as wet/glossy
+layout(location = 10) flat out float tint;  // mobs are never tinted -> 0
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 model;            // offset 0
@@ -47,9 +49,10 @@ layout(push_constant) uniform Push {
     float chunk_y;
     float chunk_z;
     float bs;
-    vec4 reject_lo;   // .xyz = window-tile box lo (inclusive); box empty when lo > hi
-    vec4 reject_hi;   // faces of cells inside the box are culled (the patch redraws them)
-                      // .w of reject_lo = debug patch tint flag (passed to the frag as `tint`)
+    float yaw;    // rotate geometry about a vertical axis (0 = none)
+    float cx;     // rotation pivot, world x
+    float cz;     // rotation pivot, world z
+    float shiny;  // >0 = wet/glossy surface (slimes)
 } push;
 
 void main(void) {
@@ -118,29 +121,30 @@ void main(void) {
     tex = tex_in;
     alpha = alpha_in;
     normal = face_normal;
-    shiny = 0.0;               // terrain is matte
-    tint = push.reject_lo.w;   // debug: patch_render sets this to tint the patch red
+    shiny = push.shiny;
+    tint = 0.0;
 
     vec4 world_pos = vertex_pos + offsets[i];
+
+    // spin the whole piece about a vertical axis so mobs face where they head
+    if (push.yaw != 0.0) {
+        float s = sin(push.yaw), c = cos(push.yaw);
+        vec2 rel = world_pos.xz - vec2(push.cx, push.cz);
+        world_pos.xz = vec2(rel.x * c - rel.y * s, rel.x * s + rel.y * c)
+                     + vec2(push.cx, push.cz);
+        normal = vec3(normal.x * c - normal.z * s, normal.y,
+                      normal.x * s + normal.z * c);
+    }
+
     gl_Position = push.pv * world_pos;
 
-    // reject: if this face's block-cell is inside the pending edit box, collapse
-    // the whole quad to a zero-area degenerate so it emits no fragments. pos_in
-    // is the cell (chunk-local m,y,n); reconstruct the absolute window cell the
-    // same way world position is built. The patch mesh redraws the box.
-    vec3 cell = vec3(push.chunk_x, push.chunk_y, push.chunk_z) / push.bs + pos_in;
-    if (all(greaterThanEqual(cell, push.reject_lo.xyz - 0.5)) &&
-        all(lessThanEqual(cell, push.reject_hi.xyz + 0.5)))
-        gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
     illum = (0.1 + illum_in[i]) * sidel;
     glow = (0.1 + glow_in[i]) * sidel;
     uv = uvs[i];
     world_pos_out = world_pos;
 
-    // Calculate shadow space position for near cascade only
-    // Mid/far cascade positions are computed in fragment shader (for A/B blending)
-    // Normal offset bias prevents shadow bleeding at cube edges
-    // Offset must exceed PCF world radius
-    vec4 shadow_sample_pos = world_pos + vec4(face_normal * 75.0, 0.0);
-    shadow_pos = ubo.shadow_space[0] * shadow_sample_pos;  // shadow_space[0] = near cascade
+    // Near-cascade shadow position (mid/far computed in the fragment shader).
+    // Use the rotated normal so the offset bias follows the spun face.
+    vec4 shadow_sample_pos = world_pos + vec4(normal * 75.0, 0.0);
+    shadow_pos = ubo.shadow_space[0] * shadow_sample_pos;
 }

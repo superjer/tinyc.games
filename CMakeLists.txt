@@ -96,6 +96,8 @@ file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/shaders)
 set(SHADER_FILES
   blocko-game/shaders/main.vert
   blocko-game/shaders/main.frag
+  blocko-game/shaders/mob.vert
+  blocko-game/shaders/mob_shadow.vert
   blocko-game/shaders/shadow.vert
   blocko-game/shaders/shadow.frag
   blocko-game/shaders/cursor.vert
