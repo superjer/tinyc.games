@@ -554,6 +554,8 @@ enum {
 int mouselook = false; // start with the mouse free; click the window to capture
 int target_x, target_y, target_z;
 int place_x, place_y, place_z;
+int held_tile = HARD; // the block right-click places; mouse wheel cycles it (hand.c)
+int hand_swing_kick;  // set on a successful place; makes the held block swing (hand.c)
 // hold-to-break: mining the target block takes MINE_TIME held frames, so a
 // quick click punches mobs (see mob.c) without chipping the terrain
 #define MINE_TIME 45
@@ -628,6 +630,12 @@ int mob_spawn_at(int bx, int by, int bz);
 // mine.c protos
 void mine_overlay_build();
 void mine_overlay_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
+
+// hand.c protos
+void held_cycle(int dir);
+void hand_animate(struct player *p);
+void hand_build();
+void hand_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 
 // item.c protos
 void item_spawn(int x, int y, int z, int tile);

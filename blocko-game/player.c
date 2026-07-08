@@ -230,8 +230,9 @@ void update_player(struct player *p, int real)
         if (real && p->building && !p->cooldown && place_x >= 0) {
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
                 {
-                        T_(place_x, place_y, place_z) = HARD;
+                        T_(place_x, place_y, place_z) = held_tile;
                         patch_edit(place_x, place_y, place_z); // instant, debounced rebuild
+                        hand_swing_kick = 1;                   // swing the held block
 
                         if (ABOVE_GROUND(place_x, place_y, place_z))
                                 GNDH_(place_x, place_z) = place_y;

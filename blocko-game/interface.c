@@ -153,6 +153,14 @@ void mouse_move()
         if (player[0].pitch < -limit) player[0].pitch = -limit;
 }
 
+void mouse_wheel()
+{
+        if (!mouselook) return;
+        // scroll up = next block, scroll down = previous
+        if (event.wheel.y > 0) held_cycle(+1);
+        else if (event.wheel.y < 0) held_cycle(-1);
+}
+
 void mouse_button(int down)
 {
         if (!mouselook)

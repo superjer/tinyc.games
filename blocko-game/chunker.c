@@ -126,11 +126,11 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                         BAND(lev2, lev3, DIRT);
                         BAND(lev3, MIN(lev4, hmaph + 4), SAND);
                         BAND(MAX(lev3, hmaph + 4), lev4, STON);
-                        BAND(lev4, TILESH-1, HARD);
+                        BAND(lev4, TILESH-1, GRAN);
                         if (hmaph >= lev2 && hmaph < lev3) // surface block
                                 t[hmaph] = hmaph > SEA_LEVEL + 1 ? SAND : GRAS;
                 }
-                t[TILESH-1] = HARD;
+                t[TILESH-1] = GRAN;
         }
         #undef BAND
         gen_pass(&t0, GEN_SOIL);

@@ -61,6 +61,7 @@
 #include "player.c"
 #include "mob.c"
 #include "mine.c"
+#include "hand.c"
 #include "item.c"
 #include "patch.c"
 #include "test.c"
@@ -146,6 +147,7 @@ void main_loop()
                 case SDL_EVENT_MOUSE_MOTION:      if (!test_lock) mouse_move();    break;
                 case SDL_EVENT_MOUSE_BUTTON_DOWN: if (!test_lock) mouse_button(1); break;
                 case SDL_EVENT_MOUSE_BUTTON_UP:   if (!test_lock) mouse_button(0); break;
+                case SDL_EVENT_MOUSE_WHEEL:       if (!test_lock) mouse_wheel();   break;
                 case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                         resize();
                         break;
@@ -174,6 +176,7 @@ void main_loop()
         while (accumulated_elapsed >= interval)
         {
                 TIMECALL(update_player, (&player[0], 1));
+                hand_animate(&player[0]);
                 TIMECALL(update_mobs, ());
                 update_items();
                 TIMECALL(update_world, ());

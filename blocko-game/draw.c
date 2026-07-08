@@ -374,6 +374,7 @@ void draw_stuff()
         mob_build();
         mine_overlay_build();
         item_build();
+        hand_build();
 
         // Render shadow maps (before main render pass)
         TIMER(shadow_render);
@@ -450,6 +451,10 @@ void draw_stuff()
         // Draw the patch: the corrected mesh of the pending edit box, filling in
         // the faces the reject test just culled from the big chunk buffers
         patch_render(cmdbuf, main_pipe, proj_view_mtrx);
+
+        // the held block, floating at the lower right; drawn on top of the world
+        // via a squashed depth range so it never clips into nearby terrain
+        hand_render(cmdbuf, main_pipe, proj_view_mtrx);
 
         // Render sky/sun between opaque terrain and transparent water
         sky_draw(cmdbuf, proj_mtrx, view_mtrx);
