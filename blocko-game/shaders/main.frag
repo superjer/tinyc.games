@@ -36,6 +36,16 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float underwater;          // offset 708 (camera eye is in water)
 } ubo;
 
+layout(push_constant) uniform Push {
+    mat4 pv;
+    float chunk_x;
+    float chunk_y;
+    float chunk_z;
+    float bs;
+    vec4 reject_lo;   // .xyz = reject box (vertex shader); .w = debug patch tint flag
+    vec4 reject_hi;
+} push;
+
 layout(set = 0, binding = 1) uniform sampler2DArray tarray;
 // Shadow maps at bindings 2-7 (must match descriptor layout in glsetup.c)
 layout(set = 0, binding = 2) uniform sampler2DShadow shadow_near;
@@ -246,4 +256,8 @@ void main(void) {
 
         color = mix(c, vec4(ubo.fog_color, 1.0), fog);
     }
+
+    // debug viz: tint the reject+patch mesh red (socket `tint`, via reject_lo.w)
+    if (push.reject_lo.w > 0.5)
+        color.rgb = mix(color.rgb, vec3(1.0, 0.0, 0.0), 0.5);
 }

@@ -32,9 +32,22 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
         vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 vk.pipelines[shadow_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
-        struct { float pv[16]; float chunk_x; float chunk_y; float chunk_z; float bs; } push;
+        struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
+                 float reject_lo[4], reject_hi[4]; } push;
         memcpy(push.pv, shadow_pv, sizeof push.pv);
         push.bs = BS;
+
+        // reject the pending edit box's stale shadow in the near cascade only (the
+        // patch redraws it below); other cascades keep their slightly-stale shadow
+        // until the debounced rebuild lands (Phase 3).
+        if (cascade_idx == SHADOW_NEAR)
+                patch_reject_box(push.reject_lo, push.reject_hi);
+        else
+        {
+                push.reject_lo[0] = 1; push.reject_hi[0] = 0; // empty box
+                push.reject_lo[1] = push.reject_lo[2] = push.reject_lo[3] = 0;
+                push.reject_hi[1] = push.reject_hi[2] = push.reject_hi[3] = 0;
+        }
         int cascade_x_draw_calls = 0;
 
         VkDeviceSize voffset = 0;
@@ -63,6 +76,8 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
         {
                 mob_render(cmdbuf, shadow_pipe, shadow_pv);
                 mine_overlay_render(cmdbuf, shadow_pipe, shadow_pv);
+                // patch the edit box's shadow the reject test just culled above
+                patch_render(cmdbuf, shadow_pipe, shadow_pv);
         }
 
         vkCmdEndRenderPass(cmdbuf);

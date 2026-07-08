@@ -555,6 +555,7 @@ float mine_frac;    // 0..1 mining progress, shown on the crosshair
 int patch_active;               // a persistent edit patch is pending a rebuild
 int patch_lo[3], patch_hi[3];   // union box of pending edits, ABSOLUTE tiles, inclusive
 int patch_vert_count;           // opaque verts staged for this frame's patch draw
+int patch_water_count;          // water/glow verts staged for this frame's patch draw
 // the effective reject/patch box for THIS frame = union of the persistent edit
 // box (break/place, above) and the transient mining box (the block being dug,
 // still solid in tiles but shown as a hole). Recomputed each frame in patch_update
@@ -562,6 +563,8 @@ int patch_box_on;
 int patch_box_lo[3], patch_box_hi[3]; // ABSOLUTE tiles, inclusive
 int patch_meshing;              // set only while the patch calls mesh_region, so the
                                 // mine_hole carve happens for the patch, not for chunks
+int patch_tint;                 // debug viz: tint the patch mesh red (socket `tint`).
+                                // rides the unused reject_lo.w slot, read in main.frag
 int screenw = W;
 int screenh = H;
 volatile struct qitem just_generated[VAOW*VAOD];
@@ -618,6 +621,7 @@ void patch_edit(int wx, int wy, int wz);
 void patch_update();
 void patch_reject_box(float lo[4], float hi[4]);
 void patch_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
+void patch_render_water(VkCommandBuffer cmdbuf, int pipe, float *pv);
 
 // collision.c protos
 int collide(struct box l, struct box r);

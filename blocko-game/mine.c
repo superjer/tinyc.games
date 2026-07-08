@@ -101,7 +101,8 @@ void mine_overlay_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
         push.y = mine_py;
         push.z = mine_pz;
         push.bs = mine_bs;
-        push.reject_lo[0] = 1; push.reject_hi[0] = 0;
+        push.reject_lo[0] = 1; push.reject_lo[1] = push.reject_lo[2] = push.reject_lo[3] = 0;
+        push.reject_hi[0] = 0; push.reject_hi[1] = push.reject_hi[2] = push.reject_hi[3] = 0;
 
         vkCmdPushConstants(cmdbuf, vk.pipelines[pipe].layout,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);

@@ -460,8 +460,9 @@ void draw_stuff()
         vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 vk.pipelines[water_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
-        // phase 1 leaves water un-rejected: empty box so water faces all draw
-        push.reject_lo[0] = 1; push.reject_hi[0] = 0;
+        // reject stale water faces inside the pending edit box; patch_render_water
+        // redraws them (Phase 2). Empty box when no edit is pending.
+        patch_reject_box(push.reject_lo, push.reject_hi);
 
         for (int k = visible_chunk_count - 1; k >= 0; k--) {
                 if (!visible_chunks[k].camera_visible) continue;
@@ -482,6 +483,9 @@ void draw_stuff()
                 total_verts += water_verts;
                 polys += water_verts;
         }
+
+        // patch the edit box's water/glow faces the reject test just culled
+        patch_render_water(cmdbuf, water_pipe, proj_view_mtrx);
 
         if (mouselook) cursor(cmdbuf);
 

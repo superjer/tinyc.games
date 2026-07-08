@@ -369,6 +369,17 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 remesh_debounce = atoi(cmd + 9);
                 p += snprintf(p, end-p, "ok\n");
         }
+        else if (!strncmp(cmd, "tint", 4))
+        {
+                // debug viz: tint the reject+patch mesh red so you can see it.
+                // "tint" toggles; "tint 0|1" sets explicitly.
+                int v;
+                if (sscanf(cmd + 4, "%d", &v) == 1)
+                        patch_tint = v;
+                else
+                        patch_tint = !patch_tint;
+                p += snprintf(p, end-p, "patch_tint %d\n", patch_tint);
+        }
         else if (!strncmp(cmd, "noise", 5))
         {
                 // noise                      - show current knobs
@@ -664,7 +675,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "fps [reset] | timings [reset] | pos | tp <ax> <az>\n"
                         "walk <frames> | fly <frames> <bl/s> | turn <deg>\n"
                         "look [<yaw> <pitch>] | click <left|right> [frames] | target | patch\n"
-                        "dist <blocks> | debounce <frames>\n"
+                        "dist <blocks> | debounce <frames> | tint [<0|1>]\n"
                         "find <tile> <ax0> <az0> <ax1> <az1>\n"
                         "noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
                         "caves [<0|1>] | trees [<0|1>] | seed [<n>] | sum | dump [<path>]\n"

@@ -25,8 +25,27 @@
 // debounced rebuild (one debounce window of slight staleness).
 
 #define PATCH_MAX_VERTS 8192  // patch buffer capacity (a modest edit box)
+#define PATCH_MAX_SPAN 24     // cap the union box's extent (tiles) on any axis
 
-static struct allocation patch_alloc[MAX_FRAMES_IN_FLIGHT];
+static struct allocation patch_alloc[MAX_FRAMES_IN_FLIGHT];       // opaque
+static struct allocation patch_water_alloc[MAX_FRAMES_IN_FLIGHT];  // water/glow
+
+// force the pending edit box's chunks to rebuild immediately (not debounced) and
+// drop the box. Used when a new edit lands far from the pending box: rather than
+// grow one giant patch (re-meshed every frame, liable to blow PATCH_MAX_VERTS
+// into holes), bake what we have and start fresh. The old edits pop in within a
+// frame or two via the forced rebuild - fine, since a far-apart burst (e.g.
+// placing blocks while falling) is exactly what the instant path isn't for.
+static void patch_flush()
+{
+        if (!patch_active) return;
+        int wxlo = patch_lo[0] + scootx, wxhi = patch_hi[0] + scootx;
+        int wzlo = patch_lo[2] + scootz, wzhi = patch_hi[2] + scootz;
+        for (int cx = B2C(wxlo); cx <= B2C(wxhi); cx++)
+        for (int cz = B2C(wzlo); cz <= B2C(wzhi); cz++)
+                DIRTY_(cx, cz) = 1;
+        patch_active = 0;
+}
 
 // grow the pending edit box to cover the 3x3x3 around a just-edited block
 // (given in window tile coords) and flag every chunk it touches for a debounced
@@ -38,6 +57,15 @@ void patch_edit(int wx, int wy, int wz)
         int hi[3] = { ax + 1, wy + 1, az + 1 };
         if (lo[1] < 0) lo[1] = 0;
         if (hi[1] > TILESH - 1) hi[1] = TILESH - 1;
+
+        // if unioning this edit in would stretch the box past PATCH_MAX_SPAN on
+        // any axis, flush the old box first and restart around just this edit
+        if (patch_active) for (int i = 0; i < 3; i++)
+        {
+                int nlo = lo[i] < patch_lo[i] ? lo[i] : patch_lo[i];
+                int nhi = hi[i] > patch_hi[i] ? hi[i] : patch_hi[i];
+                if (nhi - nlo + 1 > PATCH_MAX_SPAN) { patch_flush(); break; }
+        }
 
         if (!patch_active)
         {
@@ -139,19 +167,34 @@ void patch_update()
         patch_meshing = 1;
         mesh_region(wxlo, wxhi + 1, lo[1], hi[1] + 1, wzlo, wzhi + 1, FACE_ALL, 0, 0);
         patch_meshing = 0;
-        patch_vert_count = v - vbuf; // opaque only for now (water in wbuf ignored)
-        if (patch_vert_count <= 0) return;
+        patch_vert_count = v - vbuf;  // opaque faces (main pass)
+        patch_water_count = w - wbuf; // water + glow faces (transparent pass, Phase 2)
         if (patch_vert_count > PATCH_MAX_VERTS)
         {
-                fprintf(stderr, "patch: box too big (%d verts), clamping\n", patch_vert_count);
+                fprintf(stderr, "patch: box too big (%d opaque verts), clamping\n", patch_vert_count);
                 patch_vert_count = PATCH_MAX_VERTS;
+        }
+        if (patch_water_count > PATCH_MAX_VERTS)
+        {
+                fprintf(stderr, "patch: box too big (%d water verts), clamping\n", patch_water_count);
+                patch_water_count = PATCH_MAX_VERTS;
         }
 
         int fr = vk.currentFrame;
-        if (!patch_alloc[fr].buf)
-                vulkan_allocate_vertex_buffer(PATCH_MAX_VERTS * sizeof(struct vbufv), &patch_alloc[fr]);
-        vulkan_populate_vertex_buffer(vbuf, patch_vert_count * sizeof(struct vbufv), &patch_alloc[fr]);
-        polys += patch_vert_count;
+        if (patch_vert_count > 0)
+        {
+                if (!patch_alloc[fr].buf)
+                        vulkan_allocate_vertex_buffer(PATCH_MAX_VERTS * sizeof(struct vbufv), &patch_alloc[fr]);
+                vulkan_populate_vertex_buffer(vbuf, patch_vert_count * sizeof(struct vbufv), &patch_alloc[fr]);
+                polys += patch_vert_count;
+        }
+        if (patch_water_count > 0)
+        {
+                if (!patch_water_alloc[fr].buf)
+                        vulkan_allocate_vertex_buffer(PATCH_MAX_VERTS * sizeof(struct vbufv), &patch_water_alloc[fr]);
+                vulkan_populate_vertex_buffer(wbuf, patch_water_count * sizeof(struct vbufv), &patch_water_alloc[fr]);
+                polys += patch_water_count;
+        }
 }
 
 // draw the patch mesh with the given (already-bound) pipeline. Origin is the
@@ -168,14 +211,40 @@ void patch_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
         push.chunk_x = push.chunk_y = push.chunk_z = 0;
         push.bs = BS;
         push.reject_lo[0] = 1; push.reject_hi[0] = 0; // empty box
-        push.reject_lo[1] = push.reject_lo[2] = push.reject_lo[3] = 0;
+        push.reject_lo[1] = push.reject_lo[2] = 0;
         push.reject_hi[1] = push.reject_hi[2] = push.reject_hi[3] = 0;
+        push.reject_lo[3] = patch_tint ? 1.f : 0.f; // debug: tint the patch red
 
         vkCmdPushConstants(cmdbuf, vk.pipelines[pipe].layout,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
         VkDeviceSize off = 0;
         vkCmdBindVertexBuffers(cmdbuf, 0, 1, &patch_alloc[fr].buf, &off);
         vkCmdDraw(cmdbuf, 4, patch_vert_count, 0, 0);
+}
+
+// draw the patch's water/glow faces (Phase 2). Same absolute-origin setup as
+// patch_render, but the water/transparent verts from wbuf; call it in the
+// transparent pass with water_pipe, after the chunk water is drawn.
+void patch_render_water(VkCommandBuffer cmdbuf, int pipe, float *pv)
+{
+        if (!patch_box_on || patch_water_count <= 0) return;
+
+        int fr = vk.currentFrame;
+        struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
+                 float reject_lo[4], reject_hi[4]; } push;
+        memcpy(push.pv, pv, sizeof push.pv);
+        push.chunk_x = push.chunk_y = push.chunk_z = 0;
+        push.bs = BS;
+        push.reject_lo[0] = 1; push.reject_hi[0] = 0; // empty box
+        push.reject_lo[1] = push.reject_lo[2] = 0;
+        push.reject_hi[1] = push.reject_hi[2] = push.reject_hi[3] = 0;
+        push.reject_lo[3] = patch_tint ? 1.f : 0.f; // debug: tint the patch red
+
+        vkCmdPushConstants(cmdbuf, vk.pipelines[pipe].layout,
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
+        VkDeviceSize off = 0;
+        vkCmdBindVertexBuffers(cmdbuf, 0, 1, &patch_water_alloc[fr].buf, &off);
+        vkCmdDraw(cmdbuf, 4, patch_water_count, 0, 0);
 }
 
 #endif // BLOCKO_PATCH_C_INCLUDED

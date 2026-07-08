@@ -308,7 +308,8 @@ void mob_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
         // pipeline doesn't inherit a stale reject box; empty box = reject nothing
         struct { float pv[16]; float x, y, z, bs; float reject_lo[4], reject_hi[4]; } push;
         memcpy(push.pv, pv, sizeof push.pv);
-        push.reject_lo[0] = 1; push.reject_hi[0] = 0;
+        push.reject_lo[0] = 1; push.reject_lo[1] = push.reject_lo[2] = push.reject_lo[3] = 0;
+        push.reject_hi[0] = 0; push.reject_hi[1] = push.reject_hi[2] = push.reject_hi[3] = 0;
 
         for (int i = 0; i < mob_count; i++)
         {
