@@ -304,8 +304,11 @@ void mob_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
         if (!mob_count) return;
 
         int fr = vk.currentFrame;
-        struct { float pv[16]; float x, y, z, bs; } push;
+        // reject_lo/hi match the terrain push layout so drawing mobs on the main
+        // pipeline doesn't inherit a stale reject box; empty box = reject nothing
+        struct { float pv[16]; float x, y, z, bs; float reject_lo[4], reject_hi[4]; } push;
         memcpy(push.pv, pv, sizeof push.pv);
+        push.reject_lo[0] = 1; push.reject_hi[0] = 0;
 
         for (int i = 0; i < mob_count; i++)
         {

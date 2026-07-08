@@ -61,6 +61,7 @@
 #include "player.c"
 #include "mob.c"
 #include "mine.c"
+#include "patch.c"
 #include "test.c"
 #include "chunker.c"
 

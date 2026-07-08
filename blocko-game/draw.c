@@ -339,6 +339,10 @@ void draw_stuff()
         TIMER(build_meshes);
         build_meshes();
 
+        // refresh (or retire) the reject+patch for any pending block edit; must
+        // run after build_meshes so it sees which chunks just rebuilt
+        patch_update();
+
         main_ubo.water_frame = pframe;
 
         TIMER(upload_ubo);
@@ -401,9 +405,15 @@ void draw_stuff()
         vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 vk.pipelines[main_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
-        struct { float pv[16]; float chunk_x; float chunk_y; float chunk_z; float bs; } push;
+        struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
+                 float reject_lo[4], reject_hi[4]; } push;
         memcpy(push.pv, proj_view_mtrx, sizeof push.pv);
         push.bs = BS;
+
+        // opaque terrain rejects the faces of any cell in the pending edit box
+        // (window tile coords this frame); patch_render redraws them. Empty box
+        // (lo > hi) when no edit is pending, so nothing is rejected.
+        patch_reject_box(push.reject_lo, push.reject_hi);
 
         VkDeviceSize voffset = 0;
         int chunks_drawn = 0;
@@ -434,6 +444,10 @@ void draw_stuff()
         mob_render(cmdbuf, main_pipe, proj_view_mtrx);
         mine_overlay_render(cmdbuf, main_pipe, proj_view_mtrx);
 
+        // Draw the patch: the corrected mesh of the pending edit box, filling in
+        // the faces the reject test just culled from the big chunk buffers
+        patch_render(cmdbuf, main_pipe, proj_view_mtrx);
+
         // Render sky/sun between opaque terrain and transparent water
         sky_draw(cmdbuf, proj_mtrx, view_mtrx);
         if (!main_ubo.underwater) // too murky to see the sun/moon
@@ -445,6 +459,9 @@ void draw_stuff()
         vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
         vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 vk.pipelines[water_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
+
+        // phase 1 leaves water un-rejected: empty box so water faces all draw
+        push.reject_lo[0] = 1; push.reject_hi[0] = 0;
 
         for (int k = visible_chunk_count - 1; k >= 0; k--) {
                 if (!visible_chunks[k].camera_visible) continue;

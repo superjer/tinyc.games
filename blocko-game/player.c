@@ -92,15 +92,13 @@ int move_player(struct player *p, int velx, int vely, int velz)
 }
 
 
-// put the mined block back and forget the current dig: the mesh hole (carved
-// in mesh.c while mine_hole is set) heals on the rebuild we trigger here
+// forget the current dig. The block stays solid in tiles the whole time, so
+// there's nothing to "put back" - dropping mine_frac/mine_hole retires the
+// transient reject+patch (patch.c) and the untouched chunk buffer shows the
+// block again next frame.
 void mine_heal()
 {
-        if (mine_hole)
-        {
-                DIRTY_(B2C(mine_x), B2C(mine_z)) = 1;
-                mine_hole = 0;
-        }
+        mine_hole = 0;
         mine_x = mine_y = mine_z = -1;
         mine_tile = -1;
         mine_frac = 0.f;
@@ -138,23 +136,23 @@ void update_player(struct player *p, int real)
 
         // hold left click to mine: progress builds only while aimed at the
         // same block, so releasing (a quick click) never breaks anything.
-        // The block is carved out of its chunk mesh (mesh.c) and a shaking
-        // stand-in drawn in its place (mob.c) - like jostling it loose.
+        // The block shows as a hole instantly via the shader reject box + patch
+        // mesh (patch.c), with a shaking stand-in drawn in its place (mine.c) -
+        // no chunk rebuild, so nothing hitches while you dig.
         if (real && p->breaking && target_x >= 0)
         {
                 if (target_x == mine_x && target_y == mine_y && target_z == mine_z)
                         p->mine_progress++;
                 else
                 {
-                        if (mine_hole) // aim moved: heal the old hole first
-                                DIRTY_(B2C(mine_x), B2C(mine_z)) = 1;
+                        // aim moved: the reject box just follows mine_x next frame,
+                        // so the old block reappears with no rebuild
                         mine_x = target_x;
                         mine_y = target_y;
                         mine_z = target_z;
                         mine_tile = T_(mine_x, mine_y, mine_z);
                         mine_hole = 1;
                         p->mine_progress = 1;
-                        DIRTY_(B2C(mine_x), B2C(mine_z)) = 1; // rebuild w/ hole
                 }
                 mine_frac = (float)p->mine_progress / MINE_TIME;
         }
@@ -171,13 +169,8 @@ void update_player(struct player *p, int real)
                 unsigned char max = 0;
                 int broken = T_(x, y, z);
                 T_(x, y, z) = OPEN;
-                DIRTY_(B2C(x), B2C(z)) = 1;
-
-                // Mark neighboring chunks dirty if block is on chunk edge
-                if (x % CHUNKW == 0 && x > 0)           DIRTY_(B2C(x-1), B2C(z)) = 1;
-                if (x % CHUNKW == CHUNKW-1 && x < TILESW-1) DIRTY_(B2C(x+1), B2C(z)) = 1;
-                if (z % CHUNKD == 0 && z > 0)           DIRTY_(B2C(x), B2C(z-1)) = 1;
-                if (z % CHUNKD == CHUNKD-1 && z < TILESD-1) DIRTY_(B2C(x), B2C(z+1)) = 1;
+                // no immediate chunk rebuild: patch_edit (below) shows the hole
+                // instantly and schedules a debounced rebuild to fold it in
 
                 if (broken == LITE)
                 {
@@ -219,7 +212,11 @@ void update_player(struct player *p, int real)
                 glo_enqueue(x, y, z, 0, max ? max - 1 : 0);
 
                 out:
-                mine_heal(); // block is really gone now; heal clears the dig
+                // hand the dig off to a persistent edit patch: the block is now
+                // OPEN in tiles, so schedule the debounced rebuild and let the
+                // reject+patch cover the hole until it lands. mine_heal ends the dig.
+                patch_edit(x, y, z);
+                mine_heal();
                 p->cooldown = 5;
         }
 
@@ -227,7 +224,7 @@ void update_player(struct player *p, int real)
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
                 {
                         T_(place_x, place_y, place_z) = HARD;
-                        DIRTY_(B2C(place_x), B2C(place_z)) = 1;
+                        patch_edit(place_x, place_y, place_z); // instant, debounced rebuild
 
                         if (ABOVE_GROUND(place_x, place_y, place_z))
                                 GNDH_(place_x, place_z) = place_y;

@@ -45,6 +45,8 @@ layout(push_constant) uniform Push {
     float chunk_y;
     float chunk_z;
     float bs;
+    vec4 reject_lo;   // .xyz = window-tile box lo (inclusive); box empty when lo > hi
+    vec4 reject_hi;   // faces of cells inside the box are culled (the patch redraws them)
 } push;
 
 void main(void) {
@@ -116,6 +118,15 @@ void main(void) {
 
     vec4 world_pos = vertex_pos + offsets[i];
     gl_Position = push.pv * world_pos;
+
+    // reject: if this face's block-cell is inside the pending edit box, collapse
+    // the whole quad to a zero-area degenerate so it emits no fragments. pos_in
+    // is the cell (chunk-local m,y,n); reconstruct the absolute window cell the
+    // same way world position is built. The patch mesh redraws the box.
+    vec3 cell = vec3(push.chunk_x, push.chunk_y, push.chunk_z) / push.bs + pos_in;
+    if (all(greaterThanEqual(cell, push.reject_lo.xyz - 0.5)) &&
+        all(lessThanEqual(cell, push.reject_hi.xyz + 0.5)))
+        gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
     illum = (0.1 + illum_in[i]) * sidel;
     glow = (0.1 + glow_in[i]) * sidel;
     uv = uvs[i];

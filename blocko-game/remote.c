@@ -241,6 +241,19 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 else
                         p += snprintf(p, end-p, "usage: click <left|right> [frames]\n");
         }
+        else if (!strncmp(cmd, "patch", 5))
+        {
+                // report the reject+patch state (instant block edits + mining)
+                int mining = (mine_frac > 0.f && mine_x >= 0);
+                p += snprintf(p, end-p, "edit_pending %d mining %d\n", patch_active, mining);
+                if (patch_box_on)
+                        p += snprintf(p, end-p,
+                                "box_abs %d %d %d .. %d %d %d\nverts %d\n",
+                                patch_box_lo[0], patch_box_lo[1], patch_box_lo[2],
+                                patch_box_hi[0], patch_box_hi[1], patch_box_hi[2], patch_vert_count);
+                else
+                        p += snprintf(p, end-p, "box off\n");
+        }
         else if (!strncmp(cmd, "target", 6))
         {
                 // report the block the player is aiming at (what a left click
@@ -539,7 +552,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 unsigned long long freq = SDL_GetPerformanceFrequency();
                 unsigned long long t0 = SDL_GetPerformanceCounter();
                 for (int r = 0; r < reps; r++)
-                        mesh_region(xlo, xlo + w_, ylo, ylo + h_, zlo, zlo + d_, FACE_ALL);
+                        mesh_region(xlo, xlo + w_, ylo, ylo + h_, zlo, zlo + d_, FACE_ALL, xlo, zlo);
                 unsigned long long t1 = SDL_GetPerformanceCounter();
 
                 int used_threads = mesh_threads;
@@ -585,7 +598,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 p += snprintf(p, end-p, "commands:\n"
                         "fps [reset] | timings [reset] | pos | tp <ax> <az>\n"
                         "walk <frames> | fly <frames> <bl/s> | turn <deg>\n"
-                        "look [<yaw> <pitch>] | click <left|right> [frames] | target\n"
+                        "look [<yaw> <pitch>] | click <left|right> [frames] | target | patch\n"
                         "dist <blocks> | debounce <frames>\n"
                         "find <tile> <ax0> <az0> <ax1> <az1>\n"
                         "noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"

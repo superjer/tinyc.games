@@ -22,7 +22,14 @@ static int sorter(const void * _a, const void * _b)
 // (opaque, v points past the end) and wbuf (water/glow, w past the end).
 // Parameterized bounds let build_meshes mesh a whole chunk while the spike
 // command (remote.c) measures the cost of smaller regions.
-void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned char face_mask)
+//
+// pos_in (the per-face position baked into each vertex) is emitted relative to
+// (origin_x, origin_z): build_meshes passes the chunk's (xlo, zlo) so pos_in is
+// chunk-local (identical to the old x & (CHUNKW-1)); the patch mesh (patch.c)
+// passes (0, 0) so pos_in is absolute window coords and can be drawn with a zero
+// chunk origin over a box that straddles chunk seams.
+void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned char face_mask,
+                 int origin_x, int origin_z)
 {
         v = vbuf; // reset vertex buffer pointer
         w = wbuf; // same for water buffer
@@ -31,11 +38,13 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
         int v_counts[MAX_MESH_THREADS] = {0};
         int w_counts[MAX_MESH_THREADS] = {0};
 
-        // carve the block being mined out of this mesh so a shaking
-        // stand-in (mob.c) can take its place. Only a transient swap
-        // here - rayshot and collision still see the block as solid.
+        // carve the block being mined out of this mesh so a shaking stand-in
+        // (mine.c) can take its place. Only a transient swap here - rayshot and
+        // collision still see the block as solid. Gated on patch_meshing so only
+        // the patch mesh (patch.c) carves: the big chunk buffers keep the block
+        // solid and let the shader reject box hide it instead.
         int mine_carved = 0, mine_save = 0;
-        if (mine_hole && mine_x >= xlo && mine_x < xhi
+        if (patch_meshing && mine_hole && mine_x >= xlo && mine_x < xhi
                       && mine_y >= ylo && mine_y < yhi
                       && mine_z >= zlo && mine_z < zhi)
         {
@@ -88,8 +97,8 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                         float DSE = KORN_(x+1, y+1, z  );
                         float DNW = KORN_(x  , y+1, z+1);
                         float DNE = KORN_(x+1, y+1, z+1);
-                        int m = x & (CHUNKW-1);
-                        int n = z & (CHUNKD-1);
+                        int m = x - origin_x;
+                        int n = z - origin_z;
 
                         if (t == GRAS)
                         {
@@ -247,7 +256,7 @@ void build_meshes()
 
                 TIMER(build_meshes);
 
-                mesh_region(xlo, xhi, 0, TILESH, zlo, zhi, face_mask);
+                mesh_region(xlo, xhi, 0, TILESH, zlo, zhi, face_mask, xlo, zlo);
 
                 WBOSTART_(myx, myz) = v - vbuf;
 
