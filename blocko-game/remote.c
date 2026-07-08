@@ -47,6 +47,8 @@ int fps_base_gen_ticks;
 int remote_walk_frames; // hold forward key for this many frames
 int remote_fly_frames;  // noclip along yaw for this many frames...
 float remote_fly_speed; // ...at this many blocks/sec (deterministic traversal)
+int remote_break_frames; // hold "left click" (mine) for this many frames
+int remote_build_frames; // hold "right click" (place) for this many frames
 
 #ifdef _WIN32
 void remote_init() { fps_reset_count = SDL_GetPerformanceCounter(); }
@@ -197,6 +199,63 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         {
                 player[0].yaw = atof(cmd + 5) * PI / 180.f;
                 p += snprintf(p, end-p, "ok\n");
+        }
+        else if (!strncmp(cmd, "look", 4))
+        {
+                // "look" reports the aim; "look <yaw_deg> <pitch_deg>" points the
+                // camera there (like moving the mouse). +pitch looks down, 0 is
+                // level; yaw 0 faces +z, matching the on-screen compass.
+                float yaw_deg, pitch_deg;
+                if (sscanf(cmd + 4, "%f %f", &yaw_deg, &pitch_deg) == 2)
+                {
+                        float limit = PI * 0.5f - 0.001f;
+                        player[0].yaw = yaw_deg * PI / 180.f;
+                        player[0].pitch = CLAMP(pitch_deg * PI / 180.f, -limit, limit);
+                }
+                p += snprintf(p, end-p, "yaw_deg %.1f pitch_deg %.1f\n",
+                        player[0].yaw * 180.f / PI, player[0].pitch * 180.f / PI);
+        }
+        else if (!strncmp(cmd, "click", 5))
+        {
+                // "click <left|right> [frames]" holds a mouse button for that many
+                // rendered frames (default 1), then releases - the socket's stand
+                // -in for clicking. left = break/mine (needs ~MINE_TIME held while
+                // aimed at one block), right = place. frames 0 releases now.
+                char btn[16] = ""; int frames = 1;
+                int got = sscanf(cmd + 5, "%15s %d", btn, &frames);
+                if (got >= 1 && (!strcmp(btn, "left") || !strcmp(btn, "right")))
+                {
+                        int down = frames > 0;
+                        if (!strcmp(btn, "left"))
+                        {
+                                remote_break_frames = frames;
+                                player[0].breaking = down;
+                        }
+                        else
+                        {
+                                remote_build_frames = frames;
+                                player[0].building = down;
+                        }
+                        p += snprintf(p, end-p, "ok\n");
+                }
+                else
+                        p += snprintf(p, end-p, "usage: click <left|right> [frames]\n");
+        }
+        else if (!strncmp(cmd, "target", 6))
+        {
+                // report the block the player is aiming at (what a left click
+                // mines) and where a right click would place, in absolute coords
+                if (target_x >= 0)
+                        p += snprintf(p, end-p, "target %d %d %d tile %d\n",
+                                target_x - scootx, target_y, target_z - scootz,
+                                T_(target_x, target_y, target_z));
+                else
+                        p += snprintf(p, end-p, "target none\n");
+                if (place_x >= 0)
+                        p += snprintf(p, end-p, "place %d %d %d\n",
+                                place_x - scootx, place_y, place_z - scootz);
+                else
+                        p += snprintf(p, end-p, "place none\n");
         }
         else if (!strncmp(cmd, "dist ", 5))
         {
@@ -526,6 +585,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 p += snprintf(p, end-p, "commands:\n"
                         "fps [reset] | timings [reset] | pos | tp <ax> <az>\n"
                         "walk <frames> | fly <frames> <bl/s> | turn <deg>\n"
+                        "look [<yaw> <pitch>] | click <left|right> [frames] | target\n"
                         "dist <blocks> | debounce <frames>\n"
                         "find <tile> <ax0> <az0> <ax1> <az1>\n"
                         "noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
@@ -561,6 +621,12 @@ void remote_poll()
                 player[0].goingf = 0;
                 player[0].running = 0;
         }
+
+        // release "held" mouse buttons once their frame budget runs out
+        if (remote_break_frames > 0 && --remote_break_frames == 0)
+                player[0].breaking = 0;
+        if (remote_build_frames > 0 && --remote_build_frames == 0)
+                player[0].building = 0;
 
         // noclip flight: constant speed along yaw at fixed altitude
         if (remote_fly_frames > 0)

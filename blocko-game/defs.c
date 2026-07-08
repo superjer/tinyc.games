@@ -593,10 +593,12 @@ void mine_heal();
 void update_mobs();
 void mob_build();
 void mob_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
-void mine_overlay_build();
-void mine_overlay_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 void mob_scoot(int dx, int dz);
 int mob_spawn(int bx, int bz);
+
+// mine.c protos
+void mine_overlay_build();
+void mine_overlay_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 
 // collision.c protos
 int collide(struct box l, struct box r);

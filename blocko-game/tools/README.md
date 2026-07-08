@@ -81,6 +81,9 @@ $bk timings   # build_meshes total; divide by meshes_built for per-mesh ms
 | `walk <frames>` | Hold forward + run for `frames` frames, then stop. |
 | `fly <frames> <blocks_per_sec>` | Noclip forward along the current yaw at a fixed altitude and constant speed for `frames` frames — deterministic traversal for streaming/benchmarks. |
 | `turn <deg>` | Set the player yaw to `deg` degrees. |
+| `look [<yaw> <pitch>]` | Point the camera (like moving the mouse): set yaw and pitch in degrees. `+pitch` looks down, `0` is level. With no args, just reports the current `yaw_deg` / `pitch_deg`. |
+| `target` | Report the block the player is aiming at (`target <x> <y> <z> tile <t>`, absolute coords — what a left click mines) and where a right click would place (`place <x> <y> <z>`). `none` if nothing is in range. |
+| `click <left\|right> [frames]` | Hold a "mouse button" for `frames` rendered frames (default 1), then release — the socket's stand-in for clicking. `left` = break/mine (hold well past `MINE_TIME` ≈ 45 while aimed at one block), `right` = place. `frames 0` releases immediately. Placement obeys the usual collision guard, so it's skipped if the player's body occupies the target cell. |
 
 ## Rendering & view
 

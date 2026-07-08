@@ -60,6 +60,7 @@
 #include "blocklight.c"
 #include "player.c"
 #include "mob.c"
+#include "mine.c"
 #include "test.c"
 #include "chunker.c"
 
