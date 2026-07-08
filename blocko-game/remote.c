@@ -492,9 +492,9 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 {
                         if (!mob[i].alive) continue;
                         if (end-p < 60) break;
-                        p += snprintf(p, end-p, "  mob %d at %.1f %.1f %.1f hp %d\n", i,
+                        p += snprintf(p, end-p, "  mob %d at %.1f %.1f %.1f size %d\n", i,
                                 mob[i].pos.x / BS - scootx, mob[i].pos.y / BS,
-                                mob[i].pos.z / BS - scootz, mob[i].hp);
+                                mob[i].pos.z / BS - scootz, mob[i].size);
                 }
         }
         else if (!strncmp(cmd, "redirty", 7))
@@ -569,6 +569,13 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 {
                         test_lock = 1;
                         snprintf(test_lock_msg, sizeof test_lock_msg, "%s", m);
+                        // free the mouse if it's captured, like hitting escape,
+                        // so the user gets their cursor back while locked out
+                        if (mouselook)
+                        {
+                                SDL_SetWindowRelativeMouseMode(vk.window, false);
+                                mouselook = false;
+                        }
                 }
                 p += snprintf(p, end-p, "lock %d\n", test_lock);
         }

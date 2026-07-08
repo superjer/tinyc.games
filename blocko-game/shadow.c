@@ -32,9 +32,11 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
         vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 vk.pipelines[shadow_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
-        struct { float pv[16]; float chunk_x; float chunk_y; float chunk_z; float bs; } push;
+        struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
+                 float yaw, cx, cz, shiny; } push;
         memcpy(push.pv, shadow_pv, sizeof push.pv);
         push.bs = BS;
+        push.yaw = push.cx = push.cz = push.shiny = 0; // terrain never rotates
         int cascade_x_draw_calls = 0;
 
         VkDeviceSize voffset = 0;

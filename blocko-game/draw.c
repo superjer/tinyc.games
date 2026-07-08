@@ -401,9 +401,11 @@ void draw_stuff()
         vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 vk.pipelines[main_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
-        struct { float pv[16]; float chunk_x; float chunk_y; float chunk_z; float bs; } push;
+        struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
+                 float yaw, cx, cz, shiny; } push;
         memcpy(push.pv, proj_view_mtrx, sizeof push.pv);
         push.bs = BS;
+        push.yaw = push.cx = push.cz = push.shiny = 0; // terrain never rotates
 
         VkDeviceSize voffset = 0;
         int chunks_drawn = 0;

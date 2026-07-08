@@ -93,12 +93,14 @@ void mine_overlay_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
         if (!mine_draw_on) return;
 
         int fr = vk.currentFrame;
-        struct { float pv[16]; float x, y, z, bs; } push;
+        struct { float pv[16]; float x, y, z, bs;
+                 float yaw, cx, cz, shiny; } push;
         memcpy(push.pv, pv, sizeof push.pv);
         push.x = mine_px;
         push.y = mine_py;
         push.z = mine_pz;
         push.bs = mine_bs;
+        push.yaw = push.cx = push.cz = push.shiny = 0; // the mined block is axis-aligned
 
         vkCmdPushConstants(cmdbuf, vk.pipelines[pipe].layout,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);

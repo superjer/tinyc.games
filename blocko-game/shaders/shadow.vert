@@ -20,6 +20,10 @@ layout(push_constant) uniform Push {
     float chunk_y;
     float chunk_z;
     float bs;
+    float yaw;    // rotate geometry about a vertical axis (0 = none)
+    float cx;     // rotation pivot, world x
+    float cz;     // rotation pivot, world z
+    float shiny;  // unused here; keeps layout matching main.vert
 } push;
 
 void main(void) {
@@ -73,6 +77,16 @@ void main(void) {
 
     tex = tex_in;
     alpha = alpha_in;
-    gl_Position = push.pv * (vertex_pos + offsets[i]);
+
+    // match main.vert's rotation so a spun mob casts a matching shadow
+    vec4 world_pos = vertex_pos + offsets[i];
+    if (push.yaw != 0.0) {
+        float s = sin(push.yaw), c = cos(push.yaw);
+        vec2 rel = world_pos.xz - vec2(push.cx, push.cz);
+        world_pos.xz = vec2(rel.x * c - rel.y * s, rel.x * s + rel.y * c)
+                     + vec2(push.cx, push.cz);
+    }
+
+    gl_Position = push.pv * world_pos;
     uv = uvs[i];
 }
