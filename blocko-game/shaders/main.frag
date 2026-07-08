@@ -44,6 +44,10 @@ layout(push_constant) uniform Push {
     float bs;
     vec4 reject_lo;   // .xyz = reject box (vertex shader); .w = debug patch tint flag
     vec4 reject_hi;
+    float yaw;
+    float cx;
+    float cz;
+    float shiny;  // >0 = wet/glossy surface (slimes)
 } push;
 
 layout(set = 0, binding = 1) uniform sampler2DArray tarray;
@@ -223,6 +227,14 @@ void main(void) {
             glint = light_tint * (1.5 * unshadow * ubo.sun_strength
                     * pow(max(dot(N, halfway_dir), 0.0), 80.0));
 
+        // slimes read as wet: a tight glossy hotspot plus a fresnel sheen
+        if (push.shiny > 0.5) {
+            float wet = pow(max(dot(N, halfway_dir), 0.0), 64.0);
+            float fres = pow(1.0 - max(dot(view_dir, N), 0.0), 3.0);
+            glint += light_tint * (2.0 * unshadow * ubo.sun_strength * wet)
+                   + vec3(0.18, 0.32, 0.24) * fres;
+        }
+
         sky = (s1 * illum + s0 * directional) * light_tint * ubo.day_color;
     } else {
         // No shadow mapping - just use ambient with day_color (no directional to warm/dim)
@@ -232,6 +244,8 @@ void main(void) {
     vec3 glo_contrib = vec3(glow) * ubo.glo_color;
     vec3 combined = sky + glo_contrib * (vec3(1.0) - sky);
     vec4 c = texel * vec4(combined, alpha);
+
+    if (push.shiny > 0.5) c.rgb += glint;
 
     if (alpha < 1.0 && ubo.underwater < 0.5) {
         // fresnel: mirror the horizon at grazing angles, clear straight down

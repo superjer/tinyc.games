@@ -738,6 +738,8 @@ void vksetup()
                 TINYC_DIR "/blocko-game/assets/D.png",
                 TINYC_DIR "/blocko-game/assets/E.png",
                 TINYC_DIR "/blocko-game/assets/F.png",               // 34
+                TINYC_DIR "/blocko-game/assets/slime_body.png",      // 35
+                TINYC_DIR "/blocko-game/assets/slime_eyes.png",      // 36
         };
         int texture_count = sizeof(texture_files) / sizeof(texture_files[0]);
         create_texture_array(texture_files, texture_count);

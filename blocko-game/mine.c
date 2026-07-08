@@ -95,7 +95,9 @@ void mine_overlay_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
         int fr = vk.currentFrame;
         // reject_lo/hi mirror the terrain push layout (empty box) so the overlay,
         // drawn on the main pipeline, never inherits a stale reject box
-        struct { float pv[16]; float x, y, z, bs; float reject_lo[4], reject_hi[4]; } push;
+        struct { float pv[16]; float x, y, z, bs;
+                 float reject_lo[4], reject_hi[4];
+                 float yaw, cx, cz, shiny; } push;
         memcpy(push.pv, pv, sizeof push.pv);
         push.x = mine_px;
         push.y = mine_py;
@@ -103,6 +105,7 @@ void mine_overlay_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
         push.bs = mine_bs;
         push.reject_lo[0] = 1; push.reject_lo[1] = push.reject_lo[2] = push.reject_lo[3] = 0;
         push.reject_hi[0] = 0; push.reject_hi[1] = push.reject_hi[2] = push.reject_hi[3] = 0;
+        push.yaw = push.cx = push.cz = push.shiny = 0; // the mined block is axis-aligned
 
         vkCmdPushConstants(cmdbuf, vk.pipelines[pipe].layout,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);

@@ -33,9 +33,11 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                 vk.pipelines[shadow_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
         struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
-                 float reject_lo[4], reject_hi[4]; } push;
+                 float reject_lo[4], reject_hi[4];
+                 float yaw, cx, cz, shiny; } push;
         memcpy(push.pv, shadow_pv, sizeof push.pv);
         push.bs = BS;
+        push.yaw = push.cx = push.cz = push.shiny = 0; // terrain never rotates
 
         // reject the pending edit box's stale shadow in the near cascade only (the
         // patch redraws it below); other cascades keep their slightly-stale shadow

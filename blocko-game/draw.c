@@ -406,9 +406,11 @@ void draw_stuff()
                 vk.pipelines[main_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
         struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
-                 float reject_lo[4], reject_hi[4]; } push;
+                 float reject_lo[4], reject_hi[4];
+                 float yaw, cx, cz, shiny; } push;
         memcpy(push.pv, proj_view_mtrx, sizeof push.pv);
         push.bs = BS;
+        push.yaw = push.cx = push.cz = push.shiny = 0; // terrain never rotates
 
         // opaque terrain rejects the faces of any cell in the pending edit box
         // (window tile coords this frame); patch_render redraws them. Empty box

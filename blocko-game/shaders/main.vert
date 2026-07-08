@@ -47,6 +47,10 @@ layout(push_constant) uniform Push {
     float bs;
     vec4 reject_lo;   // .xyz = window-tile box lo (inclusive); box empty when lo > hi
     vec4 reject_hi;   // faces of cells inside the box are culled (the patch redraws them)
+    float yaw;    // rotate geometry about a vertical axis (0 = none)
+    float cx;     // rotation pivot, world x
+    float cz;     // rotation pivot, world z
+    float shiny;  // >0 = wet/glossy surface (slimes)
 } push;
 
 void main(void) {
@@ -117,6 +121,17 @@ void main(void) {
     normal = face_normal;
 
     vec4 world_pos = vertex_pos + offsets[i];
+
+    // spin the whole piece about a vertical axis so mobs face where they head
+    if (push.yaw != 0.0) {
+        float s = sin(push.yaw), c = cos(push.yaw);
+        vec2 rel = world_pos.xz - vec2(push.cx, push.cz);
+        world_pos.xz = vec2(rel.x * c - rel.y * s, rel.x * s + rel.y * c)
+                     + vec2(push.cx, push.cz);
+        normal = vec3(normal.x * c - normal.z * s, normal.y,
+                      normal.x * s + normal.z * c);
+    }
+
     gl_Position = push.pv * world_pos;
 
     // reject: if this face's block-cell is inside the pending edit box, collapse

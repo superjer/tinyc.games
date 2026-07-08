@@ -447,21 +447,31 @@ struct player player[NR_PLAYERS] = {{
 }};
 struct player camplayer;
 
-#define NR_MOBS 8
+// the array is big so a punched slime can burst into a swarm of shards;
+// ambient spawning is capped well below this (see MOB_POP_TARGET)
+#define NR_MOBS 80
 struct mob {
         struct box pos;
         struct box prev;          // last tick, for smooth drawing in >60FPS
         struct point vel;
         int alive;
         int hp;
+        int size;                 // 1..12: drives scale, behavior, and danger
         int grav;
         int ground;
         int wet;
+        int skating;              // 1 = gliding smoothly on the ground (small slimes)
+        float move_yaw;           // heading a skater steers toward
+        float bob;                // vertical velocity while floating in water
         int hop_cooldown;         // frames of rest before the next hop
         int bonk_cooldown;        // frames until it can hit the player again
+        int merge_cooldown;       // frames before it will fuse with a neighbor
+        int decay_timer;          // frames until a small slime wastes away
         int hurt;                 // hurt-flash frames remaining
         int dying;                // death-animation frames remaining
-        int facing;               // EAST, NORTH, WEST or SOUTH
+        float yaw;                // facing angle (radians); front points here
+        float prev_yaw;           // last tick's yaw, for smooth drawing
+        float target_yaw;         // where it wants to be facing
 };
 struct mob mob[NR_MOBS];
 int mob_enable = 1;
@@ -611,6 +621,7 @@ void mob_build();
 void mob_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 void mob_scoot(int dx, int dz);
 int mob_spawn(int bx, int bz);
+int mob_spawn_at(int bx, int by, int bz);
 
 // mine.c protos
 void mine_overlay_build();
