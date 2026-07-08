@@ -97,6 +97,7 @@ $bk timings   # build_meshes total; divide by meshes_built for per-mesh ms
 |---|---|
 | `dist <blocks>` | Set the draw distance in blocks. |
 | `debounce <frames>` | Set how many quiet frames a light-only change waits before the chunk is remeshed. |
+| `tint [<0\|1>]` | Debug viz for the reject+patch instant edits: blend the patch mesh (opaque + water) 50% red so you can see the tiny corrected geometry drawn over the rejected faces. Toggles with no arg. |
 | `cull [<0|1>]` | Freeze (`1`) or unfreeze (`0`) chunk-culling (same as the F2 key), and report camera-visible chunk count and bounds. With no arg, just reports. |
 | `sun <pitch>` | Freeze the sun at `pitch` radians (0 = east, π/2 = up, π = west). `sun run` resumes the normal day/night motion. Useful for deterministic lighting in screenshots. |
 
