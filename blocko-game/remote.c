@@ -8,8 +8,13 @@
 // (or an AI agent) can benchmark and drive the game without the keyboard.
 // One command per connection: connect, send a line, read reply, disconnected.
 //
-//   echo fps     | nc -U /tmp/blocko.sock
-//   echo "tp 200 -1500" | nc -U /tmp/blocko.sock
+//   echo fps     | nc -U /tmp/blocko-<tag>.sock
+//   echo "tp 200 -1500" | nc -U /tmp/blocko-<tag>.sock
+//
+// The socket path is per-worktree: /tmp/blocko-<tag>.sock, where <tag> is
+// derived from the git worktree root (see remote_tag), so several game copies
+// can run at once without colliding. The startup line prints the exact path,
+// and the bk helper connects to the same one. BLOCKO_SOCK overrides it.
 //
 // The tilde-key console runs the same commands through remote_dispatch().
 //
@@ -50,13 +55,70 @@ float remote_fly_speed; // ...at this many blocks/sec (deterministic traversal)
 int remote_break_frames; // hold "left click" (mine) for this many frames
 int remote_build_frames; // hold "right click" (place) for this many frames
 
+// Per-worktree instance tag, so multiple game copies (git worktrees) don't
+// collide on the socket / dump paths. Derived from the git worktree root (or
+// the cwd if git isn't available); the bk tool derives the identical tag the
+// same way, so both ends land on the same socket. Override the socket path
+// entirely with the BLOCKO_SOCK env var.
+const char *remote_tag()
+{
+        static char tag[64];
+        if (tag[0]) return tag;
+
+        char root[4096] = "";
+#ifndef _WIN32
+        FILE *g = popen("git rev-parse --show-toplevel 2>/dev/null", "r");
+        if (g)
+        {
+                if (fgets(root, sizeof root, g))
+                        root[strcspn(root, "\n")] = '\0';
+                pclose(g);
+        }
+        if (!root[0] && !getcwd(root, sizeof root))
+                root[0] = '\0';
+#endif
+        if (!root[0])
+        {
+                snprintf(tag, sizeof tag, "default");
+                return tag;
+        }
+
+        // FNV-1a of the full path keeps distinct worktrees apart even if their
+        // leaf directory names happen to match; the readable prefix is just the
+        // sanitized leaf name. The bk tool mirrors this byte-for-byte.
+        unsigned h = 2166136261u;
+        for (char *s = root; *s; s++)
+                h = (h ^ (unsigned char)*s) * 16777619u;
+
+        const char *leaf = strrchr(root, '/');
+        leaf = leaf ? leaf + 1 : root;
+        char clean[24];
+        int n = 0;
+        for (const char *s = leaf; *s && n < (int)sizeof clean - 1; s++)
+        {
+                char c = *s;
+                int ok = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+                         (c >= 'a' && c <= 'z') || c == '-' || c == '_';
+                clean[n++] = ok ? c : '_';
+        }
+        clean[n] = '\0';
+
+        snprintf(tag, sizeof tag, "%s-%08x", clean, h);
+        return tag;
+}
+
 #ifdef _WIN32
 void remote_init() { fps_reset_count = SDL_GetPerformanceCounter(); }
 #else
 void remote_init()
 {
         const char *path = getenv("BLOCKO_SOCK");
-        if (!path) path = "/tmp/blocko.sock";
+        char pathbuf[256];
+        if (!path)
+        {
+                snprintf(pathbuf, sizeof pathbuf, "/tmp/blocko-%s.sock", remote_tag());
+                path = pathbuf;
+        }
 
         unlink(path);
         remote_listen_fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -425,8 +487,11 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         }
         else if (!strncmp(cmd, "dump", 4))
         {
-                // raw world arrays to a file, for offline diffing
-                char path[256] = "/tmp/blocko_dump.bin";
+                // raw world arrays to a file, for offline diffing; the default
+                // path is per-worktree (matches the socket) so parallel game
+                // copies don't clobber each other's dumps
+                char path[256];
+                snprintf(path, sizeof path, "/tmp/blocko-%s_dump.bin", remote_tag());
                 sscanf(cmd + 4, "%255s", path);
                 FILE *f = fopen(path, "wb");
                 if (f)

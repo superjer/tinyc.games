@@ -1,9 +1,37 @@
 #!/usr/bin/env python3
 # send one command to a running blocko's debug socket and print the reply
 #   bk fps          bk timings reset          bk tp 200 -1500
-import os, socket, sys
+#
+# The socket path is per-worktree so several game copies can run at once:
+# /tmp/blocko-<tag>.sock, where <tag> is derived from the git worktree root the
+# same way the game derives it (see remote_tag in remote.c). BLOCKO_SOCK
+# overrides the whole path.
+import os, re, socket, subprocess, sys
 
-path = os.environ.get("BLOCKO_SOCK", "/tmp/blocko.sock")
+
+def instance_tag():
+    root = ""
+    try:
+        root = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+    except Exception:
+        pass
+    if not root:
+        root = os.getcwd()
+
+    # FNV-1a over the full path, matching remote_tag() in remote.c byte-for-byte
+    h = 2166136261
+    for b in root.encode():
+        h = ((h ^ b) * 16777619) & 0xffffffff
+
+    leaf = os.path.basename(root) or "default"
+    leaf = re.sub(r"[^0-9A-Za-z_-]", "_", leaf)
+    return f"{leaf}-{h:08x}"
+
+
+path = os.environ.get("BLOCKO_SOCK") or f"/tmp/blocko-{instance_tag()}.sock"
 s = socket.socket(socket.AF_UNIX)
 s.connect(path)
 s.sendall((" ".join(sys.argv[1:]) + "\n").encode())

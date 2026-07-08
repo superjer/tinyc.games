@@ -4,7 +4,11 @@ Blocko listens on a Unix domain socket so tools (or an AI agent) can benchmark
 and drive the running game without touching the keyboard. It's how the perf
 work in this project gets measured and reproduced.
 
-- **Socket path:** `/tmp/blocko.sock` (override with the `BLOCKO_SOCK` env var).
+- **Socket path:** `/tmp/blocko-<tag>.sock`, where `<tag>` is derived from the
+  git worktree root, so several game copies (git worktrees) can run at once
+  without colliding. The game prints the exact path on startup (`remote:
+  listening on ...`), and the `bk` helper derives the same one. Override the
+  whole path with the `BLOCKO_SOCK` env var.
 - **Protocol:** one command per connection — connect, send one line, read the
   reply, disconnect.
 - **Platform:** Unix only. On Windows the socket is absent; use the in-game
@@ -22,10 +26,11 @@ blocko-game/tools/bk tp 200 -1500
 blocko-game/tools/bk "spike 64 64 256 100"
 ```
 
-Or use netcat directly:
+Or use netcat directly, against the socket path the game printed at startup
+(`remote: listening on /tmp/blocko-<tag>.sock`):
 
 ```bash
-echo fps | nc -U /tmp/blocko.sock
+echo fps | nc -U /tmp/blocko-<tag>.sock
 ```
 
 Or open the **in-game console** with the tilde (`` ` ``) key and type the same
@@ -102,7 +107,7 @@ $bk timings   # build_meshes total; divide by meshes_built for per-mesh ms
 | `find <tile> <ax0> <az0> <ax1> <az1>` | List every block of type `<tile>` in the absolute-coord rectangle (inclusive) as `x y z` lines. |
 | `form near [<radius>]` | List formations within `<radius>` blocks of the player (default 512) as `x z spheres <n> above_sea <n>` lines. |
 | `sum` | FNV-1a hashes of the raw `tiles`, `sunlight`, and `gndheight` arrays — for A/B-ing generation changes. |
-| `dump [<path>]` | Write the raw `tiles` + `gndheight` arrays to a file (default `/tmp/blocko_dump.bin`) for offline diffing. |
+| `dump [<path>]` | Write the raw `tiles` + `gndheight` arrays to a file (default `/tmp/blocko-<tag>_dump.bin`, per-worktree like the socket) for offline diffing. |
 
 ## World generation knobs
 
