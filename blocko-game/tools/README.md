@@ -57,6 +57,19 @@ the tilde console) and the banner message is shown on screen — good for keepin
 a test deterministic. `bk unlock` (or `bk lock 0`) releases it; `bk quit` works
 even while locked.
 
+When running **several instances at once** (multiplayer tests), launch each
+lightweight so they don't fight over the GPU: `--dist <blocks>` sets the draw
+distance (try 100) and `--noshadow` skips shadow maps, both from the very first
+frame. Give each instance its own debug socket with the `BLOCKO_SOCK` env var —
+set it on the game *and* on each `bk` call driving that instance:
+
+```bash
+./build/blocko --serve --dist 100 --noshadow --lock server &
+BLOCKO_SOCK=/tmp/blocko-b.sock ./build/blocko --connect 127.0.0.1 --dist 100 --noshadow --lock client &
+blocko-game/tools/bk net                          # talks to the server
+BLOCKO_SOCK=/tmp/blocko-b.sock blocko-game/tools/bk net   # talks to the client
+```
+
 ---
 
 ## Performance & profiling
@@ -138,6 +151,19 @@ world with the new values. With no arguments, each prints its current knobs.
 | `plateau [<0\|1>]` / `plateau jitter <amp>` | Enable/disable the plateau/shelf terracing pass, or set the shelf-boundary jitter amplitude in steps (0 = straight even bands, ~0.4 default breaks them up). |
 | `seed [<n>]` | Set the world seed. Setting a seed also clears the edit overlay (new world, old edits meaningless). |
 | `regen` | Invalidate every chunk's generation stamp; the whole window regenerates in place, nearest chunks first. Recorded edits replay onto the regenerated chunks (send `edits clear` first for pristine terrain). |
+
+## Multiplayer (net.c)
+
+One player hosts, others join; the world itself never travels — a joining
+client gets the seed and the edit overlay, generates terrain locally, and
+replays the edits. Also available at launch as `--serve [port]` and
+`--connect <host[:port]>` (default port 26262).
+
+| Command | What it does |
+|---|---|
+| `serve [<port>]` | Start hosting on the given TCP port. |
+| `connect <host> [<port>]` | Join a hosted game. Blocks up to 5 s for the WELCOME (seed + edit log), then regenerates the world with the server's seed. |
+| `net` | Report the current role and connected players. |
 
 ## Mobs
 

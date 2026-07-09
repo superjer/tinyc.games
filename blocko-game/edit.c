@@ -77,6 +77,20 @@ void edit_clear()
         edit_len = 0;
 }
 
+// walk the overlay: start with *it = 0; returns 1 and fills the entry while
+// entries remain. Used to stream the whole overlay to a joining client.
+int edit_next(int *it, int *x, int *y, int *z, int *tile)
+{
+        while (edit_tab && *it < edit_cap)
+        {
+                struct edit *e = &edit_tab[(*it)++];
+                if (!e->used) continue;
+                *x = e->x; *y = e->y; *z = e->z; *tile = e->tile;
+                return 1;
+        }
+        return 0;
+}
+
 // ground-height and lighting consequences of one tile change (window coords).
 // shared by live edits (set_tile) and overlay replay (edit_apply_chunk)
 static void tile_light_update(int x, int y, int z, int old, int t)
@@ -154,6 +168,26 @@ void set_tile(int x, int y, int z, int t)
         edit_record(x - scootx, y, z - scootz, t);
         tile_light_update(x, y, z, old, t);
         patch_edit(x, y, z);
+        net_send_edit(x - scootx, y, z - scootz, t);
+}
+
+// land an edit that arrived from the network: record it, and if its chunk is
+// already generated, apply it in place like a local edit (minus re-sending -
+// the server relays for us). An ungenerated chunk needs only the record; the
+// replay at generation time picks it up.
+void edit_apply_remote(int ax, int ay, int az, int tile)
+{
+        edit_record(ax, ay, az, tile);
+
+        int x = ax + scootx, z = az + scootz;
+        if (x < 0 || x >= TILESW || z < 0 || z >= TILESD) return;
+        if (!AGEN_(B2C(x), B2C(z))) return;
+
+        int old = T_(x, ay, z);
+        if (old == tile) return;
+        T_(x, ay, z) = tile;
+        tile_light_update(x, ay, z, old, tile);
+        patch_edit(x, ay, z);
 }
 
 // replay the overlay onto a freshly generated chunk (ABSOLUTE chunk coords).

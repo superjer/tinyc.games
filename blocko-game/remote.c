@@ -759,16 +759,38 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         }
         else if (!strncmp(cmd, "regen", 5))
         {
-                // invalidate all generation stamps: the whole ring regenerates
-                // in place, nearest chunks first
-                for (int i = 0; i < VAOD; i++) for (int j = 0; j < VAOW; j++)
-                {
-                        chunk_stamp[i][j].ax = INT_MIN;
-                        chunk_stamp[i][j].az = INT_MIN;
-                        chunk_estamp[i][j].ax = INT_MIN;
-                        chunk_estamp[i][j].az = INT_MIN;
-                }
+                regen_world();
                 p += snprintf(p, end-p, "ok - world regenerating\n");
+        }
+        else if (!strncmp(cmd, "serve", 5))
+        {
+                // host a multiplayer game (net.c); default port if omitted
+                int port = NET_PORT;
+                sscanf(cmd + 5, "%d", &port);
+                if (net_serve(port) == 0)
+                        p += snprintf(p, end-p, "serving on port %d\n", port);
+                else
+                        p += snprintf(p, end-p, "can't serve (already on? port taken?)\n");
+        }
+        else if (!strncmp(cmd, "connect ", 8))
+        {
+                // join a multiplayer game: connect <host> [port]
+                char host[128];
+                int port = NET_PORT;
+                if (sscanf(cmd + 8, "%127s %d", host, &port) >= 1)
+                {
+                        if (net_connect(host, port) == 0)
+                                p += snprintf(p, end-p, "connected to %s:%d as player %d\n",
+                                        host, port, my_player);
+                        else
+                                p += snprintf(p, end-p, "can't connect to %s:%d\n", host, port);
+                }
+                else
+                        p += snprintf(p, end-p, "usage: connect <host> [port]\n");
+        }
+        else if (!strncmp(cmd, "net", 3))
+        {
+                p += net_describe(p, end-p);
         }
         else if (!strncmp(cmd, "sun ", 4))
         {
@@ -918,7 +940,8 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "find <tile> <ax0> <az0> <ax1> <az1> | tile <ax> <ay> <az> | edits [clear]\n"
                         "noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
                         "caves [<0|1>] | trees [<0|1>] | flat [<0|1>] | seed [<n>] | sum | dump [<path>]\n"
-                        "cull [<0|1>] | freeze [<0|1>] | lock [<msg>|0] | regen | sun <pitch> | quit\n");
+                        "cull [<0|1>] | freeze [<0|1>] | lock [<msg>|0] | regen | sun <pitch> | quit\n"
+                        "serve [<port>] | connect <host> [<port>] | net\n");
         }
 }
 

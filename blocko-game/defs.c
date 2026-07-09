@@ -666,8 +666,21 @@ void patch_render_water(VkCommandBuffer cmdbuf, int pipe, float *pv);
 void set_tile(int x, int y, int z, int t);
 void edit_record(int x, int y, int z, int tile);
 void edit_apply_chunk(int acx, int acz);
+void edit_apply_remote(int ax, int ay, int az, int tile);
 void edit_clear();
+int edit_next(int *it, int *x, int *y, int *z, int *tile);
 extern int edit_len;
+
+// net.c protos
+#define NET_PORT 26262 // default TCP port for --serve/--connect
+enum { NET_OFF, NET_SERVER, NET_CLIENT };
+extern int net_mode;
+void net_poll();
+void net_send_edit(int x, int y, int z, int tile);
+int net_serve(int port);
+int net_connect(const char *host, int port);
+int net_describe(char *out, int outsz);
+void regen_world(); // blocko.c: invalidate all chunk stamps
 
 // collision.c protos
 int collide(struct box l, struct box r);

@@ -59,6 +59,7 @@
 #include "interface.c"
 #include "blocklight.c"
 #include "edit.c"
+#include "net.c"
 #include "player.c"
 #include "mob.c"
 #include "mine.c"
@@ -81,6 +82,9 @@ static int chunk_builder_thread(void *unused) { chunk_builder(); return 0; }
 int main(int argc, char **argv)
 {
         world_seed = time(NULL);
+        int serve = 0, serve_port = NET_PORT;
+        char *connect_host = NULL;
+        int connect_port = NET_PORT;
 
         for (int i = 1; i < argc; i++)
         {
@@ -89,6 +93,26 @@ int main(int argc, char **argv)
                 else if (!strcmp(argv[i], "--noise-contrast") && i + 1 < argc)   noise_base_weight = atof(argv[++i]);
                 else if (!strcmp(argv[i], "--noise-aniso") && i + 1 < argc)      noise_aniso = atof(argv[++i]);
                 else if (!strcmp(argv[i], "--seed") && i + 1 < argc)             world_seed = atoi(argv[++i]);
+                // lightweight mode for running several instances at once (net
+                // tests): less to draw from the very first frame, no shadow maps
+                else if (!strcmp(argv[i], "--dist") && i + 1 < argc)             draw_dist = atof(argv[++i]);
+                else if (!strcmp(argv[i], "--noshadow"))                         shadow_mapping = false;
+                else if (!strcmp(argv[i], "--serve"))
+                {
+                        serve = 1;
+                        if (i + 1 < argc && atoi(argv[i+1]) > 0)
+                                serve_port = atoi(argv[++i]);
+                }
+                else if (!strcmp(argv[i], "--connect") && i + 1 < argc)
+                {
+                        connect_host = argv[++i];
+                        char *colon = strchr(connect_host, ':');
+                        if (colon)
+                        {
+                                *colon = '\0';
+                                connect_port = atoi(colon + 1);
+                        }
+                }
                 else if (!strcmp(argv[i], "--lock") && i + 1 < argc)
                 {
                         // start locked (input blocked, banner shown), same as a
@@ -99,7 +123,8 @@ int main(int argc, char **argv)
                 }
                 else
                 {
-                        fprintf(stderr, "usage: %s [--seed <n>] [--lock <msg>] [--noise-kernel2] "
+                        fprintf(stderr, "usage: %s [--seed <n>] [--serve [port]] [--connect <host[:port]>] "
+                                "[--dist <blocks>] [--noshadow] [--lock <msg>] [--noise-kernel2] "
                                 "[--noise-nvary] [--noise-contrast <weight>] [--noise-aniso <0..1>]\n", argv[0]);
                         return 1;
                 }
@@ -108,6 +133,14 @@ int main(int argc, char **argv)
         fprintf(stderr, "world seed: %d\n", world_seed);
         fprintf(stderr, "OpenMP threads available: %d\n", omp_get_max_threads());
         startup();
+
+        // join/host before the terrain workers launch, so a client's first
+        // chunks already generate from the server's seed (net_connect blocks
+        // until WELCOME lands or times out)
+        if (serve)
+                net_serve(serve_port);
+        else if (connect_host)
+                net_connect(connect_host, connect_port);
 
         // Terrain workers run as plain SDL threads, launched once and left
         // running, rather than as OpenMP sections. That keeps the per-frame
@@ -207,6 +240,7 @@ void main_loop()
         }
 
         remote_poll();
+        net_poll();
 
         mob_lerp_t = accumulated_elapsed / interval;
         lerp_camera(accumulated_elapsed / interval, &player[my_player], &camplayer);
@@ -249,6 +283,19 @@ void new_game()
 
         recalc_gndheight(STARTPX/BS, STARTPZ/BS);
         move_to_ground(&player[my_player].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
+}
+
+// invalidate every chunk's generation stamp: the whole ring regenerates in
+// place, nearest chunks first. Recorded edits replay as the chunks return.
+void regen_world()
+{
+        for (int i = 0; i < VAOD; i++) for (int j = 0; j < VAOW; j++)
+        {
+                chunk_stamp[i][j].ax = INT_MIN;
+                chunk_stamp[i][j].az = INT_MIN;
+                chunk_estamp[i][j].ax = INT_MIN;
+                chunk_estamp[i][j].az = INT_MIN;
+        }
 }
 
 void update_world()
