@@ -86,6 +86,12 @@ float vnoise(vec2 q) {
                mix(hash2(i + vec2(0, 1)),  hash2(i + vec2(1, 1)), u.x), u.y);
 }
 
+// true when a projected shadow coord lands inside the map (a hair in from the
+// border, so we never sample the CLAMP_TO_BORDER "lit" edge texel)
+bool inRange(vec2 uv) {
+    return uv.x > 0.001 && uv.x < 0.999 && uv.y > 0.001 && uv.y < 0.999;
+}
+
 // PCF shadow sampling with Poisson disk
 float sampleShadowPCF(sampler2DShadow shadowMap, vec3 shadowCoord, float radius, float rotation) {
     float shadow = 0.0;
@@ -180,24 +186,37 @@ void main(void) {
         } else if (shadow_pos_mid.x > 0.002 && shadow_pos_mid.x < 0.998 && shadow_pos_mid.y > 0.002 && shadow_pos_mid.y < 0.998) {
             // Mid cascade - PCF, no A/B blending
             unshadow = sampleShadowPCF(shadow_mid, shadow_pos_mid.xyz, 0.0015, rotation);
-        } else if (shadow_pos_far_a.x > 0.001 && shadow_pos_far_a.x < 0.999 && shadow_pos_far_a.y > 0.001 && shadow_pos_far_a.y < 0.999) {
-            // Far cascade - blend between A and B shadow maps
+        } else if (inRange(shadow_pos_far_a.xy) && inRange(shadow_pos_far_b.xy)) {
+            // Far cascade - blend between A and B shadow maps. We only take this
+            // cascade when BOTH maps cover the fragment: the A/B maps render on
+            // alternating frames, so while moving they sit at different positions
+            // and near the edge one projects out of [0,1], where CLAMP_TO_BORDER
+            // reads "lit" and would blend a gap into the seam. Where they don't
+            // both cover, fall through to the extreme cascade (which contains us).
             float shad_a = textureProj(shadow_far_a, vec4(shadow_pos_far_a.xy, shadow_pos_far_a.z, 1.0));
             float shad_b = textureProj(shadow_far_b, vec4(shadow_pos_far_b.xy, shadow_pos_far_b.z, 1.0));
             unshadow = mix(shad_a, shad_b, ubo.shadow_far_blend);
         } else {
-            // Extreme cascade - blend between A and B shadow maps
+            // Extreme cascade - blend A and B, but the extreme cascade has nothing
+            // larger to fall through to, so where B is out of range (same A/B
+            // divergence as above) fall back to A alone instead of blending toward
+            // its lit border.
             float shad_a = textureProj(shadow_ext_a, vec4(shadow_pos_ext_a.xy, shadow_pos_ext_a.z, 1.0));
             float shad_b = textureProj(shadow_ext_b, vec4(shadow_pos_ext_b.xy, shadow_pos_ext_b.z, 1.0));
-            unshadow = mix(shad_a, shad_b, ubo.shadow_ext_blend);
+            unshadow = inRange(shadow_pos_ext_b.xy) ? mix(shad_a, shad_b, ubo.shadow_ext_blend) : shad_a;
 
             // Fade out shadow at edges of extreme cascade - only light up edges during day
-            // At night, areas outside shadow cascades should remain dark
+            // At night, areas outside shadow cascades should remain dark.
+            // The fade ramps over the outer 0.1 of the cascade and SATURATES past
+            // the [0,1] boundary: beyond the cascade the raw shadow sample is
+            // meaningless (z runs past the far plane -> spurious full shadow), so
+            // clamp forces edge_lit there instead of leaving a dark band.
             float edge_lit = ubo.outside_cascade_lit;
-            if (shadow_pos_ext_a.x >= 0.0 && shadow_pos_ext_a.x <= 0.1) { unshadow = max(unshadow, edge_lit * (1.0 - (shadow_pos_ext_a.x * 10.0))); }
-            if (shadow_pos_ext_a.x >= 0.9 && shadow_pos_ext_a.x <= 1.0) { unshadow = max(unshadow, edge_lit * ((shadow_pos_ext_a.x - 0.9) * 10.0)); }
-            if (shadow_pos_ext_a.y >= 0.0 && shadow_pos_ext_a.y <= 0.1) { unshadow = max(unshadow, edge_lit * (1.0 - (shadow_pos_ext_a.y * 10.0))); }
-            if (shadow_pos_ext_a.y >= 0.9 && shadow_pos_ext_a.y <= 1.0) { unshadow = max(unshadow, edge_lit * ((shadow_pos_ext_a.y - 0.9) * 10.0)); }
+            vec2 e = shadow_pos_ext_a.xy;
+            float fx = max((0.1 - e.x) * 10.0, (e.x - 0.9) * 10.0);
+            float fy = max((0.1 - e.y) * 10.0, (e.y - 0.9) * 10.0);
+            float edge = clamp(max(fx, fy), 0.0, 1.0);
+            unshadow = max(unshadow, edge_lit * edge);
         }
 
         // Combine shadow with lighting
