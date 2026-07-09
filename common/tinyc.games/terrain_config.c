@@ -74,6 +74,19 @@
 #define PLATEAU_PHASE_LO   0.32f
 #define PLATEAU_PHASE_HI   0.68f
 
+// Shelf-boundary jitter. PHASE alone drifts whole mesas but leaves the cliff
+// lines *within* a region as evenly spaced parallels (iso-contours of the smooth
+// height). This is a medium-frequency offset, folded into the same phase, that
+// bends those cliff lines and varies their spacing so mesas don't read as a
+// ruler-straight ladder. It stays average-preserving (any spatial offset does).
+// SZ must sit between a tread's width and PHASE_SZ: too small bumps the flat
+// treads, too large just re-does PHASE. AMP is in steps; ~0.4 wanders cliffs by
+// most of a step without merging shelves. Set jitter to 0 to disable.
+#define PLATEAU_JITTER_SZ   440
+#define PLATEAU_JITTER_SEED 0x71771e
+#define PLATEAU_JITTER_OCT  2        // octaves: a big bend plus a finer wobble
+#define PLATEAU_JITTER_AMP  0.40f    // peak offset in steps (0 = off)
+
 // --- big oceans (get_height) ------------------------------------------------
 // A very low-frequency mask presses lowlands below sea level (0.5). The mountain
 // passes run afterward and can still raise islands out of the water. The floor

@@ -133,7 +133,7 @@ world with the new values. With no arguments, each prints its current knobs.
 | `caves [<0\|1>]` | Enable/disable cave carving. |
 | `trees [<0\|1>]` | Enable/disable trees. |
 | `flat [<0\|1>]` | Force a dead-flat world (uniform grass just above the waterline, no caves/formations). A debug aid for spotting chunk-seam artifacts that terrain relief hides. Toggles with no arg; send `regen` after. |
-| `plateau [<0\|1>]` | Enable/disable the plateau/shelf terracing pass in the base height field. |
+| `plateau [<0\|1>]` / `plateau jitter <amp>` | Enable/disable the plateau/shelf terracing pass, or set the shelf-boundary jitter amplitude in steps (0 = straight even bands, ~0.4 default breaks them up). |
 | `seed [<n>]` | Set the world seed. |
 | `regen` | Invalidate every chunk's generation stamp; the whole window regenerates in place, nearest chunks first. |
 

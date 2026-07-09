@@ -11,6 +11,7 @@
 _Thread_local int get_height_hit, get_height_miss;
 int world_seed = 160659;
 int terrain_plateaus = 1; // debug/vis: set 0 to skip the plateau/shelf pass
+float terrain_plateau_jitter = PLATEAU_JITTER_AMP; // debug/vis: shelf-boundary jitter amp in steps (0 = straight bands)
 
 float zigzag(float val, int zags)
 {
@@ -63,13 +64,19 @@ float get_height(int x, int y)
         {
                 float phase = remap(noise(x, y, PLATEAU_PHASE_SZ, world_seed^PLATEAU_PHASE_SEED, 2),
                                 PLATEAU_PHASE_LO, PLATEAU_PHASE_HI, 0.f, 1.f);
-                float o = val / PLATEAU_STEP + phase;
+                // medium-frequency jitter bends the cliff lines and varies their
+                // spacing so the shelves don't read as a straight, even ladder.
+                // it's part of the phase offset, so it stays average-preserving.
+                float jitter = (noise(x, y, PLATEAU_JITTER_SZ, world_seed^PLATEAU_JITTER_SEED, PLATEAU_JITTER_OCT) - .5f)
+                                * 2.f * terrain_plateau_jitter;
+                float offset = phase + jitter;
+                float o = val / PLATEAU_STEP + offset;
                 float k = floorf(o);
                 float frac = o - k;
                 // flat tread, then a smoothstep riser centered in the step
                 float f = remap(frac, .5f - PLATEAU_RISER * .5f, .5f + PLATEAU_RISER * .5f, 0.f, 1.f);
                 f = f * f * (3.f - 2.f * f);
-                float shelf_val = (k + f - phase) * PLATEAU_STEP;
+                float shelf_val = (k + f - offset) * PLATEAU_STEP;
                 val = lerp(plateauness, val, shelf_val);
         }
 

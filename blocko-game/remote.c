@@ -618,12 +618,14 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         }
         else if (!strncmp(cmd, "plateau", 7))
         {
-                int v;
-                if (sscanf(cmd + 7, "%d", &v) == 1)
+                float f; int v;
+                if (sscanf(cmd + 7, " jitter %f", &f) == 1)
+                        terrain_plateau_jitter = f;
+                else if (sscanf(cmd + 7, "%d", &v) == 1)
                         terrain_plateaus = v;
-                p += snprintf(p, end-p, "plateau %d\n"
+                p += snprintf(p, end-p, "plateau %d  jitter %.3f\n"
                         "(send 'regen' to rebuild the world with these)\n",
-                        terrain_plateaus);
+                        terrain_plateaus, terrain_plateau_jitter);
         }
         else if (!strncmp(cmd, "grassshadow", 11))
         {
