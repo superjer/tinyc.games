@@ -109,6 +109,7 @@ $bk timings   # build_meshes total; divide by meshes_built for per-mesh ms
 |---|---|
 | `find <tile> <ax0> <az0> <ax1> <az1>` | List every block of type `<tile>` in the absolute-coord rectangle (inclusive) as `x y z` lines. |
 | `form near [<radius>]` | List formations within `<radius>` blocks of the player (default 512) as `x z spheres <n> above_sea <n>` lines. |
+| `formdump [<path>]` | Reconstruct the nearest formation's carved voxel model from its column spans and write it (`int W,H,D` + bytes, `j`=up) for offline rendering. Pipe it through `tools/form_render.py` (needs numpy + PIL) to eyeball the "carve the scaffold" shapes: `python3 blocko-game/tools/form_render.py /tmp/blocko-<tag>_form.bin` writes `formations.png`. |
 | `sum` | FNV-1a hashes of the raw `tiles`, `sunlight`, and `gndheight` arrays — for A/B-ing generation changes. |
 | `dump [<path>]` | Write the raw `tiles` + `gndheight` arrays to a file (default `/tmp/blocko-<tag>_dump.bin`, per-worktree like the socket) for offline diffing. |
 
@@ -120,7 +121,7 @@ world with the new values. With no arguments, each prints its current knobs.
 | Command | What it does |
 |---|---|
 | `noise [<knob> <val>]` | Terrain noise knobs: `kernel2`, `contrast`, `aniso`, `nvary`, `interp`. |
-| `form [<knob> <val>]` | Formation knobs: `enable`, `region`, `chance`, `steps`, `rmin`, `rmax`. (Note: `form near ...` is the separate inspection command above.) |
+| `form [<knob> <val>]` | Formation knobs: `enable`, `region`/`chance` (how densely carved-rock formations cluster — lower `chance` or higher `region` = fewer, cheaper to generate), `steps`/`rmin`/`rmax` (scaffold length & sphere size), `detail` (0/1: add the fine grit shell — off by default, ~2x cheaper for a barely-visible change). (Note: `form near ...` is the separate inspection command above.) |
 | `caves [<0\|1>]` | Enable/disable cave carving. |
 | `trees [<0\|1>]` | Enable/disable trees. |
 | `seed [<n>]` | Set the world seed. |

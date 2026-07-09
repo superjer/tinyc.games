@@ -106,22 +106,11 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
 
                 for (int i = 0; i < fn; i++)
                 {
-                        // cap exposed formation tops with the same soil bands
-                        // as the surrounding land; the core below stays stone
+                        // formations are solid granite, top to bottom
                         int l = flo[i];
                         int h = MIN(fhi[i], gnd - 1);
                         if (l > h) continue;
-                        int cap = MIN(l + 3, h + 1);
-                        for (int y = l; y < cap; y++)
-                        {
-                                if      (y < barren)   t[y] = STON;
-                                else if (y < mtn_line) t[y] = (y == l) ? MTGR : DIRT;
-                                else if (y < lev3)     t[y] = y == l ?
-                                        (y > SEA_LEVEL ? SAND : GRAS) : DIRT;
-                                else if (y < lev4)     t[y] = SAND;
-                                else                   t[y] = STON;
-                        }
-                        memset(t + cap, STON, h + 1 - cap);
+                        memset(t + l, GRAN, h + 1 - l);
                 }
 
                 // solid ground: constant runs between the soil band levels

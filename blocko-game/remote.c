@@ -480,6 +480,66 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         noise_kernel_sq, noise_base_weight, noise_aniso, noise_nvary,
                         noise_interp);
         }
+        else if (!strncmp(cmd, "formdump", 8))
+        {
+                // formdump [<path>] - reconstruct the voxel model of the nearest
+                // formation from its column spans and write it (int W,H,D +
+                // bytes, j=up) for offline rendering (scratchpad render.py)
+                char path[256];
+                snprintf(path, sizeof path, "/tmp/blocko-%s_form.bin", remote_tag());
+                sscanf(cmd + 8, "%255s", path);
+                int pax = player[0].pos.x / BS - scootx;
+                int paz = player[0].pos.z / BS - scootz;
+                int ci = pax >> FORM_CELL_BITS, cj = paz >> FORM_CELL_BITS;
+                struct formation *f = NULL;
+                for (int i = ci-1; i <= ci+1 && !f; i++)
+                {
+                        for (int j = cj-1; j <= cj+1 && !f; j++)
+                        {
+                                struct formation *g = get_formation(i, j);
+                                if (g->nspan) f = g;
+                        }
+                }
+                if (!f) { p += snprintf(p, end-p, "no formation near\n"); }
+                else
+                {
+                        int ymin = TILESH, ymax = 0;
+                        for (int k = 0; k < f->nspan; k++)
+                        {
+                                if (f->slo[k] < ymin) ymin = f->slo[k];
+                                if (f->shi[k] > ymax) ymax = f->shi[k];
+                        }
+                        int Hh = ymax - ymin + 1;
+                        static unsigned char buf[FBW * 260 * FBD];
+                        if (Hh > 260) Hh = 260;
+                        memset(buf, 0, (size_t)FBW * Hh * FBD);
+                        for (int li = 0; li < FBW; li++) for (int lk = 0; lk < FBD; lk++)
+                        {
+                                int c = li * FBD + lk;
+                                int cnt = f->colcnt[c], off = f->coloff[c];
+                                for (int q = 0; q < cnt; q++)
+                                {
+                                        for (int y = f->slo[off+q]; y <= f->shi[off+q]; y++)
+                                        {
+                                                int jj = ymax - y; // world up (small y) -> big j
+                                                if (jj < 0 || jj >= Hh) continue;
+                                                buf[(li*Hh + jj)*FBD + lk] = 1;
+                                        }
+                                }
+                        }
+                        FILE *fp = fopen(path, "wb");
+                        if (fp)
+                        {
+                                int d[3] = { FBW, Hh, FBD };
+                                fwrite(d, sizeof d, 1, fp);
+                                fwrite(buf, 1, (size_t)FBW * Hh * FBD, fp);
+                                fclose(fp);
+                                p += snprintf(p, end-p, "ok %s  %dx%dx%d spans %d\n",
+                                        path, FBW, Hh, FBD, f->nspan);
+                        }
+                        else p += snprintf(p, end-p, "can't write %s\n", path);
+                }
+        }
         else if (!strncmp(cmd, "form near", 9))
         {
                 // form near [<radius>] - list formations near the player as
@@ -494,14 +554,13 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 for (int i = c0; i <= c1; i++) for (int j = d0; j <= d1; j++)
                 {
                         struct formation *f = get_formation(i, j);
-                        if (!f->n) continue;
-                        float top = TILESH;
-                        for (int k = 0; k < f->n; k++)
-                                if (f->y[k] - f->r[k] * f->sq[k] < top)
-                                        top = f->y[k] - f->r[k] * f->sq[k];
+                        if (!f->nspan) continue;
+                        int top = TILESH; // smallest world Y (= highest point)
+                        for (int k = 0; k < f->nspan; k++)
+                                if (f->slo[k] < top) top = f->slo[k];
                         if (end-p < 60) { p += snprintf(p, end-p, "truncated\n"); goto form_done; }
                         p += snprintf(p, end-p, "%d %d spheres %d above_sea %d\n",
-                                (int)f->x[0], (int)f->z[0], f->n, SEA_LEVEL - (int)top);
+                                f->bx + FBW/2, f->bz + FBD/2, f->n, SEA_LEVEL - top);
                         found++;
                 }
                 if (!found)
@@ -521,13 +580,14 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         else if (!strcmp(which, "steps"))  form_steps = val;
                         else if (!strcmp(which, "rmin"))   form_rmin = val;
                         else if (!strcmp(which, "rmax"))   form_rmax = val;
+                        else if (!strcmp(which, "detail")) form_detail = val;
                         form_config_gen++; // stale memos refill
                 }
                 p += snprintf(p, end-p, "enable %d\nregion %g\nchance %g\n"
-                        "steps %d\nrmin %g\nrmax %g\n"
+                        "steps %d\nrmin %g\nrmax %g\ndetail %d\n"
                         "(send 'regen' to rebuild the world with these)\n",
                         form_enable, form_region, form_chance,
-                        form_steps, form_rmin, form_rmax);
+                        form_steps, form_rmin, form_rmax, form_detail);
         }
         else if (!strncmp(cmd, "caves", 5))
         {
