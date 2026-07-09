@@ -72,11 +72,12 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                 cascade_x_draw_calls++;
         }
 
-        // tall grass casts shadows into the near cascade only (it's small and
-        // only reads up close). the grass lives in the transparent section
-        // [WBOSTART, VBOLEN) mixed with water; shadow.vert collapses the water
-        // (alpha < 1) so only the grass billboards write depth here.
-        if (cascade_idx == SHADOW_NEAR && grass_shadows)
+        // tall grass casts shadows into the near and mid cascades (the near
+        // cascade alone ends in a sharp edge right in front of the player). the
+        // grass lives in the transparent section [WBOSTART, VBOLEN) mixed with
+        // water; shadow.vert collapses the water (alpha < 1) so only the grass
+        // billboards write depth here.
+        if ((cascade_idx == SHADOW_NEAR || cascade_idx == SHADOW_MID) && grass_shadows)
         {
                 for (int k = 0; k < visible_chunk_count; k++) {
                         if (!(visible_chunks[k].shadow_mask & cascade_bit)) continue;
@@ -99,16 +100,20 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                 }
         }
 
-        // mobs and the block being mined cast shadows into the near cascade
-        // only (they're small and always right next to the player)
-        if (cascade_idx == SHADOW_NEAR)
+        // mobs and the block being mined cast shadows into the near and mid
+        // cascades (near alone leaves a sharp shadow edge close to the player)
+        if (cascade_idx == SHADOW_NEAR || cascade_idx == SHADOW_MID)
         {
                 mob_render(cmdbuf, mob_shadow_pipe, shadow_pv);
                 item_render(cmdbuf, mob_shadow_pipe, shadow_pv);
                 vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[shadow_pipe].pipeline);
                 mine_overlay_render(cmdbuf, shadow_pipe, shadow_pv);
-                // patch the edit box's shadow the reject test just culled above
-                patch_render(cmdbuf, shadow_pipe, shadow_pv);
+                // patch the edit box's shadow the reject test just culled above.
+                // only the near cascade rejects the edit box (others keep the
+                // stale pre-edit shadow), so only patch there - patching mid
+                // would double-cast with the un-rejected terrain.
+                if (cascade_idx == SHADOW_NEAR)
+                        patch_render(cmdbuf, shadow_pipe, shadow_pv);
         }
 
         vkCmdEndRenderPass(cmdbuf);
