@@ -93,6 +93,9 @@ void key_move(int down)
                 case SDLK_M: // do shadow mapping
                         if (!down) shadow_mapping = !shadow_mapping;
                         break;
+                case SDLK_T: // toggle tall grass shadows
+                        if (!down) grass_shadows = !grass_shadows;
+                        break;
                 case SDLK_C: // change view distance
                         if (down) {
                                 if (draw_dist < 320.f)

@@ -103,6 +103,7 @@ $bk timings   # build_meshes total; divide by meshes_built for per-mesh ms
 | `cull [<0|1>]` | Freeze (`1`) or unfreeze (`0`) chunk-culling (same as the F2 key), and report camera-visible chunk count and bounds. With no arg, just reports. |
 | `freeze [<0|1>]` | Pin the shadow maps and sun where they are (same as the F6 key) so the cascades stay anchored in the world and you can walk out to inspect their edges. Toggles with no arg. |
 | `sun <pitch>` | Freeze the sun at `pitch` radians (0 = east, π/2 = up, π = west). `sun run` resumes the normal day/night motion. Useful for deterministic lighting in screenshots. |
+| `grassshadow [<0\|1>]` | Toggle whether tall grass casts shadows in the near cascade (same as the T key). Toggles with no arg. |
 
 ## World inspection
 

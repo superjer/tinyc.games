@@ -172,6 +172,12 @@ void update_player(struct player *p, int real)
                 // no immediate chunk rebuild: patch_edit (below) shows the hole
                 // instantly and schedules a debounced rebuild to fold it in
 
+                // tall grass grows on top of a block (the cell at y-1); with its
+                // footing gone it has nothing to root in, so clear it too. same
+                // chunk column, so patch_edit's debounced rebuild drops it.
+                if (y > 0 && (T_(x, y-1, z) == TLGR || T_(x, y-1, z) == TMGR))
+                        T_(x, y-1, z) = OPEN;
+
                 if (broken == LITE)
                 {
                         remove_glolight(x, y, z);

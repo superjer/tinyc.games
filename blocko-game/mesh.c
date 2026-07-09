@@ -191,6 +191,18 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                                 *tw++ = (struct vbufv){ 18, SOUTH, m     , y, n+0.5f, use, usw, dse, dsw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
                                 *tw++ = (struct vbufv){ 18,  WEST, m+0.5f, y, n     , usw, unw, dsw, dnw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
                         }
+                        else if (t == TLGR || t == TMGR)
+                        {
+                                // tall grass: two crossed billboard planes like
+                                // LITE, but the vertex shader rotates and jitters
+                                // them per-cell (orient 20/21 = grass plane A/B).
+                                // integer m,y,n so the shader can hash the cell;
+                                // lit by the sky corners of the air cell it sits in.
+                                // TLGR uses the lowland texture, TMGR the mountain one
+                                int gtex = (t == TMGR) ? 41 : 40;
+                                *tw++ = (struct vbufv){ gtex, 20, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                *tw++ = (struct vbufv){ gtex, 21, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                        }
 
                 }
                 }

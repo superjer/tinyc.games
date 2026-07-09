@@ -24,11 +24,66 @@ layout(push_constant) uniform Push {
     vec4 reject_hi;   // faces of cells inside the box are culled (the patch redraws them)
 } push;
 
+// only scootx/scootz are read here; the rest replicate the std140 layout so
+// those two land at the right offset (matches struct main_ubo / main.vert)
+layout(std140, set = 0, binding = 0) uniform UBO {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+    mat4 shadow_space[6];
+    float BS;
+    float shadow_far_blend;
+    float shadow_ext_blend;
+    vec3 day_color;
+    vec3 glo_color;
+    vec3 fog_color;
+    float fog_lo;
+    float fog_hi;
+    vec3 light_pos;
+    vec3 view_pos;
+    float sharpness;
+    bool shadow_mapping;
+    float sun_strength;
+    float sun_warmth;
+    float outside_cascade_lit;
+    int water_frame;
+    float underwater;
+    float scootx;
+    float scootz;
+} ubo;
+
 void main(void) {
     vec4 a, b, c, d;
     float bs = push.bs;
 
-    switch (int(orient_in)) {
+    int o = int(orient_in);
+
+    // tall grass (orient 20/21): a crossed billboard that must cast a shadow
+    // matching its visible shape, so replicate main.vert's per-cell rotation
+    // and jitter exactly. everything else in the transparent buffer (water,
+    // alpha < 1) is collapsed so only grass casts here.
+    bool grass = o >= 20;
+    // in the transparent buffer only grass casts: collapse water (alpha < 1)
+    // and the mushroom light (tex 18, which never cast a shadow). terrain draws
+    // never carry either, so this is a no-op there.
+    if (!grass && (alpha_in < 1.0 || tex_in == 18.0)) {
+        gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+
+    switch (o) {
+        case 20: // grass plane A: full-height quad spanning X, centered in Z
+            a = vec4(bs, 0, bs * 0.5, 0);
+            b = vec4(0,  0, bs * 0.5, 0);
+            c = vec4(bs, bs, bs * 0.5, 0);
+            d = vec4(0,  bs, bs * 0.5, 0);
+            break;
+        case 21: // grass plane B: full-height quad spanning Z, centered in X
+            a = vec4(bs * 0.5, 0, 0, 0);
+            b = vec4(bs * 0.5, 0, bs, 0);
+            c = vec4(bs * 0.5, bs, 0, 0);
+            d = vec4(bs * 0.5, bs, bs, 0);
+            break;
         case 1: // UP
             a = vec4(0, 0, 0, 0);
             b = vec4(bs, 0, 0, 0);
@@ -65,6 +120,27 @@ void main(void) {
             c = vec4(bs, bs, bs, 0);
             d = vec4(0, bs, bs, 0);
             break;
+    }
+
+    // tall grass rotation + jitter, identical to main.vert so the cast shadow
+    // lines up with the rendered blades. hashed on the absolute cell (window
+    // coords minus scoot) so it stays put across chunk boundaries.
+    if (grass) {
+        vec3 gcell = vec3(push.chunk_x, push.chunk_y, push.chunk_z) / bs + pos_in;
+        gcell.x -= ubo.scootx;
+        gcell.z -= ubo.scootz;
+        vec2 h = floor(gcell.xz);
+        float ang = fract(sin(dot(h, vec2(127.1, 311.7))) * 43758.5453) * 6.2831853;
+        float jx  = (fract(sin(dot(h, vec2(269.5,  183.3))) * 43758.5453) - 0.5) * 0.45 * bs;
+        float jz  = (fract(sin(dot(h, vec2(419.2,  371.9))) * 43758.5453) - 0.5) * 0.45 * bs;
+        float ca = cos(ang), sa = sin(ang);
+        vec4 g[4] = vec4[4](a, b, c, d);
+        for (int k = 0; k < 4; k++) {
+            vec2 rel = vec2(g[k].x, g[k].z) - bs * 0.5;
+            g[k].x = rel.x * ca - rel.y * sa + bs * 0.5 + jx;
+            g[k].z = rel.x * sa + rel.y * ca + bs * 0.5 + jz;
+        }
+        a = g[0]; b = g[1]; c = g[2]; d = g[3];
     }
 
     vec3 world = push.bs * pos_in + vec3(push.chunk_x, push.chunk_y, push.chunk_z);

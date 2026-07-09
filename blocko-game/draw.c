@@ -220,6 +220,12 @@ void draw_stuff()
 
         main_ubo.bs = BS;
 
+        // window->world block offset, so shaders can recover absolute world
+        // coords from the window-relative mesh (tall grass hashes its per-cell
+        // rotation/jitter on the absolute cell, else it shifts on scoot)
+        main_ubo.scootx = scootx;
+        main_ubo.scootz = scootz;
+
         if (sun_pitch < PI)
         {
                 main_ubo.light_pos[0] = sun_pos.x;

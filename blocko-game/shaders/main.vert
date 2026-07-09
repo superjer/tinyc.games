@@ -39,6 +39,13 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     vec3 view_pos;         // offset 672
     float sharpness;       // offset 684
     bool shadow_mapping;   // offset 688
+    float sun_strength;    // offset 692
+    float sun_warmth;      // offset 696
+    float outside_cascade_lit; // offset 700
+    int water_frame;       // offset 704
+    float underwater;      // offset 708
+    float scootx;          // offset 712 (window->world block offset)
+    float scootz;          // offset 716
 } ubo;
 
 layout(push_constant) uniform Push {
@@ -62,8 +69,13 @@ void main(void) {
     // down to the recessed water line (see below) while the bottom stays put,
     // so the wall is shortened (not lowered) to meet the lowered top face.
     int o = int(orient_in);
-    bool recess_top = o >= 10;
+    bool recess_top = o >= 10 && o < 20;
     if (recess_top) o -= 10;
+
+    // tall grass (orient 20/21): two crossed billboard planes centered in the
+    // cell, rotated by a per-cell random angle and jittered - handled below
+    // after the corner offsets are chosen.
+    bool grass = o >= 20;
 
     switch (o) {
         case 1: // UP (Y-)
@@ -114,6 +126,47 @@ void main(void) {
             sidel = 0.6f;
             face_normal = vec3(0, 1, 0);
             break;
+        case 20: // grass plane A: full-height quad spanning X, centered in Z
+            a = vec4(bs, 0, bs * 0.5, 0);
+            b = vec4(0,  0, bs * 0.5, 0);
+            c = vec4(bs, bs, bs * 0.5, 0);
+            d = vec4(0,  bs, bs * 0.5, 0);
+            sidel = 1.0f;
+            face_normal = vec3(0, -1, 0);  // sky-facing (Y is down here), lit like a block top
+            break;
+        case 21: // grass plane B: full-height quad spanning Z, centered in X
+            a = vec4(bs * 0.5, 0, 0, 0);
+            b = vec4(bs * 0.5, 0, bs, 0);
+            c = vec4(bs * 0.5, bs, 0, 0);
+            d = vec4(bs * 0.5, bs, bs, 0);
+            sidel = 1.0f;
+            face_normal = vec3(0, -1, 0);  // sky-facing (Y is down here), lit like a block top
+            break;
+    }
+
+    // tall grass: rotate the crossed planes about the cell's vertical center
+    // axis by a per-cell random angle, and jitter them within the cell. both
+    // planes of a cell share the same angle/jitter so they stay crossed. all
+    // deterministic from the absolute cell coords (reconstructed like `cell`
+    // below), so the shaggy patch pattern is stable in the world grid.
+    if (grass) {
+        vec3 gcell = vec3(push.chunk_x, push.chunk_y, push.chunk_z) / bs + pos_in;
+        // window->world: the mesh is built in window coords that slide with
+        // scoot, so hash the absolute cell or the pattern shifts at boundaries
+        gcell.x -= ubo.scootx;
+        gcell.z -= ubo.scootz;
+        vec2 h = floor(gcell.xz);
+        float ang = fract(sin(dot(h, vec2(127.1, 311.7))) * 43758.5453) * 6.2831853;
+        float jx  = (fract(sin(dot(h, vec2(269.5,  183.3))) * 43758.5453) - 0.5) * 0.45 * bs;
+        float jz  = (fract(sin(dot(h, vec2(419.2,  371.9))) * 43758.5453) - 0.5) * 0.45 * bs;
+        float ca = cos(ang), sa = sin(ang);
+        vec4 g[4] = vec4[4](a, b, c, d);
+        for (int k = 0; k < 4; k++) {
+            vec2 rel = vec2(g[k].x, g[k].z) - bs * 0.5;
+            g[k].x = rel.x * ca - rel.y * sa + bs * 0.5 + jx;
+            g[k].z = rel.x * sa + rel.y * ca + bs * 0.5 + jz;
+        }
+        a = g[0]; b = g[1]; c = g[2]; d = g[3];
     }
 
     // pull the top edge (the verts at local y == 0) down to the water line. top

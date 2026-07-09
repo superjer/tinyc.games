@@ -382,6 +382,36 @@ void gen_chunk_pass2(int cx, int cz)
                         break;
                 }
         }
+
+        // tall grass: a low-frequency noise field carves shaggy patches across
+        // the surface. inside a patch, each surface grass block sprouts a tall
+        // grass billboard in the air cell above it with a probability that grows
+        // toward the patch center, and a per-cell hash ragged-edges the fill so
+        // patches read as clumps of blades rather than solid mats. lowland GRAS
+        // grows TLGR, mountain MTGR grows TMGR, each with its own patch field.
+        // absolute (unscoted) coords keep the pattern fixed in the world grid.
+        if (tree_enable) for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
+        {
+                int ax = x - tscootx, az = z - tscootz;
+                for (int y = 10; y < TILESH-2; y++)
+                {
+                        if (TT_(x, y, z) == OPEN) continue;
+                        int surf = TT_(x, y, z);
+                        if (TT_(x, y-1, z) == OPEN && (surf == GRAS || surf == MTGR))
+                        {
+                                int mtn = (surf == MTGR);
+                                float patch = noise(ax, az, 90, mtn ? 0x3b17c : 0x67a55, 1);
+                                if (patch > 0.5f)
+                                {
+                                        float density = CLAMP((patch - 0.5f) / 0.32f, 0.f, 1.f);
+                                        int shag = (int)(density * 88.f);
+                                        unsigned seed = SEED3(ax, az, 0x9a55e);
+                                        if (RANDP(shag)) TT_(x, y-1, z) = mtn ? TMGR : TLGR;
+                                }
+                        }
+                        break;
+                }
+        }
         gen_pass(&t0, GEN_TREES);
 
         // edge corners read the neighbors' edge columns (pass 1 data)

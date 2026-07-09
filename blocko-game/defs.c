@@ -30,6 +30,8 @@
 #define IS_SEE_THROUGH(t) ((t) >= OPEN || (t) == RLEF || (t) == YLEF || (t) == SLEF)
 #define WATR 76
 #define LITE 77
+#define TLGR 78            // tall grass: non-solid billboard growing on GRAS
+#define TMGR 79            // tall mountain grass: non-solid billboard growing on MTGR
 
 
 #ifndef TERRAIN_THREAD
@@ -327,6 +329,8 @@ struct main_ubo {
     float outside_cascade_lit; // float - offset 700
     int water_frame;           // int   - offset 704
     float underwater;          // float - offset 708 (camera eye is in water)
+    float scootx;              // float - offset 712 (window->world block offset x)
+    float scootz;              // float - offset 716 (window->world block offset z)
 } main_ubo;
 
 unsigned int vbo[VAOS], vao[VAOS];
@@ -515,6 +519,7 @@ float zoom_amt = 1.f;
 float fast = 1.f;
 int regulated = true;
 int shadow_mapping = true;
+int grass_shadows = true; // whether tall grass casts shadows (near cascade); toggle with T
 int speedy_sun = false;
 int reverse_sun = false;
 int sun_frozen = false; // set via debug socket for deterministic screenshots

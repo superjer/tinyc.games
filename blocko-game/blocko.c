@@ -293,8 +293,11 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
 
                 // pass through water like air: mining hits the solid block behind
                 // it, and building lands on the water cell before that block (so it
-                // replaces the water). you can't target/mine water itself.
-                if (T_(x, y, z) != OPEN && T_(x, y, z) != WATR)
+                // replaces the water). you can't target/mine water itself. tall
+                // grass (both kinds) is likewise non-mineable and lets the ray
+                // through to the block it grows on.
+                int tt = T_(x, y, z);
+                if (tt != OPEN && tt != WATR && tt != TLGR && tt != TMGR)
                         break;
 
                 if (i == 6)

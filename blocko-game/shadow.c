@@ -72,6 +72,33 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                 cascade_x_draw_calls++;
         }
 
+        // tall grass casts shadows into the near cascade only (it's small and
+        // only reads up close). the grass lives in the transparent section
+        // [WBOSTART, VBOLEN) mixed with water; shadow.vert collapses the water
+        // (alpha < 1) so only the grass billboards write depth here.
+        if (cascade_idx == SHADOW_NEAR && grass_shadows)
+        {
+                for (int k = 0; k < visible_chunk_count; k++) {
+                        if (!(visible_chunks[k].shadow_mask & cascade_bit)) continue;
+                        int i = visible_chunks[k].x;
+                        int j = visible_chunks[k].z;
+                        size_t water_start = WBOSTART_(i, j);
+                        size_t water_verts = VBOLEN_(i, j) - water_start;
+                        if (!water_verts) continue;
+                        push.chunk_x = i * BS * CHUNKW;
+                        push.chunk_y = 0;
+                        push.chunk_z = j * BS * CHUNKD;
+                        VkDeviceSize grass_offset = water_start * sizeof(struct vbufv);
+                        vkCmdPushConstants(cmdbuf, vk.pipelines[shadow_pipe].layout,
+                                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                0, sizeof push, &push);
+                        vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &grass_offset);
+                        vkCmdDraw(cmdbuf, 4, water_verts, 0, 0);
+                        shadow_polys += water_verts;
+                        shadow[cascade_idx].polys += water_verts;
+                }
+        }
+
         // mobs and the block being mined cast shadows into the near cascade
         // only (they're small and always right next to the player)
         if (cascade_idx == SHADOW_NEAR)

@@ -616,6 +616,16 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "(send 'regen' to rebuild the world with these)\n",
                         world_seed);
         }
+        else if (!strncmp(cmd, "grassshadow", 11))
+        {
+                // toggle tall grass shadows (same as the T key)
+                int v;
+                if (sscanf(cmd + 11, "%d", &v) == 1)
+                        grass_shadows = v;
+                else
+                        grass_shadows = !grass_shadows;
+                p += snprintf(p, end-p, "grassshadow %d\n", grass_shadows);
+        }
         else if (!strncmp(cmd, "cull", 4))
         {
                 // freeze/unfreeze chunk culling (same as the F2 key)
