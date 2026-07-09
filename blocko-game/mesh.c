@@ -308,6 +308,14 @@ void build_meshes()
                 polys += VBOLEN_(myx, myz);
                 TIMER(gpu_upload)
 
+                // world_buf is single-buffered and persistently mapped, but a
+                // prior frame may still be reading this slot on the GPU. Wait for
+                // the in-flight frames to drain before overwriting it in place,
+                // otherwise the GPU tears the read and the tail of the chunk (the
+                // +Z faces, written last) drops out for a frame. Only reached when
+                // a chunk is actually remeshed (<= MAX_MESHES_PER_FRAME per frame).
+                vkWaitForFences(vk.device, vk.maxFrames, vk.frontFences, VK_TRUE, UINT64_MAX);
+
                 void *data = WMAPPED_(myx, myz);
                 memcpy(data, vbuf, (v - vbuf) * sizeof *vbuf);
 
