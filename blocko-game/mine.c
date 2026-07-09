@@ -32,7 +32,13 @@ static int tile_face_tex(int t, int orient)
                 case YLEF: return 17;
                 case SLEF: return 39;
                 case LITE: return 18;
-                default:   return 5;
+                // BARR has no mesh.c case, so it stays invisible in the world grid,
+                // but a stand-in / dropped item / hand copy is labelled so you can
+                // tell what it is off the grid
+                case BARR: return 43;
+                default:   return 42; // debug: the labelled "open" tile, so a stray
+                                      // OPEN (or any stray tile) is obvious instead
+                                      // of masquerading as STON
         }
 }
 

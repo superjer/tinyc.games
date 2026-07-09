@@ -231,6 +231,13 @@ void update_player(struct player *p, int real)
                 patch_edit(x, y, z);
                 mine_heal();
                 p->cooldown = 5;
+                // this target is spent. A long frame can run another update tick
+                // before the next rayshot (draw), and target still points at the
+                // cell we just opened - now OPEN. Blank it so that stale tick can't
+                // re-target it, cache mine_tile = OPEN, and draw the shaking
+                // stand-in as the default STON tile for a frame. rayshot refills
+                // target next frame, so mining the block behind resumes normally.
+                target_x = target_y = target_z = -1;
         }
 
         if (real && p->building && !p->cooldown && place_x >= 0) {

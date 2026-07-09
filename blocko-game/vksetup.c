@@ -751,6 +751,8 @@ void vksetup()
                 TINYC_DIR "/blocko-game/assets/leaves_spruce.png",   // 39
                 TINYC_DIR "/blocko-game/assets/tall_grass.png",      // 40
                 TINYC_DIR "/blocko-game/assets/tall_mtn_grass.png",  // 41
+                TINYC_DIR "/blocko-game/assets/open.png",            // 42 (debug)
+                TINYC_DIR "/blocko-game/assets/barrier.png",         // 43 (debug)
         };
         int texture_count = sizeof(texture_files) / sizeof(texture_files[0]);
         create_texture_array(texture_files, texture_count);
