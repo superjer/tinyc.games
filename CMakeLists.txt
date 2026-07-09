@@ -4,6 +4,11 @@ project(TinyCGames C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# emit compile_commands.json so clangd/clang-tidy pick up the real flags
+# (-fopenmp, include dirs); without it clangd can't find <omp.h> and floods
+# the editor with a bogus parse-error cascade.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Multi-config generators (Visual Studio, Xcode) default to per-config output
 # dirs like build/Debug; keep executables in the build root, next to shaders/
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})

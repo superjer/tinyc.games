@@ -1,0 +1,11 @@
+# Disable two checks that only fire on this codebase's deliberate style, never
+# on real bugs:
+#   bugprone-integer-division      - our grid-size macros are even (CHUNKW2 =
+#                                     CHUNKW/2 = 32, REGW/2, ...), so the flagged
+#                                     divisions are exact; used inside float
+#                                     expressions they read as false positives.
+#   readability-misleading-indentation - terse unbraced nested for-loops
+#                                     (for(..)\nfor(..)\n\tbody;) are the house
+#                                     style throughout; the code is correct.
+# Leading '-' only removes these from clangd's default set; everything else stays.
+Checks: '-bugprone-integer-division,-readability-misleading-indentation'

@@ -63,7 +63,6 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 bool sharp_dn = hmaph - hx0 < -1 || hmaph - hz0 < -1 || hmaph - hx1 < -1 || hmaph - hz1 < -1;
                 bool sharp_up = hmaph - hx0 >  1 || hmaph - hz0 >  1 || hmaph - hx1 >  1 || hmaph - hz1 >  1;
                 bool sharper_dn = hmaph - hx0 < -3 || hmaph - hz0 < -3 || hmaph - hx1 < -3 || hmaph - hz1 < -3;
-                bool sharper_up = hmaph - hx0 >  3 || hmaph - hz0 >  3 || hmaph - hx1 >  3 || hmaph - hz1 >  3;
 
                 // mesa cliffs: in strong plateau regions the surface is flat treads
                 // joined by short risers. surface the risers as bare stone so mesas
@@ -380,8 +379,8 @@ void gen_chunk_pass2(int cx, int cz)
                         int leafbaselo = (leaves == SLEF) ? 1 : 2;
                         int leafbasehi = (leaves == SLEF) ? 2 : 4;
                         int tipheight = (leaves == SLEF) ? 18 : 3;
-                        int radlo = (leaves == SLEF) ? 1.1f : 3.f;
-                        int radhi = (leaves == SLEF) ? 4.f : 5.f;
+                        int radlo = (leaves == SLEF) ? 1 : 3;
+                        int radhi = (leaves == SLEF) ? 4 : 5;
 
                         float radius = RANDF(radlo, radhi);
 
