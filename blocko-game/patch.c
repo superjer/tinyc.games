@@ -169,15 +169,20 @@ void patch_update()
         patch_meshing = 0;
         patch_vert_count = v - vbuf;  // opaque faces (main pass)
         patch_water_count = w - wbuf; // water + glow faces (transparent pass, Phase 2)
-        if (patch_vert_count > PATCH_MAX_VERTS)
+        if (patch_vert_count > PATCH_MAX_VERTS || patch_water_count > PATCH_MAX_VERTS)
         {
-                fprintf(stderr, "patch: box too big (%d opaque verts), clamping\n", patch_vert_count);
-                patch_vert_count = PATCH_MAX_VERTS;
-        }
-        if (patch_water_count > PATCH_MAX_VERTS)
-        {
-                fprintf(stderr, "patch: box too big (%d water verts), clamping\n", patch_water_count);
-                patch_water_count = PATCH_MAX_VERTS;
+                // the corrected mesh overflows the patch buffer; a clamped (truncated)
+                // patch would render holes. Bake the pending edit with an immediate
+                // rebuild and skip the patch this frame. patch_flush retires the box, so
+                // this can't re-fire every frame - a lone 3x3x3 edit/mining box never
+                // overflows, only an accumulated multi-edit box does, so it warns once
+                // per burst, not per frame.
+                fprintf(stderr, "patch: edit box too big (%d opaque, %d water verts), baking\n",
+                        patch_vert_count, patch_water_count);
+                patch_flush();
+                patch_box_on = 0;
+                patch_vert_count = patch_water_count = 0;
+                return;
         }
 
         int fr = vk.currentFrame;
