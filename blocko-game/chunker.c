@@ -42,6 +42,9 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
         #define BAND(a, b, v) { int a_ = MAX(a, gnd), b_ = MIN(b, TILESH-1); \
                 if (b_ > a_) memset(t + a_, v, b_ - a_); }
 
+        // min plateauness for a terrace riser to surface as bare stone (mesa cliffs)
+        #define MESA_CLIFF_PLAT 0.60f
+
         for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
         {
                 int ax = x - tscootx; // absolute world coords: feed these to all
@@ -61,7 +64,20 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 bool sharp_up = hmaph - hx0 >  1 || hmaph - hz0 >  1 || hmaph - hx1 >  1 || hmaph - hz1 >  1;
                 bool sharper_dn = hmaph - hx0 < -3 || hmaph - hz0 < -3 || hmaph - hx1 < -3 || hmaph - hz1 < -3;
                 bool sharper_up = hmaph - hx0 >  3 || hmaph - hz0 >  3 || hmaph - hx1 >  3 || hmaph - hz1 >  3;
-                bool steep = (sharp_dn && sharp_up) || sharper_dn;
+
+                // mesa cliffs: in strong plateau regions the surface is flat treads
+                // joined by short risers. surface the risers as bare stone so mesas
+                // read as grass tops with rock cliff faces, while the flat treads
+                // keep their soil. only flag a genuine mid-slope column - one with a
+                // higher neighbour AND a lower one - so a lone 1-block step edge (a
+                // neighbour on only one side) stays grassy. gated on plateauness so
+                // ordinary hills stay grassy too.
+                float plat = remap(noise(ax, az, PLATEAU_MASK_SZ, world_seed^PLATEAU_MASK_SEED, 1),
+                                PLATEAU_MASK_LO, PLATEAU_MASK_HI, 0.f, 1.f);
+                bool nb_higher = hx0 < hmaph || hz0 < hmaph || hx1 < hmaph || hz1 < hmaph; // ground above mine
+                bool nb_lower  = hx0 > hmaph || hz0 > hmaph || hx1 > hmaph || hz1 > hmaph; // and ground below
+                bool mesa_cliff = terrain_plateaus && plat > MESA_CLIFF_PLAT && nb_higher && nb_lower;
+                bool steep = (sharp_dn && sharp_up) || sharper_dn || mesa_cliff;
 
                 float reejin = noise(ax, az, 350, 12345, 1) - 0.5f;
                 int lev1 = SEA_LEVEL - 60 + (int)(reejin * 100.f);
