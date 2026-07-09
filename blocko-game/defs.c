@@ -680,6 +680,7 @@ void net_send_edit(int x, int y, int z, int tile);
 int net_serve(int port);
 int net_connect(const char *host, int port);
 int net_describe(char *out, int outsz);
+int net_player_active(int i);
 void regen_world(); // blocko.c: invalidate all chunk stamps
 
 // collision.c protos

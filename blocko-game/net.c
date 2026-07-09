@@ -26,6 +26,7 @@ void net_send_edit(int x, int y, int z, int tile) {}
 int net_serve(int port) { fprintf(stderr, "net: not on Windows yet\n"); return -1; }
 int net_connect(const char *host, int port) { return net_serve(0); }
 int net_describe(char *out, int outsz) { return snprintf(out, outsz, "net off\n"); }
+int net_player_active(int i) { return 0; }
 
 #else // the rest of the file
 
@@ -46,7 +47,13 @@ enum {
         MSG_HELLO = 1, // c->s: u32 protocol version
         MSG_WELCOME,   // s->c: u8 your player id, i32 seed, f32 sun_pitch, u32 nr edits
         MSG_EDIT,      // both: i32 ax, i32 ay, i32 az, u8 tile
+        MSG_PLAYER,    // both: u8 id, f32 abs pos xyz (units), f32 vel xyz, f32 yaw, pitch
 };
+
+// last state received for each remote player, in ABSOLUTE units. seen is the
+// pframe it arrived; a player quiet for 2 seconds fades out of the world
+static struct net_state { float x, y, z, vx, vy, vz, yaw, pitch; int seen; }
+        net_state[NR_PLAYERS];
 
 struct conn {
         int fd;                  // -1 = free
@@ -194,6 +201,27 @@ static void client_welcome(const unsigned char *p)
                 my_player, world_seed, get_u32(p + 9));
 }
 
+// a remote player's state landed: store the target, and wake the slot up if
+// this is its first sighting (snap into place, give it the player box size)
+static void net_store_player(int id, const unsigned char *p)
+{
+        if (id < 0 || id >= NR_PLAYERS || id == my_player) return; // the server itself is id 0
+        struct net_state *st = &net_state[id];
+        int fresh = !st->seen;
+        st->x = get_f32(p + 1);  st->y  = get_f32(p + 5);  st->z  = get_f32(p + 9);
+        st->vx = get_f32(p + 13); st->vy = get_f32(p + 17); st->vz = get_f32(p + 21);
+        st->yaw = get_f32(p + 25);
+        st->pitch = get_f32(p + 29);
+        st->seen = pframe ? pframe : 1;
+        if (fresh)
+        {
+                player[id].pos = (struct box){ st->x + scootx * (float)BS, st->y,
+                        st->z + scootz * (float)BS, PLYR_W, PLYR_H, PLYR_W };
+                player[id].yaw = st->yaw;
+                player[id].pitch = st->pitch;
+        }
+}
+
 static void net_handle(struct conn *c, int type, const unsigned char *p, int len)
 {
         if (net_mode == NET_SERVER) switch (type)
@@ -213,6 +241,16 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                         if (conns[i].helloed && &conns[i] != c)
                                 conn_send(&conns[i], MSG_EDIT, p, 13);
                 break;
+        case MSG_PLAYER:
+                if (len < 33 || !c->helloed) return;
+                net_store_player(c->player, p); // the slot is the identity, not the byte
+                unsigned char relay[33];
+                memcpy(relay, p, 33);
+                relay[0] = c->player;
+                for (int i = 0; i < NET_MAX_CLIENTS; i++)
+                        if (conns[i].helloed && &conns[i] != c)
+                                conn_send(&conns[i], MSG_PLAYER, relay, 33);
+                break;
         }
         else switch (type)
         {
@@ -225,6 +263,10 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                 int y = get_u32(p + 4);
                 if (y < 0 || y >= TILESH) return;
                 edit_apply_remote(get_u32(p), y, get_u32(p + 8), p[12]);
+                break;
+        case MSG_PLAYER:
+                if (len < 33) return;
+                net_store_player(p[0], p);
                 break;
         }
 }
@@ -287,6 +329,71 @@ void net_send_edit(int x, int y, int z, int tile)
                         conn_send(&conns[i], MSG_EDIT, m, sizeof m);
 }
 
+// is player slot i a live remote player worth drawing/tracking?
+int net_player_active(int i)
+{
+        return net_mode != NET_OFF && i != my_player
+                && net_state[i].seen && pframe - net_state[i].seen < 120;
+}
+
+// send my own player state at ~20Hz (every 3rd physics tick)
+static void net_send_my_state()
+{
+        static int last_sent = -3;
+        if (pframe - last_sent < 3) return;
+        last_sent = pframe;
+
+        struct player *p = &player[my_player];
+        unsigned char m[33];
+        m[0] = my_player;
+        put_f32(m + 1, p->pos.x - scootx * (float)BS); // window -> absolute units
+        put_f32(m + 5, p->pos.y);
+        put_f32(m + 9, p->pos.z - scootz * (float)BS);
+        put_f32(m + 13, p->vel.x);
+        put_f32(m + 17, p->vel.y);
+        put_f32(m + 21, p->vel.z);
+        put_f32(m + 25, p->yaw);
+        put_f32(m + 29, p->pitch);
+        if (net_mode == NET_CLIENT)
+                conn_send(&server_conn, MSG_PLAYER, m, sizeof m);
+        else for (int i = 0; i < NET_MAX_CLIENTS; i++)
+                if (conns[i].helloed)
+                        conn_send(&conns[i], MSG_PLAYER, m, sizeof m);
+}
+
+// ease each remote player toward its last received state - 20Hz updates drawn
+// at 60+fps would stutter if we snapped. A jump too big to be movement (a tp)
+// snaps instead of gliding across the world.
+static void net_smooth_players()
+{
+        for (int i = 0; i < NR_PLAYERS; i++)
+        {
+                if (!net_player_active(i)) continue;
+                struct player *pl = &player[i];
+                struct net_state *st = &net_state[i];
+                float wx = st->x + scootx * (float)BS; // absolute -> window units
+                float wz = st->z + scootz * (float)BS;
+                float dx = wx - pl->pos.x, dy = st->y - pl->pos.y, dz = wz - pl->pos.z;
+                if (dx*dx + dy*dy + dz*dz > (10.f*BS) * (10.f*BS))
+                {
+                        pl->pos.x = wx;
+                        pl->pos.y = st->y;
+                        pl->pos.z = wz;
+                }
+                else
+                {
+                        pl->pos.x += dx * 0.35f;
+                        pl->pos.y += dy * 0.35f;
+                        pl->pos.z += dz * 0.35f;
+                }
+                float dyaw = st->yaw - pl->yaw;
+                while (dyaw >  PI) dyaw -= TAU;
+                while (dyaw < -PI) dyaw += TAU;
+                pl->yaw += dyaw * 0.35f;
+                pl->pitch += (st->pitch - pl->pitch) * 0.35f;
+        }
+}
+
 // once per rendered frame from the main loop, like remote_poll
 void net_poll()
 {
@@ -319,6 +426,12 @@ void net_poll()
                         net_mode = NET_OFF;
                         fprintf(stderr, "net: disconnected\n");
                 }
+        }
+
+        if (net_mode != NET_OFF)
+        {
+                net_send_my_state();
+                net_smooth_players();
         }
 }
 
