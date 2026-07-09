@@ -4,11 +4,13 @@
 #include <math.h>
 #include "taylor_noise.c"
 #include "utils.c"
+#include "terrain_config.c"
 #include "warp_config.c"
 #include "ledge_config.c"
 
 _Thread_local int get_height_hit, get_height_miss;
 int world_seed = 160659;
+int terrain_plateaus = 1; // debug/vis: set 0 to skip the plateau/shelf pass
 
 float zigzag(float val, int zags)
 {
@@ -39,49 +41,45 @@ float get_height(int x, int y)
         // legend
         //if (x < 20 && y < 640) return (y - 240) / 20 / 20.f;
 
-        float val = .05f 
-                + noise(x, y, 1300, world_seed, 2) * .6f
-                + noise(x, y,  800, world_seed, 1) * .30f
-                + noise(x, y,  400, world_seed, 1) * .15f
-                + noise(x, y,  200, world_seed, 1) * .08f
-                + noise(x, y,  100, world_seed, 1) * .04f;
+        float val = BASE_BIAS
+                + noise(x, y, BASE_O1_SZ, world_seed, BASE_O1_OCT) * BASE_O1_WT
+                + noise(x, y, BASE_O2_SZ, world_seed, BASE_O2_OCT) * BASE_O2_WT
+                + noise(x, y, BASE_O3_SZ, world_seed, BASE_O3_OCT) * BASE_O3_WT
+                + noise(x, y, BASE_O4_SZ, world_seed, BASE_O4_OCT) * BASE_O4_WT
+                + noise(x, y, BASE_O5_SZ, world_seed, BASE_O5_OCT) * BASE_O5_WT;
         
         // basic slope
         //val = x * .0007f + .3f;
         
         //val += (zigzag(val, 100) - .5f) * .02f;
 
-        float plateauness = remap(noise(x, y, 1200, world_seed^34899346, 1), .50f, .55f, 0.f, 1.f);
-        if (plateauness > 0.f)
+        // plateaus / mesas: inside plateau regions, quantize the smooth height
+        // onto evenly spaced flat shelves joined by short cliffs. the riser is
+        // centered on each step, so terracing preserves the average height
+        // instead of pulling the ground down; a low-frequency phase offset
+        // drifts shelf heights region to region. knobs in terrain_config.c.
+        float plateauness = remap(noise(x, y, PLATEAU_MASK_SZ, world_seed^PLATEAU_MASK_SEED, 1), PLATEAU_MASK_LO, PLATEAU_MASK_HI, 0.f, 1.f);
+        if (terrain_plateaus && plateauness > 0.f)
         {
-                float T1 = remap(noise(x, y, 700, world_seed, 8), 0.f, 1.f, .47f, .51f);
-                float T2 = T1 + remap(noise(x, y, 212, world_seed, 2), 0.f, 1.f, -.02f, .12f);
-                float T3 = T2 + remap(noise(x, y, 274, world_seed, 2), 0.f, 1.f, -.02f, .12f);
-                float shelf_val = val;
-                if (shelf_val <= .48f)
-                        shelf_val = excl_remap(shelf_val, .46f, .48f, .46f       , T1         );
-                else if (shelf_val <= .54f)
-                        shelf_val = excl_remap(shelf_val, .48f, .54f, T1         , T1 + .0005f);
-                else if (shelf_val <= .56f)
-                        shelf_val = excl_remap(shelf_val, .54f, .56f, T1 + .0005f, T2         );
-                else if (shelf_val <= .62f)
-                        shelf_val = excl_remap(shelf_val, .56f, .62f, T2         , T2 + .0005f);
-                else if (shelf_val <= .64f)
-                        shelf_val = excl_remap(shelf_val, .62f, .64f, T2 + .0005f, T3         );
-                else if (shelf_val <= .70f)
-                        shelf_val = excl_remap(shelf_val, .64f, .70f, T3         , T3 + .0005f);
-                else
-                        shelf_val = excl_remap(shelf_val, .70f,  1.f, T3 + .0005f, 1.f        );
+                float phase = remap(noise(x, y, PLATEAU_PHASE_SZ, world_seed^PLATEAU_PHASE_SEED, 2),
+                                PLATEAU_PHASE_LO, PLATEAU_PHASE_HI, 0.f, 1.f);
+                float o = val / PLATEAU_STEP + phase;
+                float k = floorf(o);
+                float frac = o - k;
+                // flat tread, then a smoothstep riser centered in the step
+                float f = remap(frac, .5f - PLATEAU_RISER * .5f, .5f + PLATEAU_RISER * .5f, 0.f, 1.f);
+                f = f * f * (3.f - 2.f * f);
+                float shelf_val = (k + f - phase) * PLATEAU_STEP;
                 val = lerp(plateauness, val, shelf_val);
         }
 
         // big oceans: a very low frequency mask presses lowlands below sea
         // level (0.5); the mountain pass in get_filtered_height runs after
         // this and can still raise islands out of the water
-        float oceaniness = remap(noise(x, y, 9000, world_seed^41741741, 2), .53f, .61f, 0.f, 1.f);
+        float oceaniness = remap(noise(x, y, OCEAN_MASK_SZ, world_seed^OCEAN_MASK_SEED, 2), OCEAN_MASK_LO, OCEAN_MASK_HI, 0.f, 1.f);
         if (oceaniness > 0.f)
         {
-                float ocean_floor = .38f + .10f * val; // keep a little relief
+                float ocean_floor = OCEAN_FLOOR_BASE + OCEAN_FLOOR_RELIEF * val; // keep a little relief
                 val = lerp(oceaniness, val, MIN(val, ocean_floor));
         }
 
@@ -200,59 +198,62 @@ static float terrain_raw_height(int x, int y)
 
         float h = get_height(x2, y2);
 
-        float mountains = noise(x, y, 1200, world_seed^46447731, 2);
-        if (mountains > .7f)
+        // isolated peaks/massifs: a mid-scale mask raises scattered blobby
+        // mountains, sculpted with caldera dimples and spiky stacks. distinct
+        // from the broad linear "ranges" pass further down; both add to h.
+        float peaks = noise(x, y, PEAK_MASK_SZ, world_seed^PEAK_MASK_SEED, 2);
+        if (peaks > PEAK_THRESH)
         {
-                mountains -= .7f;
-                mountains *= 3.f;
+                peaks -= PEAK_THRESH;
+                peaks *= PEAK_GAIN;
 
-                float calds = noise(x, y, 140, world_seed^96264448, 2);
-                if (calds > .59f)
+                float calds = noise(x, y, PEAK_CALD_SZ, world_seed^PEAK_CALD_SEED, 2);
+                if (calds > PEAK_CALD_THRESH)
                 {
-                        mountains -= (calds - .59f);
+                        peaks -= (calds - PEAK_CALD_THRESH);
                 }
                 calds = 1.f - calds;
-                if (calds > .59f)
+                if (calds > PEAK_CALD_THRESH)
                 {
-                        mountains -= (calds - .59f);
+                        peaks -= (calds - PEAK_CALD_THRESH);
                 }
 
-                float stacks = noise(x, y, 205, world_seed^77000325, 1);
-                if (stacks > .61f)
+                float stacks = noise(x, y, PEAK_STACK_SZ, world_seed^PEAK_STACK_SEED, 1);
+                if (stacks > PEAK_STACK_THRESH)
                 {
-                        stacks -= .61f;
-                        mountains += stacks;
+                        stacks -= PEAK_STACK_THRESH;
+                        peaks += stacks;
                 }
 
-                if (mountains > 0.f)
-                        h += mountains;
+                if (peaks > 0.f)
+                        h += peaks;
         }
 
-        float mounds = noise(x, y, 290, world_seed^98453517, 1);
-        if (mounds > .65f)
+        float mounds = noise(x, y, MOUND_SZ, world_seed^MOUND_SEED, 1);
+        if (mounds > MOUND_THRESH)
         {
-                mounds -= .65f;
+                mounds -= MOUND_THRESH;
                 h += mounds;
         }
 
-        float lumps = noise(x, y, 175, world_seed^36447731, 1);
-        if (lumps > .65f)
+        float lumps = noise(x, y, LUMP_SZ, world_seed^LUMP_SEED, 1);
+        if (lumps > LUMP_THRESH)
         {
-                lumps -= .65f;
+                lumps -= LUMP_THRESH;
                 h += lumps;
         }
 
-        float pits = noise(x, y, 430, world_seed^77488339, 2);
-        if (pits > .65f)
+        float pits = noise(x, y, PIT_SZ, world_seed^PIT_SEED, 2);
+        if (pits > PIT_THRESH)
         {
-                pits -= .65f;
+                pits -= PIT_THRESH;
                 h -= pits;
         }
 
-        float smoothouts = noise(x, y, 990, world_seed^13546936, 1);
-        if (smoothouts > .65f)
+        float smoothouts = noise(x, y, SMOOTH_SZ, world_seed^SMOOTH_SEED, 1);
+        if (smoothouts > SMOOTH_THRESH)
         {
-                float s = remap(smoothouts, .65f, 1.f, 0.f, 1000.f);
+                float s = remap(smoothouts, SMOOTH_THRESH, 1.f, 0.f, SMOOTH_MAX_SPREAD);
                 h = get_height(x2 + s, y2 + s)
                   + get_height(x2 - s, y2 + s)
                   + get_height(x2 + s, y2 - s)
@@ -263,15 +264,15 @@ static float terrain_raw_height(int x, int y)
         // mountain ranges: a broad mask picks range regions, folded ("ridged")
         // noise carves crests and valleys inside them; amplitude rides the
         // crests so ranges crossing ocean surface as island chains
-        float mrange = remap(noise(x, y, 4000, world_seed^11223344, 2), .60f, .72f, 0.f, 1.f);
+        float mrange = remap(noise(x, y, RANGE_MASK_SZ, world_seed^RANGE_MASK_SEED, 2), RANGE_MASK_LO, RANGE_MASK_HI, 0.f, 1.f);
         if (mrange > 0.f)
         {
-                float r1 = noise(x, y, 700, world_seed^22334455, 2);
+                float r1 = noise(x, y, RANGE_R1_SZ, world_seed^RANGE_R1_SEED, 2);
                 float ridge = 1.f - 2.f * fabsf(r1 - .5f); // 1 at ridgelines
                 ridge *= ridge;
-                float r2 = noise(x, y, 250, world_seed^33445566, 2);
+                float r2 = noise(x, y, RANGE_R2_SZ, world_seed^RANGE_R2_SEED, 2);
                 float ridge2 = 1.f - 2.f * fabsf(r2 - .5f);
-                h += mrange * (.06f + .85f * ridge + .30f * ridge2 * ridge2);
+                h += mrange * (RANGE_AMP_BASE + RANGE_R1_WT * ridge + RANGE_R2_WT * ridge2 * ridge2);
         }
 
         // ceiling bounce: mountains can't punch through the sky. crests that
@@ -282,11 +283,11 @@ static float terrain_raw_height(int x, int y)
         // mouths vary in size; the fold depth is clamped so floors stay
         // above the mid-mountain and don't punch back down to the plains.
         // (the game maps h=0.5 to sea level and h~1.56 to just below Y=0.)
-        float ceil_h = 1.53f + .11f * (noise(x, y, 300, world_seed^0x0ca1de7, 1) - .5f);
+        float ceil_h = CEIL_BASE + CEIL_WANDER_AMP * (noise(x, y, CEIL_WANDER_SZ, world_seed^CEIL_WANDER_SEED, 1) - .5f);
         if (h > ceil_h)
         {
                 float over = h - ceil_h;
-                if (over > 0.38f) over = 0.38f; // clamp crater depth
+                if (over > CEIL_MAX_CRATER) over = CEIL_MAX_CRATER; // clamp crater depth
                 h = ceil_h - over;
         }
 
@@ -353,9 +354,9 @@ static struct ledge_cell *ledge_cell_get(int ci, int cj)
                 float ky = cj * LEDGE_CELL + jy * LEDGE_CELL;
 
                 // only inside mountain ranges (mirrors the range mask in terrain_raw_height)
-                float mr = remap(noise((int)kx, (int)ky, LEDGE_RANGE_SZ,
-                                world_seed ^ LEDGE_RANGE_SEED, 2),
-                                LEDGE_RANGE_LO, LEDGE_RANGE_HI, 0.f, 1.f);
+                float mr = remap(noise((int)kx, (int)ky, RANGE_MASK_SZ,
+                                world_seed ^ RANGE_MASK_SEED, 2),
+                                RANGE_MASK_LO, RANGE_MASK_HI, 0.f, 1.f);
                 if (mr <= 0.f) continue;
 
                 struct ledge_kp *c = &cc->kp[cc->n++];

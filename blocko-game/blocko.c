@@ -88,10 +88,18 @@ int main(int argc, char **argv)
                 else if (!strcmp(argv[i], "--noise-contrast") && i + 1 < argc)   noise_base_weight = atof(argv[++i]);
                 else if (!strcmp(argv[i], "--noise-aniso") && i + 1 < argc)      noise_aniso = atof(argv[++i]);
                 else if (!strcmp(argv[i], "--seed") && i + 1 < argc)             world_seed = atoi(argv[++i]);
+                else if (!strcmp(argv[i], "--lock") && i + 1 < argc)
+                {
+                        // start locked (input blocked, banner shown), same as a
+                        // `bk lock "<msg>"` right after launch - saves the race
+                        // where a driver launches then locks a frame or two late
+                        test_lock = 1;
+                        snprintf(test_lock_msg, sizeof test_lock_msg, "%s", argv[++i]);
+                }
                 else
                 {
-                        fprintf(stderr, "usage: %s [--seed <n>] [--noise-kernel2] [--noise-nvary] "
-                                "[--noise-contrast <weight>] [--noise-aniso <0..1>]\n", argv[0]);
+                        fprintf(stderr, "usage: %s [--seed <n>] [--lock <msg>] [--noise-kernel2] "
+                                "[--noise-nvary] [--noise-contrast <weight>] [--noise-aniso <0..1>]\n", argv[0]);
                         return 1;
                 }
         }
@@ -127,8 +135,14 @@ int main(int argc, char **argv)
 
 void game_shutdown(int code) // "shutdown" collides with the sockets API
 {
-        exit(code);
-        vulkan_shutdown();
+        // every normal quit path (window close, `bk quit`, console quit) routes
+        // through here with code 0. announce it so a clean close isn't mistaken
+        // for a crash by anything watching the process; nonzero is reserved for
+        // real errors, which exit() elsewhere with a message of their own.
+        if (code == 0)
+                fprintf(stderr, "blocko: clean exit\n");
+        else
+                fprintf(stderr, "blocko: exit code %d (error)\n", code);
         exit(code);
 }
 

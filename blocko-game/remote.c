@@ -616,6 +616,15 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "(send 'regen' to rebuild the world with these)\n",
                         world_seed);
         }
+        else if (!strncmp(cmd, "plateau", 7))
+        {
+                int v;
+                if (sscanf(cmd + 7, "%d", &v) == 1)
+                        terrain_plateaus = v;
+                p += snprintf(p, end-p, "plateau %d\n"
+                        "(send 'regen' to rebuild the world with these)\n",
+                        terrain_plateaus);
+        }
         else if (!strncmp(cmd, "grassshadow", 11))
         {
                 // toggle tall grass shadows (same as the T key)

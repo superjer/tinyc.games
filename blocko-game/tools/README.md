@@ -42,16 +42,20 @@ Build and run in the background, then drive it over the socket:
 
 ```bash
 cmake --build build --target blocko
-./build/blocko --seed 1234 &          # a fixed --seed makes runs comparable
-blocko-game/tools/bk lock "measuring"  # freeze input, show a banner
+./build/blocko --seed 1234 --lock "measuring" &   # start locked, comparable seed
 # ... drive and measure ...
 blocko-game/tools/bk unlock
 blocko-game/tools/bk quit
 ```
 
+The `--lock "<msg>"` launch option starts the game already locked, so there's no
+window where input reaches the game before a driver gets around to `bk lock`.
+It's equivalent to sending `bk lock "<msg>"` immediately after launch.
+
 While `lock` is held, all keyboard/mouse input to the game is ignored (except
 the tilde console) and the banner message is shown on screen — good for keeping
-a test deterministic. `bk quit` works even while locked.
+a test deterministic. `bk unlock` (or `bk lock 0`) releases it; `bk quit` works
+even while locked.
 
 ---
 
@@ -129,6 +133,7 @@ world with the new values. With no arguments, each prints its current knobs.
 | `caves [<0\|1>]` | Enable/disable cave carving. |
 | `trees [<0\|1>]` | Enable/disable trees. |
 | `flat [<0\|1>]` | Force a dead-flat world (uniform grass just above the waterline, no caves/formations). A debug aid for spotting chunk-seam artifacts that terrain relief hides. Toggles with no arg; send `regen` after. |
+| `plateau [<0\|1>]` | Enable/disable the plateau/shelf terracing pass in the base height field. |
 | `seed [<n>]` | Set the world seed. |
 | `regen` | Invalidate every chunk's generation stamp; the whole window regenerates in place, nearest chunks first. |
 

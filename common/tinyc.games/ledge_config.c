@@ -68,13 +68,10 @@
 #define LEDGE_WOB2_WT    0.4f
 
 // --- mountain-range gate ----------------------------------------------------
-// Ledges appear only where this mask is positive. It MUST match the mountain-
-// range mask in terrain_raw_height() so shelves land on the ranges, not the
-// plains — if you retune the ranges there, mirror the change here.
-#define LEDGE_RANGE_SZ   4000
-#define LEDGE_RANGE_SEED 11223344
-#define LEDGE_RANGE_LO   0.60f
-#define LEDGE_RANGE_HI   0.72f
+// Ledges appear only where the mountain-range mask is positive, so shelves land
+// on the ranges, not the plains. That mask (RANGE_MASK_*) is shared with
+// terrain_raw_height() and lives in terrain_config.c — both read it, so the two
+// can't drift.
 
 // --- internals (rarely need touching) ---------------------------------------
 #define LEDGE_CACHE       2048       // per-thread cell cache slots (power of two)
