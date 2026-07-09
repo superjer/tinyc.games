@@ -117,6 +117,11 @@ void vulkan_create_swapchain();
 void vulkan_destroy_swapchain();
 void vulkan_recreate_swapchain();
 
+// screenshot support (defined below, used by vulkan_submit)
+static int sshot_capture(VkImage src, const char *path);
+static char sshot_pending_path[512];
+static int sshot_pending;
+
 void vulkan_startup(char *window_title, char *icon_file, char *shader_dir, int win_w, int win_h)
 {
         SDL_Init(SDL_INIT_VIDEO);
@@ -693,6 +698,16 @@ void vulkan_submit()
         // Track which fence is now associated with this image
         vk.backFences[vk.imageIndex] = vk.frontFences[vk.currentFrame];
 
+        // Screenshot this frame before presenting, while its image is still
+        // acquired (reading a presented image is not spec-clean). Wait for the
+        // draw to finish, copy, then present - a one-frame stall, debug only.
+        if (sshot_pending)
+        {
+                vkWaitForFences(vk.device, 1, &vk.frontFences[vk.currentFrame], VK_TRUE, UINT64_MAX);
+                sshot_capture(vk.swapchainImages[vk.imageIndex], sshot_pending_path);
+                sshot_pending = 0;
+        }
+
         VkPresentInfoKHR presentInfo = {
                 VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
                 NULL,
@@ -708,6 +723,258 @@ void vulkan_submit()
                 vulkan_recreate_swapchain();
 
         vk.currentFrame = (vk.currentFrame + 1) % vk.maxFrames;
+}
+
+// ---- screenshot: read the last presented swapchain image back to a PNG ----
+//
+// A self-contained PNG encoder (no libpng/zlib): the pixel data is wrapped in
+// a zlib stream of uncompressed DEFLATE "stored" blocks, so the only maths
+// needed are CRC-32 (per chunk) and Adler-32 (the zlib trailer). Fine for a
+// debug screenshot - the file is a touch bigger than a compressed PNG but
+// opens in anything.
+
+static uint32_t sshot_crc_table[256];
+static int sshot_crc_ready;
+
+static uint32_t sshot_crc(uint32_t crc, const uint8_t *buf, size_t len)
+{
+        if (!sshot_crc_ready) {
+                for (uint32_t n = 0; n < 256; n++) {
+                        uint32_t c = n;
+                        for (int k = 0; k < 8; k++)
+                                c = (c & 1) ? 0xEDB88320u ^ (c >> 1) : (c >> 1);
+                        sshot_crc_table[n] = c;
+                }
+                sshot_crc_ready = 1;
+        }
+        for (size_t i = 0; i < len; i++)
+                crc = sshot_crc_table[(crc ^ buf[i]) & 0xff] ^ (crc >> 8);
+        return crc;
+}
+
+static void sshot_be32(FILE *f, uint32_t v)
+{
+        uint8_t b[4] = { v >> 24, v >> 16, v >> 8, v };
+        fwrite(b, 1, 4, f);
+}
+
+static void sshot_chunk(FILE *f, const char *type, const uint8_t *data, uint32_t len)
+{
+        sshot_be32(f, len);
+        fwrite(type, 1, 4, f);
+        if (len) fwrite(data, 1, len, f);
+        uint32_t crc = sshot_crc(0xffffffffu, (const uint8_t *)type, 4);
+        crc = sshot_crc(crc, data, len);
+        sshot_be32(f, crc ^ 0xffffffffu);
+}
+
+// write w*h RGB (3 bytes/pixel) as a PNG; returns 0 on success
+static int sshot_write_png(const char *path, const uint8_t *rgb, uint32_t w, uint32_t h)
+{
+        FILE *f = fopen(path, "wb");
+        if (!f) return -1;
+
+        static const uint8_t sig[8] = { 137, 'P', 'N', 'G', 13, 10, 26, 10 };
+        fwrite(sig, 1, 8, f);
+
+        uint8_t ihdr[13] = {
+                w >> 24, w >> 16, w >> 8, w,
+                h >> 24, h >> 16, h >> 8, h,
+                8, 2, 0, 0, 0,   // 8-bit, colour type 2 (RGB), deflate, no filter/interlace
+        };
+        sshot_chunk(f, "IHDR", ihdr, sizeof ihdr);
+
+        // raw image: each row is a filter byte (0) followed by w*3 colour bytes
+        size_t stride = (size_t)w * 3 + 1;
+        size_t raw_len = stride * h;
+        uint8_t *raw = malloc(raw_len);
+        if (!raw) { fclose(f); return -1; }
+        for (uint32_t y = 0; y < h; y++) {
+                raw[y * stride] = 0;
+                memcpy(raw + y * stride + 1, rgb + (size_t)y * w * 3, (size_t)w * 3);
+        }
+
+        // zlib stream: 2-byte header + stored DEFLATE blocks (<=65535 each) + adler32
+        size_t nblocks = (raw_len + 65534) / 65535;
+        if (nblocks == 0) nblocks = 1;
+        size_t zlen = 2 + raw_len + nblocks * 5 + 4;
+        uint8_t *z = malloc(zlen);
+        if (!z) { free(raw); fclose(f); return -1; }
+        uint8_t *zp = z;
+        *zp++ = 0x78; *zp++ = 0x01;              // CMF/FLG (no preset dict, fastest)
+        size_t off = 0;
+        while (off < raw_len) {
+                size_t n = raw_len - off;
+                if (n > 65535) n = 65535;
+                *zp++ = (off + n >= raw_len) ? 1 : 0; // BFINAL on the last block
+                *zp++ = n & 0xff; *zp++ = (n >> 8) & 0xff;
+                uint16_t nn = ~(uint16_t)n;
+                *zp++ = nn & 0xff; *zp++ = (nn >> 8) & 0xff;
+                memcpy(zp, raw + off, n);
+                zp += n;
+                off += n;
+        }
+        // adler-32 of the raw (filtered) data
+        uint32_t a = 1, b = 0;
+        for (size_t i = 0; i < raw_len; i++) {
+                a = (a + raw[i]) % 65521;
+                b = (b + a) % 65521;
+        }
+        uint32_t adler = (b << 16) | a;
+        *zp++ = adler >> 24; *zp++ = adler >> 16; *zp++ = adler >> 8; *zp++ = adler;
+
+        sshot_chunk(f, "IDAT", z, (uint32_t)(zp - z));
+        sshot_chunk(f, "IEND", NULL, 0);
+
+        free(z);
+        free(raw);
+        fclose(f);
+        return 0;
+}
+
+// Copy the last presented swapchain image to the CPU and save it as a PNG.
+// Meant to be called from the main loop (e.g. a debug socket command) between
+// frames, not while a frame is mid-record. Returns 0 on success.
+static int sshot_capture(VkImage src, const char *path)
+{
+        uint32_t w = vk.bestSwapchainExtent.width;
+        uint32_t h = vk.bestSwapchainExtent.height;
+        VkFormat fmt = vk.bestSurfaceFormat.format;
+        VkDeviceSize bufsize = (VkDeviceSize)w * h * 4;
+
+        // host-visible buffer to receive the copied pixels
+        VkBuffer buf;
+        VkBufferCreateInfo bufInfo = {
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = bufsize,
+                .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        };
+        if (vkCreateBuffer(vk.device, &bufInfo, NULL, &buf) != VK_SUCCESS)
+                return -1;
+
+        VkMemoryRequirements memReq;
+        vkGetBufferMemoryRequirements(vk.device, buf, &memReq);
+        VkPhysicalDeviceMemoryProperties memProps;
+        vkGetPhysicalDeviceMemoryProperties(*vk.bestPhysicalDevice, &memProps);
+        uint32_t memType = UINT32_MAX;
+        VkMemoryPropertyFlags wantmem = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                        VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        for (uint32_t i = 0; i < memProps.memoryTypeCount; i++)
+                if ((memReq.memoryTypeBits & (1u << i)) &&
+                    (memProps.memoryTypes[i].propertyFlags & wantmem) == wantmem) {
+                        memType = i;
+                        break;
+                }
+        if (memType == UINT32_MAX) {
+                vkDestroyBuffer(vk.device, buf, NULL);
+                return -1;
+        }
+
+        VkDeviceMemory mem;
+        VkMemoryAllocateInfo allocInfo = {
+                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                .allocationSize = memReq.size,
+                .memoryTypeIndex = memType,
+        };
+        vkAllocateMemory(vk.device, &allocInfo, NULL, &mem);
+        vkBindBufferMemory(vk.device, buf, mem, 0);
+
+        // one-shot command buffer: present-src -> transfer-src, copy, back again
+        VkCommandBuffer cmd;
+        VkCommandBufferAllocateInfo cmdAlloc = {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                .commandPool = vk.commandPool,
+                .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                .commandBufferCount = 1,
+        };
+        vkAllocateCommandBuffers(vk.device, &cmdAlloc, &cmd);
+        VkCommandBufferBeginInfo begin = {
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        };
+        vkBeginCommandBuffer(cmd, &begin);
+
+        VkImageMemoryBarrier toSrc = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+                .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+                .oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = src,
+                .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
+        };
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &toSrc);
+
+        VkBufferImageCopy region = {
+                .bufferOffset = 0,
+                .bufferRowLength = 0,   // tightly packed
+                .bufferImageHeight = 0,
+                .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+                .imageOffset = { 0, 0, 0 },
+                .imageExtent = { w, h, 1 },
+        };
+        vkCmdCopyImageToBuffer(cmd, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                buf, 1, &region);
+
+        VkImageMemoryBarrier toPresent = toSrc;
+        toPresent.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        toPresent.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+        toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &toPresent);
+
+        vkEndCommandBuffer(cmd);
+
+        VkFence fence;
+        VkFenceCreateInfo fenceInfo = { .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
+        vkCreateFence(vk.device, &fenceInfo, NULL, &fence);
+        VkSubmitInfo submit = {
+                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                .commandBufferCount = 1,
+                .pCommandBuffers = &cmd,
+        };
+        vkQueueSubmit(vk.drawingQueue, 1, &submit, fence);
+        vkWaitForFences(vk.device, 1, &fence, VK_TRUE, UINT64_MAX);
+        vkDestroyFence(vk.device, fence, NULL);
+        vkFreeCommandBuffers(vk.device, vk.commandPool, 1, &cmd);
+
+        // swizzle to RGB (swapchains are usually BGRA) and drop alpha
+        void *mapped;
+        vkMapMemory(vk.device, mem, 0, bufsize, 0, &mapped);
+        int bgr = (fmt == VK_FORMAT_B8G8R8A8_UNORM || fmt == VK_FORMAT_B8G8R8A8_SRGB);
+        uint8_t *rgb = malloc((size_t)w * h * 3);
+        int rc = -1;
+        if (rgb) {
+                const uint8_t *px = mapped;
+                for (size_t i = 0; i < (size_t)w * h; i++) {
+                        const uint8_t *p = px + i * 4;
+                        uint8_t *o = rgb + i * 3;
+                        o[0] = bgr ? p[2] : p[0];
+                        o[1] = p[1];
+                        o[2] = bgr ? p[0] : p[2];
+                }
+                rc = sshot_write_png(path, rgb, w, h);
+                free(rgb);
+        }
+        vkUnmapMemory(vk.device, mem);
+
+        vkDestroyBuffer(vk.device, buf, NULL);
+        vkFreeMemory(vk.device, mem, NULL);
+        return rc;
+}
+
+// Ask for a PNG of the next rendered frame. The capture runs inside
+// vulkan_submit while the image is still acquired (see sshot_capture), so the
+// file lands a frame later - call it from the game loop, not mid-frame.
+void vulkan_request_screenshot(const char *path)
+{
+        snprintf(sshot_pending_path, sizeof sshot_pending_path, "%s", path);
+        sshot_pending = 1;
 }
 
 void vulkan_shutdown()

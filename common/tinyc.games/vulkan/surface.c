@@ -115,6 +115,13 @@ VkSwapchainKHR createSwapchain(VkDevice *pDevice, VkSurfaceKHR *pSurface, VkSurf
 
 	// OPAQUE is what we want (ignore window alpha) but not every compositor
 	// offers it; INHERIT (compositor decides) is the usual alternative.
+	// TRANSFER_SRC lets us copy a presented image back to the CPU for
+	// screenshots (vulkan_screenshot). Every real driver supports it, but
+	// only add it when the surface advertises it so creation can't fail.
+	VkImageUsageFlags imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	if (pSurfaceCapabilities->supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+		imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
 	VkCompositeAlphaFlagBitsKHR compositeAlpha =
 		(pSurfaceCapabilities->supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) ? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR :
 		(pSurfaceCapabilities->supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR) ? VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR :
@@ -131,7 +138,7 @@ VkSwapchainKHR createSwapchain(VkDevice *pDevice, VkSurfaceKHR *pSurface, VkSurf
 		pSurfaceFormat->colorSpace,
 		*pSwapchainExtent,
 		imageArrayLayers,
-		VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+		imageUsage,
 		VK_SHARING_MODE_EXCLUSIVE,
 		0,
 		NULL,
