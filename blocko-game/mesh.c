@@ -20,12 +20,18 @@ static int sorter(const void * _a, const void * _b)
 
 // water face visibility - draw a side/bottom face wherever water meets air (or
 // any see-through non-water neighbor), but never against solid or more water, so
-// a body of water shows its exposed walls and floor with no internal faces
+// a body of water shows its exposed walls and floor with no internal faces.
+// A side face whose neighbor sits in an un-generated chunk is skipped: that
+// neighbor's tiles aren't loaded yet, so WATER_OPEN would read stale/OPEN and
+// paint a spurious wall along the chunk seam. Assume that side is hidden and
+// leave it out - it'll be re-meshed once the neighbor generates. (Within the
+// same chunk NBR_CHUNK_GEN is always true, so this only gates chunk boundaries.)
 #define WATER_OPEN(x, y, z)      (IS_SEE_THROUGH(T_(x, y, z)) && T_(x, y, z) != WATR)
-#define W_SOUTH_VISIBLE(x, y, z) (z == 0          || WATER_OPEN(x, y, z-1))
-#define W_NORTH_VISIBLE(x, y, z) (z+1 >= TILESD   || WATER_OPEN(x, y, z+1))
-#define W_WEST_VISIBLE(x, y, z)  (x == 0          || WATER_OPEN(x-1, y, z))
-#define W_EAST_VISIBLE(x, y, z)  (x+1 >= TILESW   || WATER_OPEN(x+1, y, z))
+#define NBR_CHUNK_GEN(bx, bz)    AGEN_((bx) / CHUNKW, (bz) / CHUNKD)
+#define W_SOUTH_VISIBLE(x, y, z) (z == 0          || (WATER_OPEN(x, y, z-1) && NBR_CHUNK_GEN(x, z-1)))
+#define W_NORTH_VISIBLE(x, y, z) (z+1 >= TILESD   || (WATER_OPEN(x, y, z+1) && NBR_CHUNK_GEN(x, z+1)))
+#define W_WEST_VISIBLE(x, y, z)  (x == 0          || (WATER_OPEN(x-1, y, z) && NBR_CHUNK_GEN(x-1, z)))
+#define W_EAST_VISIBLE(x, y, z)  (x+1 >= TILESW   || (WATER_OPEN(x+1, y, z) && NBR_CHUNK_GEN(x+1, z)))
 #define W_DOWN_VISIBLE(x, y, z)  (y+1 >= TILESH   || WATER_OPEN(x, y+1, z))
 
 // Emit terrain vertices for an arbitrary box of cells into the global vbuf
