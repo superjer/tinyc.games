@@ -792,6 +792,15 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         {
                 p += net_describe(p, end-p);
         }
+        else if (!strncmp(cmd, "say ", 4))
+        {
+                // speak in chat, as if typed with T
+                char line[300];
+                snprintf(line, sizeof line, "<player %d> %s", my_player, cmd + 4);
+                chat_add(line);
+                net_send_chat(cmd + 4);
+                p += snprintf(p, end-p, "ok\n");
+        }
         else if (!strncmp(cmd, "sun ", 4))
         {
                 // "sun <pitch>" freezes the sun there; "sun run" resumes motion
@@ -941,7 +950,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
                         "caves [<0|1>] | trees [<0|1>] | flat [<0|1>] | seed [<n>] | sum | dump [<path>]\n"
                         "cull [<0|1>] | freeze [<0|1>] | lock [<msg>|0] | regen | sun <pitch> | quit\n"
-                        "serve [<port>] | connect <host> [<port>] | net\n");
+                        "serve [<port>] | connect <host> [<port>] | net | say <text>\n");
         }
 }
 
@@ -1038,28 +1047,100 @@ void remote_poll()
 #endif // _WIN32
 }
 
-// ---- in-game console: tilde to open, runs the same commands ----
+// ---- in-game console & chat ----
+//
+// Minecraft-style keys: T opens chat, / opens chat with the slash typed, and
+// a line starting with / runs as a command (its reply lands in the chat log).
+// The tilde console still works as before - everything typed there is a
+// command, no slash needed, and it stays open showing the full reply.
 
 int console_open;
+int console_chat;        // opened for chat: plain lines are chat, /lines are commands
+int console_opened_frame; // swallow the opening keystroke's own text event
 char console_input[256];
 size_t console_input_len;
 char console_reply[8000];
 
+// recent chat, shown even with the console closed, newest at the bottom
+#define CHAT_LINES 8
+#define CHAT_SHOW_FRAMES 600 // ~10 seconds
+char chat_log[CHAT_LINES][300];
+int chat_expire[CHAT_LINES];
+int chat_head;
+
+// append one line to the chat log (printable ascii only - this also takes
+// lines straight off the network, so strip anything that could fake a line)
+void chat_add(const char *s)
+{
+        char *d = chat_log[chat_head], *end = d + sizeof chat_log[0] - 1;
+        for (; *s && d < end; s++)
+                if (*s >= ' ' && *s <= '~')
+                        *d++ = *s;
+        *d = '\0';
+        chat_expire[chat_head] = frame + CHAT_SHOW_FRAMES;
+        chat_head = (chat_head + 1) % CHAT_LINES;
+}
+
+static void console_show(int chat, const char *prefill)
+{
+        console_open = 1;
+        console_chat = chat;
+        console_opened_frame = frame;
+        snprintf(console_input, sizeof console_input, "%s", prefill);
+        console_input_len = strlen(console_input);
+        SDL_StartTextInput(vk.window);
+        // drop any held movement so the player doesn't run off
+        player[my_player].goingf = player[my_player].goingb = 0;
+        player[my_player].goingl = player[my_player].goingr = 0;
+        player[my_player].running = player[my_player].sneaking = 0;
+}
+
+static void console_hide()
+{
+        console_open = 0;
+        SDL_StopTextInput(vk.window);
+}
+
 void console_toggle()
 {
-        console_open = !console_open;
         if (console_open)
+                console_hide();
+        else
+                console_show(0, "");
+}
+
+// submit the typed line: chat goes out as chat, /commands (and everything in
+// the tilde console) run through the same dispatcher as the socket
+static void console_submit()
+{
+        if (console_chat && console_input[0] != '/')
         {
-                console_input_len = 0;
-                console_input[0] = '\0';
-                SDL_StartTextInput(vk.window);
-                // drop any held movement so the player doesn't run off
-                player[my_player].goingf = player[my_player].goingb = 0;
-                player[my_player].goingl = player[my_player].goingr = 0;
-                player[my_player].running = player[my_player].sneaking = 0;
+                char line[300];
+                snprintf(line, sizeof line, "<player %d> %s", my_player, console_input);
+                chat_add(line);
+                net_send_chat(console_input);
         }
         else
-                SDL_StopTextInput(vk.window);
+        {
+                remote_dispatch(console_input + (console_input[0] == '/'),
+                        console_reply, sizeof console_reply);
+                if (remote_want_quit)
+                        game_shutdown(0);
+                if (console_chat)
+                {
+                        // a /command from chat: its reply reads out as chat lines
+                        for (char *r = console_reply; r && *r; )
+                        {
+                                char *nl = strchr(r, '\n');
+                                if (nl) *nl = '\0';
+                                if (*r) chat_add(r);
+                                r = nl ? nl + 1 : NULL;
+                        }
+                        console_reply[0] = '\0';
+                }
+        }
+        console_input_len = 0;
+        console_input[0] = '\0';
 }
 
 // key events go here first; returns 1 if the console consumed the key
@@ -1072,11 +1153,17 @@ int console_key(int down)
                 return 1;
         }
         if (!console_open)
+        {
+                if (down && !event.key.repeat && event.key.key == SDLK_T)
+                        { console_show(1, ""); return 1; }
+                if (down && !event.key.repeat && event.key.key == SDLK_SLASH)
+                        { console_show(1, "/"); return 1; }
                 return 0;
+        }
         if (down) switch (event.key.key)
         {
                 case SDLK_ESCAPE:
-                        console_toggle();
+                        console_hide();
                         break;
                 case SDLK_BACKSPACE:
                         if (console_input_len)
@@ -1087,13 +1174,9 @@ int console_key(int down)
                         if (event.key.repeat)
                                 break;
                         if (console_input_len)
-                        {
-                                remote_dispatch(console_input, console_reply, sizeof console_reply);
-                                if (remote_want_quit)
-                                        game_shutdown(0);
-                                console_input_len = 0;
-                                console_input[0] = '\0';
-                        }
+                                console_submit();
+                        if (console_chat)
+                                console_hide(); // chat closes on send, like Minecraft
                         break;
         }
         return 1;
@@ -1102,6 +1185,8 @@ int console_key(int down)
 void console_text(const char *text)
 {
         if (!console_open) return;
+        if (frame == console_opened_frame)
+                return; // the keystroke that opened the box isn't input
         for (; *text; text++)
         {
                 if (*text < ' ' || *text > '~' || *text == '`' || *text == '~')
@@ -1116,29 +1201,49 @@ void console_text(const char *text)
 
 void console_draw()
 {
-        if (!console_open) return;
-
         float scale = MIN(roundf(screenw / 600.f), roundf(screenh / 400.f));
         if (scale < 1.f) scale = 1.f;
         int lh = FONT_CH_H * scale;
         int inputy = screenh - 2 * lh;
+        int base = inputy; // chat stacks upward from here
 
-        char line[300];
-        snprintf(line, sizeof line, "> %s_", console_input);
+        if (console_open)
+        {
+                char line[300];
+                snprintf(line, sizeof line, "> %s_", console_input);
+                font_begin(screenw, screenh);
+                font_add_text(line, 20, inputy, 0);
+                font_end(1.f, 1.f, .5f);
+
+                if (!console_chat && console_reply[0])
+                {
+                        // reply sits above the input line, bottom-anchored,
+                        // tail if it's long; chat goes above the reply
+                        char *r = console_reply;
+                        int lines = 1;
+                        for (char *s = r; *s; s++)
+                                if (*s == '\n' && s[1]) lines++;
+                        while (lines > 32) { r = strchr(r, '\n') + 1; lines--; }
+                        base = inputy - (lines + 1) * lh;
+                        font_begin(screenw, screenh);
+                        font_add_text(r, 20, base, 0);
+                        font_end(1.f, 1.f, 1.f);
+                }
+        }
+
+        // recent chat: always while the console is up, else until it expires
+        int rows[CHAT_LINES], shown = 0;
+        for (int k = 0; k < CHAT_LINES; k++)
+        {
+                int i = (chat_head + k) % CHAT_LINES; // oldest first
+                if (!chat_log[i][0]) continue;
+                if (!console_open && frame > chat_expire[i]) continue;
+                rows[shown++] = i;
+        }
+        if (!shown) return;
         font_begin(screenw, screenh);
-        font_add_text(line, 20, inputy, 0);
-        font_end(1.f, 1.f, .5f);
-
-        if (!console_reply[0]) return;
-
-        // reply sits above the input line, bottom-anchored, tail if it's long
-        char *r = console_reply;
-        int lines = 1;
-        for (char *s = r; *s; s++)
-                if (*s == '\n' && s[1]) lines++;
-        while (lines > 32) { r = strchr(r, '\n') + 1; lines--; }
-        font_begin(screenw, screenh);
-        font_add_text(r, 20, inputy - (lines + 1) * lh, 0);
+        for (int k = 0; k < shown; k++)
+                font_add_text(chat_log[rows[k]], 20, base - (shown + 1 - k) * lh, 0);
         font_end(1.f, 1.f, 1.f);
 }
 

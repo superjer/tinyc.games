@@ -104,8 +104,8 @@ void debrief()
 
         if (help_layer == 1)
         {
-                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nWheel\nE          \nZ   \nC            \nH                  \nPress G for more";
-                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nChange held block\nPlace Light\nZoom\nDraw Distance\nHide this help text";
+                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nWheel\nE          \nT   \n/   \nZ   \nC            \nH                  \nPress G for more";
+                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nChange held block\nPlace Light\nChat\nCommand\nZoom\nDraw Distance\nHide this help text";
                 font_begin(screenw, screenh);
                 font_add_text(h1, screenw/100.f, screenh/4.f, 0);
                 font_end(1, 0.5, 1);
@@ -116,8 +116,8 @@ void debrief()
 
         if (help_layer == 2)
         {
-                char *g1 = "~\nQ\nF\nB\nN\nP\nM\nT\nR\nF2\nF3\nF5\nF6";
-                char *g2 = "Command console\nGo up!\nFast\nSpawn slime\nRev. sun\nFast sun\nShadow mapping\nTall grass shadows\nFixed interval\nLock culling\nFPS, timings, position\nReload shaders\nFreeze shadows + sun";
+                char *g1 = "~\nQ\nF\nB\nN\nP\nM\nR\nF2\nF3\nF5\nF6\nF7";
+                char *g2 = "Command console\nGo up!\nFast\nSpawn slime\nRev. sun\nFast sun\nShadow mapping\nFixed interval\nLock culling\nFPS, timings, position\nReload shaders\nFreeze shadows + sun\nTall grass shadows";
                 font_begin(screenw, screenh);
                 font_add_text(g1, screenw/100.f, screenh/4.f, 0);
                 font_end(0.5, 1, 1);

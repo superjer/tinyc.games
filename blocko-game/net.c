@@ -29,6 +29,7 @@ int net_describe(char *out, int outsz) { return snprintf(out, outsz, "net off\n"
 int net_player_active(int i) { return 0; }
 void net_send_punch(int slot, float aimx, float aimz) {}
 void net_send_bonk(int pi, float nx, float nz) {}
+void net_send_chat(const char *text) {}
 
 #else // the rest of the file
 
@@ -54,6 +55,7 @@ enum {
         MSG_PUNCH,     // c->s: u8 mob slot, f32 aim x, f32 aim z
         MSG_BONK,      // s->c: f32 knock x, f32 knock z - a slime hit YOU
         MSG_TIME,      // s->c: f32 sun_pitch, so sunsets stay shared
+        MSG_CHAT,      // both: u8 sender id, then the text (not NUL-terminated)
 };
 
 #define MOB_ENTRY 20 // bytes per mob in a MSG_MOB snapshot
@@ -271,6 +273,21 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                 if (p[0] < NR_MOBS)
                         mob_shatter(p[0], get_f32(p + 1), get_f32(p + 5));
                 break;
+        case MSG_CHAT:
+        {
+                if (len < 2 || len > 256 || !c->helloed) return;
+                unsigned char relay[256];
+                memcpy(relay, p, len);
+                relay[0] = c->player; // the slot is the identity, not the byte
+                char line[300];
+                snprintf(line, sizeof line, "<player %d> %.*s",
+                        c->player, len - 1, (const char *)p + 1);
+                chat_add(line);
+                for (int i = 0; i < NET_MAX_CLIENTS; i++)
+                        if (conns[i].helloed && &conns[i] != c)
+                                conn_send(&conns[i], MSG_CHAT, relay, len);
+                break;
+        }
         }
         else switch (type)
         {
@@ -331,6 +348,15 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                 if (len < 4) return;
                 sun_pitch = get_f32(p); // the sun drifts apart slowly; snap to match
                 break;
+        case MSG_CHAT:
+        {
+                if (len < 2 || len > 256) return;
+                char line[300];
+                snprintf(line, sizeof line, "<player %d> %.*s",
+                        p[0], len - 1, (const char *)p + 1);
+                chat_add(line);
+                break;
+        }
         case MSG_BONK:
         {
                 // a slime on the server bonked ME: same knockback the host
@@ -509,6 +535,24 @@ void net_send_punch(int slot, float aimx, float aimz)
         put_f32(m + 1, aimx);
         put_f32(m + 5, aimz);
         conn_send(&server_conn, MSG_PUNCH, m, sizeof m);
+}
+
+// my chat line goes to the server, which shows it and passes it around; the
+// sender has already put it in their own log
+void net_send_chat(const char *text)
+{
+        if (net_mode == NET_OFF) return;
+        unsigned char m[256];
+        int len = strlen(text);
+        if (len > (int)sizeof m - 1) len = sizeof m - 1;
+        if (!len) return;
+        m[0] = my_player;
+        memcpy(m + 1, text, len);
+        if (net_mode == NET_CLIENT)
+                conn_send(&server_conn, MSG_CHAT, m, 1 + len);
+        else for (int i = 0; i < NET_MAX_CLIENTS; i++)
+                if (conns[i].helloed)
+                        conn_send(&conns[i], MSG_CHAT, m, 1 + len);
 }
 
 // server: tell a client one of my slimes bonked them

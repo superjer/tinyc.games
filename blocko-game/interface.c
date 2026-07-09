@@ -93,7 +93,7 @@ void key_move(int down)
                 case SDLK_M: // do shadow mapping
                         if (!down) shadow_mapping = !shadow_mapping;
                         break;
-                case SDLK_T: // toggle tall grass shadows
+                case SDLK_F7: // toggle tall grass shadows (T belongs to chat now)
                         if (!down) grass_shadows = !grass_shadows;
                         break;
                 case SDLK_C: // change view distance

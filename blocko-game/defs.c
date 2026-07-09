@@ -685,6 +685,8 @@ int net_describe(char *out, int outsz);
 int net_player_active(int i);
 void net_send_punch(int slot, float aimx, float aimz);
 void net_send_bonk(int pi, float nx, float nz);
+void net_send_chat(const char *text);
+void chat_add(const char *s); // remote.c: append a line to the on-screen chat
 void regen_world(); // blocko.c: invalidate all chunk stamps
 
 // collision.c protos

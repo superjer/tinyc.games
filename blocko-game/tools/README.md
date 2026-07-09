@@ -34,7 +34,9 @@ echo fps | nc -U /tmp/blocko-<tag>.sock
 ```
 
 Or open the **in-game console** with the tilde (`` ` ``) key and type the same
-commands — they run through the same dispatcher.
+commands — they run through the same dispatcher. Minecraft-style keys work
+too: `/` opens the box with a slash typed (a `/command` runs and its reply
+lands in the chat log), and `T` opens plain chat.
 
 ## Typical workflow
 
@@ -167,6 +169,7 @@ the sun's position every few seconds. Also available at launch as
 | `serve [<port>]` | Start hosting on the given TCP port. |
 | `connect <host> [<port>]` | Join a hosted game. Blocks up to 5 s for the WELCOME (seed + edit log), then regenerates the world with the server's seed. |
 | `net` | Report the current role and connected players. |
+| `say <text>` | Speak in chat, as if typed with T. In-game, `T` opens chat, `/` opens command entry, and chat lines show for ~10 s bottom-left. |
 
 ## Mobs
 
