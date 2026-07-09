@@ -54,7 +54,8 @@ static float mob_scale(int size)
 
 // resize a slime in place: grow/shrink about its horizontal center while
 // keeping its feet planted, so merges and decays don't teleport it
-static void mob_set_size(struct mob *m, int size)
+// (non-static: net.c applies sizes from server mob snapshots)
+void mob_set_size(struct mob *m, int size)
 {
         if (size < 1) size = 1;
         if (size > MOB_MAXSIZE) size = MOB_MAXSIZE;
@@ -218,24 +219,10 @@ void mob_punch()
                         if (!collide((struct box){x, y, z, 0, 0, 0}, m->pos))
                                 continue;
 
-                        // one punch shatters the slime into size-1 shards that
-                        // scatter outward and, after a short rest, hunt each
-                        // other down to rebuild a bigger slime
-                        int n = m->size;
-                        int shard_hp = m->hp - 1; // breaking apart costs a point
-                        struct box from = m->pos;
-                        m->alive = 0;
-                        mob_kills++;
-                        // shards spray out roughly along the punch, fanned into
-                        // a wedge centered on the aim (not a full circle)
-                        float aim = atan2f(f0, f2);
-                        unsigned seed = mob_seed;
-                        for (int k = 0; k < n; k++)
-                        {
-                                float a = aim + RANDF(-.9f, .9f);
-                                mob_spawn_shard(from, a, k, shard_hp);
-                        }
-                        mob_seed = seed;
+                        if (net_mode == NET_CLIENT)
+                                net_send_punch(i, f0, f2); // the server resolves it
+                        else
+                                mob_shatter(i, f0, f2);
                         // can't mine through a mob: cancel any dig update_player
                         // just started on the block behind it
                         mine_heal();
@@ -243,6 +230,32 @@ void mob_punch()
                         return;
                 }
         }
+}
+
+// one punch shatters the slime into size-1 shards that scatter outward and,
+// after a short rest, hunt each other down to rebuild a bigger slime. The
+// authoritative kill: runs on the host (or single-player); a client's punch
+// arrives here through MSG_PUNCH.
+void mob_shatter(int i, float aimx, float aimz)
+{
+        struct mob *m = &mob[i];
+        if (!m->alive || m->dying) return;
+
+        int n = m->size;
+        int shard_hp = m->hp - 1; // breaking apart costs a point
+        struct box from = m->pos;
+        m->alive = 0;
+        mob_kills++;
+        // shards spray out roughly along the punch, fanned into
+        // a wedge centered on the aim (not a full circle)
+        float aim = atan2f(aimx, aimz);
+        unsigned seed = mob_seed;
+        for (int k = 0; k < n; k++)
+        {
+                float a = aim + RANDF(-.9f, .9f);
+                mob_spawn_shard(from, a, k, shard_hp);
+        }
+        mob_seed = seed;
 }
 
 // true if the player sits within the slime's 90-degree forward cone
@@ -317,6 +330,11 @@ void update_mobs()
 
         mob_punch();
 
+        // the server owns the mobs: clients only originate punches (above) and
+        // receive positions through net.c's snapshots
+        if (net_mode == NET_CLIENT)
+                return;
+
         // trickle fresh slimes in around the player, but only up to the
         // ambient target - shatter bursts push the live count way past it and
         // we let those thin back out on their own (via merges and decay)
@@ -344,10 +362,28 @@ void update_mobs()
                 m->prev = m->pos;
                 m->prev_yaw = m->yaw;
 
+                // this slime minds the nearest player: the host's own body, or
+                // a connected player's ghost (their position, synced at 20Hz)
+                struct player *p = &player[my_player];
+                int pi = my_player;
                 float dx = (p->pos.x + PLYR_W/2) - (m->pos.x + m->pos.w/2);
                 float dy = p->pos.y - m->pos.y;
                 float dz = (p->pos.z + PLYR_W/2) - (m->pos.z + m->pos.d/2);
                 float dist = DIST(dx, dy, dz);
+                for (int j = 0; j < NR_PLAYERS; j++)
+                {
+                        if (j == my_player || !net_player_active(j)) continue;
+                        float jx = (player[j].pos.x + PLYR_W/2) - (m->pos.x + m->pos.w/2);
+                        float jy = player[j].pos.y - m->pos.y;
+                        float jz = (player[j].pos.z + PLYR_W/2) - (m->pos.z + m->pos.d/2);
+                        float jd = DIST(jx, jy, jz);
+                        if (jd < dist)
+                        {
+                                p = &player[j];
+                                pi = j;
+                                dx = jx; dy = jy; dz = jz; dist = jd;
+                        }
+                }
 
                 if (dist > MOB_DESPAWN || m->pos.y > TILESH * BS + 6000)
                 {
@@ -565,14 +601,19 @@ void update_mobs()
                         float hd = sqrtf(dx * dx + dz * dz);
                         if (hd > 1)
                         {
-                                // the knock direction in the player's
-                                // forward/right terms, since that's how
-                                // update_player integrates velocity
                                 float nx = dx / hd, nz = dz / hd;
-                                float fwdx = sinf(p->yaw), fwdz = cosf(p->yaw);
-                                p->fvel = (nx * fwdx + nz * fwdz) * PLYR_SPD_R * 4;
-                                p->rvel = (nx * fwdz - nz * fwdx) * PLYR_SPD_R * 4;
-                                p->grav = GRAV_JUMP + 5;
+                                if (pi == my_player)
+                                {
+                                        // the knock direction in the player's
+                                        // forward/right terms, since that's how
+                                        // update_player integrates velocity
+                                        float fwdx = sinf(p->yaw), fwdz = cosf(p->yaw);
+                                        p->fvel = (nx * fwdx + nz * fwdz) * PLYR_SPD_R * 4;
+                                        p->rvel = (nx * fwdz - nz * fwdx) * PLYR_SPD_R * 4;
+                                        p->grav = GRAV_JUMP + 5;
+                                }
+                                else
+                                        net_send_bonk(pi, nx, nz); // their machine applies it
                                 m->bonk_cooldown = 45;
 
                                 // and the slime rebounds away instead of

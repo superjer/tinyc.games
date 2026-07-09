@@ -632,6 +632,8 @@ void mine_heal();
 
 // mob.c protos
 void update_mobs();
+void mob_shatter(int i, float aimx, float aimz);
+void mob_set_size(struct mob *m, int size);
 void mob_build();
 void mob_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 void mob_scoot(int dx, int dz);
@@ -681,6 +683,8 @@ int net_serve(int port);
 int net_connect(const char *host, int port);
 int net_describe(char *out, int outsz);
 int net_player_active(int i);
+void net_send_punch(int slot, float aimx, float aimz);
+void net_send_bonk(int pi, float nx, float nz);
 void regen_world(); // blocko.c: invalidate all chunk stamps
 
 // collision.c protos

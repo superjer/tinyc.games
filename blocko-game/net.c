@@ -27,6 +27,8 @@ int net_serve(int port) { fprintf(stderr, "net: not on Windows yet\n"); return -
 int net_connect(const char *host, int port) { return net_serve(0); }
 int net_describe(char *out, int outsz) { return snprintf(out, outsz, "net off\n"); }
 int net_player_active(int i) { return 0; }
+void net_send_punch(int slot, float aimx, float aimz) {}
+void net_send_bonk(int pi, float nx, float nz) {}
 
 #else // the rest of the file
 
@@ -48,12 +50,21 @@ enum {
         MSG_WELCOME,   // s->c: u8 your player id, i32 seed, f32 sun_pitch, u32 nr edits
         MSG_EDIT,      // both: i32 ax, i32 ay, i32 az, u8 tile
         MSG_PLAYER,    // both: u8 id, f32 abs pos xyz (units), f32 vel xyz, f32 yaw, pitch
+        MSG_MOB,       // s->c: u32 total kills, then per mob u8 slot, size, hurt, dying, f32 abs xyz, yaw
+        MSG_PUNCH,     // c->s: u8 mob slot, f32 aim x, f32 aim z
+        MSG_BONK,      // s->c: f32 knock x, f32 knock z - a slime hit YOU
 };
+
+#define MOB_ENTRY 20 // bytes per mob in a MSG_MOB snapshot
 
 // last state received for each remote player, in ABSOLUTE units. seen is the
 // pframe it arrived; a player quiet for 2 seconds fades out of the world
 static struct net_state { float x, y, z, vx, vy, vz, yaw, pitch; int seen; }
         net_state[NR_PLAYERS];
+
+// client: where the server last put each mob (ABSOLUTE units); positions ease
+// toward these each frame so 15Hz snapshots read as continuous motion
+static struct { float x, y, z, yaw; } mob_target[NR_MOBS];
 
 struct conn {
         int fd;                  // -1 = free
@@ -190,9 +201,8 @@ static void client_welcome(const unsigned char *p)
         edit_clear();
         regen_world();
 
-        // mobs aren't synced yet (phase 4): keep the client's world quiet
-        // rather than showing slimes the server can't see
-        mob_enable = 0;
+        // drop any local slimes: the server owns the mobs now, and its
+        // snapshots (MSG_MOB) will repopulate the array
         for (int i = 0; i < NR_MOBS; i++)
                 mob[i].alive = 0;
 
@@ -251,6 +261,11 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                         if (conns[i].helloed && &conns[i] != c)
                                 conn_send(&conns[i], MSG_PLAYER, relay, 33);
                 break;
+        case MSG_PUNCH:
+                if (len < 9 || !c->helloed) return;
+                if (p[0] < NR_MOBS)
+                        mob_shatter(p[0], get_f32(p + 1), get_f32(p + 5));
+                break;
         }
         else switch (type)
         {
@@ -268,6 +283,58 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                 if (len < 33) return;
                 net_store_player(p[0], p);
                 break;
+        case MSG_MOB:
+        {
+                // full snapshot of every living mob: apply each entry, then
+                // kill any local mob the server no longer knows
+                if (len < 4) return;
+                mob_kills = get_u32(p); // the shared kill tally
+                p += 4;
+                len -= 4;
+                char in_snap[NR_MOBS] = {0};
+                for (; len >= MOB_ENTRY; p += MOB_ENTRY, len -= MOB_ENTRY)
+                {
+                        int slot = p[0];
+                        if (slot >= NR_MOBS) continue;
+                        in_snap[slot] = 1;
+                        struct mob *m = &mob[slot];
+                        mob_target[slot].x = get_f32(p + 4);
+                        mob_target[slot].y = get_f32(p + 8);
+                        mob_target[slot].z = get_f32(p + 12);
+                        mob_target[slot].yaw = get_f32(p + 16);
+                        if (!m->alive) // fresh: land it in place, no glide-in
+                        {
+                                m->pos.x = m->prev.x = mob_target[slot].x + scootx * (float)BS;
+                                m->pos.y = m->prev.y = mob_target[slot].y;
+                                m->pos.z = m->prev.z = mob_target[slot].z + scootz * (float)BS;
+                                m->yaw = m->prev_yaw = mob_target[slot].yaw;
+                                m->pos.w = m->pos.d = m->pos.h = 1; // sized just below
+                                m->size = 0;
+                                m->alive = 1;
+                        }
+                        if (m->size != p[1])
+                                mob_set_size(m, p[1]);
+                        m->hurt = p[2];
+                        m->dying = p[3];
+                }
+                for (int i = 0; i < NR_MOBS; i++)
+                        if (mob[i].alive && !in_snap[i])
+                                mob[i].alive = 0;
+                break;
+        }
+        case MSG_BONK:
+        {
+                // a slime on the server bonked ME: same knockback the host
+                // player gets in update_mobs, in forward/right velocity terms
+                if (len < 8) return;
+                struct player *pl = &player[my_player];
+                float nx = get_f32(p), nz = get_f32(p + 4);
+                float fwdx = sinf(pl->yaw), fwdz = cosf(pl->yaw);
+                pl->fvel = (nx * fwdx + nz * fwdz) * PLYR_SPD_R * 4;
+                pl->rvel = (nx * fwdz - nz * fwdx) * PLYR_SPD_R * 4;
+                pl->grav = GRAV_JUMP + 5;
+                break;
+        }
         }
 }
 
@@ -361,6 +428,79 @@ static void net_send_my_state()
                         conn_send(&conns[i], MSG_PLAYER, m, sizeof m);
 }
 
+// server: snapshot every living mob to every client at ~15Hz (every 4th tick)
+static void net_send_mobs()
+{
+        static int last_sent = -4;
+        if (pframe - last_sent < 4) return;
+        last_sent = pframe;
+
+        unsigned char snap[4 + NR_MOBS * MOB_ENTRY];
+        put_u32(snap, mob_kills); // the shared kill tally rides along
+        int n = 0;
+        for (int i = 0; i < NR_MOBS; i++)
+        {
+                struct mob *m = &mob[i];
+                if (!m->alive) continue;
+                unsigned char *e = snap + 4 + n * MOB_ENTRY;
+                e[0] = i;
+                e[1] = m->size;
+                e[2] = m->hurt;
+                e[3] = m->dying;
+                put_f32(e + 4, m->pos.x - scootx * (float)BS); // window -> absolute
+                put_f32(e + 8, m->pos.y);
+                put_f32(e + 12, m->pos.z - scootz * (float)BS);
+                put_f32(e + 16, m->yaw);
+                n++;
+        }
+        for (int i = 0; i < NET_MAX_CLIENTS; i++)
+                if (conns[i].helloed)
+                        conn_send(&conns[i], MSG_MOB, snap, 4 + n * MOB_ENTRY);
+}
+
+// client: ease each mob toward its snapshot target; prev tracks the old spot
+// so mob_build's prev->pos sub-tick lerp keeps working
+static void net_smooth_mobs()
+{
+        for (int i = 0; i < NR_MOBS; i++)
+        {
+                struct mob *m = &mob[i];
+                if (!m->alive) continue;
+                m->prev = m->pos;
+                m->prev_yaw = m->yaw;
+                m->pos.x += (mob_target[i].x + scootx * (float)BS - m->pos.x) * 0.35f;
+                m->pos.y += (mob_target[i].y - m->pos.y) * 0.35f;
+                m->pos.z += (mob_target[i].z + scootz * (float)BS - m->pos.z) * 0.35f;
+                float dyaw = mob_target[i].yaw - m->yaw;
+                while (dyaw >  PI) dyaw -= TAU;
+                while (dyaw < -PI) dyaw += TAU;
+                m->yaw += dyaw * 0.35f;
+        }
+}
+
+// client: my punch flies to the server, which owns the mobs
+void net_send_punch(int slot, float aimx, float aimz)
+{
+        if (net_mode != NET_CLIENT) return;
+        unsigned char m[9];
+        m[0] = slot;
+        put_f32(m + 1, aimx);
+        put_f32(m + 5, aimz);
+        conn_send(&server_conn, MSG_PUNCH, m, sizeof m);
+}
+
+// server: tell a client one of my slimes bonked them
+void net_send_bonk(int pi, float nx, float nz)
+{
+        if (net_mode != NET_SERVER) return;
+        unsigned char m[8];
+        put_f32(m, nx);
+        put_f32(m + 4, nz);
+        for (int i = 0; i < NET_MAX_CLIENTS; i++)
+                if (conns[i].helloed && conns[i].player == pi)
+                        conn_send(&conns[i], MSG_BONK, m, sizeof m);
+}
+
 // ease each remote player toward its last received state - 20Hz updates drawn
 // at 60+fps would stutter if we snapped. A jump too big to be movement (a tp)
 // snaps instead of gliding across the world.
@@ -433,6 +573,10 @@ void net_poll()
                 net_send_my_state();
                 net_smooth_players();
         }
+        if (net_mode == NET_SERVER)
+                net_send_mobs();
+        else if (net_mode == NET_CLIENT)
+                net_smooth_mobs();
 }
 
 int net_serve(int port)
