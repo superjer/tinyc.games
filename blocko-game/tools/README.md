@@ -116,6 +116,8 @@ $bk timings   # build_meshes total; divide by meshes_built for per-mesh ms
 | Command | What it does |
 |---|---|
 | `find <tile> <ax0> <az0> <ax1> <az1>` | List every block of type `<tile>` in the absolute-coord rectangle (inclusive) as `x y z` lines. |
+| `tile <ax> <ay> <az>` | Read one tile by absolute coords (`out of window` if it isn't currently mapped). |
+| `edits [clear]` | Report how many block edits are in the edit overlay (edit.c) — the recorded player edits that replay whenever their chunk regenerates, so digs/builds survive scooting away and back. `edits clear` forgets them (do this before `sum`-based A/B gen comparisons on an edited world). |
 | `form near [<radius>]` | List formations within `<radius>` blocks of the player (default 512) as `x z spheres <n> above_sea <n>` lines. |
 | `formdump [<path>]` | Reconstruct the nearest formation's carved voxel model from its column spans and write it (`int W,H,D` + bytes, `j`=up) for offline rendering. Pipe it through `tools/form_render.py` (needs numpy + PIL) to eyeball the "carve the scaffold" shapes: `python3 blocko-game/tools/form_render.py /tmp/blocko-<tag>_form.bin` writes `formations.png`. |
 | `sum` | FNV-1a hashes of the raw `tiles`, `sunlight`, and `gndheight` arrays — for A/B-ing generation changes. |
@@ -134,8 +136,8 @@ world with the new values. With no arguments, each prints its current knobs.
 | `trees [<0\|1>]` | Enable/disable trees. |
 | `flat [<0\|1>]` | Force a dead-flat world (uniform grass just above the waterline, no caves/formations). A debug aid for spotting chunk-seam artifacts that terrain relief hides. Toggles with no arg; send `regen` after. |
 | `plateau [<0\|1>]` / `plateau jitter <amp>` | Enable/disable the plateau/shelf terracing pass, or set the shelf-boundary jitter amplitude in steps (0 = straight even bands, ~0.4 default breaks them up). |
-| `seed [<n>]` | Set the world seed. |
-| `regen` | Invalidate every chunk's generation stamp; the whole window regenerates in place, nearest chunks first. |
+| `seed [<n>]` | Set the world seed. Setting a seed also clears the edit overlay (new world, old edits meaningless). |
+| `regen` | Invalidate every chunk's generation stamp; the whole window regenerates in place, nearest chunks first. Recorded edits replay onto the regenerated chunks (send `edits clear` first for pristine terrain). |
 
 ## Mobs
 

@@ -158,6 +158,7 @@ void draw_stuff()
         // mesh - must happen before the visible list below or the stale mesh
         // gets drawn for a frame
         TIMER(sync_w_terrain_gen)
+        int fresh[VAOW*VAOD][2], nr_fresh = 0;
         #pragma omp critical
         {
                 for (size_t i = 0; i < just_gen_len; i++) {
@@ -165,9 +166,17 @@ void draw_stuff()
                         int cz = just_generated[i].z + chunk_scootz;
                         DIRTY_(cx, cz) = 1;
                         VBOLEN_(cx, cz) = 0;
+                        fresh[nr_fresh][0] = just_generated[i].x;
+                        fresh[nr_fresh][1] = just_generated[i].z;
+                        nr_fresh++;
                 }
                 just_gen_len = 0;
         }
+
+        // replay recorded edits onto the fresh chunks, before their meshes
+        // build (outside the critical - replaying floods light)
+        for (int i = 0; i < nr_fresh; i++)
+                edit_apply_chunk(fresh[i][0], fresh[i][1]);
 
         // Build visible chunk list (single pass: check all frustums)
         visible_chunk_count = 0;

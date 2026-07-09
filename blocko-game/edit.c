@@ -1,0 +1,184 @@
+#include "blocko.c"
+#ifndef BLOCKO_EDIT_C_INCLUDED
+#define BLOCKO_EDIT_C_INCLUDED
+
+// edit.c - the one way to change a block, and the overlay that remembers it
+//
+// Every block edit goes through set_tile, which writes the tile, records the
+// edit in an overlay hash table keyed by ABSOLUTE tile coords, and handles the
+// ground-height/lighting/patch consequences. Freshly (re)generated chunks
+// replay their overlay entries (edit_apply_chunk, called from draw.c as chunks
+// come out of the builders), so edits now survive scooting out of the window
+// and back - terrain regenerates from the seed, then the overlay reapplies
+// what the player changed. seed + overlay = the whole world, which is also
+// the future save/network story.
+//
+// Main thread only: edits are recorded during update_player and replayed in
+// draw, both on the main thread. Builder threads never touch the overlay, so
+// no locking.
+
+static struct edit { int x, y, z, used; unsigned char tile; } *edit_tab;
+static int edit_cap; // power of 2; 0 until the first edit
+int edit_len;
+
+static unsigned edit_hash(int x, int y, int z)
+{
+        unsigned h = 2166136261u;
+        h = (h ^ (unsigned)x) * 16777619u;
+        h = (h ^ (unsigned)y) * 16777619u;
+        h = (h ^ (unsigned)z) * 16777619u;
+        return h;
+}
+
+static struct edit *edit_slot(struct edit *tab, int cap, int x, int y, int z)
+{
+        unsigned i = edit_hash(x, y, z) & (cap - 1);
+        while (tab[i].used && (tab[i].x != x || tab[i].y != y || tab[i].z != z))
+                i = (i + 1) & (cap - 1);
+        return &tab[i];
+}
+
+static void edit_grow()
+{
+        int ncap = edit_cap ? edit_cap * 2 : 1024;
+        struct edit *ntab = calloc(ncap, sizeof *ntab);
+        for (int i = 0; i < edit_cap; i++)
+        {
+                if (!edit_tab[i].used) continue;
+                *edit_slot(ntab, ncap, edit_tab[i].x, edit_tab[i].y, edit_tab[i].z)
+                        = edit_tab[i];
+        }
+        free(edit_tab);
+        edit_tab = ntab;
+        edit_cap = ncap;
+}
+
+// remember an edit at ABSOLUTE tile coords; a newer edit to the same cell
+// replaces the older one, so the overlay holds only each cell's final value
+void edit_record(int x, int y, int z, int tile)
+{
+        if (edit_len * 3 >= edit_cap * 2)
+                edit_grow();
+        struct edit *e = edit_slot(edit_tab, edit_cap, x, y, z);
+        if (!e->used)
+        {
+                e->x = x; e->y = y; e->z = z;
+                e->used = 1;
+                edit_len++;
+        }
+        e->tile = tile;
+}
+
+void edit_clear()
+{
+        free(edit_tab);
+        edit_tab = NULL;
+        edit_cap = 0;
+        edit_len = 0;
+}
+
+// ground-height and lighting consequences of one tile change (window coords).
+// shared by live edits (set_tile) and overlay replay (edit_apply_chunk)
+static void tile_light_update(int x, int y, int z, int old, int t)
+{
+        unsigned char max;
+
+        if (old == LITE)
+                remove_glolight(x, y, z);
+
+        if (t < LASTSOLID) // now solid: block light out
+        {
+                if (ABOVE_GROUND(x, y, z))
+                        GNDH_(x, z) = y;
+                remove_glolight(x, y, z);
+                int yy = y;
+                do {
+                        remove_sunlight(x, yy, z);
+                        yy++;
+                } while (yy < TILESH-1 && !IS_OPAQUE(x, yy, z));
+        }
+        else if (old < LASTSOLID) // was solid: let light in
+        {
+                // gndheight needs to change if we broke the ground
+                if (AT_GROUND(x, y, z))
+                        recalc_gndheight(x, z);
+
+                if (ABOVE_GROUND(x, y, z))
+                {
+                        // flood sunlight down the newly-opened column, but with a
+                        // scratch index - mutating y here would corrupt the coords
+                        // the caller goes on to use (patch box at the wrong height)
+                        for (int yy = y; yy <= TILESH-1; yy++)
+                        {
+                                sun_enqueue(x, yy, z, 0, 15);
+                                if (!ABOVE_GROUND(x, yy+1, z)) break;
+                        }
+                }
+                else
+                {
+                        max = 0;
+                        if (x > 0        && SUN_(x-1, y  , z  ) > max) max = SUN_(x-1, y  , z  );
+                        if (x < TILESW-1 && SUN_(x+1, y  , z  ) > max) max = SUN_(x+1, y  , z  );
+                        if (y > 0        && SUN_(x  , y-1, z  ) > max) max = SUN_(x  , y-1, z  );
+                        if (y < TILESH-1 && SUN_(x  , y+1, z  ) > max) max = SUN_(x  , y+1, z  );
+                        if (z > 0        && SUN_(x  , y  , z-1) > max) max = SUN_(x  , y  , z-1);
+                        if (z < TILESD-1 && SUN_(x  , y  , z+1) > max) max = SUN_(x  , y  , z+1);
+                        sun_enqueue(x, y, z, 0, max ? max - 1 : 0);
+                }
+
+                max = 0;
+                if (x > 0        && GLO_(x-1, y  , z  ) > max) max = GLO_(x-1, y  , z  );
+                if (x < TILESW-1 && GLO_(x+1, y  , z  ) > max) max = GLO_(x+1, y  , z  );
+                if (y > 0        && GLO_(x  , y-1, z  ) > max) max = GLO_(x  , y-1, z  );
+                if (y < TILESH-1 && GLO_(x  , y+1, z  ) > max) max = GLO_(x  , y+1, z  );
+                if (z > 0        && GLO_(x  , y  , z-1) > max) max = GLO_(x  , y  , z-1);
+                if (z < TILESD-1 && GLO_(x  , y  , z+1) > max) max = GLO_(x  , y  , z+1);
+                glo_enqueue(x, y, z, 0, max ? max - 1 : 0);
+        }
+
+        if (t == LITE)
+                glo_enqueue(x, y, z, 0, 15);
+}
+
+// change one block (window tile coords): write the tile, record it in the
+// overlay, update ground height + lighting, and show the edit instantly via
+// the reject+patch (patch.c). Gameplay effects (item drops, cooldowns, hand
+// swings) stay with the callers.
+void set_tile(int x, int y, int z, int t)
+{
+        int old = T_(x, y, z);
+        if (old == t)
+                return;
+
+        T_(x, y, z) = t;
+        edit_record(x - scootx, y, z - scootz, t);
+        tile_light_update(x, y, z, old, t);
+        patch_edit(x, y, z);
+}
+
+// replay the overlay onto a freshly generated chunk (ABSOLUTE chunk coords).
+// The chunk is already marked dirty for meshing, so no patch: just the tiles
+// and their light consequences
+void edit_apply_chunk(int acx, int acz)
+{
+        if (!edit_len)
+                return;
+
+        for (int i = 0; i < edit_cap; i++)
+        {
+                struct edit *e = &edit_tab[i];
+                if (!e->used) continue;
+                if ((e->x & ~(CHUNKW-1)) != acx * CHUNKW) continue;
+                if ((e->z & ~(CHUNKD-1)) != acz * CHUNKD) continue;
+
+                int x = e->x + scootx, z = e->z + scootz; // absolute -> window
+                if (x < 0 || x >= TILESW || z < 0 || z >= TILESD) continue;
+
+                int old = T_(x, e->y, z);
+                if (old == e->tile) continue;
+                T_(x, e->y, z) = e->tile;
+                tile_light_update(x, e->y, z, old, e->tile);
+        }
+}
+
+#endif // BLOCKO_EDIT_C_INCLUDED

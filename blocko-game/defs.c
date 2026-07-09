@@ -661,6 +661,13 @@ void patch_reject_box(float lo[4], float hi[4]);
 void patch_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 void patch_render_water(VkCommandBuffer cmdbuf, int pipe, float *pv);
 
+// edit.c protos
+void set_tile(int x, int y, int z, int t);
+void edit_record(int x, int y, int z, int tile);
+void edit_apply_chunk(int acx, int acz);
+void edit_clear();
+extern int edit_len;
+
 // collision.c protos
 int collide(struct box l, struct box r);
 int world_collide(struct box box, int wet);

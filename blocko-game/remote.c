@@ -417,6 +417,31 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 draw_dist = atof(cmd + 5);
                 p += snprintf(p, end-p, "ok\n");
         }
+        else if (!strncmp(cmd, "tile ", 5))
+        {
+                // tile <ax> <ay> <az> - read one tile by absolute coords
+                int ax, ay, az;
+                if (sscanf(cmd + 5, "%d %d %d", &ax, &ay, &az) == 3)
+                {
+                        int x = ax + scootx, z = az + scootz;
+                        if (x < 0 || x >= TILESW || z < 0 || z >= TILESD
+                                        || ay < 0 || ay >= TILESH)
+                                p += snprintf(p, end-p, "out of window\n");
+                        else
+                                p += snprintf(p, end-p, "tile %d\n", T_(x, ay, z));
+                }
+                else
+                        p += snprintf(p, end-p, "usage: tile <ax> <ay> <az>\n");
+        }
+        else if (!strncmp(cmd, "edits", 5))
+        {
+                // the edit overlay (edit.c): "edits" reports how many block
+                // edits are recorded; "edits clear" forgets them (they'd
+                // otherwise replay whenever their chunk regenerates)
+                if (!strcmp(cmd + 5, " clear"))
+                        edit_clear();
+                p += snprintf(p, end-p, "edits %d\n", edit_len);
+        }
         else if (!strncmp(cmd, "find ", 5))
         {
                 // find <tile> <ax0> <az0> <ax1> <az1> - list matching blocks
@@ -611,7 +636,10 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         {
                 int v;
                 if (sscanf(cmd + 4, "%d", &v) == 1)
+                {
                         world_seed = v;
+                        edit_clear(); // new seed = new world; old edits are meaningless
+                }
                 p += snprintf(p, end-p, "seed %d\n"
                         "(send 'regen' to rebuild the world with these)\n",
                         world_seed);
@@ -887,7 +915,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "look [<yaw> <pitch>] | click <left|right> [frames] | target | patch\n"
                         "dist <blocks> | debounce <frames> | tint [<0|1>]\n"
                         "screenshot [<path>] | noclip [<0|1>]\n"
-                        "find <tile> <ax0> <az0> <ax1> <az1>\n"
+                        "find <tile> <ax0> <az0> <ax1> <az1> | tile <ax> <ay> <az> | edits [clear]\n"
                         "noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
                         "caves [<0|1>] | trees [<0|1>] | flat [<0|1>] | seed [<n>] | sum | dump [<path>]\n"
                         "cull [<0|1>] | freeze [<0|1>] | lock [<msg>|0] | regen | sun <pitch> | quit\n");

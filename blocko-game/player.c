@@ -166,69 +166,21 @@ void update_player(struct player *p, int real)
                 int x = target_x;
                 int y = target_y;
                 int z = target_z;
-                unsigned char max = 0;
                 int broken = T_(x, y, z);
-                T_(x, y, z) = OPEN;
-                // no immediate chunk rebuild: patch_edit (below) shows the hole
-                // instantly and schedules a debounced rebuild to fold it in
 
                 // tall grass grows on top of a block (the cell at y-1); with its
-                // footing gone it has nothing to root in, so clear it too. same
-                // chunk column, so patch_edit's debounced rebuild drops it.
+                // footing gone it has nothing to root in, so clear it too - first,
+                // so the main break's gndheight recalc doesn't stop at the grass
                 if (y > 0 && (T_(x, y-1, z) == TLGR || T_(x, y-1, z) == TMGR))
-                        T_(x, y-1, z) = OPEN;
+                        set_tile(x, y-1, z, OPEN);
 
-                if (broken == LITE)
-                {
-                        remove_glolight(x, y, z);
-                        goto out;
-                }
+                // set_tile (edit.c) records the edit and handles gndheight,
+                // lighting, and the instant reject+patch - no chunk rebuild here
+                set_tile(x, y, z, OPEN);
 
-                // gndheight needs to change if we broke the ground
-                if (AT_GROUND(x, y, z))
-                        recalc_gndheight(x, z);
-
-                if (ABOVE_GROUND(x, y, z))
-                {
-                        // flood sunlight down the newly-opened column, but with a
-                        // scratch index - mutating y here corrupts the coords
-                        // handed to patch_edit/glo below (the reject+patch box
-                        // would land at the wrong height, leaving the broken
-                        // block uncovered - a one-frame-late "ghost" on trunks)
-                        for (int yy = y; yy <= TILESH-1; yy++)
-                        {
-                                sun_enqueue(x, yy, z, 0, 15);
-                                if (!ABOVE_GROUND(x, yy+1, z)) break;
-                        }
-                }
-                else
-                {
-                        if (x > 0        && SUN_(x-1, y  , z  ) > max) max = SUN_(x-1, y  , z  );
-                        if (x < TILESW-1 && SUN_(x+1, y  , z  ) > max) max = SUN_(x+1, y  , z  );
-                        if (y > 0        && SUN_(x  , y-1, z  ) > max) max = SUN_(x  , y-1, z  );
-                        if (y < TILESH-1 && SUN_(x  , y+1, z  ) > max) max = SUN_(x  , y+1, z  );
-                        if (z > 0        && SUN_(x  , y  , z-1) > max) max = SUN_(x  , y  , z-1);
-                        if (z < TILESD-1 && SUN_(x  , y  , z+1) > max) max = SUN_(x  , y  , z+1);
-                        sun_enqueue(x, y, z, 0, max ? max - 1 : 0);
-                }
-
-                max = 0;
-                if (x > 0        && GLO_(x-1, y  , z  ) > max) max = GLO_(x-1, y  , z  );
-                if (x < TILESW-1 && GLO_(x+1, y  , z  ) > max) max = GLO_(x+1, y  , z  );
-                if (y > 0        && GLO_(x  , y-1, z  ) > max) max = GLO_(x  , y-1, z  );
-                if (y < TILESH-1 && GLO_(x  , y+1, z  ) > max) max = GLO_(x  , y+1, z  );
-                if (z > 0        && GLO_(x  , y  , z-1) > max) max = GLO_(x  , y  , z-1);
-                if (z < TILESD-1 && GLO_(x  , y  , z+1) > max) max = GLO_(x  , y  , z+1);
-                glo_enqueue(x, y, z, 0, max ? max - 1 : 0);
-
-                out:
                 // pop a little half-size copy of the block loose to tumble to the
                 // ground (cosmetic; catches every break path, lights included)
                 item_spawn(x, y, z, broken);
-                // hand the dig off to a persistent edit patch: the block is now
-                // OPEN in tiles, so schedule the debounced rebuild and let the
-                // reject+patch cover the hole until it lands. mine_heal ends the dig.
-                patch_edit(x, y, z);
                 mine_heal();
                 p->cooldown = 5;
                 // this target is spent. A long frame can run another update tick
@@ -243,27 +195,14 @@ void update_player(struct player *p, int real)
         if (real && p->building && !p->cooldown && place_x >= 0) {
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
                 {
-                        T_(place_x, place_y, place_z) = held_tile;
-                        patch_edit(place_x, place_y, place_z); // instant, debounced rebuild
-                        hand_swing_kick = 1;                   // swing the held block
-
-                        if (ABOVE_GROUND(place_x, place_y, place_z))
-                                GNDH_(place_x, place_z) = place_y;
-
-                        int y = place_y;
-                        remove_glolight(place_x, y, place_z);
-                        do {
-                                remove_sunlight(place_x, y, place_z);
-                                y++;
-                        } while (y < TILESH-1 && !IS_OPAQUE(place_x, y, place_z));
+                        set_tile(place_x, place_y, place_z, held_tile);
+                        hand_swing_kick = 1; // swing the held block
                 }
                 p->cooldown = 10;
         }
 
         if (real && p->lighting && !p->cooldown && place_x >= 0) {
-                T_(place_x, place_y, place_z) = LITE;
-                DIRTY_(B2C(place_x), B2C(place_z)) = 1;
-                glo_enqueue(place_x, place_y, place_z, 0, 15);
+                set_tile(place_x, place_y, place_z, LITE);
                 p->cooldown = 10;
         }
 

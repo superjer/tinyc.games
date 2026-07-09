@@ -58,6 +58,7 @@
 #include "remote.c"
 #include "interface.c"
 #include "blocklight.c"
+#include "edit.c"
 #include "player.c"
 #include "mob.c"
 #include "mine.c"
