@@ -54,6 +54,9 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 int hx1 = HMAP(x-1, z);
                 int hz1 = HMAP(x, z-1);
 
+                if (flat_world) // flat test world: dead-flat grass above the
+                        hmaph = hx0 = hz0 = hx1 = hz1 = SEA_LEVEL - 8; // waterline, no slopes - makes seams easy to spot
+
                 bool sharp_dn = hmaph - hx0 < -1 || hmaph - hz0 < -1 || hmaph - hx1 < -1 || hmaph - hz1 < -1;
                 bool sharp_up = hmaph - hx0 >  1 || hmaph - hz0 >  1 || hmaph - hx1 >  1 || hmaph - hz1 >  1;
                 bool sharper_dn = hmaph - hx0 < -3 || hmaph - hz0 < -3 || hmaph - hx1 < -3 || hmaph - hz1 < -3;
@@ -77,7 +80,7 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 int barren   = SEA_LEVEL - 98 + (int)(rough * 26.f); // MTGR -> rock
 
                 int flo[16], fhi[16];
-                int fn = form_spans(ax, az, flo, fhi, 16);
+                int fn = flat_world ? 0 : form_spans(ax, az, flo, fhi, 16);
 
                 unsigned char *t = &TT_(x, 0, z);
                 int gnd = CLAMP(hmaph, 0, TILESH-1);
@@ -168,7 +171,7 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
         struct point P1;
         struct point P2;
         struct point P3 = PC;
-        int nr_caves = cave_enable ? RANDI(0, 12) : 0;
+        int nr_caves = (cave_enable && !flat_world) ? RANDI(0, 12) : 0;
 
         // cave system stretchiness
         int sx = RANDI(10, 60);

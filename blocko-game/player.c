@@ -107,7 +107,7 @@ void mine_heal()
 
 void update_player(struct player *p, int real)
 {
-        if (real && p->pos.y > TILESH*BS + 6000) // fell too far
+        if (real && !p->noclip && p->pos.y > TILESH*BS + 6000) // fell too far
         {
                 player[0].pos.x = STARTPX;
                 player[0].pos.z = STARTPZ;
@@ -296,6 +296,31 @@ void update_player(struct player *p, int real)
 
         p->vel.x = fwdx * p->fvel + fwdz * p->rvel;
         p->vel.z = fwdz * p->fvel - fwdx * p->rvel;
+
+        if (p->noclip)
+        {
+                // fly freely: move straight through the world with no collision
+                // and no gravity. jump rises, sneak sinks (y grows downward).
+                float vspeed = (p->running || p->runningf) ? PLYR_SPD_R :
+                               p->sneaking                 ? PLYR_SPD_S :
+                                                             PLYR_SPD;
+                vspeed *= fast;
+                p->pos.x += p->vel.x;
+                p->pos.z += p->vel.z;
+                if (p->jump_held) p->pos.y -= vspeed;
+                if (p->sneaking)  p->pos.y += vspeed;
+                p->vel.y = 0;
+                p->grav = GRAV_ZERO;
+                p->ground = 0;
+                p->wet = 0;
+                p->submerged = 0;
+                if (real)
+                {
+                        zoom_amt *= zooming ? 0.9f : 1.2f;
+                        zoom_amt = CLAMP(zoom_amt, 0.25f, 1.0f);
+                }
+                return;
+        }
 
         if (!move_player(p, p->vel.x, p->vel.y, p->vel.z))
         {

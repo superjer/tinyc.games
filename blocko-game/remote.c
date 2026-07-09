@@ -626,6 +626,27 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         grass_shadows = !grass_shadows;
                 p += snprintf(p, end-p, "grassshadow %d\n", grass_shadows);
         }
+        else if (!strncmp(cmd, "screenshot", 10))
+        {
+                // grab the last presented frame to a PNG. Runs between frames
+                // (remote_poll is called before draw_stuff), so it captures the
+                // previous fully-rendered frame. Default path is per-worktree.
+                char path[256];
+                snprintf(path, sizeof path, "/tmp/blocko-%s_shot.png", remote_tag());
+                sscanf(cmd + 10, "%255s", path);
+                vulkan_request_screenshot(path);
+                p += snprintf(p, end-p, "ok %s\n", path);
+        }
+        else if (!strncmp(cmd, "noclip", 6))
+        {
+                // fly through solids with no gravity; jump rises, sneak sinks
+                int v;
+                if (sscanf(cmd + 6, "%d", &v) == 1)
+                        player[0].noclip = v;
+                else
+                        player[0].noclip = !player[0].noclip;
+                p += snprintf(p, end-p, "noclip %d\n", player[0].noclip);
+        }
         else if (!strncmp(cmd, "cull", 4))
         {
                 // freeze/unfreeze chunk culling (same as the F2 key)
@@ -675,6 +696,15 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 }
                 else
                         p += snprintf(p, end-p, "can't write %s\n", path);
+        }
+        else if (!strncmp(cmd, "flat", 4))
+        {
+                // dead-flat test world (send regen after) - isolates the chunk
+                // seams that terrain relief otherwise hides
+                int v;
+                if (sscanf(cmd + 4, "%d", &v) == 1) flat_world = v;
+                else flat_world = !flat_world;
+                p += snprintf(p, end-p, "flat_world %d (send regen)\n", flat_world);
         }
         else if (!strncmp(cmd, "sum", 3))
         {
@@ -845,9 +875,10 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "walk <frames> | fly <frames> <bl/s> | turn <deg>\n"
                         "look [<yaw> <pitch>] | click <left|right> [frames] | target | patch\n"
                         "dist <blocks> | debounce <frames> | tint [<0|1>]\n"
+                        "screenshot [<path>] | noclip [<0|1>]\n"
                         "find <tile> <ax0> <az0> <ax1> <az1>\n"
                         "noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
-                        "caves [<0|1>] | trees [<0|1>] | seed [<n>] | sum | dump [<path>]\n"
+                        "caves [<0|1>] | trees [<0|1>] | flat [<0|1>] | seed [<n>] | sum | dump [<path>]\n"
                         "cull [<0|1>] | freeze [<0|1>] | lock [<msg>|0] | regen | sun <pitch> | quit\n");
         }
 }

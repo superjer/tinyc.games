@@ -439,6 +439,7 @@ struct player {
         int rvel;
         int grav;
         int ground;
+        int noclip; // fly through solids, no gravity; jump=up, sneak=down
 };
 
 struct player player[NR_PLAYERS] = {{
@@ -597,6 +598,7 @@ int nr_meshes_built = 0;
 int chunk_gen_ticks = 0;
 int cave_enable = 1;
 int tree_enable = 1;
+int flat_world = 0; // force a perfectly flat world (debug: isolates seams)
 // per-pass gen_chunk wall time, reported by the fps socket command
 enum { GEN_HMAP, GEN_SOIL, GEN_CAVES, GEN_WATER, GEN_TREES, GEN_LIGHT, GEN_CORNERS, GEN_PASSES };
 int gen_pass_ms[GEN_PASSES];

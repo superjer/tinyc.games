@@ -104,6 +104,8 @@ $bk timings   # build_meshes total; divide by meshes_built for per-mesh ms
 | `freeze [<0|1>]` | Pin the shadow maps and sun where they are (same as the F6 key) so the cascades stay anchored in the world and you can walk out to inspect their edges. Toggles with no arg. |
 | `sun <pitch>` | Freeze the sun at `pitch` radians (0 = east, π/2 = up, π = west). `sun run` resumes the normal day/night motion. Useful for deterministic lighting in screenshots. |
 | `grassshadow [<0\|1>]` | Toggle whether tall grass casts shadows in the near cascade (same as the T key). Toggles with no arg. |
+| `screenshot [<path>]` | Save the current frame as a PNG. Default path is per-worktree (`/tmp/blocko-<tag>_shot.png`), like the socket/dump. Captured inside the frame while its swapchain image is still acquired, so it's Vulkan-clean. |
+| `noclip [<0\|1>]` | Fly through solids with no gravity. While on: jump (Space) rises, sneak (LShift) sinks, WASD moves horizontally through anything. Toggles with no arg. |
 
 ## World inspection
 
@@ -126,6 +128,7 @@ world with the new values. With no arguments, each prints its current knobs.
 | `form [<knob> <val>]` | Formation knobs: `enable`, `region`/`chance` (how densely carved-rock formations cluster — lower `chance` or higher `region` = fewer, cheaper to generate), `steps`/`rmin`/`rmax` (scaffold length & sphere size), `detail` (0/1: add the fine grit shell — off by default, ~2x cheaper for a barely-visible change). (Note: `form near ...` is the separate inspection command above.) |
 | `caves [<0\|1>]` | Enable/disable cave carving. |
 | `trees [<0\|1>]` | Enable/disable trees. |
+| `flat [<0\|1>]` | Force a dead-flat world (uniform grass just above the waterline, no caves/formations). A debug aid for spotting chunk-seam artifacts that terrain relief hides. Toggles with no arg; send `regen` after. |
 | `seed [<n>]` | Set the world seed. |
 | `regen` | Invalidate every chunk's generation stamp; the whole window regenerates in place, nearest chunks first. |
 
