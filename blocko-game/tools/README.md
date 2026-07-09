@@ -165,6 +165,12 @@ the sun's position every few seconds. Also available at launch as
 `--serve [port]` and `--connect <host[:port]>` (default port 26262).
 Works on Windows too (winsock) — only this debug socket is Unix-only.
 
+`--headless` runs a dedicated server as a terminal app: no window, no
+Vulkan, no input. It implies `--serve` (add `--serve <port>` for a
+different port), prints chat to stdout, and stops on Ctrl+C or `bk quit`.
+The world simulates around the invisible player 0 at spawn, so mobs and
+live edits happen within the 1024-block window centered there.
+
 | Command | What it does |
 |---|---|
 | `serve [<port>]` | Start hosting on the given TCP port. |

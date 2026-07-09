@@ -673,8 +673,13 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 char path[256];
                 snprintf(path, sizeof path, "/tmp/blocko-%s_shot.png", remote_tag());
                 sscanf(cmd + 10, "%255s", path);
-                vulkan_request_screenshot(path);
-                p += snprintf(p, end-p, "ok %s\n", path);
+                if (headless)
+                        p += snprintf(p, end-p, "headless: nothing rendered\n");
+                else
+                {
+                        vulkan_request_screenshot(path);
+                        p += snprintf(p, end-p, "ok %s\n", path);
+                }
         }
         else if (!strncmp(cmd, "noclip", 6))
         {
@@ -1077,6 +1082,11 @@ void chat_add(const char *s)
                 if (*s >= ' ' && *s <= '~')
                         *d++ = *s;
         *d = '\0';
+        if (headless) // the terminal is the chat display
+        {
+                printf("%s\n", chat_log[chat_head]);
+                fflush(stdout); // don't lag when piped to a log
+        }
         chat_expire[chat_head] = frame + CHAT_SHOW_FRAMES;
         chat_head = (chat_head + 1) % CHAT_LINES;
 }

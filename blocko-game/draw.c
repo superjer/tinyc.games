@@ -50,6 +50,32 @@ int chunk_in_range(int chunk_x, int chunk_z)
         return dist_sq < draw_dist_sq;
 }
 
+// Adopt chunks the terrain workers finished since last frame: mark them dirty,
+// hide the previous occupant's mesh, and replay recorded edits before their
+// meshes build. Called from draw_stuff normally; the headless loop calls it
+// directly since nothing else needs to happen for the world to be right.
+void sync_fresh_chunks()
+{
+        int fresh[VAOW*VAOD][2], nr_fresh = 0;
+        #pragma omp critical
+        {
+                for (size_t i = 0; i < just_gen_len; i++) {
+                        int cx = just_generated[i].x + chunk_scootx; // absolute -> window
+                        int cz = just_generated[i].z + chunk_scootz;
+                        DIRTY_(cx, cz) = 1;
+                        VBOLEN_(cx, cz) = 0;
+                        fresh[nr_fresh][0] = just_generated[i].x;
+                        fresh[nr_fresh][1] = just_generated[i].z;
+                        nr_fresh++;
+                }
+                just_gen_len = 0;
+        }
+
+        // (outside the critical - replaying floods light)
+        for (int i = 0; i < nr_fresh; i++)
+                edit_apply_chunk(fresh[i][0], fresh[i][1]);
+}
+
 //draw everything in the game on the screen
 void draw_stuff()
 {
@@ -154,29 +180,10 @@ void draw_stuff()
                 cull_z = camplayer.pos.z;
         }
 
-        // Mark newly generated chunks dirty and hide the previous occupant's
-        // mesh - must happen before the visible list below or the stale mesh
-        // gets drawn for a frame
+        // Adopt newly generated chunks - must happen before the visible list
+        // below or the stale mesh gets drawn for a frame
         TIMER(sync_w_terrain_gen)
-        int fresh[VAOW*VAOD][2], nr_fresh = 0;
-        #pragma omp critical
-        {
-                for (size_t i = 0; i < just_gen_len; i++) {
-                        int cx = just_generated[i].x + chunk_scootx; // absolute -> window
-                        int cz = just_generated[i].z + chunk_scootz;
-                        DIRTY_(cx, cz) = 1;
-                        VBOLEN_(cx, cz) = 0;
-                        fresh[nr_fresh][0] = just_generated[i].x;
-                        fresh[nr_fresh][1] = just_generated[i].z;
-                        nr_fresh++;
-                }
-                just_gen_len = 0;
-        }
-
-        // replay recorded edits onto the fresh chunks, before their meshes
-        // build (outside the critical - replaying floods light)
-        for (int i = 0; i < nr_fresh; i++)
-                edit_apply_chunk(fresh[i][0], fresh[i][1]);
+        sync_fresh_chunks();
 
         // Build visible chunk list (single pass: check all frustums)
         visible_chunk_count = 0;

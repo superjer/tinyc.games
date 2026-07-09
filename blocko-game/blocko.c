@@ -25,6 +25,7 @@
 #include <time.h>
 #include <math.h>
 #include <stdbool.h>
+#include <signal.h>
 #define GL3_PROTOTYPES 1
 
 #define TINYC_DIR ".."
@@ -79,6 +80,11 @@ void chunk_builder();
 // SDL-thread entry point for the terrain workers (see main)
 static int chunk_builder_thread(void *unused) { chunk_builder(); return 0; }
 
+// headless has no window to close, so Ctrl+C is the way out; the handler just
+// raises a flag and the main loop exits cleanly between frames
+static volatile sig_atomic_t got_sigint;
+static void on_sigint(int sig) { (void)sig; got_sigint = 1; }
+
 int main(int argc, char **argv)
 {
         world_seed = time(NULL);
@@ -97,6 +103,7 @@ int main(int argc, char **argv)
                 // tests): less to draw from the very first frame, no shadow maps
                 else if (!strcmp(argv[i], "--dist") && i + 1 < argc)             draw_dist = atof(argv[++i]);
                 else if (!strcmp(argv[i], "--noshadow"))                         shadow_mapping = false;
+                else if (!strcmp(argv[i], "--headless"))                         headless = 1;
                 else if (!strcmp(argv[i], "--serve"))
                 {
                         serve = 1;
@@ -124,11 +131,15 @@ int main(int argc, char **argv)
                 else
                 {
                         fprintf(stderr, "usage: %s [--seed <n>] [--serve [port]] [--connect <host[:port]>] "
-                                "[--dist <blocks>] [--noshadow] [--lock <msg>] [--noise-kernel2] "
+                                "[--headless] [--dist <blocks>] [--noshadow] [--lock <msg>] [--noise-kernel2] "
                                 "[--noise-nvary] [--noise-contrast <weight>] [--noise-aniso <0..1>]\n", argv[0]);
                         return 1;
                 }
         }
+
+        // headless with nothing to connect to means a dedicated server
+        if (headless && !connect_host)
+                serve = 1;
 
         fprintf(stderr, "world seed: %d\n", world_seed);
         fprintf(stderr, "OpenMP threads available: %d\n", omp_get_max_threads());
@@ -155,10 +166,19 @@ int main(int argc, char **argv)
                 SDL_DetachThread(SDL_CreateThread(chunk_builder_thread, "terrain1", NULL));
         }
 
-        TIMECALL(vksetup, ());
-        TIMECALL(font_init, ());
-        TIMECALL(cursor_init, ());
-        TIMECALL(sun_init, ());
+        if (headless)
+        {
+                signal(SIGINT, on_sigint);
+                signal(SIGTERM, on_sigint);
+                fprintf(stderr, "headless: no window; stop with Ctrl+C or 'bk quit'\n");
+        }
+        else
+        {
+                TIMECALL(vksetup, ());
+                TIMECALL(font_init, ());
+                TIMECALL(cursor_init, ());
+                TIMECALL(sun_init, ());
+        }
         char timings_buf[8000];
         timer_print(timings_buf, 8000, true);
         printf("%s", timings_buf);
@@ -185,7 +205,10 @@ void main_loop()
         auto_scoot();
         apply_scoot();
 
-        while (SDL_PollEvent(&event)) switch (event.type)
+        if (got_sigint)
+                game_shutdown(0);
+
+        if (!headless) while (SDL_PollEvent(&event)) switch (event.type)
         {
                 case SDL_EVENT_QUIT:              if (!test_lock) game_shutdown(0);
                                                   break;
@@ -232,15 +255,30 @@ void main_loop()
                 accumulated_elapsed -= interval;
         }
 
+        remote_poll();
+        net_poll();
+
+        if (headless)
+        {
+                // no drawing: adopt fresh chunks (otherwise draw_stuff's job),
+                // keep the light queues draining, and sleep out the rest of
+                // the tick so the loop still runs at ~60Hz. Round the sleep
+                // UP: rounding down leaves sub-ms of tick unspent and the
+                // loop spins through it at hundreds of frames per tick
+                sync_fresh_chunks();
+                step_sunlight();
+                step_glolight();
+                SDL_Delay((int)(interval - accumulated_elapsed) + 1);
+                frame++;
+                continue;
+        }
+
         camplayer = player[my_player];
 
         if (regulated)
         {
                 TIMECALL(update_player, (&camplayer, 0));
         }
-
-        remote_poll();
-        net_poll();
 
         mob_lerp_t = accumulated_elapsed / interval;
         lerp_camera(accumulated_elapsed / interval, &player[my_player], &camplayer);

@@ -520,6 +520,7 @@ int zooming = false;
 float zoom_amt = 1.f;
 float fast = 1.f;
 int regulated = true;
+int headless; // dedicated server: no window, no vulkan, no input
 int shadow_mapping = true;
 int grass_shadows = true; // whether tall grass casts shadows (near cascade); toggle with T
 int speedy_sun = false;

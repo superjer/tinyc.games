@@ -457,6 +457,7 @@ int net_player_active(int i)
 // send my own player state at ~20Hz (every 3rd physics tick)
 static void net_send_my_state()
 {
+        if (headless) return; // a dedicated server has no body to show
         static int last_sent = -3;
         if (pframe - last_sent < 3) return;
         last_sent = pframe;
