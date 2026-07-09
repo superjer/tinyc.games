@@ -93,6 +93,11 @@ void draw_stuff()
         moon_pos.y = shadow_target[1] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(moon_pitch) * sinf(sun_roll));
         moon_pos.z = shadow_target[2] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(moon_pitch) * cosf(sun_roll));
 
+        // do_shadows() runs every frame even when frozen: the UBO is memset to 0
+        // above, so it must refill shadow_space[] or the sampling coords collapse to
+        // the origin and shadows vanish. When frozen it rebuilds those from the
+        // stored shadow[].matrix (which apply_scoot keeps world-aligned) instead of
+        // recentering on the player, and the shadow-map re-render is skipped.
         TIMER(shadow_calc);
         do_shadows();
 

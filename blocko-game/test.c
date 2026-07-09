@@ -116,8 +116,8 @@ void debrief()
 
         if (help_layer == 2)
         {
-                char *g1 = "~\nQ\nF\nB\nN\nP\nM\nR\nF2\nF3\nF5";
-                char *g2 = "Command console\nGo up!\nFast\nSpawn slime\nRev. sun\nFast sun\nShadow mapping\nFixed interval\nLock culling\nFPS, timings, position\nReload shaders";
+                char *g1 = "~\nQ\nF\nB\nN\nP\nM\nR\nF2\nF3\nF5\nF6";
+                char *g2 = "Command console\nGo up!\nFast\nSpawn slime\nRev. sun\nFast sun\nShadow mapping\nFixed interval\nLock culling\nFPS, timings, position\nReload shaders\nFreeze shadows + sun";
                 font_begin(screenw, screenh);
                 font_add_text(g1, screenw/100.f, screenh/4.f, 0);
                 font_end(0.5, 1, 1);

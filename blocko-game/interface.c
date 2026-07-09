@@ -117,6 +117,9 @@ void key_move(int down)
                                 vulkan_reload_all_pipelines();
                         }
                         break;
+                case SDLK_F6: // freeze shadows + sun to inspect cascade edges
+                        if (down) freeze_shadows = !freeze_shadows;
+                        break;
                 case SDLK_F12: // draw shadow map on the sun
                         if (!down) show_shadow_map = !show_shadow_map;
                         break;

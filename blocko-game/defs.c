@@ -518,6 +518,7 @@ int shadow_mapping = true;
 int speedy_sun = false;
 int reverse_sun = false;
 int sun_frozen = false; // set via debug socket for deterministic screenshots
+int freeze_shadows = false; // F6: pin shadow maps + sun so you can walk to the cascade edges
 float sun_pitch = .3f; //.6f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down
 float moon_pitch;
 float sun_yaw = .3f;

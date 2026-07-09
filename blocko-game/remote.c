@@ -636,6 +636,17 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "bounds x %d..%d z %d..%d\n",
                         lock_culling, cam, visible_chunk_count, x0, x1, z0, z1);
         }
+        else if (!strncmp(cmd, "freeze", 6))
+        {
+                // pin the shadow maps + sun where they are (same as the F6 key)
+                // so the cascades stay anchored and you can inspect their edges
+                int v;
+                if (sscanf(cmd + 6, "%d", &v) == 1)
+                        freeze_shadows = v;
+                else
+                        freeze_shadows = !freeze_shadows;
+                p += snprintf(p, end-p, "freeze_shadows %d\n", freeze_shadows);
+        }
         else if (!strncmp(cmd, "dump", 4))
         {
                 // raw world arrays to a file, for offline diffing; the default
@@ -827,7 +838,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "find <tile> <ax0> <az0> <ax1> <az1>\n"
                         "noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
                         "caves [<0|1>] | trees [<0|1>] | seed [<n>] | sum | dump [<path>]\n"
-                        "cull [<0|1>] | lock [<msg>|0] | regen | sun <pitch> | quit\n");
+                        "cull [<0|1>] | freeze [<0|1>] | lock [<msg>|0] | regen | sun <pitch> | quit\n");
         }
 }
 

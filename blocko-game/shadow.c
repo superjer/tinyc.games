@@ -152,7 +152,10 @@ void do_shadows()
         // compute shadow matrices and render shadow maps
         // s=0: Near, s=1: Mid, s=2: Far, s=3: Extreme
         TIMER(shadow_render);
-        if (shadow_mapping) for(int s = 0; s < 4; s++)
+        // When frozen (F6) skip the recompute: the stored shadow[].matrix values
+        // are left as-is so apply_scoot()'s retranslate keeps them locked to the
+        // world across scoots. The biased UBO matrices are rebuilt from them below.
+        if (shadow_mapping && !freeze_shadows) for(int s = 0; s < 4; s++)
         {
                 // Skip cascades not being rendered this frame (keeps matrix frozen)
                 if (s == 2 && shadow_far_render_ab < 0) continue;
@@ -275,8 +278,11 @@ void do_shadows()
                 }
         }
 
-        // Always compute biased matrices for Far/Extreme from stored matrices
-        // (needed when cascade was skipped this frame but UBO still needs valid data)
+        // Rebuild the biased sampling matrices from the stored shadow matrices.
+        // Far/Extreme need this because they render on alternating frames; Near/Mid
+        // need it when frozen (the recompute loop above is skipped, but the stored
+        // matrices - kept world-aligned across scoots by apply_scoot - stay valid,
+        // and the UBO was memset to 0 this frame so it needs refilling regardless).
         if (shadow_mapping) {
                 float bias_mtrx[] = {
                         0.5f, 0,    0, 0,
@@ -284,16 +290,16 @@ void do_shadows()
                         0,    0,    1, 0,
                         0.5f, 0.5f, 0, 1,
                 };
-                mat4_multiply(main_ubo.shadow_space[SHADOW_FAR_A], bias_mtrx, shadow[SHADOW_FAR_A].matrix);
-                mat4_multiply(main_ubo.shadow_space[SHADOW_FAR_B], bias_mtrx, shadow[SHADOW_FAR_B].matrix);
-                mat4_multiply(main_ubo.shadow_space[SHADOW_EXT_A], bias_mtrx, shadow[SHADOW_EXT_A].matrix);
-                mat4_multiply(main_ubo.shadow_space[SHADOW_EXT_B], bias_mtrx, shadow[SHADOW_EXT_B].matrix);
+                for (int i = 0; i < SHADOW_COUNT; i++)
+                        mat4_multiply(main_ubo.shadow_space[i], bias_mtrx, shadow[i].matrix);
         }
 }
 
 void shadow_render(VkCommandBuffer cmdbuf)
 {
-        if (shadow_mapping) {
+        // When frozen (F6) skip re-rendering: the shadow map textures keep their
+        // last snapshot, staying valid even for chunks the main view later culls.
+        if (shadow_mapping && !freeze_shadows) {
                 // Render shadow passes with per-cascade bias (using pre-built visible chunk list)
                 // Near cascade: rendered every frame with PCF
                 draw_shadow_pass(cmdbuf, SHADOW_NEAR, 1.5f, 1.5f, 1);
