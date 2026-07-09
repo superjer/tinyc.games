@@ -69,7 +69,7 @@
 #define STARTPX (553*BS)           // starting position
 #define STARTPY 0                  // ^
 #define STARTPZ (222*BS)           // ^ (coastal; 733 is open ocean now)
-#define NR_PLAYERS 1
+#define NR_PLAYERS 8
 #define JUMP_BUFFER_FRAMES 6
 #define GRAV_JUMP 0
 #define GRAV_EXIT 2                 // upward vel for hopping out of water onto land
@@ -452,6 +452,7 @@ struct player player[NR_PLAYERS] = {{
         .yaw = PI * 0.5f,
         .grav = GRAV_ZERO,
 }};
+int my_player; // the slot this instance controls (0 until netplay assigns ids)
 struct player camplayer;
 
 // the array is big so a punched slime can burst into a swarm of shards;

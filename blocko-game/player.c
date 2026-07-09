@@ -102,16 +102,16 @@ void mine_heal()
         mine_x = mine_y = mine_z = -1;
         mine_tile = -1;
         mine_frac = 0.f;
-        player[0].mine_progress = 0;
+        player[my_player].mine_progress = 0;
 }
 
 void update_player(struct player *p, int real)
 {
         if (real && !p->noclip && p->pos.y > TILESH*BS + 6000) // fell too far
         {
-                player[0].pos.x = STARTPX;
-                player[0].pos.z = STARTPZ;
-                move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
+                p->pos.x = STARTPX;
+                p->pos.z = STARTPZ;
+                move_to_ground(&p->pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
         }
 
         if (p->jumping && p->ground)

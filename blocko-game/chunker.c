@@ -460,8 +460,8 @@ void chunk_builder()
         terrain_apply_scoot();
 
         int best_x = 0, best_z = 0;
-        int px = (player[0].pos.x / BS + CHUNKW2) / CHUNKW;
-        int pz = (player[0].pos.z / BS + CHUNKD2) / CHUNKD;
+        int px = (player[my_player].pos.x / BS + CHUNKW2) / CHUNKW;
+        int pz = (player[my_player].pos.z / BS + CHUNKD2) / CHUNKD;
         px = CLAMP(px, 0, VAOW-1);
         pz = CLAMP(pz, 0, VAOD-1);
 

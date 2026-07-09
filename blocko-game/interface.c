@@ -11,9 +11,9 @@ void resize()
 
 void jump(int down)
 {
-        player[0].jump_held = down;
+        player[my_player].jump_held = down;
         if (down)
-                player[0].jumping = JUMP_BUFFER_FRAMES;
+                player[my_player].jumping = JUMP_BUFFER_FRAMES;
 }
 
 void key_move(int down)
@@ -25,14 +25,14 @@ void key_move(int down)
         switch (event.key.key)
         {
                 // continuous movement stuff
-                case SDLK_W:      player[0].goingf = down;
-                        if (down) player[0].cooldownf += 10; // detect double tap
+                case SDLK_W:      player[my_player].goingf = down;
+                        if (down) player[my_player].cooldownf += 10; // detect double tap
                         break;
-                case SDLK_S:      player[0].goingb   = down; break;
-                case SDLK_A:      player[0].goingl   = down; break;
-                case SDLK_D:      player[0].goingr   = down; break;
-                case SDLK_LSHIFT: player[0].sneaking = down; break;
-                case SDLK_LCTRL:  player[0].running  = down; break;
+                case SDLK_S:      player[my_player].goingb   = down; break;
+                case SDLK_A:      player[my_player].goingl   = down; break;
+                case SDLK_D:      player[my_player].goingr   = down; break;
+                case SDLK_LSHIFT: player[my_player].sneaking = down; break;
+                case SDLK_LCTRL:  player[my_player].running  = down; break;
                 case SDLK_Z:      zooming            = down; break;
 
                 // instantaneous movement
@@ -42,7 +42,7 @@ void key_move(int down)
 
                 // place a light
                 case SDLK_E:
-                        player[0].lighting = down;
+                        player[my_player].lighting = down;
                         break;
 
                 // spawn a slime where the crosshair points
@@ -61,8 +61,8 @@ void key_move(int down)
                 case SDLK_Q: // go up alot
                         if (!down)
                         {
-                                player[0].pos.y -= 16000;
-                                player[0].grav = GRAV_ZERO - 5;
+                                player[my_player].pos.y -= 16000;
+                                player[my_player].grav = GRAV_ZERO - 5;
                         }
                         break;
                 case SDLK_F: // go fast
@@ -128,10 +128,10 @@ void key_move(int down)
                         break;
 
                 // teleport a whole chunk - auto_scoot recenters the window after
-                case SDLK_LEFT:  if (down) player[0].pos.x -= CHUNKW * BS; break;
-                case SDLK_RIGHT: if (down) player[0].pos.x += CHUNKW * BS; break;
-                case SDLK_DOWN:  if (down) player[0].pos.z -= CHUNKD * BS; break;
-                case SDLK_UP:    if (down) player[0].pos.z += CHUNKD * BS; break;
+                case SDLK_LEFT:  if (down) player[my_player].pos.x -= CHUNKW * BS; break;
+                case SDLK_RIGHT: if (down) player[my_player].pos.x += CHUNKW * BS; break;
+                case SDLK_DOWN:  if (down) player[my_player].pos.z -= CHUNKD * BS; break;
+                case SDLK_UP:    if (down) player[my_player].pos.z += CHUNKD * BS; break;
 
                 /*
                 case SDLK_LEFT:     if (down) sun_yaw   -= .1f; break;
@@ -148,15 +148,15 @@ void mouse_move()
 {
         if (!mouselook) return;
 
-        player[0].yaw += event.motion.xrel * 0.001;
-        player[0].pitch += event.motion.yrel * 0.001;
+        player[my_player].yaw += event.motion.xrel * 0.001;
+        player[my_player].pitch += event.motion.yrel * 0.001;
 
-        if (player[0].yaw >= TAU) player[0].yaw -= TAU;
-        if (player[0].yaw < 0.f) player[0].yaw += TAU;
+        if (player[my_player].yaw >= TAU) player[my_player].yaw -= TAU;
+        if (player[my_player].yaw < 0.f) player[my_player].yaw += TAU;
 
         float limit = 3.1415926535 * 0.5 - 0.001;
-        if (player[0].pitch > limit) player[0].pitch = limit;
-        if (player[0].pitch < -limit) player[0].pitch = -limit;
+        if (player[my_player].pitch > limit) player[my_player].pitch = limit;
+        if (player[my_player].pitch < -limit) player[my_player].pitch = -limit;
 }
 
 void mouse_wheel()
@@ -179,11 +179,11 @@ void mouse_button(int down)
         }
         else if (event.button.button == SDL_BUTTON_LEFT)
         {
-                player[0].breaking = down;
+                player[my_player].breaking = down;
         }
         else if (event.button.button == SDL_BUTTON_RIGHT)
         {
-                player[0].building = down;
+                player[my_player].building = down;
         }
         else if (event.button.button == SDL_BUTTON_X1)
         {

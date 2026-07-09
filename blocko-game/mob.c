@@ -192,7 +192,7 @@ static int mob_spawn_shard(struct box from, float ang, int k, int hp)
 // a click aimed at a mob punches it instead of mining the block behind it
 void mob_punch()
 {
-        struct player *p = &player[0];
+        struct player *p = &player[my_player];
         if (!p->breaking || p->cooldown) return;
 
         float eye0 = p->pos.x + PLYR_W / 2;
@@ -313,7 +313,7 @@ static float mob_water_surface(struct mob *m)
 
 void update_mobs()
 {
-        struct player *p = &player[0];
+        struct player *p = &player[my_player];
 
         mob_punch();
 

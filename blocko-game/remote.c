@@ -219,8 +219,8 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         {
                 p += snprintf(p, end-p, "window_blocks %.2f %.2f %.2f\n"
                         "absolute_blocks %.2f %.2f\nscoot_chunks %d %d\n",
-                        player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS,
-                        player[0].pos.x / BS - scootx, player[0].pos.z / BS - scootz,
+                        player[my_player].pos.x / BS, player[my_player].pos.y / BS, player[my_player].pos.z / BS,
+                        player[my_player].pos.x / BS - scootx, player[my_player].pos.z / BS - scootz,
                         chunk_scootx, chunk_scootz);
         }
         else if (!strncmp(cmd, "save ", 5))
@@ -234,9 +234,9 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         p += snprintf(p, end-p, "usage: save <name>\n");
                 else
                 {
-                        int ax = player[0].pos.x / BS - scootx;
-                        int ay = player[0].pos.y / BS;
-                        int az = player[0].pos.z / BS - scootz;
+                        int ax = player[my_player].pos.x / BS - scootx;
+                        int ay = player[my_player].pos.y / BS;
+                        int az = player[my_player].pos.z / BS - scootz;
                         FILE *f = fopen("blocko.saves", "a");
                         if (f)
                         {
@@ -295,10 +295,10 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                                         chunk_estamp[i][j].az = INT_MIN;
                                 }
                                 // tp to the saved absolute location
-                                player[0].pos.x = (ax + scootx) * BS;
-                                player[0].pos.y = ay * BS;
-                                player[0].pos.z = (az + scootz) * BS;
-                                player[0].grav = GRAV_ZERO;
+                                player[my_player].pos.x = (ax + scootx) * BS;
+                                player[my_player].pos.y = ay * BS;
+                                player[my_player].pos.z = (az + scootz) * BS;
+                                player[my_player].grav = GRAV_ZERO;
                                 p += snprintf(p, end-p, "loaded %s\n", best);
                         }
                 }
@@ -308,10 +308,10 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 float ax, az;
                 if (sscanf(cmd + 3, "%f %f", &ax, &az) == 2)
                 {
-                        player[0].pos.x = (ax + scootx) * BS;
-                        player[0].pos.z = (az + scootz) * BS;
-                        player[0].pos.y = 0; // fall from the sky
-                        player[0].grav = GRAV_ZERO;
+                        player[my_player].pos.x = (ax + scootx) * BS;
+                        player[my_player].pos.z = (az + scootz) * BS;
+                        player[my_player].pos.y = 0; // fall from the sky
+                        player[my_player].grav = GRAV_ZERO;
                         p += snprintf(p, end-p, "ok\n");
                 }
                 else
@@ -321,8 +321,8 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         {
                 int frames = atoi(cmd + 5);
                 remote_walk_frames = frames;
-                player[0].goingf = frames > 0;
-                player[0].running = frames > 0;
+                player[my_player].goingf = frames > 0;
+                player[my_player].running = frames > 0;
                 p += snprintf(p, end-p, "ok\n");
         }
         else if (!strncmp(cmd, "fly ", 4))
@@ -339,7 +339,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         }
         else if (!strncmp(cmd, "turn ", 5))
         {
-                player[0].yaw = atof(cmd + 5) * PI / 180.f;
+                player[my_player].yaw = atof(cmd + 5) * PI / 180.f;
                 p += snprintf(p, end-p, "ok\n");
         }
         else if (!strncmp(cmd, "look", 4))
@@ -351,11 +351,11 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 if (sscanf(cmd + 4, "%f %f", &yaw_deg, &pitch_deg) == 2)
                 {
                         float limit = PI * 0.5f - 0.001f;
-                        player[0].yaw = yaw_deg * PI / 180.f;
-                        player[0].pitch = CLAMP(pitch_deg * PI / 180.f, -limit, limit);
+                        player[my_player].yaw = yaw_deg * PI / 180.f;
+                        player[my_player].pitch = CLAMP(pitch_deg * PI / 180.f, -limit, limit);
                 }
                 p += snprintf(p, end-p, "yaw_deg %.1f pitch_deg %.1f\n",
-                        player[0].yaw * 180.f / PI, player[0].pitch * 180.f / PI);
+                        player[my_player].yaw * 180.f / PI, player[my_player].pitch * 180.f / PI);
         }
         else if (!strncmp(cmd, "click", 5))
         {
@@ -371,12 +371,12 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         if (!strcmp(btn, "left"))
                         {
                                 remote_break_frames = frames;
-                                player[0].breaking = down;
+                                player[my_player].breaking = down;
                         }
                         else
                         {
                                 remote_build_frames = frames;
-                                player[0].building = down;
+                                player[my_player].building = down;
                         }
                         p += snprintf(p, end-p, "ok\n");
                 }
@@ -513,8 +513,8 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 char path[256];
                 snprintf(path, sizeof path, "/tmp/blocko-%s_form.bin", remote_tag());
                 sscanf(cmd + 8, "%255s", path);
-                int pax = player[0].pos.x / BS - scootx;
-                int paz = player[0].pos.z / BS - scootz;
+                int pax = player[my_player].pos.x / BS - scootx;
+                int paz = player[my_player].pos.z / BS - scootz;
                 int ci = pax >> FORM_CELL_BITS, cj = paz >> FORM_CELL_BITS;
                 struct formation *f = NULL;
                 for (int i = ci-1; i <= ci+1 && !f; i++)
@@ -571,8 +571,8 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 // "x z spheres above_sea" lines (absolute block coords)
                 int radius = atoi(cmd + 9);
                 if (radius <= 0) radius = 512;
-                int pax = player[0].pos.x / BS - scootx;
-                int paz = player[0].pos.z / BS - scootz;
+                int pax = player[my_player].pos.x / BS - scootx;
+                int paz = player[my_player].pos.z / BS - scootz;
                 int c0 = (pax - radius) >> FORM_CELL_BITS, c1 = (pax + radius) >> FORM_CELL_BITS;
                 int d0 = (paz - radius) >> FORM_CELL_BITS, d1 = (paz + radius) >> FORM_CELL_BITS;
                 int found = 0;
@@ -681,10 +681,10 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 // fly through solids with no gravity; jump rises, sneak sinks
                 int v;
                 if (sscanf(cmd + 6, "%d", &v) == 1)
-                        player[0].noclip = v;
+                        player[my_player].noclip = v;
                 else
-                        player[0].noclip = !player[0].noclip;
-                p += snprintf(p, end-p, "noclip %d\n", player[0].noclip);
+                        player[my_player].noclip = !player[my_player].noclip;
+                p += snprintf(p, end-p, "noclip %d\n", player[my_player].noclip);
         }
         else if (!strncmp(cmd, "cull", 4))
         {
@@ -790,8 +790,8 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 sscanf(cmd + 3, "%31s", arg);
                 if (!strcmp(arg, "spawn"))
                 {
-                        int pax = player[0].pos.x / BS;
-                        int paz = player[0].pos.z / BS;
+                        int pax = player[my_player].pos.x / BS;
+                        int paz = player[my_player].pos.z / BS;
                         int ok = 0;
                         for (int r = 3; r < 20 && !ok; r++)
                                 ok = mob_spawn(pax + r, paz) || mob_spawn(pax - r, paz)
@@ -849,8 +849,8 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 if (threads > 0) mesh_threads = threads;
 
                 // center the region on the player, clamped inside the window
-                int px = player[0].pos.x / BS;
-                int pz = player[0].pos.z / BS;
+                int px = player[my_player].pos.x / BS;
+                int pz = player[my_player].pos.z / BS;
                 int xlo = ICLAMP(px - w_/2, 0, TILESW - w_);
                 int zlo = ICLAMP(pz - d_/2, 0, TILESD - d_);
                 int ylo = ICLAMP(TILESH/2 - h_/2, 0, TILESH - h_);
@@ -946,24 +946,24 @@ void remote_poll()
         // auto-walk countdown
         if (remote_walk_frames > 0 && --remote_walk_frames == 0)
         {
-                player[0].goingf = 0;
-                player[0].running = 0;
+                player[my_player].goingf = 0;
+                player[my_player].running = 0;
         }
 
         // release "held" mouse buttons once their frame budget runs out
         if (remote_break_frames > 0 && --remote_break_frames == 0)
-                player[0].breaking = 0;
+                player[my_player].breaking = 0;
         if (remote_build_frames > 0 && --remote_build_frames == 0)
-                player[0].building = 0;
+                player[my_player].building = 0;
 
         // noclip flight: constant speed along yaw at fixed altitude
         if (remote_fly_frames > 0)
         {
                 remote_fly_frames--;
-                player[0].pos.x += sinf(player[0].yaw) * remote_fly_speed * BS / 60.f;
-                player[0].pos.z += cosf(player[0].yaw) * remote_fly_speed * BS / 60.f;
-                player[0].pos.y = 4 * BS; // above any terrain
-                player[0].grav = GRAV_ZERO;
+                player[my_player].pos.x += sinf(player[my_player].yaw) * remote_fly_speed * BS / 60.f;
+                player[my_player].pos.z += cosf(player[my_player].yaw) * remote_fly_speed * BS / 60.f;
+                player[my_player].pos.y = 4 * BS; // above any terrain
+                player[my_player].grav = GRAV_ZERO;
         }
 
 #ifndef _WIN32
@@ -1031,9 +1031,9 @@ void console_toggle()
                 console_input[0] = '\0';
                 SDL_StartTextInput(vk.window);
                 // drop any held movement so the player doesn't run off
-                player[0].goingf = player[0].goingb = 0;
-                player[0].goingl = player[0].goingr = 0;
-                player[0].running = player[0].sneaking = 0;
+                player[my_player].goingf = player[my_player].goingb = 0;
+                player[my_player].goingl = player[my_player].goingr = 0;
+                player[my_player].running = player[my_player].sneaking = 0;
         }
         else
                 SDL_StopTextInput(vk.window);

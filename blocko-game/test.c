@@ -79,7 +79,7 @@ void debrief()
                 char xyzbuf[100];
                 snprintf(xyzbuf, 100,
                                 "X=%0.0f Y=%0.0f Z=%0.0f drawdist=%.0f %sreg %sfast %slock",
-                                player[0].pos.x / BS, player[0].pos.y / BS, player[0].pos.z / BS,
+                                player[my_player].pos.x / BS, player[my_player].pos.y / BS, player[my_player].pos.z / BS,
                                 draw_dist,
                                 regulated       ? "" : "no",
                                 fast > 1        ? "" : "no",
@@ -132,9 +132,9 @@ void debrief()
                 static char dir[][8] = {
                         "N (+Z)", "NNE", "NE", "ENE", "E (+X)", "ESE", "SE", "SSE", "S (-Z)", "SSW", "SW", "WSW", "W (-X)", "WNW", "NW", "NNW", "N (+Z)",
                 };
-                int idx = (int)floorf((player[0].yaw + PI / 16.f) / (PI / 8.f));
+                int idx = (int)floorf((player[my_player].yaw + PI / 16.f) / (PI / 8.f));
 
-                snprintf(compass_buf, 20, "%d  %s", (int)(player[0].yaw / PI * 180.f), dir[idx]);
+                snprintf(compass_buf, 20, "%d  %s", (int)(player[my_player].yaw / PI * 180.f), dir[idx]);
                 font_begin(screenw, screenh);
                 font_add_text(compass_buf, screenw/2.1f, 0.f, 0);
                 font_end(1, 1, 1);

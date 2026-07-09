@@ -190,8 +190,8 @@ void main_loop()
 
         while (accumulated_elapsed >= interval)
         {
-                TIMECALL(update_player, (&player[0], 1));
-                hand_animate(&player[0]);
+                TIMECALL(update_player, (&player[my_player], 1));
+                hand_animate(&player[my_player]);
                 TIMECALL(update_mobs, ());
                 update_items();
                 TIMECALL(update_world, ());
@@ -199,7 +199,7 @@ void main_loop()
                 accumulated_elapsed -= interval;
         }
 
-        camplayer = player[0];
+        camplayer = player[my_player];
 
         if (regulated)
         {
@@ -209,7 +209,7 @@ void main_loop()
         remote_poll();
 
         mob_lerp_t = accumulated_elapsed / interval;
-        lerp_camera(accumulated_elapsed / interval, &player[0], &camplayer);
+        lerp_camera(accumulated_elapsed / interval, &player[my_player], &camplayer);
         TIMECALL(step_sunlight, ());
         TIMECALL(step_glolight, ());
         draw_stuff();
@@ -248,7 +248,7 @@ void new_game()
         printf("1st 4 chunks generated, ready to start game\n");
 
         recalc_gndheight(STARTPX/BS, STARTPZ/BS);
-        move_to_ground(&player[0].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
+        move_to_ground(&player[my_player].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
 }
 
 void update_world()
@@ -343,8 +343,8 @@ void scoot(int cx, int cz)
 // so they never get far from the origin (no float precision problems)
 void auto_scoot()
 {
-        int cx = (int)(player[0].pos.x / (BS * CHUNKW));
-        int cz = (int)(player[0].pos.z / (BS * CHUNKD));
+        int cx = (int)(player[my_player].pos.x / (BS * CHUNKW));
+        int cz = (int)(player[my_player].pos.z / (BS * CHUNKD));
         if (cx != VAOW/2 || cz != VAOD/2)
                 scoot(VAOW/2 - cx, VAOD/2 - cz);
 }
@@ -358,8 +358,11 @@ void apply_scoot()
 
                 if (dx || dz)
                 {
-                        player[0].pos.x += dx * BS;
-                        player[0].pos.z += dz * BS;
+                        for (int i = 0; i < NR_PLAYERS; i++)
+                        {
+                                player[i].pos.x += dx * BS;
+                                player[i].pos.z += dz * BS;
+                        }
 
                         mob_scoot(dx, dz);
                         item_scoot(dx, dz);
