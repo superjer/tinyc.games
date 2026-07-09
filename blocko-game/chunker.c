@@ -114,32 +114,29 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 }
 
                 // solid ground: constant runs between the soil band levels
+                BAND(gnd,  lev1, STON);
+                BAND(lev1, lev2, DIRT);
+                BAND(lev2, lev3, DIRT);
+                BAND(lev3, MIN(lev4, hmaph + 4), SAND);
+                BAND(MAX(lev3, hmaph + 4), lev4, STON);
+                BAND(lev4, TILESH-1, GRAN);
+                // surface block: leave the sand band showing at and
+                // below the waterline (beaches and the shallow bed) -
+                // it appears wherever lev3 dips below the local surface.
+                // above the sandy shelf, pick by altitude: bare rock on
+                // the peaks, mountain grass on the upper slopes, then
+                // ordinary grass on down to the shore.
+                if (hmaph < lev3)
+                {
+                        if      (hmaph > SEA_LEVEL + 1) t[hmaph] = SAND; // shallow underwater
+                        else if (hmaph < barren)   ; // bare stone peak (leave the STON band)
+                        else if (hmaph < mtn_line) t[hmaph] = MTGR;
+                        else                       t[hmaph] = GRAS;
+                }
+                // steep cliffs are bare stone below the top two blocks, so the
+                // surface soil/grass stays but the exposed face is rock
                 if (steep)
-                {
-                        BAND(gnd, TILESH-1, STON);
-                }
-                else
-                {
-                        BAND(gnd,  lev1, STON);
-                        BAND(lev1, lev2, DIRT);
-                        BAND(lev2, lev3, DIRT);
-                        BAND(lev3, MIN(lev4, hmaph + 4), SAND);
-                        BAND(MAX(lev3, hmaph + 4), lev4, STON);
-                        BAND(lev4, TILESH-1, GRAN);
-                        // surface block: leave the sand band showing at and
-                        // below the waterline (beaches and the shallow bed) -
-                        // it appears wherever lev3 dips below the local surface.
-                        // above the sandy shelf, pick by altitude: bare rock on
-                        // the peaks, mountain grass on the upper slopes, then
-                        // ordinary grass on down to the shore.
-                        if (hmaph < lev3)
-                        {
-                                if      (hmaph > SEA_LEVEL + 1) t[hmaph] = SAND; // shallow underwater
-                                else if (hmaph < barren)   ; // bare stone peak (leave the STON band)
-                                else if (hmaph < mtn_line) t[hmaph] = MTGR;
-                                else                       t[hmaph] = GRAS;
-                        }
-                }
+                        BAND(gnd + 2, TILESH-1, STON);
                 t[TILESH-1] = GRAN;
 
                 // sprinkle ore through the stone. a positional hash shared
