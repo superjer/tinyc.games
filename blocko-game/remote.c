@@ -223,6 +223,86 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         player[0].pos.x / BS - scootx, player[0].pos.z / BS - scootz,
                         chunk_scootx, chunk_scootz);
         }
+        else if (!strncmp(cmd, "save ", 5))
+        {
+                // append "<seed> <ax> <ay> <az> <name>" to blocko.saves so a
+                // spot can be revisited later (set the seed, then tp there).
+                // Coords are absolute blocks, matching pos/tp.
+                const char *name = cmd + 5;
+                while (*name == ' ') name++;
+                if (!*name)
+                        p += snprintf(p, end-p, "usage: save <name>\n");
+                else
+                {
+                        int ax = player[0].pos.x / BS - scootx;
+                        int ay = player[0].pos.y / BS;
+                        int az = player[0].pos.z / BS - scootz;
+                        FILE *f = fopen("blocko.saves", "a");
+                        if (f)
+                        {
+                                fprintf(f, "%d %d %d %d %s\n", world_seed, ax, ay, az, name);
+                                fclose(f);
+                                p += snprintf(p, end-p, "saved %d %d %d %d %s\n",
+                                        world_seed, ax, ay, az, name);
+                        }
+                        else
+                                p += snprintf(p, end-p, "can't write blocko.saves\n");
+                }
+        }
+        else if (!strncmp(cmd, "load", 4))
+        {
+                // "load <name>" restores a spot saved with `save`: set that
+                // line's seed, regen the world, and tp there. "load" with no
+                // name loads the most recent line. Names may contain spaces;
+                // if several lines share a name, the latest one wins.
+                const char *want = cmd + 4;
+                while (*want == ' ') want++;
+                FILE *f = fopen("blocko.saves", "r");
+                if (!f)
+                {
+                        p += snprintf(p, end-p, "no blocko.saves\n");
+                }
+                else
+                {
+                        char line[512], best[512] = "";
+                        while (fgets(line, sizeof line, f))
+                        {
+                                line[strcspn(line, "\n")] = '\0';
+                                int s, ax, ay, az, off = 0;
+                                if (sscanf(line, "%d %d %d %d %n", &s, &ax, &ay, &az, &off) < 4)
+                                        continue;
+                                if (!*want || !strcmp(line + off, want))
+                                        snprintf(best, sizeof best, "%s", line);
+                        }
+                        fclose(f);
+
+                        if (!best[0])
+                        {
+                                if (*want) p += snprintf(p, end-p, "no save named '%s'\n", want);
+                                else       p += snprintf(p, end-p, "blocko.saves is empty\n");
+                        }
+                        else
+                        {
+                                int s, ax, ay, az, off = 0;
+                                sscanf(best, "%d %d %d %d %n", &s, &ax, &ay, &az, &off);
+                                world_seed = s;
+                                // regen: invalidate every chunk's gen stamp
+                                for (int i = 0; i < VAOD; i++) for (int j = 0; j < VAOW; j++)
+                                {
+                                        chunk_stamp[i][j].ax = INT_MIN;
+                                        chunk_stamp[i][j].az = INT_MIN;
+                                        chunk_estamp[i][j].ax = INT_MIN;
+                                        chunk_estamp[i][j].az = INT_MIN;
+                                }
+                                // tp to the saved absolute location
+                                player[0].pos.x = (ax + scootx) * BS;
+                                player[0].pos.y = ay * BS;
+                                player[0].pos.z = (az + scootz) * BS;
+                                player[0].grav = GRAV_ZERO;
+                                p += snprintf(p, end-p, "loaded %s\n", best);
+                        }
+                }
+        }
         else if (!strncmp(cmd, "tp ", 3))
         {
                 float ax, az;
@@ -680,6 +760,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 // one line per group so it fits the on-screen console
                 p += snprintf(p, end-p, "commands:\n"
                         "fps [reset] | timings [reset] | pos | tp <ax> <az>\n"
+                        "save <name> | load [<name>]\n"
                         "walk <frames> | fly <frames> <bl/s> | turn <deg>\n"
                         "look [<yaw> <pitch>] | click <left|right> [frames] | target | patch\n"
                         "dist <blocks> | debounce <frames> | tint [<0|1>]\n"
