@@ -18,6 +18,7 @@ static int tile_face_tex(int t, int orient)
         switch (t)
         {
                 case GRAS: return orient == UP ? 0 : orient == DOWN ? 2 : 1;
+                case MTGR: return orient == UP ? 37 : orient == DOWN ? 2 : 38;
                 case DIRT: return 2;
                 case STON: return 5;
                 case SAND: return 6;
@@ -29,6 +30,7 @@ static int tile_face_tex(int t, int orient)
                 case GRAN: return 15;
                 case RLEF: return 16;
                 case YLEF: return 17;
+                case SLEF: return 39;
                 case LITE: return 18;
                 default:   return 5;
         }

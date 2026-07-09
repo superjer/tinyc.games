@@ -66,6 +66,16 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 int lev3 = SEA_LEVEL      + (int)(reejin * 50.f);
                 int lev4 = SEA_LEVEL + 45 + (int)(reejin * 50.f);
 
+                // vegetation lines, by absolute altitude (smaller y = higher):
+                // ordinary grass gives way to mountain grass (MTGR) well above
+                // the shore at mtn_line, and MTGR gives way to bare rock at
+                // barren near the peaks. a fine noise ragged-edges both so they
+                // aren't clean contours. keyed to altitude, not the soil bands,
+                // so mountain grass never creeps back down toward sea level.
+                float rough = noise(ax, az, 40, 0x51ef, 1) - 0.5f;
+                int mtn_line = SEA_LEVEL - 55 + (int)(rough * 16.f); // grass -> MTGR
+                int barren   = SEA_LEVEL - 98 + (int)(rough * 26.f); // MTGR -> rock
+
                 int flo[16], fhi[16];
                 int fn = form_spans(ax, az, flo, fhi, 16);
 
@@ -104,12 +114,12 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                         int cap = MIN(l + 3, h + 1);
                         for (int y = l; y < cap; y++)
                         {
-                                if      (y < lev1) t[y] = STON;
-                                else if (y < lev2) t[y] = DIRT;
-                                else if (y < lev3) t[y] = y == l ?
+                                if      (y < barren)   t[y] = STON;
+                                else if (y < mtn_line) t[y] = (y == l) ? MTGR : DIRT;
+                                else if (y < lev3)     t[y] = y == l ?
                                         (y > SEA_LEVEL ? SAND : GRAS) : DIRT;
-                                else if (y < lev4) t[y] = SAND;
-                                else               t[y] = STON;
+                                else if (y < lev4)     t[y] = SAND;
+                                else                   t[y] = STON;
                         }
                         memset(t + cap, STON, h + 1 - cap);
                 }
@@ -127,10 +137,33 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                         BAND(lev3, MIN(lev4, hmaph + 4), SAND);
                         BAND(MAX(lev3, hmaph + 4), lev4, STON);
                         BAND(lev4, TILESH-1, GRAN);
-                        if (hmaph >= lev2 && hmaph < lev3) // surface block
-                                t[hmaph] = hmaph > SEA_LEVEL + 1 ? SAND : GRAS;
+                        // surface block: leave the sand band showing at and
+                        // below the waterline (beaches and the shallow bed) -
+                        // it appears wherever lev3 dips below the local surface.
+                        // above the sandy shelf, pick by altitude: bare rock on
+                        // the peaks, mountain grass on the upper slopes, then
+                        // ordinary grass on down to the shore.
+                        if (hmaph < lev3)
+                        {
+                                if      (hmaph > SEA_LEVEL + 1) t[hmaph] = SAND; // shallow underwater
+                                else if (hmaph < barren)   ; // bare stone peak (leave the STON band)
+                                else if (hmaph < mtn_line) t[hmaph] = MTGR;
+                                else                       t[hmaph] = GRAS;
+                        }
                 }
                 t[TILESH-1] = GRAN;
+
+                // sprinkle ore through the stone. a positional hash shared
+                // across each 2x2x2 cell clumps hits into little veins rather
+                // than lone specks; only stone converts, so grass/dirt/sand
+                // surfaces and the deep granite are left alone
+                for (int y = gnd; y < TILESH-1; y++)
+                {
+                        if (t[y] != STON) continue;
+                        unsigned seed = SEED3(ax >> 1, y >> 1, az >> 1);
+                        if      (RANDP(5)) t[y] = ORE;  // a real ore vein
+                        else if (RANDP(7)) t[y] = OREH; // a hint of ore in the rock
+                }
         }
         #undef BAND
         gen_pass(&t0, GEN_SOIL);
@@ -321,7 +354,7 @@ void gen_chunk_pass2(int cx, int cz)
         if (!tree_enable) randp = 0;
         if (randp) while (RANDP(randp))
         {
-                char leaves = RANDBOOL ? RLEF : YLEF;
+                char lowland = RANDBOOL ? RLEF : YLEF;
                 float radius = RANDF(3.f, 6.f);
                 int x = xlo + RANDI(5, CHUNKW - 5);
                 int z = zlo + RANDI(5, CHUNKD - 5);
@@ -330,8 +363,11 @@ void gen_chunk_pass2(int cx, int cz)
                         if (TT_(x, y, z) == OPEN)
                                 continue;
 
-                        if (TT_(x, y, z) != GRAS && TT_(x, y, z) != DIRT)
+                        if (TT_(x, y, z) != GRAS && TT_(x, y, z) != DIRT && TT_(x, y, z) != MTGR)
                                 break;
+
+                        // spruce grows on the mountain grass, leafy trees below
+                        char leaves = TT_(x, y, z) == MTGR ? SLEF : lowland;
 
                         int yy = y;
                         for (; yy >= y - (int)RANDI(5, 7); yy--) // height

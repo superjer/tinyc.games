@@ -10,7 +10,7 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
         if (T_(x, y, z) == WATR)
                 incoming_light--; // water blocks more light
 
-        if (T_(x, y, z) == RLEF || T_(x, y, z) == YLEF)
+        if (T_(x, y, z) == RLEF || T_(x, y, z) == YLEF || T_(x, y, z) == SLEF)
         {
                 incoming_light--; // leaves block more light
                 if (incoming_light) incoming_light--;
@@ -62,7 +62,7 @@ void sun_enqueue_raw(int x, int y, int z, unsigned char incoming_light)
         if (T_(x, y, z) == WATR)
                 incoming_light--; // water blocks more light
 
-        if (T_(x, y, z) == RLEF || T_(x, y, z) == YLEF)
+        if (T_(x, y, z) == RLEF || T_(x, y, z) == YLEF || T_(x, y, z) == SLEF)
         {
                 incoming_light--; // leaves block more light
                 if (incoming_light) incoming_light--;
@@ -98,7 +98,7 @@ void glo_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
         if (T_(x, y, z) == WATR)
                 incoming_light--; // water blocks more light
 
-        if (T_(x, y, z) == RLEF || T_(x, y, z) == YLEF)
+        if (T_(x, y, z) == RLEF || T_(x, y, z) == YLEF || T_(x, y, z) == SLEF)
         {
                 incoming_light--; // leaves block more light
                 if (incoming_light) incoming_light--;

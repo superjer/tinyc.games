@@ -15,12 +15,12 @@
 
 // every block you can hold
 static int placeable[] = {
-        GRAS, DIRT, SAND, STON, GRAN, WOOD,
-        ORE, OREH, HARD, RLEF, YLEF, WATR
+        GRAS, MTGR, DIRT, SAND, STON, GRAN, WOOD,
+        ORE, OREH, HARD, RLEF, YLEF, SLEF, WATR
 };
 #define NR_PLACEABLE ((int)(sizeof placeable / sizeof *placeable))
 
-static int held_index = 8; // HARD, matching the old hard-coded place block
+static int held_index = 9; // HARD, matching the old hard-coded place block
 
 // spin the wheel: dir = +1 next block, -1 previous, wrapping around the list
 void held_cycle(int dir)

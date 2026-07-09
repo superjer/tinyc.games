@@ -15,9 +15,11 @@
 #define GRG1 45
 #define GRG2 46
 #define GRAS 47
+#define MTGR 48            // mountain grass
 
 #define RLEF 60
 #define YLEF 61
+#define SLEF 62            // spruce leaves
 
 #define BARR 64
 
@@ -25,7 +27,7 @@
 #define OPEN 75            // empty space
 
 // Blocks that faces should be drawn against (transparent or non-solid)
-#define IS_SEE_THROUGH(t) ((t) >= OPEN || (t) == RLEF || (t) == YLEF)
+#define IS_SEE_THROUGH(t) ((t) >= OPEN || (t) == RLEF || (t) == YLEF || (t) == SLEF)
 #define WATR 76
 #define LITE 77
 
