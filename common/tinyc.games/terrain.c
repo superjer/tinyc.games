@@ -4,6 +4,7 @@
 #include <math.h>
 #include "taylor_noise.c"
 #include "utils.c"
+#include "warp_config.c"
 #include "ledge_config.c"
 
 _Thread_local int get_height_hit, get_height_miss;
@@ -91,60 +92,111 @@ float get_height(int x, int y)
         return val;
 }
 
+// one domain-warp key point: a spiral that twists the sampling grid or a
+// bubble that bulges/pinches it. position, radius, kind, strength and spin are
+// hashed per cell + slot, then cached so the raster scan derives them once per
+// cell rather than per sample. all knobs live in warp_config.c.
+struct warp_kp {
+        float ox, oy, radius, strength;
+        char is_bubble;
+        int nseed;              // seed for the spiral's angle-variation noise
+};
+
+struct warp_cell {
+        int ci, cj, seed, n;
+        struct warp_kp kp[WARP_MAX];
+};
+
+static struct warp_cell *warp_cell_get(int ci, int cj)
+{
+        static _Thread_local struct warp_cell cells[WARP_CACHE];
+        struct warp_cell *wc = &cells[noise_hash(ci, cj, world_seed ^ WARP_SALT_CELL) & (WARP_CACHE - 1)];
+        if (wc->ci == ci && wc->cj == cj && wc->seed == world_seed)
+                return wc;
+        wc->ci = ci;
+        wc->cj = cj;
+        wc->seed = world_seed;
+        wc->n = 0;
+
+        // low-frequency density field: warps cluster in some regions, skip others
+        float density = remap(noise(ci * (int)WARP_CELL, cj * (int)WARP_CELL,
+                        WARP_DENSITY_SZ, world_seed ^ WARP_SALT_DENSITY, 2),
+                        WARP_DENSITY_LO, WARP_DENSITY_HI, 0.f, 1.f);
+        if (density <= 0.f) return wc;
+
+        unsigned s = noise_hash(ci, cj, world_seed ^ WARP_SALT_CELL);
+        if (!s) s = 1;
+
+        for (int k = 0; k < WARP_MAX; k++)
+        {
+                float slot = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+                float jx = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+                float jy = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+                float rr = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+                float rt = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+                float rs = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+                float rsign = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+
+                if (slot >= density) continue; // this slot stays empty
+
+                struct warp_kp *w = &wc->kp[wc->n++];
+                w->ox = ci * WARP_CELL + jx * WARP_CELL;
+                w->oy = cj * WARP_CELL + jy * WARP_CELL;
+                w->radius = WARP_R_MIN + rr * (WARP_R_MAX - WARP_R_MIN);
+                w->is_bubble = (rt < WARP_BUBBLE_FRAC);
+                float sign = (rsign < .5f) ? -1.f : 1.f;
+                if (w->is_bubble)
+                        w->strength = sign * (WARP_BUBBLE_STR_MIN + rs * (WARP_BUBBLE_STR_MAX - WARP_BUBBLE_STR_MIN));
+                else
+                        w->strength = sign * (WARP_SPIRAL_STR_MIN + rs * (WARP_SPIRAL_STR_MAX - WARP_SPIRAL_STR_MIN));
+                w->nseed = (int)noise_hash(ci, cj * WARP_MAX + k, world_seed ^ WARP_SALT_NOISE);
+        }
+        return wc;
+}
+
 static float terrain_raw_height(int x, int y)
 {
-        int x2 = x;
-        int y2 = y;
-
-        // wacky spiral rotation
+        // scattered domain warp: spirals twist the sampling grid, bubbles bulge
+        // it. every active key point near (x,y) accumulates its displacement,
+        // then the base height is sampled at the warped coordinate. everything
+        // downstream keeps using the true (x,y).
+        float ddx = 0.f, ddy = 0.f;
+        int qcx = (int)floorf(x / WARP_CELL);
+        int qcy = (int)floorf(y / WARP_CELL);
+        for (int ci = qcx-1; ci <= qcx+1; ci++)
+        for (int cj = qcy-1; cj <= qcy+1; cj++)
         {
-                int originx = 300;
-                int originy = 150;
-                int tx = x2 - originx;
-                int ty = y2 - originy;
-                float dist = sqrtf(tx * tx + ty * ty) / 600.f;
-                if (dist < 1.f)
+                struct warp_cell *wc = warp_cell_get(ci, cj);
+                for (int k = 0; k < wc->n; k++)
                 {
-                        float ang =  .7f * (1.f - dist) * (1.f - dist) * (1.f - dist)
-                                * remap(noise(x, y, 1080, world_seed, 3), .5f, 1.f, 0.f, 10.f);
-                        x2 = originx + tx * cosf(ang) - ty * sinf(ang);
-                        y2 = originy + tx * sinf(ang) + ty * cosf(ang);
+                        struct warp_kp *w = &wc->kp[k];
+                        float tx = x - w->ox, ty = y - w->oy;
+                        float dist = sqrtf(tx * tx + ty * ty) / w->radius;
+                        if (dist >= 1.f) continue;
+
+                        if (w->is_bubble)
+                        {
+                                float dd = dist;
+                                if (dd < .5f) dd = 1.f - dd; // ring bulge peaks mid-radius
+                                float m = (1.f - dd) * (1.f - dd) * w->strength;
+                                ddx += (tx / dd) * m;
+                                ddy += (ty / dd) * m;
+                        }
+                        else // spiral: rotate (x,y) about the key point by ang
+                        {
+                                float f = 1.f - dist;
+                                f = f * f * f;               // cubic falloff to the rim
+                                float ang = w->strength * f * remap(
+                                        noise(x, y, WARP_SPIRAL_NOISE_SZ, w->nseed, 3),
+                                        .5f, 1.f, 0.f, WARP_SPIRAL_ANG);
+                                float cs = cosf(ang), sn = sinf(ang);
+                                ddx += tx * (cs - 1.f) - ty * sn;
+                                ddy += tx * sn + ty * (cs - 1.f);
+                        }
                 }
         }
-
-        // wacky spiral rotation reverse!
-        {
-                int originx = 350;
-                int originy = 100;
-                int tx = x2 - originx;
-                int ty = y2 - originy;
-                float dist = sqrtf(tx * tx + ty * ty) / 1000.f;
-                if (dist < 1.f)
-                {
-                        float ang = -.7f * (1.f - dist) * (1.f - dist) * (1.f - dist)
-                                * remap(noise(x, y, 1120, world_seed, 3), .5f, 1.f, 0.f, 10.f);
-                        x2 = originx + tx * cosf(ang) - ty * sinf(ang);
-                        y2 = originy + tx * sinf(ang) + ty * cosf(ang);
-                }
-        }
-
-        // bubble
-        {
-                int originx = 700;
-                int originy = 700;
-                int tx = x2 - originx;
-                int ty = y2 - originy;
-                float dist = sqrtf(tx * tx + ty * ty) / 500.f;
-                if (dist < 1.f)
-                {
-                        if (dist < .5f) dist = 1.f - dist;
-                        float nx = tx / dist;
-                        float ny = ty / dist;
-                        float m = (1.f - dist) * (1.f - dist) * 5.f;
-                        x2 += nx * m;
-                        y2 += ny * m;
-                }
-        }
+        int x2 = (int)(x + ddx);
+        int y2 = (int)(y + ddy);
 
         float h = get_height(x2, y2);
 
