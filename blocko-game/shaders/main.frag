@@ -155,7 +155,7 @@ void main(void) {
 
     vec3 glint = vec3(0.0);
     vec3 sky;
-    if (ubo.shadow_mapping) {
+    {
         // Diffuse lighting
         vec3 light_dir = normalize(ubo.light_pos - world_pos.xyz);
         float diff = max(dot(light_dir, N), 0.0);
@@ -179,7 +179,11 @@ void main(void) {
         vec4 shadow_pos_ext_a = ubo.shadow_space[4] * shadow_sample_pos;
         vec4 shadow_pos_ext_b = ubo.shadow_space[5] * shadow_sample_pos;
 
-        float unshadow;
+        // Toggling shadow mapping off (M key) skips the maps and leaves unshadow at
+        // 1.0 - as if nothing casts a shadow - so the lighting model is otherwise
+        // identical, instead of switching to a separate ambient-only path.
+        float unshadow = 1.0;
+        if (ubo.shadow_mapping) {
         if (shadow_pos.x > 0.007 && shadow_pos.x < 0.993 && shadow_pos.y > 0.007 && shadow_pos.y < 0.993) {
             // Near cascade - soft shadows with PCF
             unshadow = sampleShadowPCF(shadow_near, shadow_pos.xyz, 0.006, rotation);
@@ -218,6 +222,7 @@ void main(void) {
             float edge = clamp(max(fx, fy), 0.0, 1.0);
             unshadow = max(unshadow, edge_lit * edge);
         }
+        }
 
         // Combine shadow with lighting
         float s0 = 0.6 + 0.4 * ubo.sharpness;
@@ -247,9 +252,6 @@ void main(void) {
         }
 
         sky = (s1 * illum + s0 * directional) * light_tint * ubo.day_color;
-    } else {
-        // No shadow mapping - just use ambient with day_color (no directional to warm/dim)
-        sky = vec3(illum) * ubo.day_color;
     }
 
     vec3 glo_contrib = vec3(glow) * ubo.glo_color;
