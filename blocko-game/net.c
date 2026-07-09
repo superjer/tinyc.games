@@ -53,6 +53,7 @@ enum {
         MSG_MOB,       // s->c: u32 total kills, then per mob u8 slot, size, hurt, dying, f32 abs xyz, yaw
         MSG_PUNCH,     // c->s: u8 mob slot, f32 aim x, f32 aim z
         MSG_BONK,      // s->c: f32 knock x, f32 knock z - a slime hit YOU
+        MSG_TIME,      // s->c: f32 sun_pitch, so sunsets stay shared
 };
 
 #define MOB_ENTRY 20 // bytes per mob in a MSG_MOB snapshot
@@ -117,7 +118,11 @@ static void conn_close(struct conn *c)
         free(c->in);  c->in  = NULL; c->in_len  = c->in_cap  = 0;
         free(c->out); c->out = NULL; c->out_len = c->out_cap = 0;
         if (net_mode == NET_SERVER && c->helloed)
+        {
                 fprintf(stderr, "net: player %d left\n", c->player);
+                net_state[c->player].seen = 0; // their ghost leaves at once here;
+                                               // other clients age it out in 2s
+        }
         c->helloed = 0;
 }
 
@@ -322,6 +327,10 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                                 mob[i].alive = 0;
                 break;
         }
+        case MSG_TIME:
+                if (len < 4) return;
+                sun_pitch = get_f32(p); // the sun drifts apart slowly; snap to match
+                break;
         case MSG_BONK:
         {
                 // a slime on the server bonked ME: same knockback the host
@@ -426,6 +435,19 @@ static void net_send_my_state()
         else for (int i = 0; i < NET_MAX_CLIENTS; i++)
                 if (conns[i].helloed)
                         conn_send(&conns[i], MSG_PLAYER, m, sizeof m);
+}
+
+// server: keep everyone's sun where mine is, every ~5 seconds
+static void net_send_time()
+{
+        static int last_sent = -300;
+        if (pframe - last_sent < 300) return;
+        last_sent = pframe;
+        unsigned char m[4];
+        put_f32(m, sun_pitch);
+        for (int i = 0; i < NET_MAX_CLIENTS; i++)
+                if (conns[i].helloed)
+                        conn_send(&conns[i], MSG_TIME, m, sizeof m);
 }
 
 // server: snapshot every living mob to every client at ~15Hz (every 4th tick)
@@ -574,7 +596,10 @@ void net_poll()
                 net_smooth_players();
         }
         if (net_mode == NET_SERVER)
+        {
                 net_send_mobs();
+                net_send_time();
+        }
         else if (net_mode == NET_CLIENT)
                 net_smooth_mobs();
 }

@@ -156,8 +156,11 @@ world with the new values. With no arguments, each prints its current knobs.
 
 One player hosts, others join; the world itself never travels — a joining
 client gets the seed and the edit overlay, generates terrain locally, and
-replays the edits. Also available at launch as `--serve [port]` and
-`--connect <host[:port]>` (default port 26262).
+replays the edits. After that the wire carries events: block edits (both
+ways), player states at 20Hz (drawn as cube-folk), mob snapshots at 15Hz
+(the server owns the slimes; clients send punches and receive bonks), and
+the sun's position every few seconds. Also available at launch as
+`--serve [port]` and `--connect <host[:port]>` (default port 26262).
 
 | Command | What it does |
 |---|---|
