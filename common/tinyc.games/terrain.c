@@ -4,6 +4,7 @@
 #include <math.h>
 #include "taylor_noise.c"
 #include "utils.c"
+#include "ledge_config.c"
 
 _Thread_local int get_height_hit, get_height_miss;
 int world_seed = 160659;
@@ -240,67 +241,87 @@ static float terrain_raw_height(int x, int y)
         return h;
 }
 
-#define LEDGE_CELL 192.f  // key-point spacing grid (blocks)
-
-// one ledge key point per grid cell. everything about it (whether it exists,
-// where inside the cell it sits, its radius, flat-core fraction and outline
-// seed) is hashed from the cell, then cached so the raster scan derives it once
-// per cell instead of once per sample. target (the natural height the ledge
-// flattens to) is filled lazily the first time a query actually lands inside.
+// each grid cell holds 0..LEDGE_MAX ledge key points. how many is steered by a
+// low-frequency density field, so whole regions come out dense with shelves,
+// sparse, or bare. everything about each key point (position within the cell,
+// radius, flat-core fraction, orientation, wobble) is hashed from the cell +
+// slot, then cached so the raster scan derives it once per cell rather than per
+// sample. target (the natural height the ledge flattens to) is filled lazily
+// the first time a query actually lands inside. all tuning knobs live in
+// ledge_config.c.
 struct ledge_kp {
-        int ci, cj, seed;
-        char active, have_target;
+        char have_target;
         float kx, ky, R, core, target;
         float ca, sa, aspect;   // orientation + across-axis stretch (ovals/ridges)
         float wob_amp;          // rim wobble strength (high = pinched/degenerate)
         int kseed;
 };
 
-static struct ledge_kp *ledge_cell(int ci, int cj)
+struct ledge_cell {
+        int ci, cj, seed, n;
+        struct ledge_kp kp[LEDGE_MAX];
+};
+
+static struct ledge_cell *ledge_cell_get(int ci, int cj)
 {
-        static _Thread_local struct ledge_kp cells[8192];
-        struct ledge_kp *c = &cells[noise_hash(ci, cj, world_seed ^ 0x1ed9e5) & 8191];
-        if (c->ci == ci && c->cj == cj && c->seed == world_seed)
-                return c;
-        c->ci = ci;
-        c->cj = cj;
-        c->seed = world_seed;
-        c->active = 0;
-        c->have_target = 0;
+        static _Thread_local struct ledge_cell cells[LEDGE_CACHE];
+        struct ledge_cell *cc = &cells[noise_hash(ci, cj, world_seed ^ LEDGE_SALT_CELL) & (LEDGE_CACHE - 1)];
+        if (cc->ci == ci && cc->cj == cj && cc->seed == world_seed)
+                return cc;
+        cc->ci = ci;
+        cc->cj = cj;
+        cc->seed = world_seed;
+        cc->n = 0;
 
-        unsigned s = noise_hash(ci, cj, world_seed ^ 0x1ed9e5);
+        // low-frequency density field: broad regions run thick with ledges,
+        // others have a few, others none. each slot is filled with probability
+        // = density, so the count varies cell to cell within a region.
+        float density = remap(noise(ci * (int)LEDGE_CELL, cj * (int)LEDGE_CELL,
+                        LEDGE_DENSITY_SZ, world_seed ^ LEDGE_SALT_DENSITY, 2),
+                        LEDGE_DENSITY_LO, LEDGE_DENSITY_HI, 0.f, 1.f);
+        if (density <= 0.f) return cc;
+
+        unsigned s = noise_hash(ci, cj, world_seed ^ LEDGE_SALT_CELL);
         if (!s) s = 1;
-        float jx = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
-        float jy = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
-        float ractive = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
-        float rr = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
-        float rc = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
-        float rang = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
-        float rasp = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
-        float rwob = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
 
-        if (ractive > .85f) return c; // ~85% of in-range cells host a ledge
+        for (int k = 0; k < LEDGE_MAX; k++)
+        {
+                float slot = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+                float jx = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+                float jy = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+                float rr = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+                float rc = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+                float rang = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+                float rasp = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
+                float rwob = (noise_rng(&s) >> 8) * (1.f / 0x1000000);
 
-        c->kx = ci * LEDGE_CELL + jx * LEDGE_CELL;
-        c->ky = cj * LEDGE_CELL + jy * LEDGE_CELL;
+                if (slot >= density) continue; // this slot stays empty
 
-        // only inside mountain ranges (same mask as the range pass)
-        float mr = remap(noise((int)c->kx, (int)c->ky, 4000,
-                        world_seed^11223344, 2), .60f, .72f, 0.f, 1.f);
-        if (mr <= 0.f) return c;
+                float kx = ci * LEDGE_CELL + jx * LEDGE_CELL;
+                float ky = cj * LEDGE_CELL + jy * LEDGE_CELL;
 
-        c->R = 5.f + rr * 75.f;      // radius 5..80 (10..160 across)
-        c->core = .30f + rc * .40f;  // flat-top fraction 0.3..0.7
+                // only inside mountain ranges (mirrors the range mask in terrain_raw_height)
+                float mr = remap(noise((int)kx, (int)ky, LEDGE_RANGE_SZ,
+                                world_seed ^ LEDGE_RANGE_SEED, 2),
+                                LEDGE_RANGE_LO, LEDGE_RANGE_HI, 0.f, 1.f);
+                if (mr <= 0.f) continue;
 
-        float ang = rang * 6.2831853f;
-        c->ca = cosf(ang);
-        c->sa = sinf(ang);
-        c->aspect = 1.f + rasp * 2.5f;   // 1..3.5: round through long ridge
-        c->wob_amp = .7f + rwob * 1.4f;  // 0.7..2.1: gentle rim through pinched-off lobes
+                struct ledge_kp *c = &cc->kp[cc->n++];
+                c->have_target = 0;
+                c->kx = kx;
+                c->ky = ky;
+                c->R = LEDGE_R_MIN + rr * (LEDGE_R_MAX - LEDGE_R_MIN);
+                c->core = LEDGE_CORE_MIN + rc * (LEDGE_CORE_MAX - LEDGE_CORE_MIN);
 
-        c->kseed = (int)noise_hash(ci, cj, world_seed ^ 0x513a9e);
-        c->active = 1;
-        return c;
+                float ang = rang * LEDGE_TWO_PI;
+                c->ca = cosf(ang);
+                c->sa = sinf(ang);
+                c->aspect = LEDGE_ASPECT_MIN + rasp * (LEDGE_ASPECT_MAX - LEDGE_ASPECT_MIN);
+                c->wob_amp = LEDGE_WOB_MIN + rwob * (LEDGE_WOB_MAX - LEDGE_WOB_MIN);
+
+                c->kseed = (int)noise_hash(ci, cj * LEDGE_SLOT_SPREAD + k, world_seed ^ LEDGE_SALT_KP);
+        }
+        return cc;
 }
 
 float get_filtered_height(int x, int y)
@@ -321,49 +342,54 @@ float get_filtered_height(int x, int y)
                 for (int ci = qcx-1; ci <= qcx+1; ci++)
                 for (int cj = qcy-1; cj <= qcy+1; cj++)
                 {
-                        struct ledge_kp *c = ledge_cell(ci, cj);
-                        if (!c->active) continue;
-
-                        float dx = x - c->kx, dy = y - c->ky;
-                        float draw = sqrtf(dx * dx + dy * dy);
-                        if (draw >= c->R * (.25f + c->wob_amp)) continue; // past max wobbled rim
-
-                        // anisotropic distance: rotate into the key point's frame and
-                        // stretch the across-axis, turning circles into ovals and ridges
-                        float rx =  dx * c->ca + dy * c->sa;
-                        float ry = (-dx * c->sa + dy * c->ca) * c->aspect;
-                        float d = sqrtf(rx * rx + ry * ry);
-
-                        // two octaves of coherent noise carve lobes, bites and pinches
-                        // into the rim; a big amplitude can starve the radius to nothing,
-                        // splitting the shelf into crescents or disconnected patches
-                        float w1 = noise(x, y, (int)(c->R * 1.3f) + 8, c->kseed, 2);
-                        float w2 = noise(x, y, (int)(c->R * 0.5f) + 5, c->kseed ^ 0x2b7, 2);
-                        float wob = w1 * .6f + w2 * .4f;   // ~0..1
-                        float rad = c->R * (.25f + c->wob_amp * wob);
-                        if (rad < 0.5f) rad = 0.5f;
-
-                        float t = d / rad;             // 0 center .. 1 rim
-                        if (t >= 1.f) continue;
-
-                        float w;
-                        if (t <= c->core)
-                                w = 1.f;               // flat shelf
-                        else
+                        struct ledge_cell *cc = ledge_cell_get(ci, cj);
+                        for (int k = 0; k < cc->n; k++)
                         {
-                                w = (1.f - t) / (1.f - c->core);
-                                w = w * w * (3.f - 2.f * w); // smoothstep ease-out
-                        }
+                                struct ledge_kp *c = &cc->kp[k];
 
-                        if (w <= best_w) continue;     // a stronger ledge already wins here
-                        if (!c->have_target)
-                        {
-                                c->target = terrain_raw_height((int)c->kx, (int)c->ky);
-                                c->have_target = 1;
+                                float dx = x - c->kx, dy = y - c->ky;
+                                float draw = sqrtf(dx * dx + dy * dy);
+                                if (draw >= c->R * (LEDGE_RAD_BASE + c->wob_amp)) continue; // past max wobbled rim
+
+                                // anisotropic distance: rotate into the key point's frame and
+                                // stretch the across-axis, turning circles into ovals and ridges
+                                float rx =  dx * c->ca + dy * c->sa;
+                                float ry = (-dx * c->sa + dy * c->ca) * c->aspect;
+                                float d = sqrtf(rx * rx + ry * ry);
+
+                                // two octaves of coherent noise carve lobes, bites and pinches
+                                // into the rim; a big amplitude can starve the radius to nothing,
+                                // splitting the shelf into crescents or disconnected patches
+                                float w1 = noise(x, y, (int)(c->R * LEDGE_WOB1_FREQ) + LEDGE_WOB1_FLOOR, c->kseed, 2);
+                                float w2 = noise(x, y, (int)(c->R * LEDGE_WOB2_FREQ) + LEDGE_WOB2_FLOOR, c->kseed ^ LEDGE_SALT_WOB2, 2);
+                                float wob = w1 * LEDGE_WOB1_WT + w2 * LEDGE_WOB2_WT;   // ~0..1
+                                float rad = c->R * (LEDGE_RAD_BASE + c->wob_amp * wob);
+                                if (rad < LEDGE_RAD_FLOOR) rad = LEDGE_RAD_FLOOR;
+
+                                float t = d / rad;             // 0 center .. 1 rim
+                                if (t >= 1.f) continue;
+
+                                float w;
+                                if (t <= c->core)
+                                        w = 1.f;               // flat shelf
+                                else
+                                {
+                                        w = (1.f - t) / (1.f - c->core);
+                                        w = w * w * (3.f - 2.f * w); // smoothstep ease-out
+                                }
+
+                                if (w <= best_w) continue;     // a stronger ledge already wins here
+                                if (!c->have_target)
+                                {
+                                        c->target = terrain_raw_height((int)c->kx, (int)c->ky);
+                                        c->have_target = 1;
+                                }
+                                best_w = w;
+                                best_target = c->target;
+                                if (best_w >= 1.f) goto ledge_done; // on a flat core; nothing beats it
                         }
-                        best_w = w;
-                        best_target = c->target;
                 }
+ledge_done:
 
                 if (best_w > 0.f)
                         h = lerp(best_w, h, best_target);

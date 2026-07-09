@@ -355,7 +355,6 @@ void gen_chunk_pass2(int cx, int cz)
         if (randp) while (RANDP(randp))
         {
                 char lowland = RANDBOOL ? RLEF : YLEF;
-                float radius = RANDF(3.f, 6.f);
                 int x = xlo + RANDI(5, CHUNKW - 5);
                 int z = zlo + RANDI(5, CHUNKD - 5);
                 for (int y = 10; y < TILESH-2; y++)
@@ -370,14 +369,26 @@ void gen_chunk_pass2(int cx, int cz)
                         char leaves = TT_(x, y, z) == MTGR ? SLEF : lowland;
 
                         int yy = y;
-                        for (; yy >= y - (int)RANDI(5, 7); yy--) // height
+                        int trunklo = 5;
+                        int trunkhi = (leaves == SLEF) ? 9 : 7;
+                        int trunkh = RANDI(trunklo, trunkhi);
+                        int leafbaselo = (leaves == SLEF) ? 1 : 2;
+                        int leafbasehi = (leaves == SLEF) ? 2 : 4;
+                        int tipheight = (leaves == SLEF) ? 18 : 3;
+                        int radlo = (leaves == SLEF) ? 1.1f : 3.f;
+                        int radhi = (leaves == SLEF) ? 4.f : 5.f;
+
+                        float radius = RANDF(radlo, radhi);
+
+                        for (; yy >= y - trunkh; yy--) // up to wood height
                                 TT_(x, yy, z) = WOOD;
 
-                        int ymax = yy + RANDI(2, 4);
+                        int ymax = yy + RANDI(leafbaselo, leafbasehi);
 
-                        for (int i = x-3; i <= x+3; i++) for (int j = yy-3; j <= ymax; j++) for (int k = z-3; k <= z+3; k++)
+                        for (int i = x-3; i <= x+3; i++) for (int j = yy-tipheight; j <= ymax; j++) for (int k = z-3; k <= z+3; k++)
                         {
-                                float dist = (i-x) * (i-x) + (j-yy) * (j-yy) * 4.f + (k-z) * (k-z);
+                                float hlax = (leaves == SLEF && j <= yy) ? .2f : 4.f;
+                                float dist = (i-x) * (i-x) + (j-yy) * (j-yy) * hlax + (k-z) * (k-z);
                                 if (TT_(i, j, k) == OPEN && dist < radius * radius)
                                         TT_(i, j, k) = leaves;
                         }
