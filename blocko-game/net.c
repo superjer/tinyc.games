@@ -15,24 +15,27 @@
 // by hand so struct padding never leaks into the protocol. Sockets are
 // nonblocking and polled once per frame on the main thread (net_poll, next to
 // remote_poll), with growable per-connection buffers absorbing partial reads
-// and writes. Like the debug socket, unix-only for now.
+// and writes.
 
 int net_mode; // NET_OFF/NET_SERVER/NET_CLIENT (defs.c)
 
+// the same BSD socket calls run everywhere; Windows just spells a few things
+// differently (winsock wants waking up, sockets close with closesocket, and
+// errors come from WSAGetLastError instead of errno)
 #ifdef _WIN32
-
-void net_poll() {}
-void net_send_edit(int x, int y, int z, int tile) {}
-int net_serve(int port) { fprintf(stderr, "net: not on Windows yet\n"); return -1; }
-int net_connect(const char *host, int port) { return net_serve(0); }
-int net_describe(char *out, int outsz) { return snprintf(out, outsz, "net off\n"); }
-int net_player_active(int i) { return 0; }
-void net_send_punch(int slot, float aimx, float aimz) {}
-void net_send_bonk(int pi, float nx, float nz) {}
-void net_send_chat(const char *text) {}
-
-#else // the rest of the file
-
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#define MSG_NOSIGNAL 0 // no SIGPIPE on Windows
+#define net_close closesocket
+static int net_again() { return WSAGetLastError() == WSAEWOULDBLOCK; }
+static int net_intr() { return WSAGetLastError() == WSAEINTR; }
+static void net_startup()
+{
+        static int done;
+        WSADATA wsa;
+        if (!done) done = !WSAStartup(MAKEWORD(2, 2), &wsa);
+}
+#else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -41,6 +44,14 @@ void net_send_chat(const char *text) {}
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0 // macOS has no MSG_NOSIGNAL
+#endif
+#define net_close close
+static int net_again() { return errno == EAGAIN || errno == EWOULDBLOCK; }
+static int net_intr() { return errno == EINTR; }
+static void net_startup() {}
+#endif
 
 #define NET_PROTO 1
 #define NET_MAX_CLIENTS (NR_PLAYERS - 1)
@@ -115,7 +126,7 @@ static float get_f32(const unsigned char *p)
 static void conn_close(struct conn *c)
 {
         if (c->fd < 0) return;
-        close(c->fd);
+        net_close(c->fd);
         c->fd = -1;
         free(c->in);  c->in  = NULL; c->in_len  = c->in_cap  = 0;
         free(c->out); c->out = NULL; c->out_len = c->out_cap = 0;
@@ -155,10 +166,10 @@ static void conn_flush(struct conn *c)
         int off = 0;
         while (c->fd >= 0 && off < c->out_len)
         {
-                int n = send(c->fd, c->out + off, c->out_len - off, MSG_NOSIGNAL);
+                int n = send(c->fd, (char *)c->out + off, c->out_len - off, MSG_NOSIGNAL);
                 if (n > 0) { off += n; continue; }
-                if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
-                if (n < 0 && errno == EINTR) continue;
+                if (n < 0 && net_again()) break;
+                if (n < 0 && net_intr()) continue;
                 conn_close(c);
                 return;
         }
@@ -378,7 +389,7 @@ static void conn_read(struct conn *c)
         unsigned char tmp[65536];
         while (c->fd >= 0)
         {
-                int n = recv(c->fd, tmp, sizeof tmp, 0);
+                int n = recv(c->fd, (char *)tmp, sizeof tmp, 0);
                 if (n > 0)
                 {
                         if (c->in_len + n > NET_BUF_MAX) { conn_close(c); return; }
@@ -386,8 +397,8 @@ static void conn_read(struct conn *c)
                         if (n < (int)sizeof tmp) break;
                 }
                 else if (n == 0) { conn_close(c); return; }
-                else if (errno == EAGAIN || errno == EWOULDBLOCK) break;
-                else if (errno == EINTR) continue;
+                else if (net_again()) break;
+                else if (net_intr()) continue;
                 else { conn_close(c); return; }
         }
 
@@ -409,9 +420,14 @@ static void conn_read(struct conn *c)
 
 static void net_nonblock(int fd)
 {
+#ifdef _WIN32
+        u_long nb = 1;
+        ioctlsocket(fd, FIONBIO, &nb);
+#else
         fcntl(fd, F_SETFL, O_NONBLOCK);
+#endif
         int one = 1;
-        setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+        setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&one, sizeof one);
 }
 
 // --- public entry points ----------------------------------------------------
@@ -607,12 +623,12 @@ void net_poll()
         {
                 for (;;)
                 {
-                        int fd = accept(net_listen_fd, NULL, NULL);
+                        int fd = (int)accept(net_listen_fd, NULL, NULL);
                         if (fd < 0) break;
                         int i;
                         for (i = 0; i < NET_MAX_CLIENTS; i++)
                                 if (conns[i].fd < 0) break;
-                        if (i == NET_MAX_CLIENTS) { close(fd); continue; } // full
+                        if (i == NET_MAX_CLIENTS) { net_close(fd); continue; } // full
                         net_nonblock(fd);
                         conns[i] = (struct conn){ .fd = fd, .player = i + 1 };
                 }
@@ -651,11 +667,12 @@ void net_poll()
 int net_serve(int port)
 {
         if (net_mode != NET_OFF) return -1;
+        net_startup();
 
-        net_listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+        net_listen_fd = (int)socket(AF_INET, SOCK_STREAM, 0);
         if (net_listen_fd < 0) return -1;
         int one = 1;
-        setsockopt(net_listen_fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+        setsockopt(net_listen_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&one, sizeof one);
 
         struct sockaddr_in addr = {0};
         addr.sin_family = AF_INET;
@@ -665,11 +682,11 @@ int net_serve(int port)
             listen(net_listen_fd, NET_MAX_CLIENTS) < 0)
         {
                 fprintf(stderr, "net: can't listen on port %d\n", port);
-                close(net_listen_fd);
+                net_close(net_listen_fd);
                 net_listen_fd = -1;
                 return -1;
         }
-        fcntl(net_listen_fd, F_SETFL, O_NONBLOCK);
+        net_nonblock(net_listen_fd);
 
         for (int i = 0; i < NET_MAX_CLIENTS; i++)
                 conns[i] = (struct conn){ .fd = -1 };
@@ -682,6 +699,7 @@ int net_serve(int port)
 int net_connect(const char *host, int port)
 {
         if (net_mode != NET_OFF) return -1;
+        net_startup();
 
         char portstr[16];
         snprintf(portstr, sizeof portstr, "%d", port);
@@ -692,11 +710,11 @@ int net_connect(const char *host, int port)
                 fprintf(stderr, "net: can't resolve %s\n", host);
                 return -1;
         }
-        int fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-        if (fd < 0 || connect(fd, res->ai_addr, res->ai_addrlen) < 0)
+        int fd = (int)socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+        if (fd < 0 || connect(fd, res->ai_addr, (int)res->ai_addrlen) < 0)
         {
                 fprintf(stderr, "net: can't connect to %s:%d\n", host, port);
-                if (fd >= 0) close(fd);
+                if (fd >= 0) net_close(fd);
                 freeaddrinfo(res);
                 return -1;
         }
@@ -754,5 +772,4 @@ int net_describe(char *out, int outsz)
         return p - out;
 }
 
-#endif // _WIN32
 #endif // BLOCKO_NET_C_INCLUDED

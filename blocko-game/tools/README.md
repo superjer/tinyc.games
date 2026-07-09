@@ -163,6 +163,7 @@ ways), player states at 20Hz (drawn as cube-folk), mob snapshots at 15Hz
 (the server owns the slimes; clients send punches and receive bonks), and
 the sun's position every few seconds. Also available at launch as
 `--serve [port]` and `--connect <host[:port]>` (default port 26262).
+Works on Windows too (winsock) — only this debug socket is Unix-only.
 
 | Command | What it does |
 |---|---|
