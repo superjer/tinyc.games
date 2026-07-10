@@ -377,6 +377,10 @@ volatile struct chunk_stamp chunk_estamp[VAOD][VAOW];
 // guarded by the (chunks) critical section in chunk_builder
 volatile char chunk_claim1[VAOD][VAOW]; // pass 1 running
 volatile char chunk_claim2[VAOD][VAOW]; // pass 2 running
+// bumped by regen_world so mid-job builders abandon instead of stamping
+// stale data or waiting forever on invalidated edges; only touched inside
+// the (chunks) critical section
+volatile int regen_epoch;
 volatile char chunk_dirty[VAOW][VAOD];
 volatile unsigned chunk_lightdirty[VAOW][VAOD]; // frame+1 of last light change (0 = clean)
 int remesh_debounce = 15; // remesh light-dirty chunks only after this many quiet frames

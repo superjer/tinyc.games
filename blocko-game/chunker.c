@@ -467,9 +467,12 @@ void chunk_builder()
 
         int found = 0;
         int need[9][2], nr_need = 0; // pass 1 units this thread claimed
+        int my_epoch = 0;
+        int abandon = 0; // regen_world invalidated stamps since we claimed
 
         #pragma omp critical (chunks)
         {
+                my_epoch = regen_epoch;
                 // find nearest ungenerated chunk nobody is working on
                 int best_dist = 99999999;
                 for (int x = 0; x < VAOW; x++) for (int z = 0; z < VAOD; z++)
@@ -514,44 +517,77 @@ void chunk_builder()
 
         int ticks_before = SDL_GetTicks();
 
-        for (int i = 0; i < nr_need; i++)
-        {
-                int cx = need[i][0], cz = need[i][1];
-                gen_chunk_pass1(cx, cz);
-                #pragma omp critical (chunks)
-                {
-                        TEDGE_SLOT(cx, cz).ax = cx - tchunk_scootx;
-                        TEDGE_SLOT(cx, cz).az = cz - tchunk_scootz;
-                        chunk_claim1[TSLOTI(cz)][TSLOTJ(cx)] = 0;
-                }
-        }
-
-        // another builder may still be generating a neighbor's edges
+        // generate the claimed edges (pass 1), then wait for any a neighbor
+        // builder is still generating; a builder that abandons on regen
+        // releases claimed edges unstamped, so re-scan and adopt orphans
+        // instead of waiting for a stamp nobody owns
         for (;;)
         {
+                for (int i = 0; i < nr_need; i++)
+                {
+                        int cx = need[i][0], cz = need[i][1];
+                        if (!abandon)
+                                gen_chunk_pass1(cx, cz);
+                        #pragma omp critical (chunks)
+                        {
+                                if (regen_epoch != my_epoch)
+                                        abandon = 1; // don't stamp stale data
+                                if (!abandon)
+                                {
+                                        TEDGE_SLOT(cx, cz).ax = cx - tchunk_scootx;
+                                        TEDGE_SLOT(cx, cz).az = cz - tchunk_scootz;
+                                }
+                                chunk_claim1[TSLOTI(cz)][TSLOTJ(cx)] = 0;
+                        }
+                }
+                if (abandon) break;
+
                 int ready = 1;
+                nr_need = 0;
                 #pragma omp critical (chunks)
                 {
-                        for (int dz = -1; dz <= 1; dz++) for (int dx = -1; dx <= 1; dx++)
+                        if (regen_epoch != my_epoch)
+                                abandon = 1;
+                        else for (int dz = -1; dz <= 1; dz++) for (int dx = -1; dx <= 1; dx++)
                         {
                                 int cx = best_x + dx, cz = best_z + dz;
                                 if (cx < 0 || cx >= VAOW || cz < 0 || cz >= VAOD) continue;
-                                if (!TEDGE_(cx, cz)) ready = 0;
+                                if (TEDGE_(cx, cz)) continue;
+                                ready = 0;
+                                if (chunk_claim1[TSLOTI(cz)][TSLOTJ(cx)]) continue;
+                                chunk_claim1[TSLOTI(cz)][TSLOTJ(cx)] = 1;
+                                need[nr_need][0] = cx;
+                                need[nr_need][1] = cz;
+                                nr_need++;
                         }
                 }
-                if (ready) break;
-                SDL_Delay(1);
+                if (abandon || ready) break;
+                if (!nr_need)
+                        SDL_Delay(1); // a live builder is finishing it
         }
 
-        gen_chunk_pass2(best_x, best_z);
+        if (!abandon)
+                gen_chunk_pass2(best_x, best_z);
 
         #pragma omp critical (chunks)
         {
-                nr_chunks_generated++;
-                chunk_gen_ticks += SDL_GetTicks() - ticks_before;
-                TAGEN_SLOT(best_x, best_z).ax = best_x - tchunk_scootx;
-                TAGEN_SLOT(best_x, best_z).az = best_z - tchunk_scootz;
+                if (regen_epoch != my_epoch)
+                        abandon = 1;
+                if (!abandon)
+                {
+                        nr_chunks_generated++;
+                        chunk_gen_ticks += SDL_GetTicks() - ticks_before;
+                        TAGEN_SLOT(best_x, best_z).ax = best_x - tchunk_scootx;
+                        TAGEN_SLOT(best_x, best_z).az = best_z - tchunk_scootz;
+                }
                 chunk_claim2[TSLOTI(best_z)][TSLOTJ(best_x)] = 0;
+        }
+
+        if (abandon)
+        {
+                if (!TERRAIN_THREAD)
+                        return;
+                continue; // released all claims; pick a fresh target
         }
 
         #pragma omp critical

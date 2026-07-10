@@ -327,12 +327,16 @@ void new_game()
 // place, nearest chunks first. Recorded edits replay as the chunks return.
 void regen_world()
 {
-        for (int i = 0; i < VAOD; i++) for (int j = 0; j < VAOW; j++)
+        #pragma omp critical (chunks)
         {
-                chunk_stamp[i][j].ax = INT_MIN;
-                chunk_stamp[i][j].az = INT_MIN;
-                chunk_estamp[i][j].ax = INT_MIN;
-                chunk_estamp[i][j].az = INT_MIN;
+                regen_epoch++;
+                for (int i = 0; i < VAOD; i++) for (int j = 0; j < VAOW; j++)
+                {
+                        chunk_stamp[i][j].ax = INT_MIN;
+                        chunk_stamp[i][j].az = INT_MIN;
+                        chunk_estamp[i][j].ax = INT_MIN;
+                        chunk_estamp[i][j].az = INT_MIN;
+                }
         }
 }
 
