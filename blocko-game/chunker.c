@@ -5,17 +5,7 @@
 #include "../common/tinyc.games/taylor_noise.c"
 #include "../common/tinyc.games/terrain.c"
 
-// cave systems live in absolute coords, one per region. the walk reflects
-// off the region walls and the world top/bottom, so caves stay where the
-// region's own chunks will carve them instead of wandering off unseen
-#define REGW (CHUNKW*4)
-#define REGD (CHUNKD*4)
-#define MAX_CAVE_POINTS 16000
-#define QCAVE(x,y,z,radius_sq) ((struct qcave){x, y, z, radius_sq})
-#define REFLECT(v, lo, hi) { if (v < (lo)) v = 2*(lo) - v; if (v > (hi)) v = 2*(hi) - v; }
-
-
-// generate soil, caves, and initial sunlight for columns [xlo,xhi) x [zlo,zhi).
+// generate soil and initial sunlight for columns [xlo,xhi) x [zlo,zhi).
 // a range never crosses a chunk boundary, and nothing here reads or writes
 // world state outside the range - neighbor heights come straight from noise
 void gen_columns(int xlo, int xhi, int zlo, int zhi)
@@ -44,9 +34,6 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 int hz0 = HMAP(x, z+1);
                 int hx1 = HMAP(x-1, z);
                 int hz1 = HMAP(x, z-1);
-
-                if (flat_world) // flat test world: dead-flat grass above the
-                        hmaph = hx0 = hz0 = hx1 = hz1 = SEA_LEVEL - 8; // waterline, no slopes - makes seams easy to spot
 
                 bool sharp_dn = hmaph - hx0 < -1 || hmaph - hz0 < -1 || hmaph - hx1 < -1 || hmaph - hz1 < -1;
                 bool sharp_up = hmaph - hx0 >  1 || hmaph - hz0 >  1 || hmaph - hx1 >  1 || hmaph - hz1 >  1;
@@ -82,9 +69,6 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 int mtn_line = SEA_LEVEL - (int)VEG_MTN_LINE + (int)(rough * VEG_MTN_RAG); // grass -> MTGR
                 int barren   = SEA_LEVEL - (int)VEG_BARREN + (int)(rough * VEG_BARREN_RAG); // MTGR -> rock
 
-                int flo[16], fhi[16];
-                int fn = flat_world ? 0 : form_spans(ax, az, flo, fhi, 16);
-
                 unsigned char *t = &TT_(x, 0, z);
                 int gnd = CLAMP(hmaph, 0, TILESH-1);
 
@@ -92,32 +76,6 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 int sky = MIN(gnd, SEA_LEVEL+1);
                 memset(t, OPEN, sky);
                 memset(t + sky, WATR, gnd - sky);
-
-                // formation spans hang in the air region. sort and merge
-                // touching spans so the soil cap depth below counts
-                // consecutive blocks across overlapping blobs
-                for (int i = 1; i < fn; i++) for (int j = i; j > 0 && flo[j] < flo[j-1]; j--)
-                {
-                        int tmp;
-                        tmp = flo[j]; flo[j] = flo[j-1]; flo[j-1] = tmp;
-                        tmp = fhi[j]; fhi[j] = fhi[j-1]; fhi[j-1] = tmp;
-                }
-                int fm = 0;
-                for (int i = 1; i < fn; i++)
-                {
-                        if (flo[i] <= fhi[fm] + 1) { if (fhi[i] > fhi[fm]) fhi[fm] = fhi[i]; }
-                        else { fm++; flo[fm] = flo[i]; fhi[fm] = fhi[i]; }
-                }
-                if (fn) fn = fm + 1;
-
-                for (int i = 0; i < fn; i++)
-                {
-                        // formations are solid granite, top to bottom
-                        int l = flo[i];
-                        int h = MIN(fhi[i], gnd - 1);
-                        if (l > h) continue;
-                        memset(t + l, GRAN, h + 1 - l);
-                }
 
                 // solid ground: constant runs between the soil band levels
                 BAND(gnd,  lev1, STON);
@@ -158,104 +116,6 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 }
         }
         #undef BAND
-
-        // find nearby bezier curvy caves
-        // (& with power-of-2 floors correctly when negative)
-        int rxlo = (xlo - tscootx) & ~(REGW-1);
-        int rzlo = (zlo - tscootz) & ~(REGD-1);
-        unsigned seed = SEED2(rxlo, rzlo);
-        // find region center
-        int rxcenter = rxlo + REGW/2;
-        int rzcenter = rzlo + REGD/2;
-        struct point PC = (struct point){rxcenter, TILESH - RANDI(1, 25), rzcenter};
-        REFLECT(PC.y, 8, TILESH - 8);
-        struct point P0;
-        struct point P1;
-        struct point P2;
-        struct point P3 = PC;
-        int nr_caves = (cave_enable && !flat_world) ? RANDI(0, (int)CAVE_MAX) : 0;
-
-        // cave system stretchiness
-        int stlo = (int)CAVE_STRETCH_MIN, sthi = MAX((int)CAVE_STRETCH_MAX, stlo);
-        int sx = RANDI(stlo, sthi);
-        int sy = RANDI(stlo, sthi);
-        int sz = RANDI(stlo, sthi);
-
-        struct qcave cave_points[MAX_CAVE_POINTS];
-        int cave_p_len = 0;
-
-        for (int i = 0; i < nr_caves; i++)
-        {
-                // random walk from center of region, or end of last curve
-                P0 = RANDP(33) ? PC : P3;
-                P1 = (struct point){P0.x + RANDI(-sx, sx), P0.y + RANDI(-sy, sy), P0.z + RANDI(-sz, sz)};
-                P2 = (struct point){P1.x + RANDI(-sx, sx), P1.y + RANDI(-sy, sy), P1.z + RANDI(-sz, sz)};
-                P3 = (struct point){P2.x + RANDI(-sx, sx), P2.y + RANDI(-sy, sy), P2.z + RANDI(-sz, sz)};
-                // a bezier stays inside its control points' box, so
-                // reflecting the controls keeps the whole curve in bounds
-                REFLECT(P1.x, rxlo + 8, rxlo + REGW - 8);
-                REFLECT(P2.x, rxlo + 8, rxlo + REGW - 8);
-                REFLECT(P3.x, rxlo + 8, rxlo + REGW - 8);
-                REFLECT(P1.z, rzlo + 8, rzlo + REGD - 8);
-                REFLECT(P2.z, rzlo + 8, rzlo + REGD - 8);
-                REFLECT(P3.z, rzlo + 8, rzlo + REGD - 8);
-                REFLECT(P1.y, 8, TILESH - 8);
-                REFLECT(P2.y, 8, TILESH - 8);
-                REFLECT(P3.y, 8, TILESH - 8);
-
-                float root_radius = 0.f, delta = 0.f;
-
-                for (float t = 0.f; t <= 1.f; t += 0.001f)
-                {
-                        if (cave_p_len >= MAX_CAVE_POINTS) break;
-
-                        if (root_radius == 0.f || RANDP(0.002f))
-                        {
-                                root_radius = RAND01;
-                                delta = RANDF(-0.001f, 0.001f);
-                        }
-
-                        root_radius += delta;
-                        float radius_sq = root_radius * root_radius * root_radius * root_radius * CAVE_RAD_SCALE;
-                        radius_sq = CLAMP(radius_sq, 1.f, CAVE_RAD_SCALE);
-
-                        float s = 1.f - t;
-                        int x = (int)(s*s*s*P0.x + 3.f*t*s*s*P1.x + 3.f*t*t*s*P2.x + t*t*t*P3.x);
-                        int y = (int)(s*s*s*P0.y + 3.f*t*s*s*P1.y + 3.f*t*t*s*P2.y + t*t*t*P3.y);
-                        int z = (int)(s*s*s*P0.z + 3.f*t*s*s*P1.z + 3.f*t*t*s*P2.z + t*t*t*P3.z);
-                        // keep any point close enough to reach a column in
-                        // range (max radius ~7), so caves cross chunk borders
-                        int lx = x + tscootx; // store points in window coords
-                        int lz = z + tscootz; // for the carve pass
-                        if (lx >= xlo-8 && lx < xhi+8 && y >= 0 && y <= TILESH - 1 && lz >= zlo-8 && lz < zhi+8)
-                                cave_points[cave_p_len++] = QCAVE(lx, y, lz, radius_sq);
-                }
-        }
-
-        // carve caves: each point hollows its little sphere, clipped to the
-        // range - cost scales with cave volume, not with column count.
-        // never carve a cell beside sea water: the pocket would stay air (the
-        // sunlight pass only pours water straight down, not sideways) and the
-        // water mesh would wall it off, visible from the surface. HMAP knows
-        // where the sea is without reading neighbor chunks' tiles, so leave a
-        // 1-block shell wherever a lateral neighbor column is water at this y
-        #define SEA_BESIDE(x, y, z) ((y) > SEA_LEVEL && \
-                        ((y) < HMAP(x+1, z) || (y) < HMAP(x-1, z) || \
-                         (y) < HMAP(x, z+1) || (y) < HMAP(x, z-1)))
-        for (int i = 0; i < cave_p_len; i++)
-        {
-                struct qcave c = cave_points[i];
-                int r = (int)sqrtf((float)c.radius_sq);
-                int cxlo = MAX(c.x - r, xlo), cxhi = MIN(c.x + r, xhi - 1);
-                int czlo = MAX(c.z - r, zlo), czhi = MIN(c.z + r, zhi - 1);
-                int cylo = MAX(c.y - r, 0),   cyhi = MIN(c.y + r, TILESH - 3);
-                for (int x = cxlo; x <= cxhi; x++) for (int z = czlo; z <= czhi; z++)
-                        for (int y = cylo; y <= cyhi; y++)
-                                if (DIST_SQ(c.x - x, c.y - y, c.z - z) <= c.radius_sq
-                                                && TT_(x, y, z) != WATR
-                                                && !SEA_BESIDE(x, y, z))
-                                        TT_(x, y, z) = OPEN;
-        }
 
         // set gndheight and initial lighting
         for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
@@ -329,29 +189,10 @@ void gen_chunk_pass2(int cx, int cz)
 
         gen_columns(xlo+1, xhi-1, zlo+1, zhi-1);
 
-
-        // correcting pass over the chunk, contain floating water
-        // (clamped at the destination window's rim, whatever its size)
-        for (int x = MAX(xlo, 1); x < MIN(xhi, gen_area->maskw); x++)
-                for (int z = MAX(zlo, 1); z < MIN(zhi, gen_area->maskd); z++)
-                        for (int y = SEA_LEVEL + 20; y < TILESH-2; y++)
-        {
-                if (TT_(x, y, z) == WATR)
-                {
-                        if (TT_(x  , y  , z-1) == OPEN ||
-                            TT_(x  , y  , z+1) == OPEN ||
-                            TT_(x-1, y  , z  ) == OPEN ||
-                            TT_(x+1, y  , z  ) == OPEN ||
-                            TT_(x  , y+1, z  ) == OPEN)
-                                TT_(x, y, z) = WOOD;
-                }
-        }
-
         // trees?
         unsigned seed = SEED2(xlo - tscootx, zlo - tscootz) ^ 0x5eed7ee5;
         float p191 = noise(zlo - tscootz, xlo - tscootx, TREE_REGION_SZ, 999, 1);
         float randp = p191 > TREE_DENSE_T ? TREE_DENSE_PCT : p191 > TREE_SPARSE_T ? TREE_SPARSE_PCT : 0;
-        if (!tree_enable) randp = 0;
         if (randp > 0) while (RANDP(randp))
         {
                 char lowland = RANDBOOL ? RLEF : YLEF;
@@ -404,7 +245,7 @@ void gen_chunk_pass2(int cx, int cz)
         // patches read as clumps of blades rather than solid mats. lowland GRAS
         // grows TLGR, mountain MTGR grows TMGR, each with its own patch field.
         // absolute (unscoted) coords keep the pattern fixed in the world grid.
-        if (tree_enable) for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
+        for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
         {
                 int ax = x - tscootx, az = z - tscootz;
                 for (int y = 10; y < TILESH-2; y++)

@@ -447,7 +447,6 @@ struct qitem *gloq_next = gloq1_;
 size_t gq_curr_len;
 size_t gq_next_len;
 
-struct qcave { int x, y, z; int radius_sq; };
 
 struct player {
         struct box pos;
@@ -585,9 +584,6 @@ int screenh = WINH;
 volatile struct qitem just_generated[VAOW*VAOD];
 volatile size_t just_gen_len;
 
-int cave_enable = 1;
-int tree_enable = 1;
-int flat_world = 0; // force a perfectly flat world (debug: isolates seams)
 
 // world-gen knobs: each row of gen_knobs.h becomes a live float variable
 // (terrain.c expands the common rows the same way)

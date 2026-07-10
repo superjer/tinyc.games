@@ -46,7 +46,6 @@
 #include "vector.c"
 #include "defs.c"
 #include "../common/tinyc.games/terrain.c"
-#include "formations.c"
 #include "atmosphere.c"
 #include "simarea.c"
 #include "collision.c"
