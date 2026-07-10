@@ -28,6 +28,15 @@
 #define TINYC_SPV_DIR "shaders/"
 #endif
 
+// glslangValidator command for the F5 shader hot-reload. build-config.h bakes
+// in the absolute path CMake resolved, because the Vulkan SDK's bin dir is not
+// on PATH on Windows - a bare command name would fail silently there and the
+// reload would keep rendering the last-built shader. Falls back to the bare
+// name for environments that don't include build-config.h.
+#ifndef TINYC_GLSLANG
+#define TINYC_GLSLANG "glslangValidator"
+#endif
+
 // A failed Vulkan call usually leaves a garbage handle behind, and the
 // crash (or hang, if a fence never signals) shows up somewhere far away.
 // Dying loudly at the failing call is the kindest option.
@@ -361,15 +370,35 @@ static const char *shader_basename(const char *path) {
 // Returns 0 on success, non-zero on failure
 static int compile_shader(const char *src_path, const char *spv_path) {
         char cmd[1024];
-        snprintf(cmd, sizeof(cmd), "glslangValidator --quiet -V \"%s\" -o \"%s\" 2>&1", src_path, spv_path);
+        // On Windows system() runs `cmd.exe /c <cmd>`; when <cmd> begins with a
+        // quoted program path and contains more quotes, cmd.exe strips the first
+        // and last quote, mangling the line. Wrap the whole command in an extra
+        // outer pair of quotes so that stripping cancels out. POSIX /bin/sh needs
+        // no such wrapping (and would choke on it), so guard it.
+#ifdef _WIN32
+        #define GLSLANG_FMT(flags) "\"\"" TINYC_GLSLANG "\" " flags " -V \"%s\" -o \"%s\" 2>&1\""
+#else
+        #define GLSLANG_FMT(flags) "\"" TINYC_GLSLANG "\" " flags " -V \"%s\" -o \"%s\" 2>&1"
+#endif
+        // Snapshot the .spv timestamp so we can confirm it was actually
+        // rewritten. On Windows a bad glslangValidator path or a quoting
+        // mishap can make system() return 0 while producing nothing, which
+        // would otherwise silently reuse the stale .spv and look like the
+        // shader edit "did nothing". Treat a non-rewritten .spv as failure.
+        SDL_Time before = get_file_mtime(spv_path);
+        snprintf(cmd, sizeof(cmd), GLSLANG_FMT("--quiet"), src_path, spv_path);
         int ret = system(cmd);
-        if (ret != 0) {
-                fprintf(stderr, "Shader compile failed: %s\n", src_path);
-                // Run again without --quiet to show errors
-                snprintf(cmd, sizeof(cmd), "glslangValidator -V \"%s\" -o \"%s\"", src_path, spv_path);
+        SDL_Time after = get_file_mtime(spv_path);
+        if (ret != 0 || after == 0 || after == before) {
+                fprintf(stderr, "Shader compile FAILED: %s\n", src_path);
+                // Run again without --quiet to surface the compiler's errors
+                snprintf(cmd, sizeof(cmd), GLSLANG_FMT(""), src_path, spv_path);
                 system(cmd);
+                #undef GLSLANG_FMT
+                return -1;
         }
-        return ret;
+        #undef GLSLANG_FMT
+        return 0;
 }
 
 // Internal: create/recreate pipeline at given index using stored metadata.
@@ -519,8 +548,10 @@ static int pipeline_shaders_changed(int index) {
                (geom_now != p->geom_mtime);
 }
 
-// Reload only pipelines whose shaders have changed
-void vulkan_reload_all_pipelines() {
+// Reload only pipelines whose shaders have changed.
+// Returns the number of pipelines that FAILED to reload (0 = all good,
+// including the no-changes case). The caller can surface this to the user.
+int vulkan_reload_all_pipelines() {
         int changed = 0, failed = 0;
 
         for (int i = 0; i < vk.pipelineCount; i++) {
@@ -540,6 +571,8 @@ void vulkan_reload_all_pipelines() {
                 fprintf(stderr, "No shader changes detected\n");
         else
                 fprintf(stderr, "Reloaded %d/%d pipelines\n", changed - failed, changed);
+
+        return failed;
 }
 
 // Internal: store pipeline metadata for hot-reload

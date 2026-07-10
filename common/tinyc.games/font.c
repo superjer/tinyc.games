@@ -8,6 +8,11 @@
 #define FONT_PITCH 128
 #define FONT_LINES 128
 #define FONT_BUFLEN 16000
+// font_buf is one batch's worth of CPU staging (reset each font_begin). The GPU
+// vertex buffer is a separate arena that accumulates EVERY font_end() batch in a
+// frame (offset only resets in font_frame_reset), so it must be sized for a whole
+// frame's text, not a single batch - otherwise heavy text spams "buffer overflow".
+#define FONT_GPU_BUFLEN (FONT_BUFLEN * 16)
 
 // Vulkan resources for font rendering
 VkImage font_image;
@@ -353,7 +358,7 @@ void font_init()
         // === Create vertex buffer ===
         VkBufferCreateInfo vb_info = {
                 .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = sizeof(font_buf),
+                .size = FONT_GPU_BUFLEN * sizeof(float),
                 .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
         };
         vkCreateBuffer(vk.device, &vb_info, NULL, &font_vertex_buffer);
@@ -577,7 +582,7 @@ void font_end(float r, float g, float b)
 
         // Check if we have space in the buffer
         size_t bytes_needed = n * sizeof(float);
-        if (font_gpu_offset + bytes_needed > sizeof(font_buf)) {
+        if (font_gpu_offset + bytes_needed > FONT_GPU_BUFLEN * sizeof(float)) {
                 fprintf(stderr, "Font buffer overflow!\n");
                 return;
         }

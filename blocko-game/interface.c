@@ -119,7 +119,17 @@ void key_move(int down)
                         break;
                 case SDLK_F5: // hot-reload shaders
                         if (!down) {
-                                vulkan_reload_all_pipelines();
+                                int failed = vulkan_reload_all_pipelines();
+                                if (failed > 0) {
+                                        snprintf(reload_msg, sizeof reload_msg,
+                                                "SHADER RELOAD FAILED (%d) - see console", failed);
+                                        reload_msg_r = 1; reload_msg_g = 0.2f; reload_msg_b = 0.2f;
+                                } else {
+                                        snprintf(reload_msg, sizeof reload_msg, "shaders reloaded");
+                                        reload_msg_r = 0.3f; reload_msg_g = 1; reload_msg_b = 0.3f;
+                                }
+                                reload_msg_expire = SDL_GetTicks() +
+                                        (failed > 0 ? 6000 : 1500);
                         }
                         break;
                 case SDLK_F6: // freeze shadows + sun to inspect cascade edges

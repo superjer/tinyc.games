@@ -140,6 +140,15 @@ void debrief()
                 font_end(1, 1, 1);
         }
 
+        // transient shader hot-reload notice (F5) - loud so a failed reload
+        // can't masquerade as "my shader edit did nothing"
+        if (reload_msg[0] && SDL_GetTicks() < reload_msg_expire)
+        {
+                font_begin(screenw, screenh);
+                font_add_text(reload_msg, screenw/3.f, screenh/8.f, 0);
+                font_end(reload_msg_r, reload_msg_g, reload_msg_b);
+        }
+
         // for debugging only
         if (alert[0])
         {

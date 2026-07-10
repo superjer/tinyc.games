@@ -42,8 +42,8 @@
 #endif
 #endif
 
-#define W 1920                     // window width, height
-#define H 1000                     // ^
+#define WINW 1920                  // window width, height
+#define WINH 1000                  // ^
 #define CHUNKW 64                  // chunk size (vao size)
 #define CHUNKD 64                  // ^
 #define CHUNKW2 (CHUNKW/2)
@@ -574,6 +574,12 @@ float sun_yaw = .3f;
 float sun_roll = -1.3f;
 char alert[800]; // only for debugging
 
+// transient on-screen notice (e.g. F5 shader reload result); shown centered
+// until reload_msg_expire (SDL ticks). green=ok, red=failure.
+char reload_msg[256];
+unsigned reload_msg_expire;
+float reload_msg_r = 1, reload_msg_g = 1, reload_msg_b = 1;
+
 // test lock: automated test runs disable all input except the tilde
 // console (unlock by typing "lock 0" there) and show a banner
 int test_lock;
@@ -631,8 +637,8 @@ int patch_meshing;              // set only while the patch calls mesh_region, s
                                 // mine_hole carve happens for the patch, not for chunks
 int patch_tint;                 // debug viz: tint the patch mesh red (socket `tint`).
                                 // rides the unused reject_lo.w slot, read in main.frag
-int screenw = W;
-int screenh = H;
+int screenw = WINW;
+int screenh = WINH;
 volatile struct qitem just_generated[VAOW*VAOD];
 volatile size_t just_gen_len;
 

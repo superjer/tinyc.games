@@ -17,12 +17,6 @@ foreach(CONFIG ${CMAKE_CONFIGURATION_TYPES})
   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${CONFIG_UPPER} ${CMAKE_BINARY_DIR})
 endforeach()
 
-configure_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/common/build-config.h.in
-  ${CMAKE_CURRENT_BINARY_DIR}/build-config.h
-  @ONLY
-)
-
 include(FetchContent)
 
 set(ONLY_LIBS ON)
@@ -60,6 +54,17 @@ if(NOT GLSLANG_VALIDATOR)
     "(https://vulkan.lunarg.com) and make sure its bin directory is in PATH "
     "or VULKAN_SDK is set")
 endif()
+
+# Bake the full glslangValidator path (and shader/source dirs) into
+# build-config.h. The in-game F5 hot-reload shells out to glslangValidator, and
+# on Windows the Vulkan SDK's bin dir is not on PATH, so a bare command name
+# fails silently and the reload keeps the old shader. Emit the resolved path
+# here (after find_program) so the runtime uses it verbatim.
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/common/build-config.h.in
+  ${CMAKE_CURRENT_BINARY_DIR}/build-config.h
+  @ONLY
+)
 
 add_executable(flappy flappy-game/flappy.c)
 add_executable(tet tet-game/tet.c)
