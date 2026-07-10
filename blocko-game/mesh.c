@@ -55,6 +55,7 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
         // Track per-thread vertex counts for merging
         int v_counts[MAX_MESH_THREADS] = {0};
         int w_counts[MAX_MESH_THREADS] = {0};
+        int l_counts[MAX_MESH_THREADS] = {0};
 
         // carve the block being mined out of this mesh so a shaking stand-in
         // (mine.c) can take its place. Only a transient swap here - rayshot and
@@ -87,6 +88,9 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                 struct vbufv *tw = wbuf_mt[tid];
                 struct vbufv *tw_start = tw;
                 struct vbufv *tw_limit = tw + VERTEX_BUFLEN;
+                struct vbufv *tl = lbuf_mt[tid];
+                struct vbufv *tl_start = tl;
+                struct vbufv *tl_limit = tl + VERTEX_BUFLEN/8;
 
                 #pragma omp for schedule(static)
                 for (z = zlo; z < zhi; z++) {
@@ -160,12 +164,18 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                                         (t == YLEF) ? 17 :
                                         (t == SLEF) ? 39 :
                                                        0 ;
-                                if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                // leaves collect apart so the merge lands them after
+                                // all solid faces: shadow passes alpha-test just them.
+                                // a full leaf buffer spills to solid (solid shadow)
+                                int leaf = (t == RLEF || t == YLEF || t == SLEF) && tl < tl_limit;
+                                struct vbufv *o = leaf ? tl : tv;
+                                if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *o++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *o++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
+                                if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *o++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
+                                if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *o++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
+                                if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *o++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
+                                if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *o++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                if (leaf) tl = o; else tv = o;
                         }
                         else if (t == WATR)
                         {
@@ -218,11 +228,14 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                 // Store counts for this thread
                 v_counts[tid] = tv - tv_start;
                 w_counts[tid] = tw - tw_start;
+                l_counts[tid] = tl - tl_start;
         }
 
         if (mine_carved) T_(mine_x, mine_y, mine_z) = mine_save;
 
-        // Merge thread buffers into main buffer
+        // Merge thread buffers into main buffer: all solid faces, then all
+        // leaves, so the terrain section is [solid | leaves) split at
+        // mesh_leaf_start (stored per chunk as LEAFSTART_)
         for (int tid = 0; tid < MAX_MESH_THREADS; tid++)
         {
                 if (v_counts[tid] > 0) {
@@ -234,6 +247,12 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                         w += w_counts[tid];
                 }
         }
+        mesh_leaf_start = v - vbuf;
+        for (int tid = 0; tid < MAX_MESH_THREADS; tid++)
+                if (l_counts[tid] > 0 && v + l_counts[tid] <= v_limit) {
+                        memcpy(v, lbuf_mt[tid], l_counts[tid] * sizeof *v);
+                        v += l_counts[tid];
+                }
 }
 
 // 2x2x2 shadow LOD mesh: downsample the chunk into coarse cells (solid when
@@ -391,6 +410,7 @@ void build_meshes()
 
                 mesh_region(xlo, xhi, 0, TILESH, zlo, zhi, face_mask, xlo, zlo);
 
+                LEAFSTART_(myx, myz) = mesh_leaf_start;
                 WBOSTART_(myx, myz) = v - vbuf;
 
                 if (w - wbuf < v_limit - v) // room for water in vertex buffer?

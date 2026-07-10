@@ -20,9 +20,11 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
         };
         vkCmdBeginRenderPass(cmdbuf, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-        // far/extreme treat leaves as solid: empty fragment stage, fast depth path.
-        // near/mid keep the alpha-test shader so close-up leaf shadows dapple.
-        int terrain_pipe = (cascade_idx >= SHADOW_FAR_A) ? shadow_solid_pipe : shadow_pipe;
+        // solid faces draw with an empty fragment stage (fast depth path, no
+        // texture fetch); the terrain section is [solid | leaves) so near/mid
+        // alpha-test just the leaves in a second pass below. far/extreme
+        // treat leaves as solid and take the whole section here.
+        int terrain_pipe = shadow_solid_pipe;
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[terrain_pipe].pipeline);
 
         VkViewport viewport = {0, 0, shadow_sz[cascade_idx], shadow_sz[cascade_idx], 0, 1};
@@ -82,7 +84,8 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                 {
                         push.bs = BS;
                         voffset = 0;
-                        terrain_verts = WBOSTART_(i, j);
+                        terrain_verts = (cascade_idx >= SHADOW_FAR_A)
+                                ? WBOSTART_(i, j) : LEAFSTART_(i, j);
                 }
                 vkCmdPushConstants(cmdbuf, vk.pipelines[terrain_pipe].layout,
                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -93,6 +96,34 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                 shadow[cascade_idx].polys += terrain_verts;
                 shadow_polys_accum[cascade_idx] += terrain_verts;
                 cascade_x_draw_calls++;
+        }
+
+        // near/mid draw the leaves [LEAFSTART, WBOSTART) with the alpha-test
+        // pipeline so close-up leaf shadows dapple (far/extreme cast them
+        // solid in the loop above)
+        if (cascade_idx == SHADOW_NEAR || cascade_idx == SHADOW_MID)
+        {
+                vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[shadow_pipe].pipeline);
+                push.bs = BS;
+                for (int k = 0; k < visible_chunk_count; k++) {
+                        if (!(visible_chunks[k].shadow_mask & cascade_bit)) continue;
+                        int i = visible_chunks[k].x;
+                        int j = visible_chunks[k].z;
+                        size_t leaf_verts = WBOSTART_(i, j) - LEAFSTART_(i, j);
+                        if (!leaf_verts) continue;
+                        push.chunk_x = i * BS * CHUNKW;
+                        push.chunk_y = 0;
+                        push.chunk_z = j * BS * CHUNKD;
+                        VkDeviceSize leaf_offset = LEAFSTART_(i, j) * sizeof(struct vbufv);
+                        vkCmdPushConstants(cmdbuf, vk.pipelines[shadow_pipe].layout,
+                                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                0, sizeof push, &push);
+                        vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &leaf_offset);
+                        vkCmdDraw(cmdbuf, 4, leaf_verts, 0, 0);
+                        shadow_polys += leaf_verts;
+                        shadow[cascade_idx].polys += leaf_verts;
+                        shadow_polys_accum[cascade_idx] += leaf_verts;
+                }
         }
 
         // tall grass casts shadows into the near and mid cascades (the near

@@ -179,6 +179,7 @@ const int shadow_sz[SHADOW_COUNT] = { 1024, 2048, 4096, 4096, 4096, 4096 };
 #define VBOLEN_(x,z) vbo_len[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define WBOSTART_(x,z) wbo_start[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define LODEND_(x,z)   lod_end[  ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
+#define LEAFSTART_(x,z) leaf_start[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 // the mesh's own identity: which absolute chunk the slot's GPU buffers hold.
 // regen_world invalidates chunk_stamp but not this, so the old mesh keeps
 // drawing in place while its chunk regenerates (meshes are chunk-relative,
@@ -346,6 +347,8 @@ unsigned int vbo[VAOS], vao[VAOS];
 size_t vbo_len[VAOS];
 size_t wbo_start[VAOS];
 size_t lod_end[VAOS]; // end of the 2x2x2 shadow-LOD section (starts at vbo_len)
+size_t leaf_start[VAOS]; // terrain section is [solid | leaves): leaves start
+                         // here, so shadows can draw solids without alpha test
 float shadow_lod_dist = 160.f; // chunks beyond this many blocks cast 2x2x2 LOD
                                // shadows in far/extreme cascades (<0 disables)
 
@@ -369,6 +372,10 @@ struct vbufv *w = wbuf;
 // Per-thread buffers for parallel mesh building (each needs full size)
 struct vbufv vbuf_mt[MAX_MESH_THREADS][VERTEX_BUFLEN + 1000];
 struct vbufv wbuf_mt[MAX_MESH_THREADS][VERTEX_BUFLEN + 1000];
+// leaves collect separately so the terrain section lands [solid | leaves);
+// sized smaller - canopies are a fraction of a chunk (overflow spills to solid)
+struct vbufv lbuf_mt[MAX_MESH_THREADS][VERTEX_BUFLEN/8 + 1000];
+size_t mesh_leaf_start; // solid face count of the last mesh_region build
 
 float night_amt;
 
