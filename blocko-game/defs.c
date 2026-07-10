@@ -292,6 +292,8 @@ struct shadow_cascade {
     float matrix[16];      // stored PV matrix (for A/B temporal blending)
     int slot;              // quantized slot (-1 = uninitialized)
     int polys;             // polygon counter per cascade
+    int r_meshes;          // nr_meshes_built when this map was rendered (far/ext
+                           // skip re-rendering while view + world are unchanged)
 };
 struct shadow_cascade shadow[SHADOW_COUNT];
 

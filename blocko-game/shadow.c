@@ -220,10 +220,10 @@ void do_shadows()
         }
 
         // Helper to compute light position from pitch
-        #define COMPUTE_LIGHT_POS(pitch, lp) do { \
-                lp[0] = shadow_target[0] + dist2sun * (cosf(pitch) * cosf(sun_yaw)); \
-                lp[1] = shadow_target[1] + dist2sun * (cosf(pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(pitch) * sinf(sun_roll)); \
-                lp[2] = shadow_target[2] + dist2sun * (cosf(pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(pitch) * cosf(sun_roll)); \
+        #define COMPUTE_LIGHT_POS(pitch, lp, tgt) do { \
+                lp[0] = tgt[0] + dist2sun * (cosf(pitch) * cosf(sun_yaw)); \
+                lp[1] = tgt[1] + dist2sun * (cosf(pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(pitch) * sinf(sun_roll)); \
+                lp[2] = tgt[2] + dist2sun * (cosf(pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(pitch) * cosf(sun_roll)); \
         } while(0)
 
         // compute shadow matrices and render shadow maps
@@ -241,6 +241,7 @@ void do_shadows()
 
                 float light_pos[3];
                 float render_pitch;
+                float tgt[3] = { shadow_target[0], shadow_target[1], shadow_target[2] };
 
                 if (s == 0 || s == 1) {
                         // Near and Mid cascades: use current light pitch (sun or moon)
@@ -255,14 +256,26 @@ void do_shadows()
                         render_pitch = shadow[ext_idx].slot * EXTREME_QUANT_STEP;
                 }
 
-                COMPUTE_LIGHT_POS(render_pitch, light_pos);
+                // Far/extreme anchor on a coarse grid instead of tracking the
+                // player continuously, so while the player stays within a snap
+                // cell the recomputed matrix is bit-identical to the stored one
+                // and the render-on-change check below can skip the whole pass.
+                // The frustum's sampled range lags by up to half a cell; edge
+                // fragments just fall through to the next cascade / fade.
+                if (s >= 2) {
+                        float snap = (s == 2 ? 4.f : 8.f) * BS;
+                        for (int c = 0; c < 3; c++)
+                                tgt[c] = floorf(shadow_target[c] / snap) * snap;
+                }
+
+                COMPUTE_LIGHT_POS(render_pitch, light_pos, tgt);
 
                 // Build view matrix: look from light toward target
                 // Forward = normalize(target - light_pos)
                 float fwd[3] = {
-                        shadow_target[0] - light_pos[0],
-                        shadow_target[1] - light_pos[1],
-                        shadow_target[2] - light_pos[2],
+                        tgt[0] - light_pos[0],
+                        tgt[1] - light_pos[1],
+                        tgt[2] - light_pos[2],
                 };
                 float fwd_len = sqrtf(fwd[0]*fwd[0] + fwd[1]*fwd[1] + fwd[2]*fwd[2]);
                 fwd[0] /= fwd_len; fwd[1] /= fwd_len; fwd[2] /= fwd_len;
@@ -342,15 +355,32 @@ void do_shadows()
                         memcpy(shadow[SHADOW_MID].matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
                         memcpy(main_ubo.shadow_space[SHADOW_MID], biased_shadow_mtrx, sizeof biased_shadow_mtrx);
                 } else if (s == 2) {
-                        // Far cascade: store in A or B based on which we're rendering
+                        // Far cascade: store in A or B based on which we're rendering.
+                        // Render-on-change: the snapped target + quantized pitch make
+                        // the recomputed matrix bit-identical while nothing moved, so
+                        // if the image already holds this exact view of an unchanged
+                        // world (no remesh since), skip the render entirely.
                         int far_idx = (shadow_far_render_ab == 0) ? SHADOW_FAR_A : SHADOW_FAR_B;
-                        memcpy(shadow[far_idx].matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        if (!memcmp(shadow[far_idx].matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx)
+                                && shadow[far_idx].r_meshes == nr_meshes_built)
+                                shadow_far_render_ab = -1;
+                        else {
+                                memcpy(shadow[far_idx].matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                                shadow[far_idx].r_meshes = nr_meshes_built;
+                        }
                         mat4_multiply(main_ubo.shadow_space[SHADOW_FAR_A], bias_mtrx, shadow[SHADOW_FAR_A].matrix);
                         mat4_multiply(main_ubo.shadow_space[SHADOW_FAR_B], bias_mtrx, shadow[SHADOW_FAR_B].matrix);
                 } else {
-                        // Extreme cascade: store in A or B based on which we're rendering
+                        // Extreme cascade: store in A or B, with the same
+                        // render-on-change skip as the far cascade
                         int ext_idx = (shadow_ext_render_ab == 0) ? SHADOW_EXT_A : SHADOW_EXT_B;
-                        memcpy(shadow[ext_idx].matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                        if (!memcmp(shadow[ext_idx].matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx)
+                                && shadow[ext_idx].r_meshes == nr_meshes_built)
+                                shadow_ext_render_ab = -1;
+                        else {
+                                memcpy(shadow[ext_idx].matrix, shadow_pv_mtrx, sizeof shadow_pv_mtrx);
+                                shadow[ext_idx].r_meshes = nr_meshes_built;
+                        }
                         mat4_multiply(main_ubo.shadow_space[SHADOW_EXT_A], bias_mtrx, shadow[SHADOW_EXT_A].matrix);
                         mat4_multiply(main_ubo.shadow_space[SHADOW_EXT_B], bias_mtrx, shadow[SHADOW_EXT_B].matrix);
                 }
