@@ -53,6 +53,7 @@ int remote_walk_frames; // hold forward key for this many frames
 int remote_tp_snap;     // tp landed: plant feet once the ground is known
 int remote_fly_frames;  // noclip along yaw for this many frames...
 float remote_fly_speed; // ...at this many blocks/sec (deterministic traversal)
+float remote_fly_alt = SEA_LEVEL - 6; // ...holding this y (blocks; y=0 is the sky)
 int remote_break_frames; // hold "left click" (mine) for this many frames
 int remote_build_frames; // hold "right click" (place) for this many frames
 
@@ -388,15 +389,20 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         }
         else if (!strncmp(cmd, "fly ", 4))
         {
-                int frames; float speed;
-                if (sscanf(cmd + 4, "%d %f", &frames, &speed) == 2)
+                int frames; float speed, alt;
+                int n = sscanf(cmd + 4, "%d %f %f", &frames, &speed, &alt);
+                if (n >= 2)
                 {
                         remote_fly_frames = frames;
                         remote_fly_speed = speed;
+                        // default skims just above the sea so the shadow
+                        // cascades stay full of terrain (flying near the sky
+                        // makes shadow work look artificially cheap)
+                        remote_fly_alt = (n == 3) ? alt : SEA_LEVEL - 6;
                         p += snprintf(p, end-p, "ok\n");
                 }
                 else
-                        p += snprintf(p, end-p, "usage: fly <frames> <blocks_per_sec>\n");
+                        p += snprintf(p, end-p, "usage: fly <frames> <blocks_per_sec> [<y_blocks>]\n");
         }
         else if (!strncmp(cmd, "turn ", 5))
         {
@@ -1133,7 +1139,7 @@ void remote_poll()
                 remote_fly_frames--;
                 player[my_player].pos.x += sinf(player[my_player].yaw) * remote_fly_speed * BS / 60.f;
                 player[my_player].pos.z += cosf(player[my_player].yaw) * remote_fly_speed * BS / 60.f;
-                player[my_player].pos.y = 4 * BS; // above any terrain
+                player[my_player].pos.y = remote_fly_alt * BS;
                 player[my_player].grav = GRAV_ZERO;
         }
 

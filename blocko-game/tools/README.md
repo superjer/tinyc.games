@@ -106,7 +106,7 @@ $bk timings   # build_meshes total; divide by meshes_built for per-mesh ms
 | `save <name>` | Append `<seed> <ax> <ay> <az> <name>` (absolute blocks) to `blocko.saves` in the game's working directory, so a spot can be revisited later — set the seed, then `tp` to `ax az`. `<name>` is an arbitrary label (may contain spaces). |
 | `load [<name>]` | Restore a spot saved with `save`: set that line's seed, regen the world, and teleport to the saved location. `load <name>` picks the matching line (latest if a name repeats); bare `load` picks the most recent line in the file. |
 | `walk <frames>` | Hold forward + run for `frames` frames, then stop. |
-| `fly <frames> <blocks_per_sec>` | Noclip forward along the current yaw at a fixed altitude and constant speed for `frames` frames — deterministic traversal for streaming/benchmarks. |
+| `fly <frames> <blocks_per_sec> [<y_blocks>]` | Noclip forward along the current yaw at a fixed altitude and constant speed for `frames` frames — deterministic traversal for streaming/benchmarks. Altitude defaults to just above sea level (`SEA_LEVEL - 6`) so the shadow cascades stay full of terrain; pass `y_blocks` (y=0 is the sky) to override. |
 | `turn <deg>` | Set the player yaw to `deg` degrees. |
 | `look [<yaw> <pitch>]` | Point the camera (like moving the mouse): set yaw and pitch in degrees. `+pitch` looks down, `0` is level. With no args, just reports the current `yaw_deg` / `pitch_deg`. |
 | `target` | Report the block the player is aiming at (`target <x> <y> <z> tile <t>`, absolute coords — what a left click mines) and where a right click would place (`place <x> <y> <z>`). `none` if nothing is in range. |
