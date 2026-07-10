@@ -41,11 +41,16 @@ int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z)
                w_too_lo != 8;
 }
 
+// measure to the nearest point of the chunk's footprint, not its center -
+// culling by center dropped corners up to CHUNKW*sqrt(2)/2 blocks inside
+// draw_dist, leaving visible holes before the fog line (fog_hi = 0.9*draw_dist)
 int chunk_in_range(int chunk_x, int chunk_z)
 {
         float draw_dist_sq = draw_dist * BS * draw_dist * BS;
-        float delta_x = cull_x - (chunk_x + .5f) * BS * CHUNKW;
-        float delta_z = cull_z - (chunk_z + .5f) * BS * CHUNKD;
+        float lo_x = chunk_x * BS * CHUNKW, hi_x = lo_x + BS * CHUNKW;
+        float lo_z = chunk_z * BS * CHUNKD, hi_z = lo_z + BS * CHUNKD;
+        float delta_x = cull_x - CLAMP(cull_x, lo_x, hi_x);
+        float delta_z = cull_z - CLAMP(cull_z, lo_z, hi_z);
         float dist_sq = delta_x * delta_x + delta_z * delta_z;
         return dist_sq < draw_dist_sq;
 }
