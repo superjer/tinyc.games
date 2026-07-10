@@ -307,14 +307,18 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         else if (!strncmp(cmd, "tp ", 3))
         {
                 float ax, az;
-                if (sscanf(cmd + 3, "%f %f", &ax, &az) == 2)
+                if (sscanf(cmd + 3, "%f %f", &ax, &az) == 2 && isfinite(ax) && isfinite(az))
                 {
+                        // past ~2M blocks the scoot rebase (dx * BS) overflows int and
+                        // the window can never catch the player; stay well inside that
+                        ax = CLAMP(ax, -1000000.f, 1000000.f);
+                        az = CLAMP(az, -1000000.f, 1000000.f);
                         player[my_player].pos.x = (ax + scootx) * BS;
                         player[my_player].pos.z = (az + scootz) * BS;
                         player[my_player].pos.y = 0;
                         player[my_player].grav = GRAV_ZERO;
                         remote_tp_snap = 1; // land on the ground (remote_poll)
-                        p += snprintf(p, end-p, "ok\n");
+                        p += snprintf(p, end-p, "ok %g %g\n", ax, az);
                 }
                 else
                         p += snprintf(p, end-p, "usage: tp <abs_x_blocks> <abs_z_blocks>\n");
