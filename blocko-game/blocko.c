@@ -262,6 +262,17 @@ void main_loop()
 
         if (headless)
         {
+                // aim: rayshot normally runs in draw, from the lerped camera.
+                // there is no camera here, so aim straight from the player -
+                // otherwise target/click (mining, placing) never work headless
+                struct player *p = &player[my_player];
+                rayshot(p->pos.x + PLYR_W / 2,
+                        p->pos.y + EYEDOWN * (p->sneaking ? 2 : 1),
+                        p->pos.z + PLYR_W / 2,
+                        cosf(p->pitch) * sinf(p->yaw),
+                        sinf(p->pitch),
+                        cosf(p->pitch) * cosf(p->yaw));
+
                 // no drawing: adopt fresh chunks (otherwise draw_stuff's job),
                 // keep the light queues draining, and sleep out the rest of
                 // the tick so the loop still runs at ~60Hz. Round the sleep
