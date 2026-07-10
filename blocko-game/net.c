@@ -53,19 +53,18 @@ static int net_intr() { return errno == EINTR; }
 static void net_startup() {}
 #endif
 
-#define NET_PROTO 1
+#define NET_PROTO 2
 #define NET_MAX_CLIENTS (NR_PLAYERS - 1)
 #define NET_BUF_MAX (32 << 20) // a peer this far behind is gone: drop it
 
 enum {
         MSG_HELLO = 1, // c->s: u32 protocol version
-        MSG_WELCOME,   // s->c: u8 your player id, i32 seed, f32 sun_pitch, u32 nr edits
+        MSG_WELCOME,   // s->c: u8 your player id, i32 seed, u32 nr edits
         MSG_EDIT,      // both: i32 ax, i32 ay, i32 az, u8 tile
         MSG_PLAYER,    // both: u8 id, f32 abs pos xyz (units), f32 vel xyz, f32 yaw, pitch
         MSG_MOB,       // s->c: u32 total kills, then per mob u8 slot, size, hurt, dying, f32 abs xyz, yaw
         MSG_PUNCH,     // c->s: u8 mob slot
         MSG_BONK,      // s->c: f32 knock x, f32 knock z - a slime hit YOU
-        MSG_TIME,      // s->c: f32 sun_pitch, so sunsets stay shared
         MSG_CHAT,      // both: u8 sender id, then the text (not NUL-terminated)
 };
 
@@ -184,11 +183,10 @@ static void conn_flush(struct conn *c)
 
 static void server_welcome(struct conn *c)
 {
-        unsigned char m[13];
+        unsigned char m[9];
         m[0] = c->player;
         put_u32(m + 1, world_seed);
-        put_f32(m + 5, sun_pitch);
-        put_u32(m + 9, edit_len);
+        put_u32(m + 5, edit_len);
         conn_send(c, MSG_WELCOME, m, sizeof m);
 
         // stream the whole edit overlay; the client records the entries and
@@ -212,7 +210,6 @@ static void client_welcome(const unsigned char *p)
         if (my_player != old)
                 player[my_player] = player[old]; // carry the local body to its new slot
         world_seed = get_u32(p + 1);
-        sun_pitch = get_f32(p + 5);
 
         // the server's edit overlay replaces anything local, and the world
         // regenerates from the server's seed as if by the regen command
@@ -226,7 +223,7 @@ static void client_welcome(const unsigned char *p)
 
         net_welcomed = 1;
         fprintf(stderr, "net: joined as player %d, seed %d, %u edits incoming\n",
-                my_player, world_seed, get_u32(p + 9));
+                my_player, world_seed, get_u32(p + 5));
 }
 
 // a remote player's state landed: store the target, and wake the slot up if
@@ -303,7 +300,7 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
         else switch (type)
         {
         case MSG_WELCOME:
-                if (len < 13) { conn_close(c); return; }
+                if (len < 9) { conn_close(c); return; }
                 client_welcome(p);
                 break;
         case MSG_EDIT:
@@ -352,10 +349,6 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                                 mob[i].alive = 0;
                 break;
         }
-        case MSG_TIME:
-                if (len < 4) return;
-                sun_pitch = get_f32(p); // the sun drifts apart slowly; snap to match
-                break;
         case MSG_CHAT:
         {
                 if (len < 2 || len > 256) return;
@@ -486,19 +479,6 @@ static void net_send_my_state()
         else for (int i = 0; i < NET_MAX_CLIENTS; i++)
                 if (conns[i].helloed)
                         conn_send(&conns[i], MSG_PLAYER, m, sizeof m);
-}
-
-// server: keep everyone's sun where mine is, every ~5 seconds
-static void net_send_time()
-{
-        static int last_sent = -300;
-        if (pframe - last_sent < 300) return;
-        last_sent = pframe;
-        unsigned char m[4];
-        put_f32(m, sun_pitch);
-        for (int i = 0; i < NET_MAX_CLIENTS; i++)
-                if (conns[i].helloed)
-                        conn_send(&conns[i], MSG_TIME, m, sizeof m);
 }
 
 // server: snapshot every living mob to every client at ~15Hz (every 4th tick)
@@ -661,10 +641,7 @@ void net_poll()
                 net_smooth_players();
         }
         if (net_mode == NET_SERVER)
-        {
                 net_send_mobs();
-                net_send_time();
-        }
         else if (net_mode == NET_CLIENT)
                 net_smooth_mobs();
 }

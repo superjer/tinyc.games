@@ -119,30 +119,10 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
 
 void do_shadows()
 {
-        // Determine effective light pitch - use moon at night (sun below horizon)
-        int is_night = (sun_pitch >= PI);
-        float light_pitch = is_night ? moon_pitch : sun_pitch;
-        if (light_pitch < 0) light_pitch += TAU;
-
-        // Shadows never render below PI/16 elevation: the frustum ground
-        // footprint grows as 1/sin(elevation), so the last few degrees cost
-        // more than the rest of the day combined. PI/16 is where the
-        // sun_strength fade begins, so full-strength light always casts
-        // geometrically true shadows; during the fade they just stop
-        // lengthening (capped at ~5x object height) instead of sweeping
-        // the whole window.
-        const float min_elev = PI / 16.0f;
-        if (light_pitch < min_elev) light_pitch = min_elev;
-        else if (light_pitch > PI - min_elev) light_pitch = PI - min_elev;
-
-        if (shadow_mapping && !shadow_idle)
+        if (shadow_mapping)
         {
                 float tgt[3] = { shadow_target[0], shadow_target[1], shadow_target[2] };
-                float light_pos[3] = {
-                        tgt[0] + dist2sun * (cosf(light_pitch) * cosf(sun_yaw)),
-                        tgt[1] + dist2sun * (cosf(light_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(light_pitch) * sinf(sun_roll)),
-                        tgt[2] + dist2sun * (cosf(light_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(light_pitch) * cosf(sun_roll)),
-                };
+                float light_pos[3] = { sun_pos.x, sun_pos.y, sun_pos.z };
 
                 // Build view matrix: look from light toward target
                 float fwd[3] = {
@@ -216,8 +196,7 @@ void do_shadows()
 
 void shadow_render(VkCommandBuffer cmdbuf)
 {
-        // When idle (light at the horizon) the pass is pure waste - skip it.
-        if (shadow_mapping && !shadow_idle)
+        if (shadow_mapping)
                 draw_shadow_pass(cmdbuf, SHADOW_NEAR, 1.5f, 1.5f, 1);
 }
 

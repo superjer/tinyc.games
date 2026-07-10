@@ -1,6 +1,8 @@
 #version 450
-#extension GL_GOOGLE_include_directive : require
-#include "sky_color.glsl"
+
+// The whole sky is one flat color: it's the render clear color (set in
+// blocko.c), the fog color, and what water mirrors. Keep the three in sync.
+const vec3 SKY_COLOR = vec3(0.53, 0.71, 0.92);
 
 layout(location = 0) out vec4 color;
 
@@ -21,23 +23,16 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 proj;             // offset 128
     mat4 shadow_space;     // offset 192 (the one near cascade)
     float BS;              // offset 256
-    vec3 day_color;        // offset 272
-    vec3 glo_color;        // offset 288
-    float fog_lo;          // offset 300
-    float fog_hi;          // offset 304
-    vec3 light_pos;        // offset 320
-    vec3 view_pos;         // offset 336
-    float sharpness;       // offset 348
-    bool shadow_mapping;   // offset 352
-    float sun_strength;    // offset 356
-    float sun_warmth;      // offset 360
-    int water_frame;           // offset 364
-    float underwater;          // offset 368 (camera eye is in water)
-    float scootx;              // offset 372 (window->world block offset)
-    float scootz;              // offset 376
-    vec3 sun_dir;              // offset 384 (unit vector toward the sun)
-    float night_amt;           // offset 396 (0 day, 0.5 dusk, 1 night)
-    float shadow_fade;         // offset 400 (1 full shadows, ->0 eases contrast out before the idle cutoff)
+    vec3 glo_color;        // offset 272
+    float fog_lo;          // offset 284
+    float fog_hi;          // offset 288
+    vec3 light_pos;        // offset 304
+    vec3 view_pos;         // offset 320
+    bool shadow_mapping;   // offset 332
+    int water_frame;       // offset 336
+    float underwater;      // offset 340 (camera eye is in water)
+    float scootx;          // offset 344 (window->world block offset)
+    float scootz;          // offset 348
 } ubo;
 
 // No push constants here: this fragment shader is shared by the terrain
@@ -204,39 +199,23 @@ void main(void) {
             unshadow = max(unshadow, edge);
         }
 
-        // Ease shadow contrast out as the light nears the horizon, so the
-        // idle cutoff (shadow_mapping -> false at ~5% strength) lands on an
-        // already-shadowless scene instead of popping.
-        unshadow = mix(1.0, unshadow, ubo.shadow_fade);
+        // Directional lighting on top of the baked block light
+        float directional = unshadow * (diff + spec);
 
-        // Combine shadow with lighting
-        float s0 = 0.6 + 0.4 * ubo.sharpness;
-        float s1 = 0.3 + 0.7 * (1 - ubo.sharpness);
-
-        // Sunlight color: white at noon, warm orange at sunrise/sunset
-        // Moonlight stays unwarmed (sun_warmth = 0 at night)
-        vec3 warm_orange = vec3(1.0, 0.6, 0.3);
-        vec3 light_tint = mix(vec3(1.0), warm_orange, ubo.sun_warmth);
-
-        // Directional lighting modulated by sun strength (0 at sunrise/sunset, 1 at noon)
-        // At night, sun_strength = 1.0 to allow moonlight directional contribution
-        float directional = unshadow * (diff + spec) * ubo.sun_strength;
-
-        // sharp sun/moon glitter on the rippled water surface,
+        // sharp sun glitter on the rippled water surface,
         // added after texturing so it reads as a reflection
         if (alpha < 1.0)
-            glint = light_tint * (1.5 * unshadow * ubo.sun_strength
-                    * pow(max(dot(N, halfway_dir), 0.0), 80.0));
+            glint = vec3(1.5 * unshadow * pow(max(dot(N, halfway_dir), 0.0), 80.0));
 
         // slimes read as wet: a tight glossy hotspot plus a fresnel sheen
         if (shiny > 0.5) {
             float wet = pow(max(dot(N, halfway_dir), 0.0), 64.0);
             float fres = pow(1.0 - max(dot(view_dir, N), 0.0), 3.0);
-            glint += light_tint * (2.0 * unshadow * ubo.sun_strength * wet)
+            glint += vec3(2.0 * unshadow * wet)
                    + vec3(0.18, 0.32, 0.24) * fres;
         }
 
-        sky = (s1 * illum + s0 * directional) * light_tint * ubo.day_color;
+        sky = vec3(illum + 0.6 * directional);
     }
 
     vec3 glo_contrib = vec3(glow) * ubo.glo_color;
@@ -249,7 +228,7 @@ void main(void) {
         // fresnel: mirror the sky at grazing angles, clear straight down
         vec3 vdir = normalize(ubo.view_pos - world_pos.xyz);
         float fresnel = pow(1.0 - abs(dot(vdir, N)), 3.0);
-        vec3 mirrored = sky_color(reflect(-vdir, N), ubo.sun_dir, ubo.night_amt);
+        vec3 mirrored = SKY_COLOR;
         c.rgb = mix(c.rgb, mirrored, fresnel);
         c.a = mix(0.5, 0.95, fresnel);
 
@@ -270,19 +249,18 @@ void main(void) {
 
     if (ubo.underwater > 0.5) {
         // murky water: blue tint plus dense fog in every direction
-        vec3 water_color = vec3(0.05, 0.18, 0.35) * ubo.day_color;
+        vec3 water_color = vec3(0.05, 0.18, 0.35);
         c.rgb *= vec3(0.4, 0.7, 1.0);
         float wfog = smoothstep(ubo.BS * 2.0, ubo.BS * 40.0, length(ubo.view_pos.xyz - world_pos.xyz));
         color = mix(c, vec4(water_color, 1.0), wfog);
     } else {
-        // Fog based on distance from camera, colored per-pixel to match the
-        // sky in this exact direction so distant terrain melts into the dome
+        // Fog based on distance from camera: distant terrain melts into the
+        // flat sky color
         float dist = length(ubo.view_pos.xz - world_pos.xz);
         float fog_linear = smoothstep(ubo.fog_lo, ubo.fog_hi, dist);
         float fog = fog_linear * fog_linear * fog_linear;
-        vec3 fog_color = sky_color(world_pos.xyz - ubo.view_pos, ubo.sun_dir, ubo.night_amt);
 
-        color = mix(c, vec4(fog_color, 1.0), fog);
+        color = mix(c, vec4(SKY_COLOR, 1.0), fog);
     }
 
     // debug viz: tint the reject+patch mesh red (socket `tint`, via reject_lo.w)

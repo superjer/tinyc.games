@@ -120,12 +120,8 @@ set(SHADER_FILES
   common/tinyc.games/shaders/font.frag
   tet-game/shaders/tet.vert
   tet-game/shaders/tet.frag
-  blocko-game/shaders/sky.vert
-  blocko-game/shaders/sky.frag
   blocko-game/shaders/sun.vert
   blocko-game/shaders/sun.frag
-  blocko-game/shaders/moon.vert
-  blocko-game/shaders/moon.frag
   noise-demo/shaders/noise.vert
   noise-demo/shaders/noise.frag
 )
@@ -138,7 +134,6 @@ foreach(SHADER ${SHADER_FILES})
     OUTPUT ${COMPILED_SHADER}
     COMMAND ${GLSLANG_VALIDATOR} --quiet -V ${CMAKE_SOURCE_DIR}/${SHADER} -o ${COMPILED_SHADER}
     DEPENDS ${CMAKE_SOURCE_DIR}/${SHADER}
-            ${CMAKE_SOURCE_DIR}/blocko-game/shaders/sky_color.glsl
     COMMENT "Compiling shader: ${SHADER}"
   )
   list(APPEND COMPILED_SHADER_FILES ${COMPILED_SHADER})

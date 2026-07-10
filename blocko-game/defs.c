@@ -129,15 +129,6 @@ const int shadow_sz[SHADOW_COUNT] = { 2048 };
 
 #define PNG0 19
 
-#define DAY_R 1.f
-#define DAY_G 1.f
-#define DAY_B 1.f
-#define NIGHT_R 0.32f
-#define NIGHT_G 0.28f
-#define NIGHT_B 0.41f
-#define DUSK_R 0.8f
-#define DUSK_G 0.5f
-#define DUSK_B 0.4f
 // tile pos-to-mem-location macros
 #define T_(x,y,z)    tiles[    ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
 #define SUN_(x,y,z)  sunlight[ ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
@@ -290,38 +281,26 @@ VkRenderPass shadow_render_pass;
 int shadow_pipe;
 int shadow_solid_pipe; // no-op fragment stage: fast depth path, leaves solid
 
-// Light too low to matter: skip the whole shadow pipeline (set per-frame)
-int shadow_idle;
-
 struct main_ubo {
     float model[16];              // mat4 - offset 0
     float view[16];               // mat4 - offset 64
     float proj[16];               // mat4 - offset 128
     float shadow_space[16];       // mat4 - offset 192 (the one near cascade)
     float bs;                     // float - offset 256
-    float padding1[3];            // Padding to align day_color to 16 bytes
+    float padding1[3];            // Padding to align glo_color to 16 bytes
 
-    float day_color[3];   // vec3 - offset 272
-    float padding2;       // Padding
-    float glo_color[3];   // vec3 - offset 288
-    float fog_lo;         // float - offset 300
-    float fog_hi;         // float - offset 304
-    float padding3[3];    // Padding to align light_pos to 16 bytes
-    float light_pos[3];   // vec3 - offset 320
-    float padding4;       // Padding
-    float view_pos[3];    // vec3 - offset 336
-    float sharpness;      // float - offset 348
-    int shadow_mapping;   // bool (as int) - offset 352
-    float sun_strength;   // float - offset 356
-    float sun_warmth;     // float - offset 360
-    int water_frame;           // int   - offset 364
-    float underwater;          // float - offset 368 (camera eye is in water)
-    float scootx;              // float - offset 372 (window->world block offset x)
-    float scootz;              // float - offset 376 (window->world block offset z)
-    float padding5;            // Padding to align sun_dir to 16 bytes
-    float sun_dir[3];          // vec3  - offset 384 (unit vector toward the sun)
-    float night_amt;           // float - offset 396 (0 day, 0.5 dusk, 1 night)
-    float shadow_fade;         // float - offset 400 (1 full shadows, ->0 eases contrast out before the idle cutoff)
+    float glo_color[3];   // vec3 - offset 272
+    float fog_lo;         // float - offset 284
+    float fog_hi;         // float - offset 288
+    float padding2[3];    // Padding to align light_pos to 16 bytes
+    float light_pos[3];   // vec3 - offset 304
+    float padding3;       // Padding
+    float view_pos[3];    // vec3 - offset 320
+    int shadow_mapping;   // bool (as int) - offset 332
+    int water_frame;      // int   - offset 336
+    float underwater;     // float - offset 340 (camera eye is in water)
+    float scootx;         // float - offset 344 (window->world block offset x)
+    float scootz;         // float - offset 348 (window->world block offset z)
 } main_ubo;
 
 unsigned int vbo[VAOS], vao[VAOS];
@@ -354,8 +333,6 @@ struct vbufv wbuf_mt[MAX_MESH_THREADS][VERTEX_BUFLEN + 1000];
 // sized smaller - canopies are a fraction of a chunk (overflow spills to solid)
 struct vbufv lbuf_mt[MAX_MESH_THREADS][VERTEX_BUFLEN/8 + 1000];
 size_t mesh_leaf_start; // solid face count of the last mesh_region build
-
-float night_amt;
 
 unsigned char *tiles;
 unsigned char *sunlight;
@@ -514,7 +491,6 @@ float mob_lerp_t; // how far past the last physics tick the frame is drawn
 
 struct point lerped_pos;
 struct point sun_pos;
-struct point moon_pos;
 
 SDL_Event event;
 
@@ -539,10 +515,9 @@ float zoom_amt = 1.f;
 float fast = 1.f;
 int headless; // dedicated server: no window, no vulkan, no input
 int shadow_mapping = true;
-float sun_pitch = .3f; //.6f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down
-float moon_pitch;
-float sun_yaw = .3f;
-float sun_roll = -1.3f;
+// the sun never moves: ~45 degrees up, off-axis (render y grows downward,
+// so up is -y). Unit vector pointing from the world toward the sun.
+const float sun_dir[3] = { .572f, -.707f, .416f };
 void game_shutdown(int code);
 int main_pipe;       // main terrain rendering pipeline
 int water_pipe;      // transparent water rendering pipeline (near, back-to-front)
@@ -610,9 +585,7 @@ VkBuffer vulkan_fill_buffer(void *buf, size_t sz);
 void cursor(VkCommandBuffer cmdbuf);
 
 // atmosphere.c protos
-void do_atmos_colors();
-void sun_draw(VkCommandBuffer cmdbuf, float *proj, float *view, float pitch, float yaw, float roll);
-void sky_draw(VkCommandBuffer cmdbuf, float *proj, float *view);
+void sun_draw(VkCommandBuffer cmdbuf, float *proj, float *view);
 
 // player.c protos
 void lerp_camera(float t, struct player *a, struct player *b);

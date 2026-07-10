@@ -73,7 +73,6 @@
 void startup();
 void new_game();
 void main_loop();
-void update_world();
 void chunk_builder();
 
 // SDL-thread entry point for the terrain workers (see main)
@@ -158,6 +157,9 @@ int main(int argc, char **argv)
         else
         {
                 vksetup();
+                // the flat sky IS the clear color (keep in sync with SKY_COLOR
+                // in main.frag, which fogs distant terrain to match)
+                vk.clear_color = (VkClearColorValue){{0.53f, 0.71f, 0.92f, 1.f}};
                 font_init();
                 cursor_init();
                 sun_init();
@@ -227,7 +229,6 @@ void main_loop()
                 hand_animate(&player[my_player]);
                 update_mobs();
                 update_items();
-                update_world();
                 pframe++;
                 accumulated_elapsed -= interval;
         }
@@ -340,13 +341,6 @@ void regen_world()
                 }
         }
 }
-
-void update_world()
-{
-        sun_pitch += 0.0001f;
-        if (sun_pitch > TAU) sun_pitch -= TAU;
-}
-
 
 void move_to_ground(float *inout, int x, int y, int z)
 {

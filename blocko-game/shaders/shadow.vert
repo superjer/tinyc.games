@@ -32,16 +32,12 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 proj;
     mat4 shadow_space;
     float BS;
-    vec3 day_color;
     vec3 glo_color;
     float fog_lo;
     float fog_hi;
     vec3 light_pos;
     vec3 view_pos;
-    float sharpness;
     bool shadow_mapping;
-    float sun_strength;
-    float sun_warmth;
     int water_frame;
     float underwater;
     float scootx;

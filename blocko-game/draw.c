@@ -95,57 +95,15 @@ void draw_stuff()
 
         memcpy(main_ubo.model, identity_mtrx, sizeof identity_mtrx);
 
-        // Calculate sun/moon positions (used for lighting and shadows)
-        float chunk_size = BS * CHUNKW;
+        // The sun sits fixed in the sky; its position only follows the player
         shadow_target[0] = camplayer.pos.x;
         shadow_target[1] = camplayer.pos.y;
         shadow_target[2] = camplayer.pos.z;
+        sun_pos.x = shadow_target[0] + dist2sun * sun_dir[0];
+        sun_pos.y = shadow_target[1] + dist2sun * sun_dir[1];
+        sun_pos.z = shadow_target[2] + dist2sun * sun_dir[2];
 
-        // Original tilted sun path (non-equatorial for interesting lighting)
-        sun_pos.x = shadow_target[0] + dist2sun * (cosf(sun_pitch) * cosf(sun_yaw));
-        sun_pos.y = shadow_target[1] + dist2sun * (cosf(sun_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(sun_pitch) * sinf(sun_roll));
-        sun_pos.z = shadow_target[2] + dist2sun * (cosf(sun_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(sun_pitch) * cosf(sun_roll));
-
-        moon_pitch = sun_pitch + PI;
-        if (moon_pitch >= TAU) moon_pitch -= TAU;
-        moon_pos.x = shadow_target[0] + dist2sun * (cosf(moon_pitch) * cosf(sun_yaw));
-        moon_pos.y = shadow_target[1] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(moon_pitch) * sinf(sun_roll));
-        moon_pos.z = shadow_target[2] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(moon_pitch) * cosf(sun_roll));
-
-        // While the light source sits within a couple degrees of the horizon its
-        // directional light has faded to nothing (same ramp as sun_strength
-        // below), but the low-angle shadow frustums sweep more terrain than at
-        // any other time of day - the most expensive shadows are the invisible
-        // ones. Idle the whole shadow pipeline until the light climbs back up.
-        {
-                float transition = PI / 16.0f;
-                float p = sun_pitch < PI ? sun_pitch : sun_pitch - PI; // moon mirrors the sun
-                float strength = 1.0f;
-                if (p < transition) {
-                        float t = p / transition;
-                        strength = t * t;
-                } else if (p > PI - transition) {
-                        float t = (p - (PI - transition)) / transition;
-                        strength = 1.0f - t * t;
-                }
-                shadow_idle = strength < 0.05f;
-
-                // Ease shadow contrast to zero over the bottom of the strength
-                // ramp (5%..50%, i.e. the last ~5.5 degrees of elevation) so the
-                // idle flip above has nothing visible left to cut off.
-                float f = (strength - 0.05f) / 0.45f;
-                f = f < 0.f ? 0.f : f > 1.f ? 1.f : f;
-                main_ubo.shadow_fade = f * f * (3.f - 2.f * f);
-        }
-
-        // do_shadows() runs every frame even when frozen: the UBO is memset to 0
-        // above, so it must refill shadow_space[] or the sampling coords collapse to
-        // the origin and shadows vanish. When frozen it rebuilds those from the
-        // stored shadow[].matrix (which apply_scoot keeps world-aligned) instead of
-        // recentering on the player, and the shadow-map re-render is skipped.
         do_shadows();
-
-        do_atmos_colors();
 
         // eye position + underwater check (needed before proj for FOV)
         peye0 = lerped_pos.x + PLYR_W / 2;
@@ -212,8 +170,7 @@ void draw_stuff()
 
                         // Check the shadow frustum
                         unsigned char shadow_mask = 0;
-                        if (shadow_mapping && !shadow_idle
-                                && chunk_in_frustum(shadow[SHADOW_NEAR].matrix, i, j))
+                        if (shadow_mapping && chunk_in_frustum(shadow[SHADOW_NEAR].matrix, i, j))
                                 shadow_mask = 1;
 
                         // Include if visible to camera OR any shadow frustum
@@ -238,9 +195,7 @@ void draw_stuff()
         qsort(visible_chunks, visible_chunk_count, sizeof(struct visible_chunk),
               (int (*)(const void *, const void *))chunk_dist_compare);
 
-        // When idle, tell the shader too: unshadow pins to 1.0, which is invisible
-        // under a <5%-strength directional light, and the PCF sampling is skipped
-        main_ubo.shadow_mapping = shadow_mapping && !shadow_idle;
+        main_ubo.shadow_mapping = shadow_mapping;
 
         memcpy(main_ubo.proj, proj_mtrx, sizeof proj_mtrx);
         memcpy(main_ubo.view, translated_view_mtrx, sizeof translated_view_mtrx);
@@ -253,93 +208,19 @@ void draw_stuff()
         main_ubo.scootx = scootx;
         main_ubo.scootz = scootz;
 
-        if (sun_pitch < PI)
-        {
-                main_ubo.light_pos[0] = sun_pos.x;
-                main_ubo.light_pos[1] = sun_pos.y;
-                main_ubo.light_pos[2] = sun_pos.z;
-        }
-        else
-        {
-                main_ubo.light_pos[0] = moon_pos.x;
-                main_ubo.light_pos[1] = moon_pos.y;
-                main_ubo.light_pos[2] = moon_pos.z;
-        }
+        main_ubo.light_pos[0] = sun_pos.x;
+        main_ubo.light_pos[1] = sun_pos.y;
+        main_ubo.light_pos[2] = sun_pos.z;
 
         main_ubo.view_pos[0] = peye0;
         main_ubo.view_pos[1] = peye1;
         main_ubo.view_pos[2] = peye2;
 
-        {
-                float m = ICLAMP(night_amt * 2.f, 0.f, 1.f);
-                main_ubo.sharpness = m*m*m*(m*(m*6.f-15.f)+10.f);
-
-                float r = lerp(night_amt * night_amt, DAY_R, NIGHT_R);
-                float g = lerp(night_amt, DAY_G, NIGHT_G);
-                float b = lerp(night_amt, DAY_B, NIGHT_B);
-                main_ubo.day_color[0] = r;
-                main_ubo.day_color[1] = g;
-                main_ubo.day_color[2] = b;
-                main_ubo.glo_color[0] = 0.92f;
-                main_ubo.glo_color[1] = 0.83f;
-                main_ubo.glo_color[2] = 0.69f;
-                main_ubo.fog_lo = BS * 50.0f;
-                main_ubo.fog_hi = draw_dist * BS * 0.9f;
-
-                // sun direction + night_amt drive the per-pixel sky-colored
-                // fog (sky_color.glsl) — same formula as sky_draw's push
-                main_ubo.sun_dir[0] = cosf(sun_pitch) * cosf(sun_yaw);
-                main_ubo.sun_dir[1] = sinf(sun_pitch);
-                main_ubo.sun_dir[2] = -cosf(sun_pitch) * sinf(sun_yaw);
-                main_ubo.night_amt = night_amt;
-
-                // Sun strength and warmth for day/night cycle
-                // Full brightness between PI/16 and PI-PI/16, dimming/warming only near horizons
-                // During night: moonlight at constant strength, no warmth
-                if (sun_pitch < PI) {
-                        // Daytime
-                        float transition = PI / 16.0f;  // ~11 degrees transition zone
-                        float sunrise_end = transition;
-                        float sunset_start = PI - transition;
-
-                        if (sun_pitch < sunrise_end) {
-                                // Sunrise transition: dim/warm → bright/white
-                                float t = sun_pitch / sunrise_end;
-                                main_ubo.sun_strength = t * t;
-                                main_ubo.sun_warmth = 1.0f - t;
-                        } else if (sun_pitch > sunset_start) {
-                                // Sunset transition: bright/white → dim/warm
-                                float t = (sun_pitch - sunset_start) / transition;
-                                main_ubo.sun_strength = 1.0f - t * t;
-                                main_ubo.sun_warmth = t;
-                        } else {
-                                // Full day: constant brightness, no warmth
-                                main_ubo.sun_strength = 1.0f;
-                                main_ubo.sun_warmth = 0.0f;
-                        }
-                } else {
-                        // Nighttime - moonlight fades in/out near horizons
-                        float transition = PI / 16.0f;
-                        float moonrise_end = PI + transition;
-                        float moonset_start = TAU - transition;
-
-                        if (sun_pitch < moonrise_end) {
-                                // Moonrise transition: dim → bright, warm → cool
-                                float t = (sun_pitch - PI) / transition;
-                                main_ubo.sun_strength = t * t;
-                                main_ubo.sun_warmth = 1.0f - t;  // Fade out warmth from sunset
-                        } else if (sun_pitch > moonset_start) {
-                                // Moonset transition: bright → dim, cool → warm
-                                float t = (sun_pitch - moonset_start) / transition;
-                                main_ubo.sun_strength = 1.0f - t * t;
-                                main_ubo.sun_warmth = t;  // Fade in warmth for sunrise
-                        } else {
-                                // Full night: constant moonlight, no warmth
-                                main_ubo.sun_strength = 1.0f;
-                                main_ubo.sun_warmth = 0.0f;
-                        }
-                }
-        }
+        main_ubo.glo_color[0] = 0.92f;
+        main_ubo.glo_color[1] = 0.83f;
+        main_ubo.glo_color[2] = 0.69f;
+        main_ubo.fog_lo = BS * 50.0f;
+        main_ubo.fog_hi = draw_dist * BS * 0.9f;
 
         // Check LOD chunks for face visibility changes
         for (int i = 0; i < VAOW; i++) {
@@ -484,10 +365,9 @@ void draw_stuff()
         // via a squashed depth range so it never clips into nearby terrain
         hand_render(cmdbuf, main_pipe, proj_view_mtrx);
 
-        // Render sky/sun between opaque terrain and transparent water
-        sky_draw(cmdbuf, proj_mtrx, view_mtrx);
-        if (!main_ubo.underwater) // too murky to see the sun/moon
-                sun_draw(cmdbuf, proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll);
+        // Render the sun between opaque terrain and transparent water
+        if (!main_ubo.underwater) // too murky to see the sun
+                sun_draw(cmdbuf, proj_mtrx, view_mtrx);
 
         // Pass 2: water, split by distance. Far chunks are fully past the
         // smoothstep(40,100) alpha ramp in main.frag, so their fragments are

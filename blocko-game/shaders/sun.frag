@@ -6,11 +6,8 @@ layout(location = 0) out vec4 color;
 
 layout(push_constant) uniform Push {
     mat4 pv;
-    float pitch;
-    float yaw;
-    float roll;
+    vec3 sun_dir;
     float time;    // frame counter for animation
-    float alpha;   // fade with light contribution (0 below horizon)
 } push;
 
 void main()
@@ -60,5 +57,5 @@ void main()
     // HDR-ish: let it go above 1.0 for bloom-like effect
     sun_color = clamp(sun_color, 0.0, 1.5);
 
-    color = vec4(sun_color, alpha * push.alpha);
+    color = vec4(sun_color, alpha);
 }

@@ -29,14 +29,12 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 proj;             // offset 128
     mat4 shadow_space;     // offset 192 (the one near cascade)
     float BS;              // offset 256
-    vec3 day_color;        // offset 272
-    vec3 glo_color;        // offset 288
-    float fog_lo;          // offset 300
-    float fog_hi;          // offset 304
-    vec3 light_pos;        // offset 320
-    vec3 view_pos;         // offset 336
-    float sharpness;       // offset 348
-    bool shadow_mapping;   // offset 352
+    vec3 glo_color;        // offset 272
+    float fog_lo;          // offset 284
+    float fog_hi;          // offset 288
+    vec3 light_pos;        // offset 304
+    vec3 view_pos;         // offset 320
+    bool shadow_mapping;   // offset 332
 } ubo;
 
 layout(push_constant) uniform Push {
