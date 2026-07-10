@@ -297,10 +297,12 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                         {
                                 sun[y-1] = 0;
                                 // the queue works in the main thread's
-                                // window mapping, which can differ mid-scoot
+                                // window mapping, which can differ mid-scoot.
+                                // light is render: sim areas skip the queue
                                 int mx = x - tscootx + scootx;
                                 int mz = z - tscootz + scootz;
-                                if (mx >= 0 && mx < TILESW && mz >= 0 && mz < TILESD)
+                                if (gen_area == &main_area
+                                                && mx >= 0 && mx < TILESW && mz >= 0 && mz < TILESD)
                                         sun_enqueue_raw(mx, y-1, mz, light_level);
                         }
                         // the ground block and everything below start dark
@@ -335,8 +337,9 @@ void gen_chunk_pass2(int cx, int cz)
         unsigned t0 = SDL_GetTicks();
 
         // correcting pass over the chunk, contain floating water
-        for (int x = MAX(xlo, 1); x < MIN(xhi, TILESW-1); x++)
-                for (int z = MAX(zlo, 1); z < MIN(zhi, TILESD-1); z++)
+        // (clamped at the destination window's rim, whatever its size)
+        for (int x = MAX(xlo, 1); x < MIN(xhi, gen_area->maskw); x++)
+                for (int z = MAX(zlo, 1); z < MIN(zhi, gen_area->maskd); z++)
                         for (int y = SEA_LEVEL + 20; y < TILESH-2; y++)
         {
                 if (TT_(x, y, z) == WATR)
@@ -432,8 +435,10 @@ void gen_chunk_pass2(int cx, int cz)
         }
         gen_pass(&t0, GEN_TREES);
 
-        // edge corners read the neighbors' edge columns (pass 1 data)
-        recalc_corner_lighting(xlo, MIN(xhi+1, TILESW-1), zlo, MIN(zhi+1, TILESD-1));
+        // edge corners read the neighbors' edge columns (pass 1 data).
+        // light is render: sim areas skip it
+        if (gen_area == &main_area)
+                recalc_corner_lighting(xlo, MIN(xhi+1, TILESW-1), zlo, MIN(zhi+1, TILESD-1));
         gen_pass(&t0, GEN_CORNERS);
 }
 
@@ -453,6 +458,123 @@ void terrain_apply_scoot()
 // thread agrees on it no matter which scoot mapping it is running under
 #define TSLOTI(z) ((z - tchunk_scootz) & (VAOD-1))
 #define TSLOTJ(x) ((x - tchunk_scootx) & (VAOW-1))
+
+// fill missing chunks of one active sim area; returns 1 if it did any work.
+// One builder owns an area at a time (busy), so unlike the main ring there
+// is no cross-builder edge dance: the owner generates any missing pass-1
+// units itself (estamps still skip redundant ones across scoots). It runs
+// under the area's window mapping (tscoot = -low corner, coords 0..SIM_AREA_W)
+// and abandons at the next stamping point when the epoch moves (scoot,
+// deactivate, regen) - same discipline as the main ring's regen_epoch
+int area_builder_try()
+{
+        struct warea *a = NULL;
+        int my_epoch = 0, cx0 = 0, cz0 = 0;
+        int todo[SIM_AREA_CHUNKS * SIM_AREA_CHUNKS][2], n = 0;
+
+        #pragma omp critical (chunks)
+        {
+                for (int i = 0; i < NR_PLAYERS && !a; i++)
+                {
+                        struct warea *s = &sim_area[i];
+                        if (!s->active || s->busy) continue;
+                        n = 0;
+                        for (int cz = 0; cz < SIM_AREA_CHUNKS; cz++)
+                        for (int cx = 0; cx < SIM_AREA_CHUNKS; cx++)
+                        {
+                                int acx = s->cx0 + cx, acz = s->cz0 + cz;
+                                volatile struct chunk_stamp *st =
+                                        &s->stamp[acz & SIM_AREA_CMASK][acx & SIM_AREA_CMASK];
+                                if (st->ax == acx && st->az == acz) continue;
+                                todo[n][0] = cx;
+                                todo[n][1] = cz;
+                                n++;
+                        }
+                        if (!n) continue;
+                        a = s;
+                        a->busy = 1;
+                        my_epoch = a->epoch;
+                        cx0 = a->cx0;
+                        cz0 = a->cz0;
+                }
+        }
+        if (!a)
+                return 0;
+
+        // nearest to the anchor (window chunk 1,1) first
+        for (int i = 1; i < n; i++) for (int j = i; j > 0; j--)
+        {
+                int dj = (todo[j  ][0]-1)*(todo[j  ][0]-1) + (todo[j  ][1]-1)*(todo[j  ][1]-1);
+                int dk = (todo[j-1][0]-1)*(todo[j-1][0]-1) + (todo[j-1][1]-1)*(todo[j-1][1]-1);
+                if (dj >= dk) break;
+                int tx = todo[j][0], tz = todo[j][1];
+                todo[j][0] = todo[j-1][0]; todo[j][1] = todo[j-1][1];
+                todo[j-1][0] = tx; todo[j-1][1] = tz;
+        }
+
+        gen_area = a;
+        tscootx = -cx0 * CHUNKW;
+        tscootz = -cz0 * CHUNKD;
+        int abandon = 0;
+
+        for (int t = 0; t < n && !abandon; t++)
+        {
+                int cx = todo[t][0], cz = todo[t][1];
+
+                // pass 1 on the 3x3, clamped at the area rim (rim-generated
+                // chunks are identical to interior ones - the determinism gate)
+                for (int dz = -1; dz <= 1 && !abandon; dz++)
+                for (int dx = -1; dx <= 1 && !abandon; dx++)
+                {
+                        int nx = cx + dx, nz = cz + dz;
+                        if (nx < 0 || nx >= SIM_AREA_CHUNKS
+                         || nz < 0 || nz >= SIM_AREA_CHUNKS) continue;
+                        int acx = cx0 + nx, acz = cz0 + nz;
+                        volatile struct chunk_stamp *e =
+                                &a->estamp[acz & SIM_AREA_CMASK][acx & SIM_AREA_CMASK];
+                        if (e->ax == acx && e->az == acz) continue;
+                        gen_chunk_pass1(nx, nz);
+                        #pragma omp critical (chunks)
+                        {
+                                if (a->epoch != my_epoch)
+                                        abandon = 1;
+                                else
+                                {
+                                        e->ax = acx;
+                                        e->az = acz;
+                                }
+                        }
+                }
+                if (abandon) break;
+
+                gen_chunk_pass2(cx, cz);
+
+                #pragma omp critical (chunks)
+                {
+                        if (a->epoch != my_epoch)
+                                abandon = 1;
+                        else if (area_fresh_len < (int)(sizeof area_fresh / sizeof *area_fresh))
+                        {
+                                int acx = cx0 + cx, acz = cz0 + cz;
+                                volatile struct chunk_stamp *st =
+                                        &a->stamp[acz & SIM_AREA_CMASK][acx & SIM_AREA_CMASK];
+                                st->ax = acx;
+                                st->az = acz;
+                                area_fresh[area_fresh_len++] =
+                                        (struct area_fresh){a, acx, acz};
+                                nr_chunks_generated++;
+                        }
+                        // replay queue full: leave unstamped, re-claimed later
+                }
+        }
+
+        gen_area = &main_area;
+        #pragma omp critical (chunks)
+        {
+                a->busy = 0;
+        }
+        return 1;
+}
 
 // on its own thread(s), loops forever building chunks when needed
 void chunk_builder()
@@ -509,9 +631,12 @@ void chunk_builder()
 
         if (!found)
         {
+                // main ring complete: fill sim areas around remote players
+                int did = area_builder_try();
                 if (!TERRAIN_THREAD)
                         return;
-                SDL_Delay(1);
+                if (!did)
+                        SDL_Delay(1);
                 continue;
         }
 

@@ -166,6 +166,7 @@ void set_tile(int x, int y, int z, int t)
 
         T_(x, y, z) = t;
         edit_record(x - scootx, y, z - scootz, t);
+        sim_area_write(x - scootx, y, z - scootz, t);
         tile_light_update(x, y, z, old, t);
         patch_edit(x, y, z);
         net_send_edit(x - scootx, y, z - scootz, t);
@@ -178,6 +179,7 @@ void set_tile(int x, int y, int z, int t)
 void edit_apply_remote(int ax, int ay, int az, int tile)
 {
         edit_record(ax, ay, az, tile);
+        sim_area_write(ax, ay, az, tile);
 
         int x = ax + scootx, z = az + scootz;
         if (x < 0 || x >= TILESW || z < 0 || z >= TILESD) return;
@@ -212,6 +214,23 @@ void edit_apply_chunk(int acx, int acz)
                 if (old == e->tile) continue;
                 T_(x, e->y, z) = e->tile;
                 tile_light_update(x, e->y, z, old, e->tile);
+        }
+}
+
+// replay the overlay onto a freshly generated sim-area chunk (ABSOLUTE chunk
+// coords): tiles and the area's gndheight only - light is render
+void edit_apply_area_chunk(struct warea *a, int acx, int acz)
+{
+        if (!edit_len)
+                return;
+
+        for (int i = 0; i < edit_cap; i++)
+        {
+                struct edit *e = &edit_tab[i];
+                if (!e->used) continue;
+                if ((e->x & ~(CHUNKW-1)) != acx * CHUNKW) continue;
+                if ((e->z & ~(CHUNKD-1)) != acz * CHUNKD) continue;
+                sim_area_set(a, e->x, e->y, e->z, e->tile);
         }
 }
 

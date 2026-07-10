@@ -419,16 +419,16 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         }
         else if (!strncmp(cmd, "tile ", 5))
         {
-                // tile <ax> <ay> <az> - read one tile by absolute coords
+                // tile <ax> <ay> <az> - read one tile by absolute coords,
+                // through the sim accessor: window first, then sim areas
                 int ax, ay, az;
                 if (sscanf(cmd + 5, "%d %d %d", &ax, &ay, &az) == 3)
                 {
-                        int x = ax + scootx, z = az + scootz;
-                        if (x < 0 || x >= TILESW || z < 0 || z >= TILESD
-                                        || ay < 0 || ay >= TILESH)
+                        int t = sim_tile_abs(ax, ay, az);
+                        if (t < 0)
                                 p += snprintf(p, end-p, "out of window\n");
                         else
-                                p += snprintf(p, end-p, "tile %d\n", T_(x, ay, z));
+                                p += snprintf(p, end-p, "tile %d\n", t);
                 }
                 else
                         p += snprintf(p, end-p, "usage: tile <ax> <ay> <az>\n");
@@ -766,16 +766,17 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         {
                 // csum <acx> <acz> - FNV-1a over ONE chunk's tiles + gndheight,
                 // by absolute chunk coords: compares the same piece of world
-                // across instances whose windows sit at different scoots
+                // across instances whose windows sit at different scoots.
+                // Chunks outside the window answer from a sim area copy when
+                // one holds them (same absolute iteration order = same hash)
                 int acx, acz;
                 if (sscanf(cmd + 5, "%d %d", &acx, &acz) == 2)
                 {
                         int wcx = acx + chunk_scootx, wcz = acz + chunk_scootz;
-                        if (wcx < 0 || wcx >= VAOW || wcz < 0 || wcz >= VAOD)
-                                p += snprintf(p, end-p, "out of window\n");
-                        else if (!AGEN_(wcx, wcz))
-                                p += snprintf(p, end-p, "not generated\n");
-                        else
+                        int in_win = wcx >= 0 && wcx < VAOW && wcz >= 0 && wcz < VAOD;
+                        struct warea *a = (in_win && AGEN_(wcx, wcz)) ? NULL
+                                : sim_area_with_chunk(acx, acz);
+                        if (in_win && AGEN_(wcx, wcz))
                         {
                                 unsigned th = 2166136261u, gh = 2166136261u;
                                 int x0 = wcx * CHUNKW, z0 = wcz * CHUNKD;
@@ -789,6 +790,24 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                                 p += snprintf(p, end-p, "csum %d %d tiles %08x gndh %08x\n",
                                         acx, acz, th, gh);
                         }
+                        else if (a)
+                        {
+                                unsigned th = 2166136261u, gh = 2166136261u;
+                                int x0 = acx * CHUNKW, z0 = acz * CHUNKD;
+                                for (int z = z0; z < z0 + CHUNKD; z++)
+                                for (int x = x0; x < x0 + CHUNKW; x++)
+                                {
+                                        for (int y = 0; y < TILESH; y++)
+                                                th = (th ^ AREA_T(a, x, y, z)) * 16777619u;
+                                        gh = (gh ^ (unsigned)AREA_GNDH(a, x, z)) * 16777619u;
+                                }
+                                p += snprintf(p, end-p, "csum %d %d tiles %08x gndh %08x\n",
+                                        acx, acz, th, gh);
+                        }
+                        else if (in_win)
+                                p += snprintf(p, end-p, "not generated\n");
+                        else
+                                p += snprintf(p, end-p, "out of window\n");
                 }
                 else
                         p += snprintf(p, end-p, "usage: csum <acx> <acz>\n");

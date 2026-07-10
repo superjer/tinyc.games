@@ -258,6 +258,7 @@ void main_loop()
 
         remote_poll();
         net_poll();
+        sim_areas_update();
 
         if (headless)
         {
@@ -339,6 +340,20 @@ void regen_world()
                         chunk_stamp[i][j].az = INT_MIN;
                         chunk_estamp[i][j].ax = INT_MIN;
                         chunk_estamp[i][j].az = INT_MIN;
+                }
+                // sim area copies are stale-seed data now, too
+                for (int i = 0; i < NR_PLAYERS; i++)
+                {
+                        struct warea *a = &sim_area[i];
+                        for (int z = 0; z < SIM_AREA_CHUNKS; z++)
+                        for (int x = 0; x < SIM_AREA_CHUNKS; x++)
+                        {
+                                a->stamp[z][x].ax = INT_MIN;
+                                a->stamp[z][x].az = INT_MIN;
+                                a->estamp[z][x].ax = INT_MIN;
+                                a->estamp[z][x].az = INT_MIN;
+                        }
+                        a->epoch++;
                 }
         }
 }

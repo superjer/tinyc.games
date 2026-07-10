@@ -454,10 +454,21 @@ int net_player_active(int i)
                 && net_state[i].seen && pframe - net_state[i].seen < 120;
 }
 
+// remote player i's last reported position in ABSOLUTE block coords -
+// the anchor their sim area follows
+void net_player_anchor(int i, int *abx, int *abz)
+{
+        *abx = (int)(net_state[i].x / BS);
+        *abz = (int)(net_state[i].z / BS);
+}
+
 // send my own player state at ~20Hz (every 3rd physics tick)
 static void net_send_my_state()
 {
-        if (headless) return; // a dedicated server has no body to show
+        // a dedicated server has no body to show; a headless CLIENT is a
+        // real player (bk-driven) and must report, or the server won't
+        // follow it with a sim area
+        if (headless && net_mode == NET_SERVER) return;
         static int last_sent = -3;
         if (pframe - last_sent < 3) return;
         last_sent = pframe;

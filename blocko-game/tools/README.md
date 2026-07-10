@@ -131,12 +131,12 @@ $bk timings   # build_meshes total; divide by meshes_built for per-mesh ms
 | Command | What it does |
 |---|---|
 | `find <tile> <ax0> <az0> <ax1> <az1>` | List every block of type `<tile>` in the absolute-coord rectangle (inclusive) as `x y z` lines. |
-| `tile <ax> <ay> <az>` | Read one tile by absolute coords (`out of window` if it isn't currently mapped). |
+| `tile <ax> <ay> <az>` | Read one tile by absolute coords, through the sim accessor: the main window first, then any sim area holding that chunk (a server keeps one following each remote player — simarea.c). `out of window` if no copy exists anywhere. |
 | `edits [clear]` | Report how many block edits are in the edit overlay (edit.c) — the recorded player edits that replay whenever their chunk regenerates, so digs/builds survive scooting away and back. `edits clear` forgets them (do this before `sum`-based A/B gen comparisons on an edited world). |
 | `form near [<radius>]` | List formations within `<radius>` blocks of the player (default 512) as `x z spheres <n> above_sea <n>` lines. |
 | `formdump [<path>]` | Reconstruct the nearest formation's carved voxel model from its column spans and write it (`int W,H,D` + bytes, `j`=up) for offline rendering. Pipe it through `tools/form_render.py` (needs numpy + PIL) to eyeball the "carve the scaffold" shapes: `python3 blocko-game/tools/form_render.py /tmp/blocko-<tag>_form.bin` writes `formations.png`. |
 | `sum` | FNV-1a hashes of the raw `tiles`, `sunlight`, and `gndheight` arrays — for A/B-ing generation changes. |
-| `csum <acx> <acz>` | FNV-1a hash of one chunk's tiles + gndheight, addressed by absolute chunk coords — compares the same piece of world across instances whose windows sit at different scoots (where `sum` would hash different regions). The window holds absolute chunks `-scootx..15-scootx` × `-scootz..15-scootz` (scoot from `pos`) — note the negation; anything else answers `out of window`. |
+| `csum <acx> <acz>` | FNV-1a hash of one chunk's tiles + gndheight, addressed by absolute chunk coords — compares the same piece of world across instances whose windows sit at different scoots (where `sum` would hash different regions). The window holds absolute chunks `-scootx..15-scootx` × `-scootz..15-scootz` (scoot from `pos`) — note the negation. A chunk outside the window still answers if a sim area holds it (identical hash for identical content, so it A/Bs area copies against a client's window); otherwise `out of window`. |
 | `dump [<path>]` | Write the raw `tiles` + `gndheight` arrays to a file (default `/tmp/blocko-<tag>_dump.bin`, per-worktree like the socket) for offline diffing. |
 
 ## World generation knobs

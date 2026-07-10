@@ -369,20 +369,41 @@ unsigned char *glolight;
 unsigned char gndheight[TILESW * TILESD];
 float *cornlight;
 float *kornlight;
+struct chunk_stamp { int ax, az; };                  // absolute chunk coords a ring
 // a windowed piece of world: a power-of-2 ring of tile columns addressed by
 // absolute coords masked. The main render ring is one (main_area, aliasing
 // tiles/sunlight/gndheight); per-player sim areas are small ones. Gen writes
 // go through the thread-local gen_area so one set of macros fits all sizes.
+#define SIM_AREA_CHUNKS 4                     // sim area ring size in chunks
+#define SIM_AREA_W (SIM_AREA_CHUNKS * CHUNKW) // ^ in blocks
+#define SIM_AREA_CMASK (SIM_AREA_CHUNKS - 1)
 struct warea {
         unsigned char *tiles;
         unsigned char *sun;   // sim areas: gen scratch only (light = render)
         unsigned char *gndh;
         int maskw, maskd;     // block coord masks (TILESW-1 etc for main)
         int pitchx, pitchz;   // array elements per block step in x / z
+        // sim-area ring state; main_area keeps all of this in the chunk_*
+        // globals instead. Stamps hold absolute chunk coords at slot
+        // [az & cmask][ax & cmask], so scoots self-invalidate exactly like
+        // the main ring. Lifecycle fields change only inside the (chunks)
+        // critical; a builder that sees epoch move abandons its job.
+        volatile struct chunk_stamp stamp[SIM_AREA_CHUNKS][SIM_AREA_CHUNKS];  // pass 2 done
+        volatile struct chunk_stamp estamp[SIM_AREA_CHUNKS][SIM_AREA_CHUNKS]; // pass 1 done
+        int cx0, cz0;         // absolute chunk coords of the coverage low corner
+        volatile int active;  // following a connected remote player (server only)
+        volatile int busy;    // a builder is filling it (one at a time per area)
+        volatile int epoch;   // bumped on activate/scoot/deactivate/regen
 };
 struct warea main_area; // filled in startup() once the buffers exist
 _Thread_local struct warea *gen_area = &main_area;
-struct chunk_stamp { int ax, az; };                  // absolute chunk coords a ring
+struct warea sim_area[NR_PLAYERS]; // [i] follows remote player i (server only)
+unsigned char *area_sun_scratch;   // one shared write-only sun buffer: gen never
+                                   // reads sun, and areas skip light entirely
+// freshly generated area chunks awaiting main-thread edit-overlay replay
+// (the area cousin of just_generated); guarded by the (chunks) critical
+struct area_fresh { struct warea *a; int acx, acz; } area_fresh[256];
+int area_fresh_len;
 volatile struct chunk_stamp chunk_stamp[VAOD][VAOW]; // slot holds (INT_MIN = never)
 // pass 1 (chunk edge columns) stamps: a chunk's interior can generate only
 // after its own and all 8 neighbors' edges exist, so nothing ever reads or
