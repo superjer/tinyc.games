@@ -291,9 +291,9 @@ void draw_stuff()
         // Render shadow maps (before main render pass)
         shadow_render(cmdbuf);
 
-        // Start main render pass
+        // Start main render pass; the clear color is the flat sky
         VkClearValue clearValues[2] = {
-                {},
+                {.color = vk.clear_color},
                 {.depthStencil = {1.0f, 0}}
         };
         VkRenderPassBeginInfo renderPassBeginInfo = {
