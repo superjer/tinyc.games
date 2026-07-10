@@ -25,7 +25,10 @@
 #define MOB_BOB_AMPL 0.12f        // bob height as a fraction of the body
 #define MOB_BOB_RATE 0.09f        // bob speed (radians/frame; ~1s up-and-down)
 #define MOB_AGGRO (16*BS)         // notice the player from this far
-#define MOB_DESPAWN (100*BS)      // forget mobs that get this far away
+#define MOB_DESPAWN (100*BS)      // forget mobs that get this far from the host
+#define MOB_LEASH (64*BS)         // a remote player's sim area guarantees only
+                                  // this much terrain around them; past it a
+                                  // mob is off the map and despawns
 #define MOB_REACH (4*BS)          // how far the player can punch
 #define MOB_DEATH_FRAMES 15       // shrink-out animation length
 
@@ -87,8 +90,6 @@ int mob_spawn(int bx, int bz)
         for (int i = 0; i < NR_MOBS; i++)
                 if (!mob[i].alive) { m = &mob[i]; break; }
         if (!m) return 0;
-
-        if (bx < 1 || bx >= TILESW-1 || bz < 1 || bz >= TILESD-1) return 0;
 
         int gnd = sim_gndh(bx, bz); // 0 where no terrain exists yet
         if (gnd < 2 || gnd >= TILESH) return 0;
@@ -280,7 +281,7 @@ static int mob_los_clear(struct mob *m, struct player *p)
         {
                 float t = d / len;
                 int tx = (ax + dx * t) / BS, ty = (ay + dy * t) / BS, tz = (az + dz * t) / BS;
-                if (legit_tile(tx, ty, tz) && sim_tile(tx, ty, tz) < LASTSOLID)
+                if (sim_tile(tx, ty, tz) < LASTSOLID)
                         return 0;
         }
         return 1;
@@ -318,15 +319,13 @@ static float mob_water_surface(struct mob *m)
         int y0 = m->pos.y / BS - 1;
         int y1 = (m->pos.y + m->pos.h) / BS + 1;
         for (int by = y0; by <= y1; by++)
-                if (legit_tile(bx, by, bz) && sim_tile(bx, by, bz) == WATR)
+                if (sim_tile(bx, by, bz) == WATR)
                         return by * BS; // top face of the topmost water block
         return -1;
 }
 
 void update_mobs()
 {
-        struct player *p = &player[my_player];
-
         mob_punch();
 
         // the server owns the mobs: clients only originate punches (above) and
@@ -334,23 +333,52 @@ void update_mobs()
         if (net_mode == NET_CLIENT)
                 return;
 
-        // trickle fresh slimes in around the player, but only up to the
-        // ambient target - shatter bursts push the live count way past it and
-        // we let those thin back out on their own (via merges and decay)
+        // trickle fresh slimes in around every simulated player - the host's
+        // own body plus each connected player's ghost (a headless server's
+        // player is disembodied and draws no slimes). Each anchor gets its
+        // own share of the ambient target: a slime counts against whichever
+        // anchor it's nearest. Shatter bursts push counts past the target
+        // and thin back out on their own (via merges and decay)
         static int spawn_timer;
         if (mob_enable && --spawn_timer <= 0)
         {
                 spawn_timer = 120;
-                int alive = 0;
-                for (int i = 0; i < NR_MOBS; i++) if (mob[i].alive) alive++;
-                if (alive < MOB_POP_TARGET)
+                struct player *anch[NR_PLAYERS];
+                int na = 0;
+                if (!headless)
+                        anch[na++] = &player[my_player];
+                for (int j = 0; j < NR_PLAYERS; j++)
+                        if (j != my_player && net_player_active(j))
+                                anch[na++] = &player[j];
+
+                int pop[NR_PLAYERS] = {0};
+                for (int i = 0; na && i < NR_MOBS; i++)
                 {
+                        if (!mob[i].alive) continue;
+                        int best = 0;
+                        float bestd = 1e30f;
+                        for (int a = 0; a < na; a++)
+                        {
+                                float ax = (anch[a]->pos.x + PLYR_W/2) - (mob[i].pos.x + mob[i].pos.w/2);
+                                float az = (anch[a]->pos.z + PLYR_W/2) - (mob[i].pos.z + mob[i].pos.d/2);
+                                float d2 = ax * ax + az * az;
+                                if (d2 < bestd) { bestd = d2; best = a; }
+                        }
+                        pop[best]++;
+                }
+
+                for (int a = 0; a < na; a++)
+                {
+                        if (pop[a] >= MOB_POP_TARGET) continue;
                         unsigned seed = mob_seed;
                         float ang = RANDF(0, TAU);
-                        float dist = RANDF(30, 80);
+                        // spawn ring: remote anchors keep it inside their sim
+                        // area's guaranteed coverage (the leash), with margin
+                        float dist = anch[a] == &player[my_player]
+                                ? RANDF(30, 80) : RANDF(20, 56);
                         mob_seed = seed;
-                        mob_spawn((p->pos.x + sinf(ang) * dist * BS) / BS,
-                                  (p->pos.z + cosf(ang) * dist * BS) / BS);
+                        mob_spawn((anch[a]->pos.x + sinf(ang) * dist * BS) / BS,
+                                  (anch[a]->pos.z + cosf(ang) * dist * BS) / BS);
                 }
         }
 
@@ -369,6 +397,12 @@ void update_mobs()
                 float dy = p->pos.y - m->pos.y;
                 float dz = (p->pos.z + PLYR_W/2) - (m->pos.z + m->pos.d/2);
                 float dist = DIST(dx, dy, dz);
+                if (headless) dist = 1e30f; // disembodied body: no aggro, no leash
+                // the leash: a slime lives only near someone simulating
+                // terrain under it - within MOB_DESPAWN of the host's body
+                // (the whole window is real ground) or within MOB_LEASH of a
+                // connected player (their sim area guarantees only that much)
+                int leashed = dist <= MOB_DESPAWN;
                 for (int j = 0; j < NR_PLAYERS; j++)
                 {
                         if (j == my_player || !net_player_active(j)) continue;
@@ -376,6 +410,11 @@ void update_mobs()
                         float jy = player[j].pos.y - m->pos.y;
                         float jz = (player[j].pos.z + PLYR_W/2) - (m->pos.z + m->pos.d/2);
                         float jd = DIST(jx, jy, jz);
+                        // leash horizontally: the area covers the whole
+                        // column, and a falling or mountaintop player
+                        // shouldn't shed the slimes in the valley below
+                        if (jx * jx + jz * jz <= (float)MOB_LEASH * MOB_LEASH)
+                                leashed = 1;
                         if (jd < dist)
                         {
                                 p = &player[j];
@@ -384,7 +423,7 @@ void update_mobs()
                         }
                 }
 
-                if (dist > MOB_DESPAWN || m->pos.y > TILESH * BS + 6000)
+                if (!leashed || m->pos.y > TILESH * BS + 6000)
                 {
                         m->alive = 0;
                         continue;

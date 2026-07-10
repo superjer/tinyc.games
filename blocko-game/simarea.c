@@ -46,6 +46,7 @@ struct warea *sim_area_with_chunk(int acx, int acz)
 
 int sim_tile(int wx, int y, int wz)
 {
+        if (y < 0 || y >= TILESH) return OPEN; // off the top/bottom of the world
         int cx = B2CFLOOR(wx), cz = B2CFLOOR(wz);
         if (AGEN_(cx, cz))
                 return T_(wx, y, wz);
