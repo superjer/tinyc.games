@@ -154,6 +154,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
 {
         char *p = out;
         char *end = out + outsz;
+        *p = 0; // a command may write no reply (e.g. find with no matches)
 
         if (!strncmp(cmd, "fps reset", 9))
         {
