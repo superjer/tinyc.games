@@ -251,13 +251,16 @@ void set_sunlight(int xlo, int ylo, int zlo, int light)
         SUN_(xlo, ylo, zlo) = light;
 
         // Mark all chunks that could be affected by corner lighting update.
-        // Soft mark: remeshing can wait until the light here stops changing
+        // Soft mark: remeshing can wait until the light here stops changing.
+        // The +1 corners past the window's high edge have no ring slot (the
+        // mask would wrap them onto the opposite edge), so stop short there
+        int xhi = MIN(xlo + 2, TILESW), zhi = MIN(zlo + 2, TILESD), yhi = MIN(ylo + 2, TILESH);
         DIRTY_LIGHT(B2C(xlo), B2C(zlo));
-        DIRTY_LIGHT(B2C(xlo+1), B2C(zlo));
-        DIRTY_LIGHT(B2C(xlo), B2C(zlo+1));
-        DIRTY_LIGHT(B2C(xlo+1), B2C(zlo+1));
+        DIRTY_LIGHT(B2C(xhi-1), B2C(zlo));
+        DIRTY_LIGHT(B2C(xlo), B2C(zhi-1));
+        DIRTY_LIGHT(B2C(xhi-1), B2C(zhi-1));
 
-        for (int x = xlo; x < xlo + 2; x++) for (int z = zlo; z < zlo + 2; z++) for (int y = ylo; y < ylo + 2; y++)
+        for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++) for (int y = ylo; y < yhi; y++)
         {
                 int x_ = (x == 0) ? 0 : x - 1;
                 int y_ = (y == 0) ? 0 : y - 1;
@@ -274,13 +277,15 @@ void set_glolight(int xlo, int ylo, int zlo, int light)
         GLO_(xlo, ylo, zlo) = light;
 
         // Mark all chunks that could be affected by corner lighting update.
-        // Soft mark: remeshing can wait until the light here stops changing
+        // Soft mark: remeshing can wait until the light here stops changing.
+        // As in set_sunlight, skip the corners past the window's high edge
+        int xhi = MIN(xlo + 2, TILESW), zhi = MIN(zlo + 2, TILESD), yhi = MIN(ylo + 2, TILESH);
         DIRTY_LIGHT(B2C(xlo), B2C(zlo));
-        DIRTY_LIGHT(B2C(xlo+1), B2C(zlo));
-        DIRTY_LIGHT(B2C(xlo), B2C(zlo+1));
-        DIRTY_LIGHT(B2C(xlo+1), B2C(zlo+1));
+        DIRTY_LIGHT(B2C(xhi-1), B2C(zlo));
+        DIRTY_LIGHT(B2C(xlo), B2C(zhi-1));
+        DIRTY_LIGHT(B2C(xhi-1), B2C(zhi-1));
 
-        for (int x = xlo; x < xlo + 2; x++) for (int z = zlo; z < zlo + 2; z++) for (int y = ylo; y < ylo + 2; y++)
+        for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++) for (int y = ylo; y < yhi; y++)
         {
                 int x_ = (x == 0) ? 0 : x - 1;
                 int y_ = (y == 0) ? 0 : y - 1;
