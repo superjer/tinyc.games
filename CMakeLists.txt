@@ -113,6 +113,7 @@ set(SHADER_FILES
   blocko-game/shaders/mob_shadow.vert
   blocko-game/shaders/shadow.vert
   blocko-game/shaders/shadow.frag
+  blocko-game/shaders/shadow_solid.frag
   blocko-game/shaders/cursor.vert
   blocko-game/shaders/cursor.frag
   common/tinyc.games/shaders/font.vert

@@ -20,7 +20,10 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
         };
         vkCmdBeginRenderPass(cmdbuf, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[shadow_pipe].pipeline);
+        // far/extreme treat leaves as solid: empty fragment stage, fast depth path.
+        // near/mid keep the alpha-test shader so close-up leaf shadows dapple.
+        int terrain_pipe = (cascade_idx >= SHADOW_FAR_A) ? shadow_solid_pipe : shadow_pipe;
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[terrain_pipe].pipeline);
 
         VkViewport viewport = {0, 0, SHADOW_SZ, SHADOW_SZ, 0, 1};
         VkRect2D scissor = {{0, 0}, {SHADOW_SZ, SHADOW_SZ}};
@@ -30,7 +33,7 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
 
         // Bind descriptor set for texture access (alpha testing leaves)
         vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                vk.pipelines[shadow_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
+                vk.pipelines[terrain_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
         struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
                  float reject_lo[4], reject_hi[4];
@@ -61,7 +64,7 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                 push.chunk_x = i * BS * CHUNKW;
                 push.chunk_y = 0;
                 push.chunk_z = j * BS * CHUNKD;
-                vkCmdPushConstants(cmdbuf, vk.pipelines[shadow_pipe].layout,
+                vkCmdPushConstants(cmdbuf, vk.pipelines[terrain_pipe].layout,
                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                         0, sizeof push, &push);
                 vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &voffset);

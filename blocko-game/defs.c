@@ -294,6 +294,7 @@ struct shadow_cascade shadow[SHADOW_COUNT];
 VkSampler shadow_sampler;
 VkRenderPass shadow_render_pass;
 int shadow_pipe;
+int shadow_solid_pipe; // no-op fragment stage: fast depth path, leaves solid
 
 // Which shadow map to render this frame (0=A, 1=B, -1=skip)
 int shadow_far_render_ab = 0;

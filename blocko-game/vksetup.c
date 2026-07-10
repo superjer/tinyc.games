@@ -777,6 +777,15 @@ void vksetup()
                 &main_descriptor_set_layout, shadow_render_pass,
                 PIPE_TRIANGLE_STRIP | PIPE_DEPTH_BIAS | PIPE_NO_CULL);
 
+        // far/extreme cascades treat leaves as solid, so their terrain draws
+        // skip the alpha-test fragment shader entirely - an empty fragment
+        // stage keeps the GPU on its fast depth-only path
+        shadow_solid_pipe = vulkan_make_pipeline(
+                "shadow.vert", NULL, "shadow_solid.frag",
+                1, &mainBindingDesc, 6, mainAttrDescs,
+                &main_descriptor_set_layout, shadow_render_pass,
+                PIPE_TRIANGLE_STRIP | PIPE_DEPTH_BIAS | PIPE_NO_CULL);
+
         // mob shadow caster: spins with the mob, no reject box
         mob_shadow_pipe = vulkan_make_pipeline(
                 "mob_shadow.vert", NULL, "shadow.frag",
