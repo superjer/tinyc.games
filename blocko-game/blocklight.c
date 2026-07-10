@@ -187,6 +187,15 @@ int step_glolight()
         return gq_curr_len;
 }
 
+// one corner's sun brightness from the 8 blocks that meet there. the flat
+// sum darkens corners crowded by solid (unlit) blocks - free ambient
+// occlusion. gen and edits must agree or edited terrain shows seams
+static inline float sun_corner(int a, int b, int c, int d,
+                               int a2, int b2, int c2, int d2)
+{
+        return 0.008f * (a + b + c + d + a2 + b2 + c2 + d2);
+}
+
 // runs on the terrain thread - coords are in the terrain thread's window
 // mapping, so only the T-variant macros are safe here (a scoot can land
 // mid-generation, making scootx and tscootx briefly disagree)
@@ -223,10 +232,7 @@ void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi)
                 for (int y = 0; y < ylim; y++)
                 {
                         int a2 = sa[y], b2 = sb[y], c2 = sc[y], d2 = sd[y];
-                        corn[y] = 0.030f * MAX(
-                                        MAX(MAX(a, b), MAX(c, d)),
-                                        MAX(MAX(a2, b2), MAX(c2, d2)))
-                                + 0.001f * (a + b + c + d + a2 + b2 + c2 + d2);
+                        corn[y] = sun_corner(a, b, c, d, a2, b2, c2, d2);
                         int ka2 = ga[y], kb2 = gb[y], kc2 = gc[y], kd2 = gd[y];
                         korn[y] = 0.008f * (ka + kb + kc + kd + ka2 + kb2 + kc2 + kd2);
                         a = a2; b = b2; c = c2; d = d2;
@@ -257,9 +263,9 @@ void set_sunlight(int xlo, int ylo, int zlo, int light)
                 int y_ = (y == 0) ? 0 : y - 1;
                 int z_ = (z == 0) ? 0 : z - 1;
 
-                CORN_(x, y, z) = 0.008f * (
-                                SUN_(x_, y_, z_) + SUN_(x , y_, z_) + SUN_(x_, y , z_) + SUN_(x , y , z_) +
-                                SUN_(x_, y_, z ) + SUN_(x , y_, z ) + SUN_(x_, y , z ) + SUN_(x , y , z ));
+                CORN_(x, y, z) = sun_corner(
+                                SUN_(x_, y_, z_), SUN_(x , y_, z_), SUN_(x_, y , z_), SUN_(x , y , z_),
+                                SUN_(x_, y_, z ), SUN_(x , y_, z ), SUN_(x_, y , z ), SUN_(x , y , z ));
         }
 }
 
