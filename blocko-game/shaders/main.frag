@@ -172,8 +172,12 @@ void main(void) {
         float spec = alpha < 1.0 ? 0.0 : pow(max(dot(N, halfway_dir), 0), 16);
 
         // Shadow sampling with Poisson disk PCF
-        // Screen-space random rotation - no spatial coherence, should produce noise instead of moire
-        float rotation = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.28318;
+        // Per-pixel rotation of the Poisson disk turns PCF banding into dither.
+        // Interleaved Gradient Noise (Jimenez 2014) instead of a sin() white-noise
+        // hash: same cost, but its grain is spatially organized so the eye reads
+        // the penumbra as much smoother/less pixely at the same 16 samples.
+        float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        float rotation = ign * 6.28318;
 
         // Compute shadow positions for all cascades
         // Apply normal offset bias to prevent shadow bleeding at cube edges
