@@ -147,7 +147,7 @@ arguments, each prints its current knobs.
 
 | Command | What it does |
 |---|---|
-| `tweak` | List every knob in the big world-gen table (tweak.c) — the base height octaves, plateaus, oceans, peaks, ranges, warps, ledges, soil bands, vegetation, ore, caves, trees, tall grass, formations, and the noise-algorithm knobs. `*` marks off-default values. Knob values are local to this instance — they don't sync in multiplayer, so tweaking while connected desyncs terrain. |
+| `tweak` | List every knob in the big world-gen table (tweak.c) — the base height octaves, terraces, oceans, peaks, ranges, warps, ledges, soil bands, vegetation, ore, caves, trees, tall grass, formations, and the noise-algorithm knobs. `*` marks off-default values. Knob values are local to this instance — they don't sync in multiplayer, so tweaking while connected desyncs terrain. |
 | `tweak <name> [<val>]` | Show or set one knob by name (case-insensitive). Values clamp to the knob's range. Unlike the other commands here, a set **regenerates the world by itself**, debounced ~0.5s after the last change. |
 | `tweak reset` | Every knob back to its default (regenerates if anything changed). |
 | `tweak dump` | Print the off-default knobs as replayable `tweak <name> <val>` lines — save them to keep a look you like across runs, or transcribe into the table defaults (terrain_knobs.h / gen_knobs.h). |
@@ -157,7 +157,7 @@ arguments, each prints its current knobs.
 | `caves [<0\|1>]` | Enable/disable cave carving. |
 | `trees [<0\|1>]` | Enable/disable trees. |
 | `flat [<0\|1>]` | Force a dead-flat world (uniform grass just above the waterline, no caves/formations). A debug aid for spotting chunk-seam artifacts that terrain relief hides. Toggles with no arg; send `regen` after. |
-| `plateau [<0\|1>]` / `plateau jitter <amp>` | Enable/disable the plateau/shelf terracing pass, or set the shelf-boundary jitter amplitude in steps (0 = straight even bands, ~0.4 default breaks them up). |
+| `terrace [<0\|1>]` / `terrace jitter <amp>` | Enable/disable the terrace/shelf pass (mesa country), or set the shelf-boundary jitter amplitude in steps (0 = straight even bands, ~0.4 default breaks them up). Shorthand for the `TERRACE_ENABLE` / `TERRACE_JITTER_AMP` tweak knobs. |
 | `seed [<n>]` | Set the world seed. Setting a seed also clears the edit overlay (new world, old edits meaningless). |
 | `regen` | Invalidate every chunk's generation stamp; the whole window regenerates in place, nearest chunks first. Recorded edits replay onto the regenerated chunks (send `edits clear` first for pristine terrain). |
 

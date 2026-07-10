@@ -651,16 +651,16 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "(send 'regen' to rebuild the world with these)\n",
                         world_seed);
         }
-        else if (!strncmp(cmd, "plateau", 7))
+        else if (!strncmp(cmd, "terrace", 7))
         {
                 float f; int v;
                 if (sscanf(cmd + 7, " jitter %f", &f) == 1)
-                        PLATEAU_JITTER_AMP = f;
+                        TERRACE_JITTER_AMP = f;
                 else if (sscanf(cmd + 7, "%d", &v) == 1)
-                        PLATEAU_ENABLE = v;
-                p += snprintf(p, end-p, "plateau %d  jitter %.3f\n"
+                        TERRACE_ENABLE = v;
+                p += snprintf(p, end-p, "terrace %d  jitter %.3f\n"
                         "(send 'regen' to rebuild the world with these)\n",
-                        (int)PLATEAU_ENABLE, PLATEAU_JITTER_AMP);
+                        (int)TERRACE_ENABLE, TERRACE_JITTER_AMP);
         }
         else if (!strncmp(cmd, "grassshadow", 11))
         {

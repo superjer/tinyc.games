@@ -13,7 +13,7 @@
 // terrain_config.c / warp_config.c / ledge_config.c.
 //
 // The pipeline: get_height() builds a base height field, then presses
-// plateaus and oceans into it. terrain_raw_height() domain-warps the lookup
+// terraces and oceans into it. terrain_raw_height() domain-warps the lookup
 // and adds, in order: peaks, mounds, lumps, pits, a smoothing pass, the broad
 // mountain ranges, and a ceiling bounce that folds over-tall crests into
 // calderas. get_filtered_height() lays ledges on top.
@@ -52,24 +52,24 @@ TWEAK(BASE_O5_SZ,  100,    25, 20000, TW_INT|TW_LOG,    "octave 5 feature size (
 TWEAK(BASE_O5_WT,  0.04f,  0.f,   1.5f, 0,              "octave 5 weight")
 TWEAK(BASE_O5_OCT, 1,      1,     8,   TW_INT,          "octave 5 internal fBm octaves")
 
-// --- plateau / shelf pass (get_height) --------------------------------------
-// Inside plateau regions the smooth height is quantized onto evenly spaced
+// --- terrace / shelf pass (get_height) --------------------------------------
+// Inside terrace regions the smooth height is quantized onto evenly spaced
 // flat shelves joined by short cliffs (mesa/terrace country). Terracing is
 // average-preserving; a low-frequency phase drifts shelf heights region to
 // region and a medium-frequency jitter bends the cliff lines.
-TWEAK_SECTION("plateaus / mesas")
-TWEAK(PLATEAU_ENABLE,     1,      0,     1,    TW_INT,        "0 skips the whole plateau/shelf pass")
-TWEAK(PLATEAU_MASK_SZ,    2500,   200, 20000, TW_INT|TW_LOG,  "size of a plateau region in blocks")
-TWEAK(PLATEAU_MASK_LO,    0.45f,  0.f,   1.f,  0,             "mask <= this -> no terracing")
-TWEAK(PLATEAU_MASK_HI,    0.52f,  0.f,   1.f,  0,             "mask >= this -> full terracing")
-TWEAK(PLATEAU_STEP,       0.075f, 0.01f, 0.3f, 0,             "shelf spacing in height units (0.075 ~ 12 blocks)")
-TWEAK(PLATEAU_RISER,      0.35f,  0.05f, 1.f,  0,             "cliff fraction of each step; smaller = crisper cliffs")
-TWEAK(PLATEAU_PHASE_SZ,   1500,   200, 20000, TW_INT|TW_LOG,  "shelf-height drift region size (large = flat mesas)")
-TWEAK(PLATEAU_PHASE_LO,   0.32f,  0.f,   1.f,  0,             "phase remap window low (noise 5th percentile)")
-TWEAK(PLATEAU_PHASE_HI,   0.68f,  0.f,   1.f,  0,             "phase remap window high")
-TWEAK(PLATEAU_JITTER_SZ,  440,    50,  5000,  TW_INT|TW_LOG,  "cliff-line bend size; between tread width and PHASE_SZ")
-TWEAK(PLATEAU_JITTER_OCT, 2,      1,     4,    TW_INT,        "jitter octaves: a big bend plus a finer wobble")
-TWEAK(PLATEAU_JITTER_AMP, 0.40f,  0.f,   2.f,  0,             "cliff-line wander in steps (0 = straight bands)")
+TWEAK_SECTION("terraces / mesas")
+TWEAK(TERRACE_ENABLE,     1,      0,     1,    TW_INT,        "0 skips the whole terrace/shelf pass")
+TWEAK(TERRACE_MASK_SZ,    2500,   200, 20000, TW_INT|TW_LOG,  "size of a terrace region in blocks")
+TWEAK(TERRACE_MASK_LO,    0.45f,  0.f,   1.f,  0,             "mask <= this -> no terracing")
+TWEAK(TERRACE_MASK_HI,    0.52f,  0.f,   1.f,  0,             "mask >= this -> full terracing")
+TWEAK(TERRACE_STEP,       0.075f, 0.01f, 0.3f, 0,             "shelf spacing in height units (0.075 ~ 12 blocks)")
+TWEAK(TERRACE_RISER,      0.35f,  0.05f, 1.f,  0,             "cliff fraction of each step; smaller = crisper cliffs")
+TWEAK(TERRACE_PHASE_SZ,   1500,   200, 20000, TW_INT|TW_LOG,  "shelf-height drift region size (large = flat mesas)")
+TWEAK(TERRACE_PHASE_LO,   0.32f,  0.f,   1.f,  0,             "phase remap window low (noise 5th percentile)")
+TWEAK(TERRACE_PHASE_HI,   0.68f,  0.f,   1.f,  0,             "phase remap window high")
+TWEAK(TERRACE_JITTER_SZ,  440,    50,  5000,  TW_INT|TW_LOG,  "cliff-line bend size; between tread width and PHASE_SZ")
+TWEAK(TERRACE_JITTER_OCT, 2,      1,     4,    TW_INT,        "jitter octaves: a big bend plus a finer wobble")
+TWEAK(TERRACE_JITTER_AMP, 0.40f,  0.f,   2.f,  0,             "cliff-line wander in steps (0 = straight bands)")
 
 // --- big oceans (get_height) ------------------------------------------------
 // A very low-frequency mask presses lowlands below sea level (0.5); mountain
@@ -155,7 +155,7 @@ TWEAK(WARP_SPIRAL_NOISE_SZ, 1080,  50, 10000, TW_INT|TW_LOG,  "spiral angle-vari
 TWEAK(WARP_BUBBLE_STR_MIN,  3.f,   0.f,  20.f, 0,             "bubble bulge/pinch strength low end")
 TWEAK(WARP_BUBBLE_STR_MAX,  7.f,   0.f,  20.f, 0,             "bubble bulge/pinch strength high end")
 
-// --- ledges & plateaus on the ranges (get_filtered_height) -------------------
+// --- ledges on the ranges (get_filtered_height) ------------------------------
 // Scattered key points inside mountain ranges pull the ground toward the key
 // point's natural height, carving flat standable shelves. INVARIANT: reach =
 // LEDGE_R_MAX * (LEDGE_RAD_BASE + LEDGE_WOB_MAX) must stay below LEDGE_CELL

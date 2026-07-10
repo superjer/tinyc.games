@@ -38,7 +38,7 @@ TWEAK(SOIL_LEV1_OFF, -60,  -150,   150, TW_INT,        "mountain stone ends: y o
 TWEAK(SOIL_LEV2_OFF, -30,  -150,   150, TW_INT,        "upper/lower dirt boundary: y offset from sea level")
 TWEAK(SOIL_LEV3_OFF,  0,   -150,   150, TW_INT,        "dirt gives way to the sand shelf: y offset")
 TWEAK(SOIL_LEV4_OFF,  45,  -150,   150, TW_INT,        "sand/stone give way to deep granite: y offset")
-TWEAK(MESA_CLIFF_PLAT, 0.60f, 0.f, 1.f, 0,             "min plateauness for terrace risers to show bare stone")
+TWEAK(MESA_CLIFF_TERRACE, 0.60f, 0.f, 1.f, 0,          "min terraceness for terrace risers to show bare stone")
 
 // --- vegetation lines (gen_columns) ------------------------------------------
 // Ordinary grass gives way to mountain grass at MTN_LINE and to bare rock at

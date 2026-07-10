@@ -61,18 +61,18 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 bool sharp_up = hmaph - hx0 >  1 || hmaph - hz0 >  1 || hmaph - hx1 >  1 || hmaph - hz1 >  1;
                 bool sharper_dn = hmaph - hx0 < -3 || hmaph - hz0 < -3 || hmaph - hx1 < -3 || hmaph - hz1 < -3;
 
-                // mesa cliffs: in strong plateau regions the surface is flat treads
+                // mesa cliffs: in strong terrace regions the surface is flat treads
                 // joined by short risers. surface the risers as bare stone so mesas
                 // read as grass tops with rock cliff faces, while the flat treads
                 // keep their soil. only flag a genuine mid-slope column - one with a
                 // higher neighbour AND a lower one - so a lone 1-block step edge (a
-                // neighbour on only one side) stays grassy. gated on plateauness so
+                // neighbour on only one side) stays grassy. gated on terraceness so
                 // ordinary hills stay grassy too.
-                float plat = remap(noise(ax, az, PLATEAU_MASK_SZ, world_seed^PLATEAU_MASK_SEED, 1),
-                                PLATEAU_MASK_LO, PLATEAU_MASK_HI, 0.f, 1.f);
+                float terraceness = remap(noise(ax, az, TERRACE_MASK_SZ, world_seed^TERRACE_MASK_SEED, 1),
+                                TERRACE_MASK_LO, TERRACE_MASK_HI, 0.f, 1.f);
                 bool nb_higher = hx0 < hmaph || hz0 < hmaph || hx1 < hmaph || hz1 < hmaph; // ground above mine
                 bool nb_lower  = hx0 > hmaph || hz0 > hmaph || hx1 > hmaph || hz1 > hmaph; // and ground below
-                bool mesa_cliff = PLATEAU_ENABLE && plat > MESA_CLIFF_PLAT && nb_higher && nb_lower;
+                bool mesa_cliff = TERRACE_ENABLE && terraceness > MESA_CLIFF_TERRACE && nb_higher && nb_lower;
                 bool steep = (sharp_dn && sharp_up) || sharper_dn || mesa_cliff;
 
                 float reejin = noise(ax, az, SOIL_WOB_SZ, 12345, 1) - 0.5f;

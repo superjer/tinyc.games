@@ -65,30 +65,30 @@ float get_height(int x, int y)
         
         //val += (zigzag(val, 100) - .5f) * .02f;
 
-        // plateaus / mesas: inside plateau regions, quantize the smooth height
+        // terraces / mesas: inside terrace regions, quantize the smooth height
         // onto evenly spaced flat shelves joined by short cliffs. the riser is
         // centered on each step, so terracing preserves the average height
         // instead of pulling the ground down; a low-frequency phase offset
-        // drifts shelf heights region to region. knobs in terrain_config.c.
-        float plateauness = remap(noise(x, y, PLATEAU_MASK_SZ, world_seed^PLATEAU_MASK_SEED, 1), PLATEAU_MASK_LO, PLATEAU_MASK_HI, 0.f, 1.f);
-        if (PLATEAU_ENABLE && plateauness > 0.f)
+        // drifts shelf heights region to region. knobs in terrain_knobs.h.
+        float terraceness = remap(noise(x, y, TERRACE_MASK_SZ, world_seed^TERRACE_MASK_SEED, 1), TERRACE_MASK_LO, TERRACE_MASK_HI, 0.f, 1.f);
+        if (TERRACE_ENABLE && terraceness > 0.f)
         {
-                float phase = remap(noise(x, y, PLATEAU_PHASE_SZ, world_seed^PLATEAU_PHASE_SEED, 2),
-                                PLATEAU_PHASE_LO, PLATEAU_PHASE_HI, 0.f, 1.f);
+                float phase = remap(noise(x, y, TERRACE_PHASE_SZ, world_seed^TERRACE_PHASE_SEED, 2),
+                                TERRACE_PHASE_LO, TERRACE_PHASE_HI, 0.f, 1.f);
                 // medium-frequency jitter bends the cliff lines and varies their
                 // spacing so the shelves don't read as a straight, even ladder.
                 // it's part of the phase offset, so it stays average-preserving.
-                float jitter = (noise(x, y, PLATEAU_JITTER_SZ, world_seed^PLATEAU_JITTER_SEED, PLATEAU_JITTER_OCT) - .5f)
-                                * 2.f * PLATEAU_JITTER_AMP;
+                float jitter = (noise(x, y, TERRACE_JITTER_SZ, world_seed^TERRACE_JITTER_SEED, TERRACE_JITTER_OCT) - .5f)
+                                * 2.f * TERRACE_JITTER_AMP;
                 float offset = phase + jitter;
-                float o = val / PLATEAU_STEP + offset;
+                float o = val / TERRACE_STEP + offset;
                 float k = floorf(o);
                 float frac = o - k;
                 // flat tread, then a smoothstep riser centered in the step
-                float f = remap(frac, .5f - PLATEAU_RISER * .5f, .5f + PLATEAU_RISER * .5f, 0.f, 1.f);
+                float f = remap(frac, .5f - TERRACE_RISER * .5f, .5f + TERRACE_RISER * .5f, 0.f, 1.f);
                 f = f * f * (3.f - 2.f * f);
-                float shelf_val = (k + f - offset) * PLATEAU_STEP;
-                val = lerp(plateauness, val, shelf_val);
+                float shelf_val = (k + f - offset) * TERRACE_STEP;
+                val = lerp(terraceness, val, shelf_val);
         }
 
         // big oceans: a very low frequency mask presses lowlands below sea
@@ -401,7 +401,7 @@ float get_filtered_height(int x, int y)
 {
         float h = terrain_raw_height(x, y);
 
-        // ledges & plateaus: scattered invisible key points inside mountain
+        // ledges: scattered invisible key points inside mountain
         // ranges pull the surrounding terrain toward the key point's natural
         // height, carving a flat shelf to stand on. the effect eases to zero
         // at the rim so it blends smoothly into the untouched slope. each key
