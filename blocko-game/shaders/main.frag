@@ -216,10 +216,18 @@ void main(void) {
         // identical, instead of switching to a separate ambient-only path.
         float unshadow = 1.0;
         if (ubo.shadow_mapping) {
-        if (shadow_pos.x > 0.007 && shadow_pos.x < 0.993 && shadow_pos.y > 0.007 && shadow_pos.y < 0.993) {
+        // The near/mid ortho volumes are +-5/+-20 block columns running the
+        // whole depth range along the sun ray, so the xy-in-range tests alone
+        // also match terrain far away down the column; gate them by camera
+        // distance (2x each cascade's radius) so far fragments fall through
+        // to the cascades meant for them.
+        float cam_dist = distance(ubo.view_pos, world_pos.xyz);
+        if (cam_dist < 10.0 * ubo.BS
+                && shadow_pos.x > 0.007 && shadow_pos.x < 0.993 && shadow_pos.y > 0.007 && shadow_pos.y < 0.993) {
             // Near cascade - soft shadows with PCF
             unshadow = sampleShadowPCF(shadow_near, shadow_pos.xyz, 0.006, rotation);
-        } else if (shadow_pos_mid.x > 0.002 && shadow_pos_mid.x < 0.998 && shadow_pos_mid.y > 0.002 && shadow_pos_mid.y < 0.998) {
+        } else if (cam_dist < 40.0 * ubo.BS
+                && shadow_pos_mid.x > 0.002 && shadow_pos_mid.x < 0.998 && shadow_pos_mid.y > 0.002 && shadow_pos_mid.y < 0.998) {
             // Mid cascade - PCF, no A/B blending
             unshadow = sampleShadowPCF(shadow_mid, shadow_pos_mid.xyz, 0.0015, rotation);
         } else if (inRange(shadow_pos_far_a.xy) && inRange(shadow_pos_far_b.xy)) {
