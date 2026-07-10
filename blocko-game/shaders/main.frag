@@ -132,9 +132,12 @@ void main(void) {
 
     // water gets an animated rippled normal for lighting
     vec3 N = normal;
+    float swell_shade = 0.0;  // view-independent brightness roll from the long swell
     if (alpha < 1.0) {
         float t = float(ubo.water_frame) * 0.03;
-        vec2 p = world_pos.xz / ubo.BS;
+        // absolute world coords (window mesh slides on scoot): subtract scoot so
+        // the wave phase stays pinned to the world and doesn't snap at a scoot
+        vec2 p = world_pos.xz / ubo.BS - vec2(ubo.scootx, ubo.scootz);
 
         // fade ripple detail with distance so normals flatten out
         // long before a pixel spans a whole wave (kills moire)
@@ -156,7 +159,26 @@ void main(void) {
                        + 0.045 * D2 * cos(dot(p, D2) *  4.3 - t * 1.2 + 1.7 * warp))
           + chop_amt  * (0.040 * D3 * cos(dot(p, D3) * 14.7 + t * 4.1 + 2.6 * warp)
                        + 0.035 * D4 * cos(dot(p, D4) * 18.3 - t * 3.3 + 3.4 * warp)));
+
+        // Long, low-frequency swell that survives to the horizon. Its wavelength
+        // (~20-35 blocks) stays many pixels wide even at range, so unlike the
+        // short ripples above it doesn't alias when a pixel spans a wave - it
+        // gives distant water gently rolling light/dark detail instead of a flat
+        // mirror. Only lightly faded, so it's still present at the fog line.
+        const vec2 L1 = vec2( 0.71,  0.70), L2 = vec2(-0.34,  0.94);
+        float long_amt = 1.0 - 0.5 * smoothstep(40.0, 300.0, dist_b);
+        slope += long_amt * (
+              0.030 * L1 * cos(dot(p, L1) * 0.19 + t * 0.6 + warp)
+            + 0.024 * L2 * cos(dot(p, L2) * 0.28 - t * 0.5 + 0.7 * warp));
+
         N = normalize(N + vec3(slope.x, 0.0, slope.y));
+
+        // Height of that same long swell (sin is the integral of the cos slope
+        // above), used as a view-INDEPENDENT brightness roll. The reflection
+        // detail vanishes looking straight down (fresnel -> 0), so this term
+        // keeps the crests bright and troughs dark from directly overhead.
+        swell_shade = long_amt * (0.5 * sin(dot(p, L1) * 0.19 + t * 0.6 + warp)
+                                + 0.5 * sin(dot(p, L2) * 0.28 - t * 0.5 + 0.7 * warp));
     }
 
     vec3 glint = vec3(0.0);
@@ -282,6 +304,11 @@ void main(void) {
         vec3 mirrored = sky_color(reflect(-vdir, N), ubo.sun_dir, ubo.night_amt);
         c.rgb = mix(c.rgb, mirrored, fresnel);
         c.a = mix(0.5, 0.95, fresnel);
+
+        // View-independent swell shading, strongest where the reflection is
+        // weakest (looking straight down), so top-down water rolls light/dark
+        // instead of reading as one solid blue.
+        c.rgb *= 1.0 + 0.13 * swell_shade * (1.0 - fresnel);
 
         // Only see-through up close: past ~40 blocks the alpha ramps to fully
         // opaque so distant water reads as a solid surface (looks better and
