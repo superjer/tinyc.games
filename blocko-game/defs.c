@@ -175,6 +175,7 @@ int mesh_threads = 8;
 #define VBO_(x,z)    vao[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define VBOLEN_(x,z) vbo_len[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define WBOSTART_(x,z) wbo_start[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
+#define LODEND_(x,z)   lod_end[  ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 // the mesh's own identity: which absolute chunk the slot's GPU buffers hold.
 // regen_world invalidates chunk_stamp but not this, so the old mesh keeps
 // drawing in place while its chunk regenerates (meshes are chunk-relative,
@@ -339,6 +340,9 @@ struct main_ubo {
 unsigned int vbo[VAOS], vao[VAOS];
 size_t vbo_len[VAOS];
 size_t wbo_start[VAOS];
+size_t lod_end[VAOS]; // end of the 2x2x2 shadow-LOD section (starts at vbo_len)
+float shadow_lod_dist = 160.f; // chunks beyond this many blocks cast 2x2x2 LOD
+                               // shadows in far/extreme cascades (<0 disables)
 
 struct vbufv {
     float tex;     // Location 0

@@ -55,7 +55,7 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
         }
         int cascade_x_draw_calls = 0;
 
-        VkDeviceSize voffset = 0;
+        float lod_dist_sq = shadow_lod_dist * BS * shadow_lod_dist * BS;
         for (int k = 0; k < visible_chunk_count; k++) {
                 if (!(visible_chunks[k].shadow_mask & cascade_bit)) continue;
 
@@ -64,11 +64,30 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                 push.chunk_x = i * BS * CHUNKW;
                 push.chunk_y = 0;
                 push.chunk_z = j * BS * CHUNKD;
+
+                // distant chunks cast 2x2x2 LOD shadows in far/extreme: draw the
+                // coarse section with push.bs doubled so shadow.vert scales the
+                // quads (pos_in is in coarse-cell units there)
+                VkDeviceSize voffset;
+                size_t terrain_verts;
+                if (cascade_idx >= SHADOW_FAR_A && shadow_lod_dist >= 0
+                        && visible_chunks[k].dist_sq > lod_dist_sq
+                        && LODEND_(i, j) > VBOLEN_(i, j))
+                {
+                        push.bs = BS * 2;
+                        voffset = VBOLEN_(i, j) * sizeof(struct vbufv);
+                        terrain_verts = LODEND_(i, j) - VBOLEN_(i, j);
+                }
+                else
+                {
+                        push.bs = BS;
+                        voffset = 0;
+                        terrain_verts = WBOSTART_(i, j);
+                }
                 vkCmdPushConstants(cmdbuf, vk.pipelines[terrain_pipe].layout,
                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                         0, sizeof push, &push);
                 vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &voffset);
-                size_t terrain_verts = WBOSTART_(i, j);
                 vkCmdDraw(cmdbuf, 4, terrain_verts, 0, 0);
                 shadow_polys += terrain_verts;
                 shadow[cascade_idx].polys += terrain_verts;

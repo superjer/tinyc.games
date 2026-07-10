@@ -15,6 +15,7 @@
         X(frame_setup), \
         X(sync_w_terrain_gen), \
         X(build_meshes), \
+        X(build_lod_mesh), \
         X(gpu_upload), \
         X(upload_ubo), \
         X(draw_terrain), \

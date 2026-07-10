@@ -169,6 +169,14 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 memset(shadow_polys_accum, 0, sizeof shadow_polys_accum);
                 p += snprintf(p, end-p, "ok\n");
         }
+        else if (!strncmp(cmd, "shadowlod", 9))
+        {
+                // "shadowlod <blocks>" sets the LOD distance for far/extreme
+                // shadow casters (-1 disables, 0 = all chunks); bare = query
+                if (cmd[9] == ' ')
+                        shadow_lod_dist = atof(cmd + 10);
+                p += snprintf(p, end-p, "shadow_lod_dist %g\n", shadow_lod_dist);
+        }
         else if (!strncmp(cmd, "gpu", 3))
         {
                 if (!gpu_ms_frames)
@@ -1061,7 +1069,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "save <name> | load [<name>]\n"
                         "walk <frames> | fly <frames> <bl/s> | turn <deg>\n"
                         "look [<yaw> <pitch>] | click <left|right> [frames] | target | patch\n"
-                        "dist <blocks> | debounce <frames> | tint [<0|1>]\n"
+                        "dist <blocks> | debounce <frames> | tint [<0|1>] | shadowlod [<blocks>]\n"
                         "screenshot [<path>] | noclip [<0|1>]\n"
                         "find <tile> <ax0> <az0> <ax1> <az1> | tile <ax> <ay> <az> | edits [clear]\n"
                         "tweak [<name> [<val>]|reset|dump] | noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
