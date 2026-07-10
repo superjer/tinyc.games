@@ -43,7 +43,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "../common/nothings/stb_image.h"
 
-#include "timer.c"
 #include "vector.c"
 #include "defs.c"
 #include "../common/tinyc.games/terrain.c"
@@ -57,7 +56,7 @@
 #include "../common/tinyc.games/font.c"
 #include "cursor.c"
 #include "vksetup.c"
-#include "remote.c"
+#include "console.c"
 #include "interface.c"
 #include "blocklight.c"
 #include "edit.c"
@@ -69,7 +68,6 @@
 #include "item.c"
 #include "patch.c"
 #include "test.c"
-#include "tweak.c"
 #include "chunker.c"
 
 //prototypes
@@ -96,15 +94,8 @@ int main(int argc, char **argv)
 
         for (int i = 1; i < argc; i++)
         {
-                if      (!strcmp(argv[i], "--noise-kernel2"))                    noise_kernel_sq = 1;
-                else if (!strcmp(argv[i], "--noise-nvary"))                      noise_nvary = 1;
-                else if (!strcmp(argv[i], "--noise-contrast") && i + 1 < argc)   noise_base_weight = atof(argv[++i]);
-                else if (!strcmp(argv[i], "--noise-aniso") && i + 1 < argc)      noise_aniso = atof(argv[++i]);
-                else if (!strcmp(argv[i], "--seed") && i + 1 < argc)             world_seed = atoi(argv[++i]);
-                // lightweight mode for running several instances at once (net
-                // tests): less to draw from the very first frame, no shadow maps
+                if      (!strcmp(argv[i], "--seed") && i + 1 < argc)             world_seed = atoi(argv[++i]);
                 else if (!strcmp(argv[i], "--dist") && i + 1 < argc)             draw_dist = atof(argv[++i]);
-                else if (!strcmp(argv[i], "--noshadow"))                         shadow_mapping = false;
                 else if (!strcmp(argv[i], "--headless"))                         headless = 1;
                 else if (!strcmp(argv[i], "--serve"))
                 {
@@ -122,19 +113,10 @@ int main(int argc, char **argv)
                                 connect_port = atoi(colon + 1);
                         }
                 }
-                else if (!strcmp(argv[i], "--lock") && i + 1 < argc)
-                {
-                        // start locked (input blocked, banner shown), same as a
-                        // `bk lock "<msg>"` right after launch - saves the race
-                        // where a driver launches then locks a frame or two late
-                        test_lock = 1;
-                        snprintf(test_lock_msg, sizeof test_lock_msg, "%s", argv[++i]);
-                }
                 else
                 {
                         fprintf(stderr, "usage: %s [--seed <n>] [--serve [port]] [--connect <host[:port]>] "
-                                "[--headless] [--dist <blocks>] [--noshadow] [--lock <msg>] [--noise-kernel2] "
-                                "[--noise-nvary] [--noise-contrast <weight>] [--noise-aniso <0..1>]\n", argv[0]);
+                                "[--headless] [--dist <blocks>]\n", argv[0]);
                         return 1;
                 }
         }
@@ -172,18 +154,15 @@ int main(int argc, char **argv)
         {
                 signal(SIGINT, on_sigint);
                 signal(SIGTERM, on_sigint);
-                fprintf(stderr, "headless: no window; stop with Ctrl+C or 'bk quit'\n");
+                fprintf(stderr, "headless: no window; stop with Ctrl+C\n");
         }
         else
         {
-                TIMECALL(vksetup, ());
-                TIMECALL(font_init, ());
-                TIMECALL(cursor_init, ());
-                TIMECALL(sun_init, ());
+                vksetup();
+                font_init();
+                cursor_init();
+                sun_init();
         }
-        char timings_buf[8000];
-        timer_print(timings_buf, 8000, true);
-        printf("%s", timings_buf);
         if (TERRAIN_THREAD)
                 new_game();
         main_loop();
@@ -212,15 +191,14 @@ void main_loop()
 
         if (!headless) while (SDL_PollEvent(&event)) switch (event.type)
         {
-                case SDL_EVENT_QUIT:              if (!test_lock) game_shutdown(0);
-                                                  break;
+                case SDL_EVENT_QUIT:              game_shutdown(0);  break;
                 case SDL_EVENT_KEY_DOWN:          key_move(1);       break;
                 case SDL_EVENT_TEXT_INPUT:        console_text(event.text.text); break;
                 case SDL_EVENT_KEY_UP:            key_move(0);       break;
-                case SDL_EVENT_MOUSE_MOTION:      if (!test_lock) mouse_move();    break;
-                case SDL_EVENT_MOUSE_BUTTON_DOWN: if (!test_lock) mouse_button(1); break;
-                case SDL_EVENT_MOUSE_BUTTON_UP:   if (!test_lock) mouse_button(0); break;
-                case SDL_EVENT_MOUSE_WHEEL:       if (!test_lock) mouse_wheel();   break;
+                case SDL_EVENT_MOUSE_MOTION:      mouse_move();      break;
+                case SDL_EVENT_MOUSE_BUTTON_DOWN: mouse_button(1);   break;
+                case SDL_EVENT_MOUSE_BUTTON_UP:   mouse_button(0);   break;
+                case SDL_EVENT_MOUSE_WHEEL:       mouse_wheel();     break;
                 case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                         resize();
                         break;
@@ -244,21 +222,17 @@ void main_loop()
         last_ticks = ticks;
         accumulated_elapsed = CLAMP(accumulated_elapsed, 0, interval * 3 - 1);
 
-        if (!regulated) accumulated_elapsed = interval;
-
         while (accumulated_elapsed >= interval)
         {
-                TIMECALL(update_player, (&player[my_player], 1));
+                update_player(&player[my_player], 1);
                 hand_animate(&player[my_player]);
-                TIMECALL(update_mobs, ());
+                update_mobs();
                 update_items();
-                TIMECALL(update_world, ());
+                update_world();
                 pframe++;
                 accumulated_elapsed -= interval;
         }
 
-        remote_poll();
-        tweak_poll();
         net_poll();
         sim_areas_update();
 
@@ -289,16 +263,12 @@ void main_loop()
         }
 
         camplayer = player[my_player];
-
-        if (regulated)
-        {
-                TIMECALL(update_player, (&camplayer, 0));
-        }
+        update_player(&camplayer, 0);
 
         mob_lerp_t = accumulated_elapsed / interval;
         lerp_camera(accumulated_elapsed / interval, &player[my_player], &camplayer);
-        TIMECALL(step_sunlight, ());
-        TIMECALL(step_glolight, ());
+        step_sunlight();
+        step_glolight();
         draw_stuff();
         frame++;
 } }
@@ -306,7 +276,6 @@ void main_loop()
 void startup()
 {
         noise_setup();
-        remote_init();
 
         // size the mesh-build thread team: enough to hide memory latency,
         // but leaving cores for the two terrain workers and the main thread
@@ -375,10 +344,8 @@ void regen_world()
 
 void update_world()
 {
-        float speed = (sun_frozen || freeze_shadows) ? 0.f : speedy_sun ? 0.01f : 0.0001f;
-        sun_pitch += speed * (reverse_sun ? -1 : 1);
+        sun_pitch += 0.0001f;
         if (sun_pitch > TAU) sun_pitch -= TAU;
-        if (sun_pitch < 0.f) sun_pitch += TAU;
 }
 
 

@@ -82,23 +82,7 @@ void sync_fresh_chunks()
 //draw everything in the game on the screen
 void draw_stuff()
 {
-        TIMER(gpu_sync);
         vulkan_acquire_next();
-
-        TIMER(draw_start);
-        // Read GPU timestamps from previous frame (non-blocking, from 2 frames ago)
-        if (gpu_timestamp_pool && frame > 1) {
-                VkResult result = vkGetQueryPoolResults(vk.device, gpu_timestamp_pool,
-                        0, GPU_TS_COUNT, sizeof(gpu_timestamps), gpu_timestamps,
-                        sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
-                gpu_timestamps_valid = (result == VK_SUCCESS);
-                if (gpu_timestamps_valid && gpu_timestamp_period > 0) {
-                        double k = gpu_timestamp_period / 1e6;
-                        for (int i = 1; i < GPU_TS_COUNT; i++)
-                                gpu_ms_accum[i] += (gpu_timestamps[i] - gpu_timestamps[i-1]) * k;
-                        gpu_ms_frames++;
-                }
-        }
 
         memset(&main_ubo, 0, sizeof main_ubo);
 
@@ -159,10 +143,8 @@ void draw_stuff()
         // the origin and shadows vanish. When frozen it rebuilds those from the
         // stored shadow[].matrix (which apply_scoot keeps world-aligned) instead of
         // recentering on the player, and the shadow-map re-render is skipped.
-        TIMER(shadow_calc);
         do_shadows();
 
-        TIMER(frame_setup);
         do_atmos_colors();
 
         // eye position + underwater check (needed before proj for FOV)
@@ -208,16 +190,12 @@ void draw_stuff()
 
         mat4_multiply(proj_view_mtrx, proj_mtrx, translated_view_mtrx);
 
-        if (!lock_culling)
-        {
-                memcpy(cull_mtrx, proj_view_mtrx, sizeof cull_mtrx);
-                cull_x = camplayer.pos.x;
-                cull_z = camplayer.pos.z;
-        }
+        memcpy(cull_mtrx, proj_view_mtrx, sizeof cull_mtrx);
+        cull_x = camplayer.pos.x;
+        cull_z = camplayer.pos.z;
 
         // Adopt newly generated chunks - must happen before the visible list
         // below or the stale mesh gets drawn for a frame
-        TIMER(sync_w_terrain_gen)
         sync_fresh_chunks();
 
         // Build visible chunk list (single pass: check all frustums)
@@ -371,8 +349,7 @@ void draw_stuff()
                 }
         }
 
-        // Check LOD chunks for face visibility changes (skip if lock_culling for debugging)
-        if (!lock_culling)
+        // Check LOD chunks for face visibility changes
         for (int i = 0; i < VAOW; i++) {
                 for (int j = 0; j < VAOD; j++) {
                         if (!LOD_(i, j)) continue;  // skip full-detail chunks
@@ -406,7 +383,6 @@ void draw_stuff()
                 }
         }
 
-        TIMER(build_meshes);
         build_meshes();
 
         // refresh (or retire) the reject+patch for any pending block edit; must
@@ -415,7 +391,6 @@ void draw_stuff()
 
         main_ubo.water_frame = pframe;
 
-        TIMER(upload_ubo);
         // Upload UBO to per-frame buffer
         {
                 int frame = vk.currentFrame;
@@ -430,14 +405,8 @@ void draw_stuff()
 
         VkCommandBuffer cmdbuf = vk.commandBuffers[vk.imageIndex];
 
-        // End the auto-started render pass so we can reset query pool and do shadow passes
+        // End the auto-started render pass so we can do shadow passes
         vkCmdEndRenderPass(cmdbuf);
-
-        // Reset and start GPU timestamp queries (must be outside render pass)
-        if (gpu_timestamp_pool) {
-                vkCmdResetQueryPool(cmdbuf, gpu_timestamp_pool, 0, GPU_TS_COUNT);
-                vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_FRAME_START);
-        }
 
         // Build mob + mining geometry once so both the shadow pass (near
         // cascade) and the main pass can draw the same vertex buffers
@@ -447,11 +416,9 @@ void draw_stuff()
         hand_build();
 
         // Render shadow maps (before main render pass)
-        TIMER(shadow_render);
         shadow_render(cmdbuf);
 
         // Start main render pass
-        TIMER(draw_terrain);
         VkClearValue clearValues[2] = {
                 {},
                 {.depthStencil = {1.0f, 0}}
@@ -508,7 +475,6 @@ void draw_stuff()
                 vkCmdDraw(cmdbuf, 4, terrain_verts, 0, 0);
                 chunks_drawn++;
                 total_verts += terrain_verts;
-                polys += terrain_verts;
         }
 
         // Mobs draw on their own pipeline (mob.vert); rebind the opaque terrain
@@ -574,7 +540,6 @@ void draw_stuff()
                 vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &water_offset);
                 vkCmdDraw(cmdbuf, 4, water_verts, 0, 0);
                 total_verts += water_verts;
-                polys += water_verts;
         }
 
         // Pass 2b: near water, transparent pipeline, back-to-front
@@ -602,7 +567,6 @@ void draw_stuff()
                 vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &water_offset);
                 vkCmdDraw(cmdbuf, 4, water_verts, 0, 0);
                 total_verts += water_verts;
-                polys += water_verts;
         }
 
         // patch the edit box's water/glow faces the reject test just culled
@@ -610,17 +574,9 @@ void draw_stuff()
 
         if (mouselook) cursor(cmdbuf);
 
-        // GPU timestamp after terrain
-        if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_TERRAIN_END);
-
         debrief();
 
-        // GPU timestamp at frame end
-        if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_FRAME_END);
-
-        TIMER(frame_submit);
         vulkan_submit();
-        TIMER();
 }
 
 #endif // BLOCKO_DRAW_C_INCLUDED

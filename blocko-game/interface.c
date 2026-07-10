@@ -19,9 +19,6 @@ void jump(int down)
 void key_move(int down)
 {
         if (console_key(down)) return;
-        if (test_lock) return; // test running: only the console works
-        if (tweak_key(down)) return; // terrain tweaker panel (before the
-                                     // repeat gate: held arrows keep stepping)
         if (event.key.repeat) return;
 
         switch (event.key.key)
@@ -79,24 +76,8 @@ void key_move(int down)
                         if (down)
                                 help_layer = (help_layer == 2) ? 0 : 2;
                         break;
-                case SDLK_R: // toggle phys step regulation
-                        if (down)
-                        {
-                                regulated = !regulated;
-                                fprintf(stderr, "%s\n", regulated ? "regulated" : "unregulated");
-                        }
-                        break;
-                case SDLK_N: // night mode on/off
-                        if (down) reverse_sun = !reverse_sun;
-                        break;
-                case SDLK_P: // speed of the sun
-                        if (down) speedy_sun = !speedy_sun;
-                        break;
-                case SDLK_M: // do shadow mapping
-                        if (!down) shadow_mapping = !shadow_mapping;
-                        break;
-                case SDLK_F7: // toggle tall grass shadows (T belongs to chat now)
-                        if (!down) grass_shadows = !grass_shadows;
+                case SDLK_N: // noclip: fly through solids, no gravity
+                        if (down) player[my_player].noclip = !player[my_player].noclip;
                         break;
                 case SDLK_C: // change view distance
                         if (down) {
@@ -111,48 +92,6 @@ void key_move(int down)
                                 fprintf(stderr, "draw_dist: %f\n", draw_dist);
                         }
                         break;
-                case SDLK_F2: // freeze culling to see what gets culled
-                        if (down) lock_culling = !lock_culling;
-                        break;
-                case SDLK_F3: // show FPS and timings etc.
-                        if (!down) noisy = !noisy;
-                        break;
-                case SDLK_F5: // hot-reload shaders
-                        if (!down) {
-                                int failed = vulkan_reload_all_pipelines();
-                                if (failed > 0) {
-                                        snprintf(reload_msg, sizeof reload_msg,
-                                                "SHADER RELOAD FAILED (%d) - see console", failed);
-                                        reload_msg_r = 1; reload_msg_g = 0.2f; reload_msg_b = 0.2f;
-                                } else {
-                                        snprintf(reload_msg, sizeof reload_msg, "shaders reloaded");
-                                        reload_msg_r = 0.3f; reload_msg_g = 1; reload_msg_b = 0.3f;
-                                }
-                                reload_msg_expire = SDL_GetTicks() +
-                                        (failed > 0 ? 6000 : 1500);
-                        }
-                        break;
-                case SDLK_F6: // freeze shadows + sun to inspect cascade edges
-                        if (down) freeze_shadows = !freeze_shadows;
-                        break;
-                case SDLK_F12: // draw shadow map on the sun
-                        if (!down) show_shadow_map = !show_shadow_map;
-                        break;
-
-                // teleport a whole chunk - auto_scoot recenters the window after
-                case SDLK_LEFT:  if (down) player[my_player].pos.x -= CHUNKW * BS; break;
-                case SDLK_RIGHT: if (down) player[my_player].pos.x += CHUNKW * BS; break;
-                case SDLK_DOWN:  if (down) player[my_player].pos.z -= CHUNKD * BS; break;
-                case SDLK_UP:    if (down) player[my_player].pos.z += CHUNKD * BS; break;
-
-                /*
-                case SDLK_LEFT:     if (down) sun_yaw   -= .1f; break;
-                case SDLK_RIGHT:    if (down) sun_yaw   += .1f; break;
-                case SDLK_DOWN:     if (down) sun_pitch -= .1f; break;
-                case SDLK_UP:       if (down) sun_pitch += .1f; break;
-                */
-                case SDLK_PAGEDOWN: if (down) sun_roll  -= .1f; break;
-                case SDLK_PAGEUP:   if (down) sun_roll  += .1f; break;
         }
 }
 

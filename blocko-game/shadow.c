@@ -92,9 +92,6 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                         0, sizeof push, &push);
                 vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &voffset);
                 vkCmdDraw(cmdbuf, 4, terrain_verts, 0, 0);
-                shadow_polys += terrain_verts;
-                shadow[cascade_idx].polys += terrain_verts;
-                shadow_polys_accum[cascade_idx] += terrain_verts;
                 cascade_x_draw_calls++;
         }
 
@@ -120,9 +117,6 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                                 0, sizeof push, &push);
                         vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &leaf_offset);
                         vkCmdDraw(cmdbuf, 4, leaf_verts, 0, 0);
-                        shadow_polys += leaf_verts;
-                        shadow[cascade_idx].polys += leaf_verts;
-                        shadow_polys_accum[cascade_idx] += leaf_verts;
                 }
         }
 
@@ -131,7 +125,7 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
         // grass lives in the transparent section [WBOSTART, VBOLEN) mixed with
         // water; shadow.vert collapses the water (alpha < 1) so only the grass
         // billboards write depth here.
-        if ((cascade_idx == SHADOW_NEAR || cascade_idx == SHADOW_MID) && grass_shadows)
+        if ((cascade_idx == SHADOW_NEAR || cascade_idx == SHADOW_MID))
         {
                 for (int k = 0; k < visible_chunk_count; k++) {
                         if (!(visible_chunks[k].shadow_mask & cascade_bit)) continue;
@@ -149,9 +143,6 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                                 0, sizeof push, &push);
                         vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &grass_offset);
                         vkCmdDraw(cmdbuf, 4, water_verts, 0, 0);
-                        shadow_polys += water_verts;
-                        shadow[cascade_idx].polys += water_verts;
-                        shadow_polys_accum[cascade_idx] += water_verts;
                 }
         }
 
@@ -259,12 +250,11 @@ void do_shadows()
 
         // compute shadow matrices and render shadow maps
         // s=0: Near, s=1: Mid, s=2: Far, s=3: Extreme
-        TIMER(shadow_render);
         // When frozen (F6) skip the recompute: the stored shadow[].matrix values
         // are left as-is so apply_scoot()'s retranslate keeps them locked to the
         // world across scoots. The biased UBO matrices are rebuilt from them below.
         // Same when idle (light at the horizon): the stale maps go unsampled.
-        if (shadow_mapping && !freeze_shadows && !shadow_idle) for(int s = 0; s < 4; s++)
+        if (shadow_mapping && !shadow_idle) for(int s = 0; s < 4; s++)
         {
                 // Skip cascades not being rendered this frame (keeps matrix frozen)
                 if (s == 2 && shadow_far_render_ab < 0) continue;
@@ -436,39 +426,25 @@ void do_shadows()
 
 void shadow_render(VkCommandBuffer cmdbuf)
 {
-        // When frozen (F6) skip re-rendering: the shadow map textures keep their
-        // last snapshot, staying valid even for chunks the main view later culls.
         // When idle (light at the horizon) the passes are pure waste - skip them.
-        if (shadow_mapping && !freeze_shadows && !shadow_idle) {
+        if (shadow_mapping && !shadow_idle) {
                 // Render shadow passes with per-cascade bias (using pre-built visible chunk list)
                 // Near cascade: rendered every frame with PCF
                 draw_shadow_pass(cmdbuf, SHADOW_NEAR, 1.5f, 1.5f, 1);
-                if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_N_END);
 
                 // Mid cascade: rendered every frame, no PCF, no A/B blending
                 draw_shadow_pass(cmdbuf, SHADOW_MID, 1.0f, 1.0f, 2);
-                if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_M_END);
 
                 // Far cascade: render to A or B based on which needs updating
                 if (shadow_far_render_ab >= 0) {
                         int far_cascade = (shadow_far_render_ab == 0) ? SHADOW_FAR_A : SHADOW_FAR_B;
                         draw_shadow_pass(cmdbuf, far_cascade, 0.5f, 0.5f, 4);
                 }
-                if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_F_END);
 
                 // Extreme cascade: render to A or B based on which needs updating
                 if (shadow_ext_render_ab >= 0) {
                         int ext_cascade = (shadow_ext_render_ab == 0) ? SHADOW_EXT_A : SHADOW_EXT_B;
                         draw_shadow_pass(cmdbuf, ext_cascade, 0.5f, 0.5f, 8);
-                }
-                if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_X_END);
-        } else {
-                // Write shadow timestamps even when disabled (so GPU timing display works)
-                if (gpu_timestamp_pool) {
-                        vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_N_END);
-                        vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_M_END);
-                        vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_F_END);
-                        vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_SHADOW_X_END);
                 }
         }
 }

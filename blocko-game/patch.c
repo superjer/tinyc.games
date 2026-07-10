@@ -191,14 +191,12 @@ void patch_update()
                 if (!patch_alloc[fr].buf)
                         vulkan_allocate_vertex_buffer(PATCH_MAX_VERTS * sizeof(struct vbufv), &patch_alloc[fr]);
                 vulkan_populate_vertex_buffer(vbuf, patch_vert_count * sizeof(struct vbufv), &patch_alloc[fr]);
-                polys += patch_vert_count;
         }
         if (patch_water_count > 0)
         {
                 if (!patch_water_alloc[fr].buf)
                         vulkan_allocate_vertex_buffer(PATCH_MAX_VERTS * sizeof(struct vbufv), &patch_water_alloc[fr]);
                 vulkan_populate_vertex_buffer(wbuf, patch_water_count * sizeof(struct vbufv), &patch_water_alloc[fr]);
-                polys += patch_water_count;
         }
 }
 

@@ -37,9 +37,7 @@ void sun_enqueue(int x, int y, int z, unsigned char incoming_light)
         // builder threads and the main thread all enqueue here
         #pragma omp critical (sunq)
         {
-                if (sq_next_len >= SUNQLEN)
-                        sunq_outta_room++;
-                else
+                if (sq_next_len < SUNQLEN)
                 {
                         sunq_next[sq_next_len].x = x;
                         sunq_next[sq_next_len].y = y;
@@ -67,7 +65,6 @@ void glo_enqueue(int x, int y, int z, unsigned char incoming_light)
 
         if (gq_next_len >= GLOQLEN)
         {
-                gloq_outta_room++;
                 return; // out of room in glo queue
         }
 
@@ -248,9 +245,7 @@ static void sun_requeue(int x, int y, int z)
 {
         #pragma omp critical (sunq)
         {
-                if (sq_next_len >= SUNQLEN)
-                        sunq_outta_room++;
-                else
+                if (sq_next_len < SUNQLEN)
                 {
                         sunq_next[sq_next_len].x = x;
                         sunq_next[sq_next_len].y = y;
@@ -264,7 +259,6 @@ static void glo_requeue(int x, int y, int z)
 {
         if (gq_next_len >= GLOQLEN)
         {
-                gloq_outta_room++;
                 return;
         }
         gloq_next[gq_next_len].x = x;
@@ -326,7 +320,7 @@ void remove_sunlight(int px, int py, int pz)
                         {
                                 // dimmer than the darkened cell was: its light
                                 // may have flowed through there. take it down
-                                if (len >= UNLQLEN) { sunq_outta_room++; continue; }
+                                if (len >= UNLQLEN) continue;
                                 unlq[len++] = (struct unlit){x, y, z, L};
                                 set_sunlight(x, y, z, 0);
                         }
@@ -368,7 +362,7 @@ void remove_glolight(int px, int py, int pz)
 
                         if (L < u.old)
                         {
-                                if (len >= UNLQLEN) { gloq_outta_room++; continue; }
+                                if (len >= UNLQLEN) continue;
                                 unlq[len++] = (struct unlit){x, y, z, L};
                                 set_glolight(x, y, z, 0);
                         }

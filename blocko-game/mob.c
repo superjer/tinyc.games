@@ -718,7 +718,6 @@ static struct vbufv *netplayer_cube(struct vbufv *b, float x, float y, float z,
         *b++ = (struct vbufv){ tex,  DOWN, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
         if (eyes)
                 *b++ = (struct vbufv){ TEX_SLIME_EYES, SOUTH, 0, 0, -MOB_EYE_OUT, il,il,il,il, gl,gl,gl,gl, 1 };
-        polys += 6 + eyes;
         mob_count++;
         return b;
 }
@@ -780,7 +779,6 @@ void mob_build()
                 // discards the clear part). Nudged out along -z so it doesn't
                 // z-fight the body face; the shader spins it to face the heading.
                 *b++ = (struct vbufv){ TEX_SLIME_EYES, SOUTH, 0, 0, -MOB_EYE_OUT, il,il,il,il, gl,gl,gl,gl, 1 };
-                polys += 7;
                 mob_count++;
         }
 

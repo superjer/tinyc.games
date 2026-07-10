@@ -414,7 +414,6 @@ void build_meshes()
                         use_lod = 1;
                 }
 
-                TIMER(build_meshes);
 
                 mesh_region(xlo, xhi, 0, TILESH, zlo, zhi, face_mask, xlo, zlo);
 
@@ -428,12 +427,9 @@ void build_meshes()
                 }
 
                 VBOLEN_(myx, myz) = v - vbuf;
-                polys += VBOLEN_(myx, myz);
 
-                TIMER(build_lod_mesh);
                 v = lod_region(v, xlo, zlo);
                 LODEND_(myx, myz) = v - vbuf;
-                TIMER(gpu_upload)
 
                 // world_buf is single-buffered and persistently mapped, but a
                 // prior frame may still be reading this slot on the GPU. Wait for

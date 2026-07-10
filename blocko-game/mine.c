@@ -92,7 +92,6 @@ void mine_overlay_build()
         mine_pz = z * (float)BS + inset + jz;
         mine_bs = BS - 2 * inset;
         mine_draw_on = 1;
-        polys += 6;
 }
 
 // draw the built mining stand-in with the given pipeline (already bound)

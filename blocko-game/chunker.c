@@ -14,20 +14,12 @@
 #define QCAVE(x,y,z,radius_sq) ((struct qcave){x, y, z, radius_sq})
 #define REFLECT(v, lo, hi) { if (v < (lo)) v = 2*(lo) - v; if (v > (hi)) v = 2*(hi) - v; }
 
-static void gen_pass(unsigned *t0, int which)
-{
-        unsigned t = SDL_GetTicks();
-        #pragma omp atomic
-        gen_pass_ms[which] += t - *t0;
-        *t0 = t;
-}
 
 // generate soil, caves, and initial sunlight for columns [xlo,xhi) x [zlo,zhi).
 // a range never crosses a chunk boundary, and nothing here reads or writes
 // world state outside the range - neighbor heights come straight from noise
 void gen_columns(int xlo, int xhi, int zlo, int zhi)
 {
-        unsigned t0 = SDL_GetTicks();
 
         // heights for every column plus a 1-column border - the steepness
         // test reads each neighbor's height, so compute each column once
@@ -36,7 +28,6 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
         for (int z = zlo-1; z <= zhi; z++) for (int xx = xlo-1; xx <= xhi; xx++)
                 HMAP(xx, z) = TILESH
                         - get_filtered_height(xx - tscootx, z - tscootz) * TERRAIN_VSCALE;
-        gen_pass(&t0, GEN_HMAP);
 
         // fill a run of one column with one tile, clipped to the solid region
         #define BAND(a, b, v) { int a_ = MAX(a, gnd), b_ = MIN(b, TILESH-1); \
@@ -167,7 +158,6 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 }
         }
         #undef BAND
-        gen_pass(&t0, GEN_SOIL);
 
         // find nearby bezier curvy caves
         // (& with power-of-2 floors correctly when negative)
@@ -266,7 +256,6 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                                                 && !SEA_BESIDE(x, y, z))
                                         TT_(x, y, z) = OPEN;
         }
-        gen_pass(&t0, GEN_CAVES);
 
         // set gndheight and initial lighting
         for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
@@ -316,7 +305,6 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                         memset(sun + y, 0, TILESH-1 - y);
                 }
         }
-        gen_pass(&t0, GEN_LIGHT);
         #undef HMAP
 }
 
@@ -341,7 +329,6 @@ void gen_chunk_pass2(int cx, int cz)
 
         gen_columns(xlo+1, xhi-1, zlo+1, zhi-1);
 
-        unsigned t0 = SDL_GetTicks();
 
         // correcting pass over the chunk, contain floating water
         // (clamped at the destination window's rim, whatever its size)
@@ -359,7 +346,6 @@ void gen_chunk_pass2(int cx, int cz)
                                 TT_(x, y, z) = WOOD;
                 }
         }
-        gen_pass(&t0, GEN_WATER);
 
         // trees?
         unsigned seed = SEED2(xlo - tscootx, zlo - tscootz) ^ 0x5eed7ee5;
@@ -440,13 +426,11 @@ void gen_chunk_pass2(int cx, int cz)
                         break;
                 }
         }
-        gen_pass(&t0, GEN_TREES);
 
         // edge corners read the neighbors' edge columns (pass 1 data).
         // light is render: sim areas skip it
         if (gen_area == &main_area)
                 recalc_corner_lighting(xlo, MIN(xhi+1, TILESW), zlo, MIN(zhi+1, TILESD));
-        gen_pass(&t0, GEN_CORNERS);
 }
 
 // update terrain worker thread(s) copies of scoot vars
@@ -569,7 +553,6 @@ int area_builder_try()
                                 st->az = acz;
                                 area_fresh[area_fresh_len++] =
                                         (struct area_fresh){a, acx, acz};
-                                nr_chunks_generated++;
                         }
                         // replay queue full: leave unstamped, re-claimed later
                 }
@@ -647,7 +630,6 @@ void chunk_builder()
                 continue;
         }
 
-        int ticks_before = SDL_GetTicks();
 
         // generate the claimed edges (pass 1), then wait for any a neighbor
         // builder is still generating; a builder that abandons on regen
@@ -707,8 +689,6 @@ void chunk_builder()
                         abandon = 1;
                 if (!abandon)
                 {
-                        nr_chunks_generated++;
-                        chunk_gen_ticks += SDL_GetTicks() - ticks_before;
                         TAGEN_SLOT(best_x, best_z).ax = best_x - tchunk_scootx;
                         TAGEN_SLOT(best_x, best_z).az = best_z - tchunk_scootz;
                 }

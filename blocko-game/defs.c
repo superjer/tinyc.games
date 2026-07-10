@@ -292,7 +292,6 @@ struct shadow_cascade {
     VkFramebuffer framebuffer;
     float matrix[16];      // stored PV matrix (for A/B temporal blending)
     int slot;              // quantized slot (-1 = uninitialized)
-    int polys;             // polygon counter per cascade
     int r_meshes;          // nr_meshes_built when this map was rendered (far/ext
                            // skip re-rendering while view + world are unchanged)
 };
@@ -562,46 +561,19 @@ unsigned int shadow_prog_id;
 //globals
 int frame = 0;
 int pframe = 0;
-int noisy = false;
-int show_shadow_map = false;
 int help_layer = 0;
-int polys = 0;
-int shadow_polys = 0;
-int sunq_outta_room = 0;
-int gloq_outta_room = 0;
-int omp_threads = 0;
-int lock_culling = false;
-float cull_mtrx[16]; // camera frustum used for chunk culling - F2 freezes it
-float cull_x, cull_z; // camera position for range culling, frozen with it
+float cull_mtrx[16]; // camera frustum used for chunk culling
+float cull_x, cull_z; // camera position for range culling
 float draw_dist = 640.f;
 int zooming = false;
 float zoom_amt = 1.f;
 float fast = 1.f;
-int regulated = true;
 int headless; // dedicated server: no window, no vulkan, no input
 int shadow_mapping = true;
-int grass_shadows = true; // whether tall grass casts shadows (near cascade); toggle with T
-int speedy_sun = false;
-int reverse_sun = false;
-int sun_frozen = false; // set via debug socket for deterministic screenshots
-int freeze_shadows = false; // F6: pin shadow maps + sun so you can walk to the cascade edges
 float sun_pitch = .3f; //.6f; // 0 = east, PI/2 = up, PI = west, 3PI/2 = down
 float moon_pitch;
 float sun_yaw = .3f;
 float sun_roll = -1.3f;
-char alert[800]; // only for debugging
-
-// transient on-screen notice (e.g. F5 shader reload result); shown centered
-// until reload_msg_expire (SDL ticks). green=ok, red=failure.
-char reload_msg[256];
-unsigned reload_msg_expire;
-float reload_msg_r = 1, reload_msg_g = 1, reload_msg_b = 1;
-
-// test lock: automated test runs disable all input except the tilde
-// console (unlock by typing "lock 0" there) and show a banner
-int test_lock;
-char test_lock_msg[256];
-int remote_want_quit; // quit after the current reply is flushed
 void game_shutdown(int code);
 int main_pipe;       // main terrain rendering pipeline
 int water_pipe;      // transparent water rendering pipeline (near, back-to-front)
@@ -609,30 +581,6 @@ int water_solid_pipe;// opaque water pipeline (far chunks: no blend, back-face
                      // culled, front-to-back for early-Z - see draw.c water pass)
 int mob_pipe;        // mob rendering pipeline (mob.vert + shared main.frag)
 int mob_shadow_pipe; // mob shadow-cast pipeline (mob_shadow.vert + shadow.frag)
-
-// GPU timestamp queries
-#define GPU_TIMESTAMP_COUNT 8
-VkQueryPool gpu_timestamp_pool;
-uint64_t gpu_timestamps[GPU_TIMESTAMP_COUNT];
-float gpu_timestamp_period;  // nanoseconds per tick
-int gpu_timestamps_valid = 0;  // whether we have valid results from previous frame
-// Indices: 0=frame_start, 1=shadow_end, 2=terrain_end, 3=frame_end
-enum {
-    GPU_TS_FRAME_START = 0,
-    GPU_TS_SHADOW_N_END,
-    GPU_TS_SHADOW_M_END,
-    GPU_TS_SHADOW_F_END,
-    GPU_TS_SHADOW_X_END,
-    GPU_TS_TERRAIN_END,
-    GPU_TS_FRAME_END,
-    GPU_TS_COUNT
-};
-
-// per-pass GPU ms summed since last "fps reset", read via the gpu socket cmd
-// (far/extreme render on alternating frames, so single-frame samples mislead)
-double gpu_ms_accum[GPU_TS_COUNT];
-unsigned gpu_ms_frames;
-unsigned long long shadow_polys_accum[SHADOW_COUNT]; // faces drawn per cascade
 
 int mouselook = false; // start with the mouse free; click the window to capture
 int target_x, target_y, target_z;
@@ -667,16 +615,13 @@ int screenh = WINH;
 volatile struct qitem just_generated[VAOW*VAOD];
 volatile size_t just_gen_len;
 
-int nr_chunks_generated = 0;
 int nr_meshes_built = 0;
-int chunk_gen_ticks = 0;
 int cave_enable = 1;
 int tree_enable = 1;
 int flat_world = 0; // force a perfectly flat world (debug: isolates seams)
 
-// runtime world-gen knobs: blocko's rows of the big tweak table become live
-// float variables here (terrain.c expands the common rows the same way).
-// tweak.c builds the in-game tweaker panel + `tweak` socket command from them.
+// world-gen knobs: each row of gen_knobs.h becomes a live float variable
+// (terrain.c expands the common rows the same way)
 #define TWEAK(name, def, lo, hi, fl, desc) float name = def;
 #define TWEAK_VAR(name, def, lo, hi, fl, desc) // defined elsewhere
 #define TWEAK_SECTION(title)
@@ -684,9 +629,6 @@ int flat_world = 0; // force a perfectly flat world (debug: isolates seams)
 #undef TWEAK
 #undef TWEAK_VAR
 #undef TWEAK_SECTION
-// per-pass gen_chunk wall time, reported by the fps socket command
-enum { GEN_HMAP, GEN_SOIL, GEN_CAVES, GEN_WATER, GEN_TREES, GEN_LIGHT, GEN_CORNERS, GEN_PASSES };
-int gen_pass_ms[GEN_PASSES];
 
 // vksetup.c protos
 int check_program_errors(unsigned int shader, char *name);
@@ -770,7 +712,7 @@ int net_player_active(int i);
 void net_send_punch(int slot, float aimx, float aimz);
 void net_send_bonk(int pi, float nx, float nz);
 void net_send_chat(const char *text);
-void chat_add(const char *s); // remote.c: append a line to the on-screen chat
+void chat_add(const char *s); // console.c: append a line to the on-screen chat
 void regen_world(); // blocko.c: invalidate all chunk stamps
 
 // collision.c protos
@@ -779,12 +721,6 @@ int world_collide(struct box box, int wet);
 
 // test.c protos
 void debrief();
-
-// tweak.c protos
-int tweak_key(int down);
-void tweak_draw();
-void tweak_poll();
-void tweak_dispatch(const char *args, char *out, size_t outsz);
 
 // blocklight.c protos
 void sun_enqueue(int x, int y, int z, unsigned char incoming_light);
@@ -812,7 +748,5 @@ void recalc_gndheight(int x, int z);
 void scoot(int x, int z);
 void auto_scoot();
 void apply_scoot();
-void remote_init();
-void remote_poll();
 
 #endif // BLOCKO_DEFS_C_INCLUDED

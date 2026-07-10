@@ -173,7 +173,6 @@ void item_build()
                 *b++ = (struct vbufv){ tile_face_tex(t,WEST),  WEST,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
                 *b++ = (struct vbufv){ tile_face_tex(t,EAST),  EAST,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
                 *b++ = (struct vbufv){ tile_face_tex(t,DOWN),  DOWN,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-                polys += 6;
                 item_count++;
         }
 

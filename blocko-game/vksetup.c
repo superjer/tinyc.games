@@ -794,22 +794,6 @@ void vksetup()
                 PIPE_TRIANGLE_STRIP | PIPE_DEPTH_BIAS | PIPE_NO_CULL);
 
         create_descriptor_pool_and_set();
-
-        // Create GPU timestamp query pool
-        VkQueryPoolCreateInfo query_pool_info = {
-                .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
-                .queryType = VK_QUERY_TYPE_TIMESTAMP,
-                .queryCount = GPU_TIMESTAMP_COUNT,
-        };
-        if (vkCreateQueryPool(vk.device, &query_pool_info, NULL, &gpu_timestamp_pool) != VK_SUCCESS) {
-                fprintf(stderr, "Failed to create GPU timestamp query pool\n");
-        } else {
-                // Get timestamp period from device properties
-                VkPhysicalDeviceProperties props;
-                vkGetPhysicalDeviceProperties(*vk.bestPhysicalDevice, &props);
-                gpu_timestamp_period = props.limits.timestampPeriod;
-                fprintf(stderr, "GPU timestamp period: %.2f ns/tick\n", gpu_timestamp_period);
-        }
 }
 
 #endif // BLOCKO_VKSETUP_C_INCLUDED

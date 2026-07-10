@@ -143,7 +143,6 @@ void hand_build()
                 vulkan_allocate_vertex_buffer(sizeof hbuf, &hand_alloc[fr]);
         vulkan_populate_vertex_buffer(hbuf, sizeof hbuf, &hand_alloc[fr]);
         hand_draw_on = 1;
-        polys += 6;
 }
 
 // draw the held cube on the (already bound) main pipeline. A squashed viewport
