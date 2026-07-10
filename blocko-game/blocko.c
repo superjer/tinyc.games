@@ -308,6 +308,8 @@ void startup()
         tiles = calloc(TILESD * TILESH * TILESW, sizeof *tiles);
         sunlight = calloc(TILESD * TILESH * TILESW, sizeof *sunlight);
         glolight = calloc(TILESD * TILESH * TILESW, sizeof *glolight);
+        main_area = (struct warea){ .tiles = tiles, .sun = sunlight, .gndh = gndheight,
+                .maskw = TILESW-1, .maskd = TILESD-1, .pitchx = TILESH, .pitchz = TILESW * TILESH };
         cornlight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *cornlight);
         kornlight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *kornlight);
 }

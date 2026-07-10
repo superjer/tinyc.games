@@ -162,13 +162,15 @@ int mesh_threads = 8;
 #define KORN_(x,y,z) kornlight[((z - scootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - scootx) & (TILESW-1)) * (TILESH+1) + (y)]
 #define GNDH_(x,z)   gndheight[((z - scootz) & (TILESD-1))              * (TILESW+0) + ((x - scootx) & (TILESW-1))                   ]
 
-// for terrain/worker
-#define TT_(x,y,z)    tiles[    ((z - tscootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - tscootx) & (TILESW-1)) * (TILESH+0) + (y)]
-#define TSUN_(x,y,z)  sunlight[ ((z - tscootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - tscootx) & (TILESW-1)) * (TILESH+0) + (y)]
+// for terrain/worker. tiles/sun/gndheight writes go through the thread's
+// claimed destination window (gen_area) so the same gen code can fill the
+// main ring or a per-player sim area; light stays main-ring (light = render)
+#define TT_(x,y,z)    gen_area->tiles[((z - tscootz) & gen_area->maskd) * gen_area->pitchz + ((x - tscootx) & gen_area->maskw) * gen_area->pitchx + (y)]
+#define TSUN_(x,y,z)  gen_area->sun[  ((z - tscootz) & gen_area->maskd) * gen_area->pitchz + ((x - tscootx) & gen_area->maskw) * gen_area->pitchx + (y)]
 #define TGLO_(x,y,z)  glolight[ ((z - tscootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - tscootx) & (TILESW-1)) * (TILESH+0) + (y)]
 #define TCORN_(x,y,z) cornlight[((z - tscootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - tscootx) & (TILESW-1)) * (TILESH+1) + (y)]
 #define TKORN_(x,y,z) kornlight[((z - tscootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - tscootx) & (TILESW-1)) * (TILESH+1) + (y)]
-#define TGNDH_(x,z)   gndheight[((z - tscootz) & (TILESD-1))              * (TILESW+0) + ((x - tscootx) & (TILESW-1))                   ]
+#define TGNDH_(x,z)   gen_area->gndh[ ((z - tscootz) & gen_area->maskd) * (gen_area->maskw + 1) + ((x - tscootx) & gen_area->maskw)]
 
 // chunk pos-to-mem-location macros
 // a chunk is "generated" iff its ring slot is stamped with the absolute chunk
@@ -367,6 +369,19 @@ unsigned char *glolight;
 unsigned char gndheight[TILESW * TILESD];
 float *cornlight;
 float *kornlight;
+// a windowed piece of world: a power-of-2 ring of tile columns addressed by
+// absolute coords masked. The main render ring is one (main_area, aliasing
+// tiles/sunlight/gndheight); per-player sim areas are small ones. Gen writes
+// go through the thread-local gen_area so one set of macros fits all sizes.
+struct warea {
+        unsigned char *tiles;
+        unsigned char *sun;   // sim areas: gen scratch only (light = render)
+        unsigned char *gndh;
+        int maskw, maskd;     // block coord masks (TILESW-1 etc for main)
+        int pitchx, pitchz;   // array elements per block step in x / z
+};
+struct warea main_area; // filled in startup() once the buffers exist
+_Thread_local struct warea *gen_area = &main_area;
 struct chunk_stamp { int ax, az; };                  // absolute chunk coords a ring
 volatile struct chunk_stamp chunk_stamp[VAOD][VAOW]; // slot holds (INT_MIN = never)
 // pass 1 (chunk edge columns) stamps: a chunk's interior can generate only
