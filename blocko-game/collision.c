@@ -24,10 +24,12 @@ int block_collide(int bx, int by, int bz, struct box box, int wet)
         if (!legit_tile(bx, by, bz))
                 return 0;
 
-        if (wet && T_(bx, by, bz) == WATR)
+        int t = sim_tile(bx, by, bz);
+
+        if (wet && t == WATR)
                 return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS, BS});
 
-        if (!wet && T_(bx, by, bz) <= LASTSOLID)
+        if (!wet && t <= LASTSOLID)
                 return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS, BS});
 
         return 0;

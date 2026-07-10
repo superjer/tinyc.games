@@ -89,14 +89,13 @@ int mob_spawn(int bx, int bz)
         if (!m) return 0;
 
         if (bx < 1 || bx >= TILESW-1 || bz < 1 || bz >= TILESD-1) return 0;
-        if (!AGEN_(B2C(bx), B2C(bz))) return 0; // no terrain here yet
 
-        int gnd = GNDH_(bx, bz);
+        int gnd = sim_gndh(bx, bz); // 0 where no terrain exists yet
         if (gnd < 2 || gnd >= TILESH) return 0;
         // never spawn in or over water: check the surface and the block the
         // body will occupy, and refuse anything at/below the waterline
         if (gnd >= SEA_LEVEL) return 0;
-        if (T_(bx, gnd, bz) == WATR || T_(bx, gnd - 1, bz) == WATR) return 0;
+        if (sim_tile(bx, gnd, bz) == WATR || sim_tile(bx, gnd - 1, bz) == WATR) return 0;
 
         // slimes always arrive full-grown; the player carves them down
         int size = MOB_MAXSIZE;
@@ -281,7 +280,7 @@ static int mob_los_clear(struct mob *m, struct player *p)
         {
                 float t = d / len;
                 int tx = (ax + dx * t) / BS, ty = (ay + dy * t) / BS, tz = (az + dz * t) / BS;
-                if (legit_tile(tx, ty, tz) && IS_SOLID(tx, ty, tz))
+                if (legit_tile(tx, ty, tz) && sim_tile(tx, ty, tz) < LASTSOLID)
                         return 0;
         }
         return 1;
@@ -319,7 +318,7 @@ static float mob_water_surface(struct mob *m)
         int y0 = m->pos.y / BS - 1;
         int y1 = (m->pos.y + m->pos.h) / BS + 1;
         for (int by = y0; by <= y1; by++)
-                if (legit_tile(bx, by, bz) && T_(bx, by, bz) == WATR)
+                if (legit_tile(bx, by, bz) && sim_tile(bx, by, bz) == WATR)
                         return by * BS; // top face of the topmost water block
         return -1;
 }

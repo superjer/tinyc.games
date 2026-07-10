@@ -49,6 +49,7 @@
 #include "../common/tinyc.games/terrain.c"
 #include "formations.c"
 #include "atmosphere.c"
+#include "simarea.c"
 #include "collision.c"
 #include "mesh.c"
 #include "shadow.c"
