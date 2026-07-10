@@ -509,8 +509,8 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 }
                 p += snprintf(p, end-p, "kernel2 %d\ncontrast %g\naniso %g\nnvary %d\ninterp %d\n"
                         "(send 'regen' to rebuild the world with these)\n",
-                        noise_kernel_sq, noise_base_weight, noise_aniso, noise_nvary,
-                        noise_interp);
+                        (int)noise_kernel_sq, noise_base_weight, noise_aniso,
+                        (int)noise_nvary, (int)noise_interp);
         }
         else if (!strncmp(cmd, "formdump", 8))
         {
@@ -618,8 +618,8 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 p += snprintf(p, end-p, "enable %d\nregion %g\nchance %g\n"
                         "steps %d\nrmin %g\nrmax %g\ndetail %d\n"
                         "(send 'regen' to rebuild the world with these)\n",
-                        form_enable, form_region, form_chance,
-                        form_steps, form_rmin, form_rmax, form_detail);
+                        (int)form_enable, form_region, form_chance,
+                        (int)form_steps, form_rmin, form_rmax, (int)form_detail);
         }
         else if (!strncmp(cmd, "caves", 5))
         {
@@ -655,12 +655,12 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         {
                 float f; int v;
                 if (sscanf(cmd + 7, " jitter %f", &f) == 1)
-                        terrain_plateau_jitter = f;
+                        PLATEAU_JITTER_AMP = f;
                 else if (sscanf(cmd + 7, "%d", &v) == 1)
-                        terrain_plateaus = v;
+                        PLATEAU_ENABLE = v;
                 p += snprintf(p, end-p, "plateau %d  jitter %.3f\n"
                         "(send 'regen' to rebuild the world with these)\n",
-                        terrain_plateaus, terrain_plateau_jitter);
+                        (int)PLATEAU_ENABLE, PLATEAU_JITTER_AMP);
         }
         else if (!strncmp(cmd, "grassshadow", 11))
         {
@@ -818,6 +818,15 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 }
                 else
                         p += snprintf(p, end-p, "usage: csum <acx> <acz>\n");
+        }
+        else if (!strncmp(cmd, "tweak", 5))
+        {
+                // the big world-gen knob table (tweak.c) - same knobs as the
+                // in-game K panel. sets regenerate the world on their own.
+                const char *a = cmd + 5;
+                while (*a == ' ') a++;
+                tweak_dispatch(a, p, end-p);
+                p += strlen(p);
         }
         else if (!strncmp(cmd, "regen", 5))
         {
@@ -1009,7 +1018,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "dist <blocks> | debounce <frames> | tint [<0|1>]\n"
                         "screenshot [<path>] | noclip [<0|1>]\n"
                         "find <tile> <ax0> <az0> <ax1> <az1> | tile <ax> <ay> <az> | edits [clear]\n"
-                        "noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
+                        "tweak [<name> [<val>]|reset|dump] | noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
                         "caves [<0|1>] | trees [<0|1>] | flat [<0|1>] | seed [<n>] | sum | csum <acx> <acz> | dump [<path>]\n"
                         "cull [<0|1>] | freeze [<0|1>] | lock [<msg>|0] | regen | sun <pitch> | quit\n"
                         "serve [<port>] | connect <host> [<port>] | net | say <text>\n");

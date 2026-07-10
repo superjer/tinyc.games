@@ -41,23 +41,9 @@
 #define FORM_MAX_SPHERES 96     // scaffold spheres (also used by `form near`)
 #define FORM_SPANMAX     8000   // per-formation column-span arena
 
-int   form_enable = 1;
-float form_region = .56f;       // region mask threshold (lower = more regions)
-float form_chance = .50f;       // per-cell spawn chance inside a region
-int   form_steps  = 12;         // max steps in the scaffold trunk walk
-float form_rmin   = 3.f;
-float form_rmax   = 15.f;
-int   form_config_gen;          // bump to invalidate memos after knob changes
-int   form_detail = 0;          // add the fine fbm grit shell? off: ~2x cheaper
-                                // gen for a barely-visible difference at 1 vox/block
-
-// carve/detail tuning (craggy defaults; see the smooth<->craggy sweep)
-static float FORM_MBALL_T   = 0.32f; // metaball isosurface threshold
-static float FORM_BITE_FREQ = 0.045f, FORM_BITE_T  = 0.53f; // concave bays
-static float FORM_CRACK_FREQ= 0.075f, FORM_CRACK_T = 0.60f; // cracks/arches
-static float FORM_WARP_AMP  = 7.0f,   FORM_WARP_FREQ = 0.018f;
-static float FORM_DTL_FREQ  = 0.15f,  FORM_DTL_T   = 0.47f; // surface grit
-static int   FORM_CARVE_OCT = 2, FORM_DTL_OCT = 3;
+// tuning knobs (form_enable, form_rmin, FORM_BITE_T, ...) are rows of the
+// big tweak table in gen_knobs.h, defined as live floats in defs.c
+int form_config_gen;            // bump to invalidate memos after knob changes
 
 struct formation {
         int ci, cj, gen, state;
@@ -142,7 +128,7 @@ static void build_scaffold(struct formation *f, unsigned *s)
         float px=FBW/2.f, pz=FBD/2.f, py=FB_GY-2.f; // start buried at the anchor
         float ang=FRAND01(*s)*6.2831853f, dirx=cosf(ang), dirz=sinf(ang);
         float r=form_rmin+FRAND01(*s)*(form_rmax-form_rmin);
-        int steps=6 + (form_steps>6 ? noise_rng(s)%(form_steps-5) : 0);
+        int steps=6 + (form_steps>6 ? noise_rng(s)%((int)form_steps-5) : 0);
         for (int step=0; step<steps; step++)
         {
                 float sq=0.7f+0.5f*FRAND01(*s);

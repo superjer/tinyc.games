@@ -42,9 +42,6 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
         #define BAND(a, b, v) { int a_ = MAX(a, gnd), b_ = MIN(b, TILESH-1); \
                 if (b_ > a_) memset(t + a_, v, b_ - a_); }
 
-        // min plateauness for a terrace riser to surface as bare stone (mesa cliffs)
-        #define MESA_CLIFF_PLAT 0.60f
-
         for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
         {
                 int ax = x - tscootx; // absolute world coords: feed these to all
@@ -75,14 +72,14 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                                 PLATEAU_MASK_LO, PLATEAU_MASK_HI, 0.f, 1.f);
                 bool nb_higher = hx0 < hmaph || hz0 < hmaph || hx1 < hmaph || hz1 < hmaph; // ground above mine
                 bool nb_lower  = hx0 > hmaph || hz0 > hmaph || hx1 > hmaph || hz1 > hmaph; // and ground below
-                bool mesa_cliff = terrain_plateaus && plat > MESA_CLIFF_PLAT && nb_higher && nb_lower;
+                bool mesa_cliff = PLATEAU_ENABLE && plat > MESA_CLIFF_PLAT && nb_higher && nb_lower;
                 bool steep = (sharp_dn && sharp_up) || sharper_dn || mesa_cliff;
 
-                float reejin = noise(ax, az, 350, 12345, 1) - 0.5f;
-                int lev1 = SEA_LEVEL - 60 + (int)(reejin * 100.f);
-                int lev2 = SEA_LEVEL - 30 + (int)(reejin * 100.f);
-                int lev3 = SEA_LEVEL      + (int)(reejin * 50.f);
-                int lev4 = SEA_LEVEL + 45 + (int)(reejin * 50.f);
+                float reejin = noise(ax, az, SOIL_WOB_SZ, 12345, 1) - 0.5f;
+                int lev1 = SEA_LEVEL + (int)SOIL_LEV1_OFF + (int)(reejin * SOIL_WOB_DEEP);
+                int lev2 = SEA_LEVEL + (int)SOIL_LEV2_OFF + (int)(reejin * SOIL_WOB_DEEP);
+                int lev3 = SEA_LEVEL + (int)SOIL_LEV3_OFF + (int)(reejin * SOIL_WOB_SHAL);
+                int lev4 = SEA_LEVEL + (int)SOIL_LEV4_OFF + (int)(reejin * SOIL_WOB_SHAL);
 
                 // vegetation lines, by absolute altitude (smaller y = higher):
                 // ordinary grass gives way to mountain grass (MTGR) well above
@@ -90,9 +87,9 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 // barren near the peaks. a fine noise ragged-edges both so they
                 // aren't clean contours. keyed to altitude, not the soil bands,
                 // so mountain grass never creeps back down toward sea level.
-                float rough = noise(ax, az, 40, 0x51ef, 1) - 0.5f;
-                int mtn_line = SEA_LEVEL - 55 + (int)(rough * 16.f); // grass -> MTGR
-                int barren   = SEA_LEVEL - 98 + (int)(rough * 26.f); // MTGR -> rock
+                float rough = noise(ax, az, VEG_RAG_SZ, 0x51ef, 1) - 0.5f;
+                int mtn_line = SEA_LEVEL - (int)VEG_MTN_LINE + (int)(rough * VEG_MTN_RAG); // grass -> MTGR
+                int barren   = SEA_LEVEL - (int)VEG_BARREN + (int)(rough * VEG_BARREN_RAG); // MTGR -> rock
 
                 int flo[16], fhi[16];
                 int fn = flat_world ? 0 : form_spans(ax, az, flo, fhi, 16);
@@ -165,8 +162,8 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 {
                         if (t[y] != STON) continue;
                         unsigned seed = SEED3(ax >> 1, y >> 1, az >> 1);
-                        if      (RANDP(5)) t[y] = ORE;  // a real ore vein
-                        else if (RANDP(7)) t[y] = OREH; // a hint of ore in the rock
+                        if      (RANDP(ORE_VEIN_PCT)) t[y] = ORE;  // a real ore vein
+                        else if (RANDP(ORE_HINT_PCT)) t[y] = OREH; // a hint of ore in the rock
                 }
         }
         #undef BAND
@@ -186,12 +183,13 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
         struct point P1;
         struct point P2;
         struct point P3 = PC;
-        int nr_caves = (cave_enable && !flat_world) ? RANDI(0, 12) : 0;
+        int nr_caves = (cave_enable && !flat_world) ? RANDI(0, (int)CAVE_MAX) : 0;
 
         // cave system stretchiness
-        int sx = RANDI(10, 60);
-        int sy = RANDI(10, 60);
-        int sz = RANDI(10, 60);
+        int stlo = (int)CAVE_STRETCH_MIN, sthi = MAX((int)CAVE_STRETCH_MAX, stlo);
+        int sx = RANDI(stlo, sthi);
+        int sy = RANDI(stlo, sthi);
+        int sz = RANDI(stlo, sthi);
 
         struct qcave cave_points[MAX_CAVE_POINTS];
         int cave_p_len = 0;
@@ -228,8 +226,8 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                         }
 
                         root_radius += delta;
-                        float radius_sq = root_radius * root_radius * root_radius * root_radius * 50.f;
-                        radius_sq = CLAMP(radius_sq, 1.f, 50.f);
+                        float radius_sq = root_radius * root_radius * root_radius * root_radius * CAVE_RAD_SCALE;
+                        radius_sq = CLAMP(radius_sq, 1.f, CAVE_RAD_SCALE);
 
                         float s = 1.f - t;
                         int x = (int)(s*s*s*P0.x + 3.f*t*s*s*P1.x + 3.f*t*t*s*P2.x + t*t*t*P3.x);
@@ -356,10 +354,10 @@ void gen_chunk_pass2(int cx, int cz)
 
         // trees?
         unsigned seed = SEED2(xlo - tscootx, zlo - tscootz) ^ 0x5eed7ee5;
-        float p191 = noise(zlo - tscootz, xlo - tscootx, 1300, 999, 1);
-        int randp = p191 > 0.51f ? 96 : p191 > 0.45f ? 85 : 0;
+        float p191 = noise(zlo - tscootz, xlo - tscootx, TREE_REGION_SZ, 999, 1);
+        float randp = p191 > TREE_DENSE_T ? TREE_DENSE_PCT : p191 > TREE_SPARSE_T ? TREE_SPARSE_PCT : 0;
         if (!tree_enable) randp = 0;
-        if (randp) while (RANDP(randp))
+        if (randp > 0) while (RANDP(randp))
         {
                 char lowland = RANDBOOL ? RLEF : YLEF;
                 int x = xlo + RANDI(5, CHUNKW - 5);
@@ -421,11 +419,11 @@ void gen_chunk_pass2(int cx, int cz)
                         if (TT_(x, y-1, z) == OPEN && (surf == GRAS || surf == MTGR))
                         {
                                 int mtn = (surf == MTGR);
-                                float patch = noise(ax, az, 90, mtn ? 0x3b17c : 0x67a55, 1);
-                                if (patch > 0.5f)
+                                float patch = noise(ax, az, SHAG_PATCH_SZ, mtn ? 0x3b17c : 0x67a55, 1);
+                                if (patch > SHAG_PATCH_T)
                                 {
-                                        float density = CLAMP((patch - 0.5f) / 0.32f, 0.f, 1.f);
-                                        int shag = (int)(density * 88.f);
+                                        float density = CLAMP((patch - SHAG_PATCH_T) / SHAG_RAMP, 0.f, 1.f);
+                                        int shag = (int)(density * SHAG_MAX_PCT);
                                         unsigned seed = SEED3(ax, az, 0x9a55e);
                                         if (RANDP(shag)) TT_(x, y-1, z) = mtn ? TMGR : TLGR;
                                 }

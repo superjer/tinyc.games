@@ -142,11 +142,17 @@ $bk timings   # build_meshes total; divide by meshes_built for per-mesh ms
 ## World generation knobs
 
 These change generation parameters; send **`regen`** afterward to rebuild the
-world with the new values. With no arguments, each prints its current knobs.
+world with the new values (exception: `tweak` regenerates on its own). With no
+arguments, each prints its current knobs.
 
 | Command | What it does |
 |---|---|
-| `noise [<knob> <val>]` | Terrain noise knobs: `kernel2`, `contrast`, `aniso`, `nvary`, `interp`. |
+| `tweak` | List every knob in the big world-gen table (tweak.c) — the base height octaves, plateaus, oceans, peaks, ranges, warps, ledges, soil bands, vegetation, ore, caves, trees, tall grass, formations, and the noise-algorithm knobs. `*` marks off-default values. Knob values are local to this instance — they don't sync in multiplayer, so tweaking while connected desyncs terrain. |
+| `tweak <name> [<val>]` | Show or set one knob by name (case-insensitive). Values clamp to the knob's range. Unlike the other commands here, a set **regenerates the world by itself**, debounced ~0.5s after the last change. |
+| `tweak reset` | Every knob back to its default (regenerates if anything changed). |
+| `tweak dump` | Print the off-default knobs as replayable `tweak <name> <val>` lines — save them to keep a look you like across runs, or transcribe into the table defaults (terrain_knobs.h / gen_knobs.h). |
+| `tweak panel [<0\|1>]` | Show/hide the on-screen tweaker panel (same as the **K** key: arrows navigate/adjust, Shift = coarse steps, PgUp/PgDn jump sections, Backspace resets the knob). |
+| `noise [<knob> <val>]` | Terrain noise knobs: `kernel2`, `contrast`, `aniso`, `nvary`, `interp`. (Also rows of the `tweak` table.) |
 | `form [<knob> <val>]` | Formation knobs: `enable`, `region`/`chance` (how densely carved-rock formations cluster — lower `chance` or higher `region` = fewer, cheaper to generate), `steps`/`rmin`/`rmax` (scaffold length & sphere size), `detail` (0/1: add the fine grit shell — off by default, ~2x cheaper for a barely-visible change). (Note: `form near ...` is the separate inspection command above.) |
 | `caves [<0\|1>]` | Enable/disable cave carving. |
 | `trees [<0\|1>]` | Enable/disable trees. |

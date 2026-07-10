@@ -8,10 +8,21 @@
 #include "warp_config.c"
 #include "ledge_config.c"
 
+// every tunable knob is a row in terrain_knobs.h; expand them into live
+// float variables here. blocko's in-game tweaker (tweak.c) edits these.
+#define TWEAK(name, def, lo, hi, fl, desc) float name = def;
+#define TWEAK_SECTION(title)
+#include "terrain_knobs.h"
+#undef TWEAK
+#undef TWEAK_SECTION
+
+// bump after changing any knob above so the memo caches below refill; the
+// caches key on this plus noise_config_gen (either changing means stale)
+int terrain_config_gen;
+#define TERRAIN_CFG (noise_config_gen + terrain_config_gen)
+
 _Thread_local int get_height_hit, get_height_miss;
 int world_seed = 160659;
-int terrain_plateaus = 1; // debug/vis: set 0 to skip the plateau/shelf pass
-float terrain_plateau_jitter = PLATEAU_JITTER_AMP; // debug/vis: shelf-boundary jitter amp in steps (0 = straight bands)
 
 float zigzag(float val, int zags)
 {
@@ -27,12 +38,12 @@ float zigzag(float val, int zags)
 float get_height(int x, int y)
 {
         struct hmemo {
-                int x, y, seed;
+                int x, y, seed, cfg;
                 float val;
         };
         static _Thread_local struct hmemo hmemos[37][1217];
         struct hmemo *m = &hmemos[(x + 0x01000000) % 37][(y + 0x01000000) % 1217];
-        if (m->x == x && m->y == y && m->seed == world_seed && m->val)
+        if (m->x == x && m->y == y && m->seed == world_seed && m->cfg == TERRAIN_CFG && m->val)
         {
                 get_height_hit++;
                 return m->val;
@@ -60,7 +71,7 @@ float get_height(int x, int y)
         // instead of pulling the ground down; a low-frequency phase offset
         // drifts shelf heights region to region. knobs in terrain_config.c.
         float plateauness = remap(noise(x, y, PLATEAU_MASK_SZ, world_seed^PLATEAU_MASK_SEED, 1), PLATEAU_MASK_LO, PLATEAU_MASK_HI, 0.f, 1.f);
-        if (terrain_plateaus && plateauness > 0.f)
+        if (PLATEAU_ENABLE && plateauness > 0.f)
         {
                 float phase = remap(noise(x, y, PLATEAU_PHASE_SZ, world_seed^PLATEAU_PHASE_SEED, 2),
                                 PLATEAU_PHASE_LO, PLATEAU_PHASE_HI, 0.f, 1.f);
@@ -68,7 +79,7 @@ float get_height(int x, int y)
                 // spacing so the shelves don't read as a straight, even ladder.
                 // it's part of the phase offset, so it stays average-preserving.
                 float jitter = (noise(x, y, PLATEAU_JITTER_SZ, world_seed^PLATEAU_JITTER_SEED, PLATEAU_JITTER_OCT) - .5f)
-                                * 2.f * terrain_plateau_jitter;
+                                * 2.f * PLATEAU_JITTER_AMP;
                 float offset = phase + jitter;
                 float o = val / PLATEAU_STEP + offset;
                 float k = floorf(o);
@@ -108,7 +119,7 @@ struct warp_kp {
 };
 
 struct warp_cell {
-        int ci, cj, seed, n;
+        int ci, cj, seed, cfg, n;
         struct warp_kp kp[WARP_MAX];
 };
 
@@ -116,11 +127,12 @@ static struct warp_cell *warp_cell_get(int ci, int cj)
 {
         static _Thread_local struct warp_cell cells[WARP_CACHE];
         struct warp_cell *wc = &cells[noise_hash(ci, cj, world_seed ^ WARP_SALT_CELL) & (WARP_CACHE - 1)];
-        if (wc->ci == ci && wc->cj == cj && wc->seed == world_seed)
+        if (wc->ci == ci && wc->cj == cj && wc->seed == world_seed && wc->cfg == TERRAIN_CFG)
                 return wc;
         wc->ci = ci;
         wc->cj = cj;
         wc->seed = world_seed;
+        wc->cfg = TERRAIN_CFG;
         wc->n = 0;
 
         // low-frequency density field: warps cluster in some regions, skip others
@@ -318,7 +330,7 @@ struct ledge_kp {
 };
 
 struct ledge_cell {
-        int ci, cj, seed, n;
+        int ci, cj, seed, cfg, n;
         struct ledge_kp kp[LEDGE_MAX];
 };
 
@@ -326,11 +338,12 @@ static struct ledge_cell *ledge_cell_get(int ci, int cj)
 {
         static _Thread_local struct ledge_cell cells[LEDGE_CACHE];
         struct ledge_cell *cc = &cells[noise_hash(ci, cj, world_seed ^ LEDGE_SALT_CELL) & (LEDGE_CACHE - 1)];
-        if (cc->ci == ci && cc->cj == cj && cc->seed == world_seed)
+        if (cc->ci == ci && cc->cj == cj && cc->seed == world_seed && cc->cfg == TERRAIN_CFG)
                 return cc;
         cc->ci = ci;
         cc->cj = cj;
         cc->seed = world_seed;
+        cc->cfg = TERRAIN_CFG;
         cc->n = 0;
 
         // low-frequency density field: broad regions run thick with ledges,

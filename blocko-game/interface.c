@@ -20,6 +20,8 @@ void key_move(int down)
 {
         if (console_key(down)) return;
         if (test_lock) return; // test running: only the console works
+        if (tweak_key(down)) return; // terrain tweaker panel (before the
+                                     // repeat gate: held arrows keep stepping)
         if (event.key.repeat) return;
 
         switch (event.key.key)

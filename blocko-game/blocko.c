@@ -69,6 +69,7 @@
 #include "item.c"
 #include "patch.c"
 #include "test.c"
+#include "tweak.c"
 #include "chunker.c"
 
 //prototypes
@@ -257,6 +258,7 @@ void main_loop()
         }
 
         remote_poll();
+        tweak_poll();
         net_poll();
         sim_areas_update();
 

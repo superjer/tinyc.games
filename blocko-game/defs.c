@@ -633,6 +633,17 @@ int chunk_gen_ticks = 0;
 int cave_enable = 1;
 int tree_enable = 1;
 int flat_world = 0; // force a perfectly flat world (debug: isolates seams)
+
+// runtime world-gen knobs: blocko's rows of the big tweak table become live
+// float variables here (terrain.c expands the common rows the same way).
+// tweak.c builds the in-game tweaker panel + `tweak` socket command from them.
+#define TWEAK(name, def, lo, hi, fl, desc) float name = def;
+#define TWEAK_VAR(name, def, lo, hi, fl, desc) // defined elsewhere
+#define TWEAK_SECTION(title)
+#include "gen_knobs.h"
+#undef TWEAK
+#undef TWEAK_VAR
+#undef TWEAK_SECTION
 // per-pass gen_chunk wall time, reported by the fps socket command
 enum { GEN_HMAP, GEN_SOIL, GEN_CAVES, GEN_WATER, GEN_TREES, GEN_LIGHT, GEN_CORNERS, GEN_PASSES };
 int gen_pass_ms[GEN_PASSES];
@@ -728,6 +739,12 @@ int world_collide(struct box box, int wet);
 
 // test.c protos
 void debrief();
+
+// tweak.c protos
+int tweak_key(int down);
+void tweak_draw();
+void tweak_poll();
+void tweak_dispatch(const char *args, char *out, size_t outsz);
 
 // blocklight.c protos
 void sun_enqueue(int x, int y, int z, unsigned char incoming_light);

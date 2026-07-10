@@ -12,11 +12,12 @@
 _Thread_local int noise_hit, noise_miss;
 
 // runtime knobs - bump noise_config_gen after changing any so memos refill
-int noise_kernel_sq = 0;       // squared falloff: smoother blobs, no crease at edges
+// (all floats so blocko's tweak table can point at them; used as gates)
+float noise_kernel_sq = 0;     // squared falloff: smoother blobs, no crease at edges
 float noise_base_weight = 1.f; // weight of the phantom 0.5 feature; lower = more contrast
 float noise_aniso = 0.f;       // 0=round blobs, ->1 stretches each into an oriented ridge
-int noise_nvary = 0;           // vary feature count per cell (samples..2*samples)
-int noise_interp = 1;          // sample on a lattice + bilinear, when cells are
+float noise_nvary = 0;         // vary feature count per cell (samples..2*samples)
+float noise_interp = 1;        // sample on a lattice + bilinear, when cells are
                                // big enough that the error is invisible
 int noise_config_gen;
 
