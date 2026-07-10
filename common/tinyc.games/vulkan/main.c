@@ -366,6 +366,18 @@ static const char *shader_basename(const char *path) {
         return slash ? slash + 1 : path;
 }
 
+// Compiled-artifact path for a source path: "{dir}main.frag" -> "{spv}main.frag.spv"
+static void build_spv_path(const char *src_path, char *spv, size_t spv_size) {
+        snprintf(spv, spv_size, TINYC_SPV_DIR "%s.spv", shader_basename(src_path));
+}
+
+// mtime of the .spv a source compiles to (0 if never built)
+static SDL_Time spv_mtime(const char *src_path) {
+        char spv[256];
+        build_spv_path(src_path, spv, sizeof spv);
+        return get_file_mtime(spv);
+}
+
 // Compile a GLSL shader to SPIR-V using glslangValidator
 // Returns 0 on success, non-zero on failure
 static int compile_shader(const char *src_path, const char *spv_path) {
@@ -525,11 +537,12 @@ int vulkan_reload_pipeline(int index) {
 
         int result = vulkan_create_pipeline_at(index);
 
-        // Update mtimes on success
+        // Re-baseline against the freshly written .spv mtimes so this edit no
+        // longer counts as pending (see pipeline_shaders_changed).
         if (result == 0) {
-                p->vert_mtime = get_file_mtime(p->vert_src);
-                p->geom_mtime = p->geom_src[0] ? get_file_mtime(p->geom_src) : 0;
-                p->frag_mtime = get_file_mtime(p->frag_src);
+                p->vert_mtime = spv_mtime(p->vert_src);
+                p->geom_mtime = p->geom_src[0] ? spv_mtime(p->geom_src) : 0;
+                p->frag_mtime = spv_mtime(p->frag_src);
         }
 
         return result;
@@ -543,9 +556,14 @@ static int pipeline_shaders_changed(int index) {
         SDL_Time frag_now = get_file_mtime(p->frag_src);
         SDL_Time geom_now = p->geom_src[0] ? get_file_mtime(p->geom_src) : 0;
 
-        return (vert_now != p->vert_mtime) ||
-               (frag_now != p->frag_mtime) ||
-               (geom_now != p->geom_mtime);
+        // "changed" = a source is newer than the .spv currently loaded. The
+        // baseline is the compiled artifact's mtime, not a snapshot of the
+        // source, so an edit made after the last build but before launch (source
+        // newer than spv) is still detected - the earlier bug was baselining
+        // against the source, which hid exactly that case.
+        return (vert_now > p->vert_mtime) ||
+               (frag_now > p->frag_mtime) ||
+               (geom_now > p->geom_mtime);
 }
 
 // Reload only pipelines whose shaders have changed.
@@ -593,10 +611,12 @@ static void store_pipeline_metadata(int index, char *vert, char *geom, char *fra
                 p->geom_src[0] = '\0';
         build_src_path(frag, p->frag_src, sizeof(p->frag_src));
 
-        // Record initial modification times
-        p->vert_mtime = get_file_mtime(p->vert_src);
-        p->geom_mtime = geom ? get_file_mtime(p->geom_src) : 0;
-        p->frag_mtime = get_file_mtime(p->frag_src);
+        // Baseline against the compiled .spv (what this pipeline actually loads),
+        // not the source: if a source was edited after the last build, it's newer
+        // than its .spv and F5 will correctly see it as pending.
+        p->vert_mtime = spv_mtime(p->vert_src);
+        p->geom_mtime = geom ? spv_mtime(p->geom_src) : 0;
+        p->frag_mtime = spv_mtime(p->frag_src);
 
         // Store vertex input info
         p->bindingDescCount = bindingDescCount;

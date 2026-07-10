@@ -525,19 +525,62 @@ void draw_stuff()
         if (!main_ubo.underwater) // too murky to see the sun/moon
                 sun_draw(cmdbuf, proj_mtrx, view_mtrx, sun_pitch, sun_yaw, sun_roll);
 
-        // Pass 2: transparent water (back-to-front)
+        // Pass 2: water, split by distance. Far chunks are fully past the
+        // smoothstep(40,100) alpha ramp in main.frag, so their fragments are
+        // already opaque - out there we render on the solid pipeline (no blend,
+        // back-face culled, front-to-back for early-Z) and only near chunks pay
+        // for real transparency. The threshold is the chunk-CENTER distance at
+        // which the chunk's NEAREST point clears 100 blocks, so the two paths
+        // meet with identical color and the seam is invisible.
+        // (Keep 100.0 in sync with the ramp's upper bound in main.frag.)
+        float solid_near = 100.f * BS;
+        float halfdiag = 0.5f * sqrtf((float)(CHUNKW*BS)*(float)(CHUNKW*BS)
+                                    + (float)(CHUNKD*BS)*(float)(CHUNKD*BS));
+        float solid_thresh_sq = (solid_near + halfdiag) * (solid_near + halfdiag);
+
+        // reject stale water faces inside the pending edit box; patch_render_water
+        // redraws them (Phase 2). Empty box when no edit is pending. Shared by both
+        // water passes (far chunks never overlap the edit box, so it's a no-op there).
+        patch_reject_box(push.reject_lo, push.reject_hi);
+
+        // Pass 2a: far water, solid pipeline, front-to-back (early-Z)
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[water_solid_pipe].pipeline);
+        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
+        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+        vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                vk.pipelines[water_solid_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
+
+        for (int k = 0; k < visible_chunk_count; k++) {
+                if (!visible_chunks[k].camera_visible) continue;
+                if (visible_chunks[k].dist_sq < solid_thresh_sq) continue; // near -> Pass 2b
+                int i = visible_chunks[k].x;
+                int j = visible_chunks[k].z;
+                size_t water_start = WBOSTART_(i, j);
+                size_t water_verts = VBOLEN_(i, j) - water_start;
+                if (!water_verts) continue;
+
+                push.chunk_x = i * BS * CHUNKW;
+                push.chunk_y = 0;
+                push.chunk_z = j * BS * CHUNKD;
+                VkDeviceSize water_offset = water_start * sizeof(struct vbufv);
+                vkCmdPushConstants(cmdbuf, vk.pipelines[water_solid_pipe].layout,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
+                vkCmdBindVertexBuffers(cmdbuf, 0, 1, &WBUF_(i, j), &water_offset);
+                vkCmdDraw(cmdbuf, 4, water_verts, 0, 0);
+                total_verts += water_verts;
+                polys += water_verts;
+        }
+
+        // Pass 2b: near water, transparent pipeline, back-to-front
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[water_pipe].pipeline);
         vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
         vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
         vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 vk.pipelines[water_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
-        // reject stale water faces inside the pending edit box; patch_render_water
-        // redraws them (Phase 2). Empty box when no edit is pending.
-        patch_reject_box(push.reject_lo, push.reject_hi);
-
         for (int k = visible_chunk_count - 1; k >= 0; k--) {
                 if (!visible_chunks[k].camera_visible) continue;
+                if (visible_chunks[k].dist_sq >= solid_thresh_sq) continue; // far -> Pass 2a
                 int i = visible_chunks[k].x;
                 int j = visible_chunks[k].z;
                 size_t water_start = WBOSTART_(i, j);

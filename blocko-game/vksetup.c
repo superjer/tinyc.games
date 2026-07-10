@@ -697,6 +697,13 @@ void vksetup()
         // surface and the exposed walls/floor from inside the water as well as out)
         water_pipe = vulkan_make_pipeline("main.vert", NULL, "main.frag",
                 1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP | PIPE_BLEND | PIPE_NO_CULL);
+        // Far water renders solid: past the alpha ramp in main.frag every water
+        // fragment is opaque anyway, so out there we drop the blend AND back-face
+        // cull (you're never underneath distant water), roughly halving the
+        // rasterized faces. draw.c draws these chunks front-to-back so early-Z
+        // rejects the covered ones - all the wins the weak-GPU path wants.
+        water_solid_pipe = vulkan_make_pipeline("main.vert", NULL, "main.frag",
+                1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP);
         // mobs share the vertex layout and the lit fragment shader, but use their
         // own vertex shader (spins to face heading; no reject box)
         mob_pipe = vulkan_make_pipeline("mob.vert", NULL, "main.frag",

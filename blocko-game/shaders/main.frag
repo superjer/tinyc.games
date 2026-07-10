@@ -278,6 +278,14 @@ void main(void) {
         vec3 mirrored = sky_color(reflect(-vdir, N), ubo.sun_dir, ubo.night_amt);
         c.rgb = mix(c.rgb, mirrored, fresnel);
         c.a = mix(0.5, 0.95, fresnel);
+
+        // Only see-through up close: past ~40 blocks the alpha ramps to fully
+        // opaque so distant water reads as a solid surface (looks better and
+        // saves the see-through blend work). Reflection and glint are untouched,
+        // so the specular highlight is identical near and far.
+        float dist_b = length(ubo.view_pos.xz - world_pos.xz) / ubo.BS;
+        c.a = mix(c.a, 1.0, smoothstep(40.0, 100.0, dist_b));
+
         c.rgb += glint;
     }
 

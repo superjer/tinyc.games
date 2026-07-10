@@ -586,9 +586,11 @@ int test_lock;
 char test_lock_msg[256];
 int remote_want_quit; // quit after the current reply is flushed
 void game_shutdown(int code);
-int main_pipe;     // main terrain rendering pipeline
-int water_pipe;    // transparent water rendering pipeline
-int mob_pipe;      // mob rendering pipeline (mob.vert + shared main.frag)
+int main_pipe;       // main terrain rendering pipeline
+int water_pipe;      // transparent water rendering pipeline (near, back-to-front)
+int water_solid_pipe;// opaque water pipeline (far chunks: no blend, back-face
+                     // culled, front-to-back for early-Z - see draw.c water pass)
+int mob_pipe;        // mob rendering pipeline (mob.vert + shared main.frag)
 int mob_shadow_pipe; // mob shadow-cast pipeline (mob_shadow.vert + shadow.frag)
 
 // GPU timestamp queries
