@@ -255,12 +255,20 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                 }
 }
 
-// 2x2x2 shadow LOD mesh: downsample the chunk into coarse cells (solid when
-// >=4 of the 8 blocks cast shadows - leaves count, water/lights/grass don't),
+// 2x2x2 shadow LOD mesh: downsample the chunk into coarse cells (solid only
+// when all 8 blocks cast shadows - leaves count, water/lights/grass don't),
 // then emit one face wherever a solid cell meets an empty one. The far and
 // extreme shadow passes draw this section instead of the full mesh for
 // distant chunks, with push.bs = 2*BS so the same shadow.vert scales the
 // quads up (pos_in is in coarse-cell units).
+//
+// The all-8 rule matters: it under-approximates, so the coarse surface never
+// pokes above the true surface. Any over-approximation (e.g. >=4/8) casts
+// false shadows onto real terrain - shallow steps showed alternating dark
+// bands wherever the rounded-up surface covered the lower step. The cost is
+// the opposite, invisible error: shadows of distant features end up to one
+// block short, and 1-block-thin features (trunks, thin roofs) stop casting
+// at LOD distance.
 #define TILESH2 (TILESH/2)
 // occupancy with a 1-cell x/z ring from the neighbor chunks for face culling
 static unsigned char lod_occ[CHUNKD2+2][CHUNKW2+2][TILESH2];
@@ -306,7 +314,7 @@ static struct vbufv *lod_region(struct vbufv *v, int xlo, int zlo)
                                         if (t < OPEN || t == RLEF || t == YLEF || t == SLEF)
                                                 n++;
                                 }
-                                LODOCC_(cx, cz, cy) = n >= 4;
+                                LODOCC_(cx, cz, cy) = n == 8;
                         }
                 }
         }
