@@ -20,8 +20,8 @@ void debrief()
                 float frames = frame - last_frame;
 
                 p += snprintf(p, 8000 - (p-buf),
-                                "%d omp, %0.2f chunk/s\n",
-                                omp_threads,
+                                "%d mesh threads, %0.2f chunk/s\n",
+                                mesh_threads,
                                 (float)nr_chunks_generated / (chunk_gen_ticks / 1000.f));
 
                 p += snprintf(p, 8000 - (p-buf),

@@ -563,7 +563,6 @@ int polys = 0;
 int shadow_polys = 0;
 int sunq_outta_room = 0;
 int gloq_outta_room = 0;
-int omp_threads = 0;
 int lock_culling = false;
 float cull_mtrx[16]; // camera frustum used for chunk culling - F2 freezes it
 float cull_x, cull_z; // camera position for range culling, frozen with it
