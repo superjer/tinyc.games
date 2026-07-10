@@ -54,6 +54,10 @@ The `--lock "<msg>"` launch option starts the game already locked, so there's no
 window where input reaches the game before a driver gets around to `bk lock`.
 It's equivalent to sending `bk lock "<msg>"` immediately after launch.
 
+The `--title "<msg>"` launch option sets the window title to `Blocko - <msg>`,
+so when a run is launched for someone else to inspect, the title says what
+they're supposed to be testing.
+
 While `lock` is held, all keyboard/mouse input to the game is ignored (except
 the tilde console) and the banner message is shown on screen — good for keeping
 a test deterministic. `bk unlock` (or `bk lock 0`) releases it; `bk quit` works
@@ -193,7 +197,7 @@ live edits happen within the 1024-block window centered there.
 |---|---|
 | `mob` | Report living slime count, total kills, auto-spawn state, and each live mob's absolute position and HP. |
 | `mob spawn` | Force-spawn a slime near the player. |
-| `mob <0\|1>` | Disable / enable automatic mob spawning. |
+| `mob <0\|1>` | Disable / enable automatic mob spawning. `mob 0` also despawns any slimes already alive, so the world is actually mob-free. |
 
 ## Test-harness control
 

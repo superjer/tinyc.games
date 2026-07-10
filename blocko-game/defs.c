@@ -594,6 +594,7 @@ float reload_msg_r = 1, reload_msg_g = 1, reload_msg_b = 1;
 // console (unlock by typing "lock 0" there) and show a banner
 int test_lock;
 char test_lock_msg[256];
+char window_title[256] = "Blocko";
 int remote_want_quit; // quit after the current reply is flushed
 void game_shutdown(int code);
 int main_pipe;       // main terrain rendering pipeline

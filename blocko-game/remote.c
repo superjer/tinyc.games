@@ -947,7 +947,8 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         {
                 // "mob"          - report living slimes and kill count
                 // "mob spawn"    - force a slime to spawn near the player
-                // "mob <0|1>"    - toggle auto-spawning
+                // "mob <0|1>"    - toggle auto-spawning; 0 also despawns the
+                //                  living ones (an off-switch, not a valve)
                 char arg[32] = "";
                 sscanf(cmd + 3, "%31s", arg);
                 if (!strcmp(arg, "spawn"))
@@ -963,6 +964,9 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 else if (arg[0] == '0' || arg[0] == '1')
                 {
                         mob_enable = arg[0] - '0';
+                        if (!mob_enable)
+                                for (int i = 0; i < NR_MOBS; i++)
+                                        mob[i].alive = 0;
                         p += snprintf(p, end-p, "mob_enable %d\n", mob_enable);
                 }
                 int live = 0;

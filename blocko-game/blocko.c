@@ -122,6 +122,9 @@ int main(int argc, char **argv)
                                 connect_port = atoi(colon + 1);
                         }
                 }
+                else if (!strcmp(argv[i], "--title") && i + 1 < argc)
+                        // label the window, e.g. what a test run is testing
+                        snprintf(window_title, sizeof window_title, "Blocko - %s", argv[++i]);
                 else if (!strcmp(argv[i], "--lock") && i + 1 < argc)
                 {
                         // start locked (input blocked, banner shown), same as a
@@ -133,7 +136,7 @@ int main(int argc, char **argv)
                 else
                 {
                         fprintf(stderr, "usage: %s [--seed <n>] [--serve [port]] [--connect <host[:port]>] "
-                                "[--headless] [--dist <blocks>] [--noshadow] [--lock <msg>] [--noise-kernel2] "
+                                "[--headless] [--dist <blocks>] [--noshadow] [--title <msg>] [--lock <msg>] [--noise-kernel2] "
                                 "[--noise-nvary] [--noise-contrast <weight>] [--noise-aniso <0..1>]\n", argv[0]);
                         return 1;
                 }
