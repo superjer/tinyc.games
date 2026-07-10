@@ -512,27 +512,18 @@ struct player player[NR_PLAYERS] = {{
 int my_player; // the slot this instance controls (0 until netplay assigns ids)
 struct player camplayer;
 
-// the array is big so a punched slime can burst into a swarm of shards;
-// ambient spawning is capped well below this (see MOB_POP_TARGET)
-#define NR_MOBS 80
+#define NR_MOBS 32
 struct mob {
         struct box pos;
         struct box prev;          // last tick, for smooth drawing in >60FPS
         struct point vel;
         int alive;
-        int hp;
-        int size;                 // 1..12: drives scale, behavior, and danger
         int grav;
         int ground;
         int wet;
-        int skating;              // 1 = gliding smoothly on the ground (small slimes)
-        float move_yaw;           // heading a skater steers toward
         float bob;                // vertical velocity while floating in water
         int hop_cooldown;         // frames of rest before the next hop
         int bonk_cooldown;        // frames until it can hit the player again
-        int merge_cooldown;       // frames before it will fuse with a neighbor
-        int decay_timer;          // frames until a small slime wastes away
-        int hurt;                 // hurt-flash frames remaining
         int dying;                // death-animation frames remaining
         float yaw;                // facing angle (radians); front points here
         float prev_yaw;           // last tick's yaw, for smooth drawing
@@ -658,8 +649,7 @@ void mine_heal();
 
 // mob.c protos
 void update_mobs();
-void mob_shatter(int i, float aimx, float aimz);
-void mob_set_size(struct mob *m, int size);
+void mob_kill(int i);
 void mob_build();
 void mob_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 void mob_scoot(int dx, int dz);
@@ -709,7 +699,7 @@ int net_serve(int port);
 int net_connect(const char *host, int port);
 int net_describe(char *out, int outsz);
 int net_player_active(int i);
-void net_send_punch(int slot, float aimx, float aimz);
+void net_send_punch(int slot);
 void net_send_bonk(int pi, float nx, float nz);
 void net_send_chat(const char *text);
 void chat_add(const char *s); // console.c: append a line to the on-screen chat

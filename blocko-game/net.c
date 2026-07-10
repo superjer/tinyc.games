@@ -63,7 +63,7 @@ enum {
         MSG_EDIT,      // both: i32 ax, i32 ay, i32 az, u8 tile
         MSG_PLAYER,    // both: u8 id, f32 abs pos xyz (units), f32 vel xyz, f32 yaw, pitch
         MSG_MOB,       // s->c: u32 total kills, then per mob u8 slot, size, hurt, dying, f32 abs xyz, yaw
-        MSG_PUNCH,     // c->s: u8 mob slot, f32 aim x, f32 aim z
+        MSG_PUNCH,     // c->s: u8 mob slot
         MSG_BONK,      // s->c: f32 knock x, f32 knock z - a slime hit YOU
         MSG_TIME,      // s->c: f32 sun_pitch, so sunsets stay shared
         MSG_CHAT,      // both: u8 sender id, then the text (not NUL-terminated)
@@ -280,9 +280,9 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                                 conn_send(&conns[i], MSG_PLAYER, relay, 33);
                 break;
         case MSG_PUNCH:
-                if (len < 9 || !c->helloed) return;
+                if (len < 1 || !c->helloed) return;
                 if (p[0] < NR_MOBS)
-                        mob_shatter(p[0], get_f32(p + 1), get_f32(p + 5));
+                        mob_kill(p[0]);
                 break;
         case MSG_CHAT:
         {
@@ -341,14 +341,11 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                                 m->pos.y = m->prev.y = mob_target[slot].y;
                                 m->pos.z = m->prev.z = mob_target[slot].z + scootz * (float)BS;
                                 m->yaw = m->prev_yaw = mob_target[slot].yaw;
-                                m->pos.w = m->pos.d = m->pos.h = 1; // sized just below
-                                m->size = 0;
+                                m->pos.w = m->pos.d = 950; // MOB_W/MOB_H (mob.c)
+                                m->pos.h = 950;
                                 m->alive = 1;
                         }
-                        if (m->size != p[1])
-                                mob_set_size(m, p[1]);
-                        m->hurt = p[2];
-                        m->dying = p[3];
+                        m->dying = p[1];
                 }
                 for (int i = 0; i < NR_MOBS; i++)
                         if (mob[i].alive && !in_snap[i])
@@ -520,9 +517,8 @@ static void net_send_mobs()
                 if (!m->alive) continue;
                 unsigned char *e = snap + 4 + n * MOB_ENTRY;
                 e[0] = i;
-                e[1] = m->size;
-                e[2] = m->hurt;
-                e[3] = m->dying;
+                e[1] = m->dying;
+                e[2] = e[3] = 0;
                 put_f32(e + 4, m->pos.x - scootx * (float)BS); // window -> absolute
                 put_f32(e + 8, m->pos.y);
                 put_f32(e + 12, m->pos.z - scootz * (float)BS);
@@ -555,13 +551,10 @@ static void net_smooth_mobs()
 }
 
 // client: my punch flies to the server, which owns the mobs
-void net_send_punch(int slot, float aimx, float aimz)
+void net_send_punch(int slot)
 {
         if (net_mode != NET_CLIENT) return;
-        unsigned char m[9];
-        m[0] = slot;
-        put_f32(m + 1, aimx);
-        put_f32(m + 5, aimz);
+        unsigned char m[1] = { slot };
         conn_send(&server_conn, MSG_PUNCH, m, sizeof m);
 }
 

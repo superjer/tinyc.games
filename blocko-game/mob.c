@@ -8,18 +8,11 @@
 // is a tiny one-cube "chunk" placed and scaled by push constants, plus two
 // dark eye quads on whichever side it hopped toward. Slimes wander until the
 // player gets close, then hop after them and knock them around on contact.
-// Three punches (left click) pop one.
+// One punch (left click) pops one.
 
-#define MOB_W 950                 // a full size-12 body cube nearly fills a block
+#define MOB_W 950                 // the body cube nearly fills a block
 #define MOB_H 950
-#define MOB_PIX (MOB_W/4)         // eye quads live on a 4x4 grid on the face
-#define MOB_HP 2                  // vitality, separate from size: start and cap.
-                                  // shatter drops it, merges keep the best of
-                                  // the pair; at 0 a slime can't merge and rots
 #define MOB_HOP 130               // horizontal hop speed, units per frame
-#define MOB_SKATE_SPD 80          // top glide speed for skating slimes
-#define MOB_SKATE_ACCEL 5         // thrust per frame along the heading (low = more drift)
-#define MOB_SKATE_DRIFT 0.98f     // momentum kept each frame (near 1 = very slippery)
 #define MOB_BUOY_K 0.06f          // buoyancy spring stiffness toward the rest depth
 #define MOB_BUOY_DAMP 0.85f       // damping on the bob spring
 #define MOB_BOB_AMPL 0.12f        // bob height as a fraction of the body
@@ -31,47 +24,13 @@
                                   // mob is off the map and despawns
 #define MOB_REACH (4*BS)          // how far the player can punch
 #define MOB_DEATH_FRAMES 15       // shrink-out animation length
+#define MOB_POP_TARGET 6          // ambient spawns stop once this many are alive
 
 #define TEX_SLIME_BODY 35         // texture-array layers for the slime skin
 #define TEX_SLIME_EYES 36         // full-face eyes overlay, transparent around the eyes
 #define MOB_EYE_OUT 0.02f         // push the eyes this far off the face (kills z-fighting)
 
-// slimes carry a "size" 1..12 that drives everything about them
-#define MOB_MAXSIZE 12            // biggest a slime can grow (also a full body)
-#define MOB_DANGER 8              // size >= this is dangerous and hunts the player
-#define MOB_FLEE 4                // size FLEE..DANGER-1 runs from the player
-#define MOB_DECAY 6               // size < this slowly wastes away
-#define MOB_POP_TARGET 6          // ambient spawns stop once this many are alive
-#define MOB_MERGE_SIGHT (20*BS)   // how far a slime looks for a merge partner
-#define MOB_DECAY_FRAMES 120      // rest between decays for a small slime
-#define MOB_DOOMED_FRAMES (MOB_DECAY_FRAMES/10) // 10x faster: out of HP or in water
-
 unsigned mob_seed = 60659;
-
-// visual and physical scale for a slime of the given size: a size-1 shard is
-// small, a size-12 slime fills the full MOB_W cube
-static float mob_scale(int size)
-{
-        return 0.30f + 0.70f * (size - 1) / (float)(MOB_MAXSIZE - 1);
-}
-
-// resize a slime in place: grow/shrink about its horizontal center while
-// keeping its feet planted, so merges and decays don't teleport it
-// (non-static: net.c applies sizes from server mob snapshots)
-void mob_set_size(struct mob *m, int size)
-{
-        if (size < 1) size = 1;
-        if (size > MOB_MAXSIZE) size = MOB_MAXSIZE;
-        float oldw = m->pos.w, oldh = m->pos.h;
-        float sc = mob_scale(size);
-        float nw = MOB_W * sc, nh = MOB_H * sc;
-        m->pos.x -= (nw - oldw) / 2;
-        m->pos.z -= (nw - oldw) / 2;
-        m->pos.y -= (nh - oldh);      // feet sit at y + h; keep them, raise the top
-        m->pos.w = m->pos.d = nw;
-        m->pos.h = nh;
-        m->size = size;
-}
 
 // mobs live in window coords like the player, so they scoot too
 void mob_scoot(int dx, int dz)
@@ -98,21 +57,13 @@ int mob_spawn(int bx, int bz)
         if (gnd >= SEA_LEVEL) return 0;
         if (sim_tile(bx, gnd, bz) == WATR || sim_tile(bx, gnd - 1, bz) == WATR) return 0;
 
-        // slimes always arrive full-grown; the player carves them down
-        int size = MOB_MAXSIZE;
-        float sc = mob_scale(size);
-        float w = MOB_W * sc, h = MOB_H * sc;
-
         *m = (struct mob){
-                .pos = { bx * BS + (BS - w) / 2, gnd * BS - h - 1,
-                         bz * BS + (BS - w) / 2, w, h, w },
+                .pos = { bx * BS + (BS - MOB_W) / 2, gnd * BS - MOB_H - 1,
+                         bz * BS + (BS - MOB_W) / 2, MOB_W, MOB_H, MOB_W },
                 .alive = 1,
-                .hp = MOB_HP,
-                .size = size,
                 .grav = GRAV_ZERO,
                 .yaw = 0, .prev_yaw = 0, .target_yaw = 0, // yaw 0 faces -z (south)
                 .hop_cooldown = 30,
-                .decay_timer = MOB_DECAY_FRAMES,
         };
 
         if (world_collide(m->pos, 0)) { m->alive = 0; return 0; }
@@ -120,9 +71,9 @@ int mob_spawn(int bx, int bz)
         return 1;
 }
 
-// drop a full-grown slime into block cell (bx,by,bz), standing on the cell
-// floor. used by the "spawn where I'm pointing" shortcut - unlike mob_spawn it
-// doesn't snap to the ground column, so it lands exactly where you aimed.
+// drop a slime into block cell (bx,by,bz), standing on the cell floor. used
+// by the "spawn where I'm pointing" shortcut - unlike mob_spawn it doesn't
+// snap to the ground column, so it lands exactly where you aimed.
 int mob_spawn_at(int bx, int by, int bz)
 {
         struct mob *m = NULL;
@@ -130,62 +81,16 @@ int mob_spawn_at(int bx, int by, int bz)
                 if (!mob[i].alive) { m = &mob[i]; break; }
         if (!m) return 0;
 
-        int size = MOB_MAXSIZE;
-        float sc = mob_scale(size);
-        float w = MOB_W * sc, h = MOB_H * sc;
-
         *m = (struct mob){
-                .pos = { bx * BS + (BS - w) / 2, (by + 1) * BS - h - 1,
-                         bz * BS + (BS - w) / 2, w, h, w },
+                .pos = { bx * BS + (BS - MOB_W) / 2, (by + 1) * BS - MOB_H - 1,
+                         bz * BS + (BS - MOB_W) / 2, MOB_W, MOB_H, MOB_W },
                 .alive = 1,
-                .hp = MOB_HP,
-                .size = size,
                 .grav = GRAV_ZERO,
                 .yaw = 0, .prev_yaw = 0, .target_yaw = 0,
                 .hop_cooldown = 15,
-                .decay_timer = MOB_DECAY_FRAMES,
         };
 
         if (world_collide(m->pos, 0)) { m->alive = 0; return 0; }
-        m->prev = m->pos;
-        return 1;
-}
-
-// spawn a lone size-1 shard centered on `from` with an outward pop; used when
-// a slime is punched apart or ejects a bit of itself while decaying. The angle
-// aims the pop, `k` staggers the rest/merge timers (and the pop height) so a
-// burst of shards doesn't all fly and re-fuse in lockstep, and `hp` is the
-// vitality the shard inherits (0 means it can never merge back up).
-static int mob_spawn_shard(struct box from, float ang, int k, int hp)
-{
-        struct mob *m = NULL;
-        for (int i = 0; i < NR_MOBS; i++)
-                if (!mob[i].alive) { m = &mob[i]; break; }
-        if (!m) return 0;
-
-        float sc = mob_scale(1);
-        float w = MOB_W * sc, h = MOB_H * sc;
-        float cx = from.x + from.w / 2, cz = from.z + from.d / 2;
-        // a shard with no HP left is doomed and melts fast. randomize the first
-        // decay (1x..2x the base) so a burst of shards doesn't all melt at once
-        int base_decay = hp <= 0 ? MOB_DOOMED_FRAMES : MOB_DECAY_FRAMES;
-        unsigned seed = mob_seed + k * 0x9E3779B9u + 1;
-        int decay0 = base_decay + RANDI(0, base_decay);
-
-        *m = (struct mob){
-                .pos = { cx - w / 2, from.y + from.h - h, cz - w / 2, w, h, w },
-                .alive = 1,
-                .hp = hp < 0 ? 0 : hp,
-                .size = 1,
-                .grav = GRAV_JUMP + (k % 7), // varied pop height out of the wreck
-                .ground = 0,
-                .hop_cooldown = 12 + (k % 4) * 6,
-                .merge_cooldown = 30 + (k % 5) * 8, // brief rest before hunting to merge
-                .decay_timer = decay0,
-                .yaw = ang, .prev_yaw = ang, .target_yaw = ang,
-        };
-        m->vel.x = sinf(ang) * MOB_HOP * 1.6f;
-        m->vel.z = cosf(ang) * MOB_HOP * 1.6f;
         m->prev = m->pos;
         return 1;
 }
@@ -220,9 +125,9 @@ void mob_punch()
                                 continue;
 
                         if (net_mode == NET_CLIENT)
-                                net_send_punch(i, f0, f2); // the server resolves it
+                                net_send_punch(i); // the server resolves it
                         else
-                                mob_shatter(i, f0, f2);
+                                mob_kill(i);
                         // can't mine through a mob: cancel any dig update_player
                         // just started on the block behind it
                         mine_heal();
@@ -232,30 +137,15 @@ void mob_punch()
         }
 }
 
-// one punch shatters the slime into size-1 shards that scatter outward and,
-// after a short rest, hunt each other down to rebuild a bigger slime. The
+// one punch pops the slime: it shrinks out over a few frames. The
 // authoritative kill: runs on the host (or single-player); a client's punch
 // arrives here through MSG_PUNCH.
-void mob_shatter(int i, float aimx, float aimz)
+void mob_kill(int i)
 {
         struct mob *m = &mob[i];
         if (!m->alive || m->dying) return;
-
-        int n = m->size;
-        int shard_hp = m->hp - 1; // breaking apart costs a point
-        struct box from = m->pos;
-        m->alive = 0;
+        m->dying = MOB_DEATH_FRAMES;
         mob_kills++;
-        // shards spray out roughly along the punch, fanned into
-        // a wedge centered on the aim (not a full circle)
-        float aim = atan2f(aimx, aimz);
-        unsigned seed = mob_seed;
-        for (int k = 0; k < n; k++)
-        {
-                float a = aim + RANDF(-.9f, .9f);
-                mob_spawn_shard(from, a, k, shard_hp);
-        }
-        mob_seed = seed;
 }
 
 // true if the player sits within the slime's 90-degree forward cone
@@ -285,28 +175,6 @@ static int mob_los_clear(struct mob *m, struct player *p)
                         return 0;
         }
         return 1;
-}
-
-// nearest slime this one could merge with: alive, not busy, not already full,
-// within sight. Full (size-12) slimes are ignored - nobody chases them and
-// they chase nobody. Returns an index into mob[], or -1 if there's no partner.
-static int mob_merge_target(int mi, struct mob *m)
-{
-        if (m->merge_cooldown || m->size >= MOB_MAXSIZE || m->hp <= 0) return -1;
-        int best = -1;
-        float bestd = (float)MOB_MERGE_SIGHT * MOB_MERGE_SIGHT;
-        for (int j = 0; j < NR_MOBS; j++)
-        {
-                if (j == mi) continue;
-                struct mob *o = &mob[j];
-                if (!o->alive || o->dying || o->size >= MOB_MAXSIZE || o->hp <= 0) continue;
-                float dx = o->pos.x - m->pos.x;
-                float dy = o->pos.y - m->pos.y;
-                float dz = o->pos.z - m->pos.z;
-                float d2 = DIST_SQ(dx, dy, dz);
-                if (d2 < bestd) { bestd = d2; best = j; }
-        }
-        return best;
 }
 
 // world-space y of the water surface in this slime's column, or -1 if none is
@@ -429,59 +297,17 @@ void update_mobs()
                         continue;
                 }
 
-                if (m->hurt) m->hurt--;
                 if (m->bonk_cooldown) m->bonk_cooldown--;
-                if (m->merge_cooldown) m->merge_cooldown--;
                 if (m->dying && --m->dying == 0)
                 {
                         m->alive = 0;
                         continue;
                 }
 
-                // waste away: each tick of the timer they drop a size, and half
-                // the time that lost bit pops off as a fresh size-1 shard (the
-                // other half it just evaporates). Small slimes do this to keep a
-                // shattered swarm from breeding without bound; out of HP (can't
-                // merge, so doomed) or soaking in water melts them 10x faster.
-                int melting = m->hp <= 0 || m->wet;
-                if ((m->size < MOB_DECAY || melting) && !m->dying)
-                {
-                        int interval = melting ? MOB_DOOMED_FRAMES : MOB_DECAY_FRAMES;
-                        // if a long pending timer would stall a now-melting slime,
-                        // pull it into the fast range (staggered, not synced)
-                        if (m->decay_timer > 2 * interval)
-                                m->decay_timer = interval + (i * 37 + frame) % interval;
-                        if (m->decay_timer > 0) m->decay_timer--;
-                        else
-                        {
-                                unsigned seed = mob_seed + i * 7 + frame;
-                                int eject = RANDBOOL;
-                                float a = RANDF(0, TAU);
-                                // randomize the next interval (1x..2x) so decays
-                                // stay out of lockstep across the swarm
-                                m->decay_timer = interval + RANDI(0, interval);
-                                mob_seed = seed;
-                                if (eject) mob_spawn_shard(m->pos, a, i, m->hp);
-                                if (m->size <= 1)
-                                        m->dying = MOB_DEATH_FRAMES; // last bit gone
-                                else
-                                        mob_set_size(m, m->size - 1);
-                        }
-                }
-
                 m->wet = world_collide(m->pos, 1);
 
-                // pick a heading + gait when the rest timer runs out. where it
-                // goes depends entirely on size:
-                //   size >= 8      dangerous - charges the player on sight
-                //   size 4..7      skittish  - bolts away from the player
-                //   size 1..3      oblivious - never reacts to the player
-                // and whenever it isn't chasing or fleeing, any not-yet-full
-                // slime drifts toward the nearest partner to merge back up.
-                // how it travels also scales with size: little ones only skate
-                // along the ground, big ones only hop, mid ones do a bit of both.
-                // everything bigger than a single-size shard moves at half pace
-                float spd = m->size > 1 ? 0.5f : 1.f;
+                // pick a heading when the rest timer runs out: charge the
+                // player on sight, otherwise wander
                 if ((m->ground || m->wet) && !m->dying)
                 {
                         if (m->hop_cooldown) m->hop_cooldown--;
@@ -489,83 +315,31 @@ void update_mobs()
                         {
                                 unsigned seed = mob_seed + i;
                                 float ang;
-                                int face_player = 1;
                                 // the player registers only inside the forward
                                 // cone with a clear line of sight
                                 int sees = dist < MOB_AGGRO
                                         && mob_sees_ahead(m, dx, dz)
                                         && mob_los_clear(m, p);
-                                if (m->size >= MOB_DANGER && sees)
+                                if (sees)
                                 {
                                         ang = atan2f(dx, dz) + RANDF(-.3f, .3f);
                                         m->hop_cooldown = RANDI(20, 40);
                                 }
-                                else if (m->size >= MOB_FLEE && sees)
-                                {
-                                        // flee: head the opposite way, but keep
-                                        // eyeing the player so it doesn't blindly
-                                        // back into them
-                                        ang = atan2f(-dx, -dz) + RANDF(-.3f, .3f);
-                                        m->hop_cooldown = RANDI(15, 30);
-                                        m->target_yaw = atan2f(dx, -dz);
-                                        face_player = 0;
-                                }
                                 else
                                 {
-                                        int tgt = mob_merge_target(i, m);
-                                        if (tgt >= 0)
-                                        {
-                                                float mx = mob[tgt].pos.x - m->pos.x;
-                                                float mz = mob[tgt].pos.z - m->pos.z;
-                                                ang = atan2f(mx, mz) + RANDF(-.2f, .2f);
-                                                m->hop_cooldown = RANDI(15, 35);
-                                        }
-                                        else
-                                        {
-                                                ang = RANDF(0, TAU);
-                                                m->hop_cooldown = RANDI(40, 180);
-                                        }
+                                        ang = RANDF(0, TAU);
+                                        m->hop_cooldown = RANDI(40, 180);
                                 }
-                                // hop vs skate by size: p(hop) ramps from 0 at
-                                // size<=4 to 1 at size>=8 (5:.25 6:.5 7:.75)
-                                int hop = RANDF(0, 1.f) < (m->size - 4) / 4.f;
                                 mob_seed = seed;
-                                m->move_yaw = ang;
-                                m->skating = !hop;
-                                if (hop)
-                                {
-                                        m->vel.x = sinf(ang) * MOB_HOP * spd;
-                                        m->vel.z = cosf(ang) * MOB_HOP * spd;
-                                        m->grav = GRAV_JUMP + 4; // little hop
-                                }
-                                // (a skater just refreshes its heading here and
-                                //  keeps gliding via the steering step below)
-                                // face the way it moved, unless fleeing (then it
-                                // stays turned toward the player, set above)
-                                if (face_player)
-                                        m->target_yaw = atan2f(sinf(ang), -cosf(ang));
+                                m->vel.x = sinf(ang) * MOB_HOP * 0.5f;
+                                m->vel.z = cosf(ang) * MOB_HOP * 0.5f;
+                                m->grav = GRAV_JUMP + 4; // little hop
+                                m->target_yaw = atan2f(sinf(ang), -cosf(ang));
                         }
                 }
 
-                // skaters glide like they're on ice: thrust along the heading
-                // but keep the momentum already built up, capped at cruise speed.
-                // turning doesn't snap the velocity around - the slime keeps
-                // drifting the old way and has to skate against it to come about
-                if (m->skating && (m->ground || m->wet) && !m->dying)
-                {
-                        m->vel.x = m->vel.x * MOB_SKATE_DRIFT + sinf(m->move_yaw) * MOB_SKATE_ACCEL * spd;
-                        m->vel.z = m->vel.z * MOB_SKATE_DRIFT + cosf(m->move_yaw) * MOB_SKATE_ACCEL * spd;
-                        float sp = sqrtf(m->vel.x * m->vel.x + m->vel.z * m->vel.z);
-                        float cap = MOB_SKATE_SPD * spd;
-                        if (sp > cap)
-                        {
-                                m->vel.x *= cap / sp;
-                                m->vel.z *= cap / sp;
-                        }
-                }
-
-                // hops travel only mid-air; skaters glide along the ground/water
-                if (!m->ground || m->skating)
+                // hops travel only mid-air
+                if (!m->ground)
                         move_box(&m->pos, m->vel.x, 0, m->vel.z);
 
                 // vertical motion: bob in open water, else plain gravity.
@@ -603,38 +377,11 @@ void update_mobs()
                 if (m->ground)
                 {
                         m->grav = GRAV_ZERO;
-                        if (!m->skating)
-                                m->vel.x = m->vel.z = 0; // a hop lands with a splat
-                        // a skater keeps its steered velocity and glides on
+                        m->vel.x = m->vel.z = 0; // a hop lands with a splat
                 }
 
-                // merge: when two not-yet-full slimes touch and both are rested
-                // from their last split, the pair fuses. This one keeps its slot
-                // and grows; the partner is consumed. Anything past size 12 is
-                // forfeited (12 + 5 still lands on 12, not 17).
-                if (!m->dying && !m->merge_cooldown && m->size < MOB_MAXSIZE && m->hp > 0)
-                {
-                        for (int j = 0; j < NR_MOBS; j++)
-                        {
-                                if (j == i) continue;
-                                struct mob *o = &mob[j];
-                                if (!o->alive || o->dying || o->merge_cooldown) continue;
-                                if (o->size >= MOB_MAXSIZE || o->hp <= 0) continue;
-                                if (!collide(m->pos, o->pos)) continue;
-                                mob_set_size(m, m->size + o->size); // clamps at 12
-                                m->hp = MAX(m->hp, o->hp);          // keep the best vitality
-                                o->alive = 0;
-                                m->merge_cooldown = 30; // settle before fusing again
-                                m->hurt = 6;            // little flash to show it
-                                break;
-                        }
-                }
-
-                // bonk: shove the player away and pop them off their feet.
-                // only the big dangerous slimes (size >= 8) can land a hit;
-                // smaller ones are harmless and just pass on by
-                if (!m->dying && !m->bonk_cooldown && m->size >= MOB_DANGER
-                                && collide(p->pos, m->pos))
+                // bonk: shove the player away and pop them off their feet
+                if (!m->dying && !m->bonk_cooldown && collide(p->pos, m->pos))
                 {
                         float hd = sqrtf(dx * dx + dz * dz);
                         if (hd > 1)
@@ -662,7 +409,6 @@ void update_mobs()
                                 m->vel.z = -nz * MOB_HOP * 1.5f;
                                 m->grav = GRAV_JUMP + 5;
                                 m->ground = 0; // launch: it only moves airborne
-                                m->skating = 0; // the rebound is a hop, not a glide
                                 m->hop_cooldown = 25;
                                 m->target_yaw = atan2f(dx, -dz);
                         }
@@ -765,7 +511,7 @@ void mob_build()
                         il = CORN_(bx, by, bz);
                         gl = KORN_(bx, by, bz);
                 }
-                if (m->hurt || m->dying) gl = 1.5f; // white-hot hurt flash
+                if (m->dying) gl = 1.5f; // white-hot death flash
 
                 *b++ = (struct vbufv){ TEX_SLIME_BODY,    UP, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
                 *b++ = (struct vbufv){ TEX_SLIME_BODY, SOUTH, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
