@@ -136,6 +136,7 @@ $bk timings   # build_meshes total; divide by meshes_built for per-mesh ms
 | `form near [<radius>]` | List formations within `<radius>` blocks of the player (default 512) as `x z spheres <n> above_sea <n>` lines. |
 | `formdump [<path>]` | Reconstruct the nearest formation's carved voxel model from its column spans and write it (`int W,H,D` + bytes, `j`=up) for offline rendering. Pipe it through `tools/form_render.py` (needs numpy + PIL) to eyeball the "carve the scaffold" shapes: `python3 blocko-game/tools/form_render.py /tmp/blocko-<tag>_form.bin` writes `formations.png`. |
 | `sum` | FNV-1a hashes of the raw `tiles`, `sunlight`, and `gndheight` arrays — for A/B-ing generation changes. |
+| `csum <acx> <acz>` | FNV-1a hash of one chunk's tiles + gndheight, addressed by absolute chunk coords — compares the same piece of world across instances whose windows sit at different scoots (where `sum` would hash different regions). |
 | `dump [<path>]` | Write the raw `tiles` + `gndheight` arrays to a file (default `/tmp/blocko-<tag>_dump.bin`, per-worktree like the socket) for offline diffing. |
 
 ## World generation knobs

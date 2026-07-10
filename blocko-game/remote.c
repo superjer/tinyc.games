@@ -762,6 +762,37 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         gh = (gh ^ gndheight[i]) * 16777619u;
                 p += snprintf(p, end-p, "tiles %08x sun %08x gndh %08x\n", th, sh, gh);
         }
+        else if (!strncmp(cmd, "csum ", 5))
+        {
+                // csum <acx> <acz> - FNV-1a over ONE chunk's tiles + gndheight,
+                // by absolute chunk coords: compares the same piece of world
+                // across instances whose windows sit at different scoots
+                int acx, acz;
+                if (sscanf(cmd + 5, "%d %d", &acx, &acz) == 2)
+                {
+                        int wcx = acx + chunk_scootx, wcz = acz + chunk_scootz;
+                        if (wcx < 0 || wcx >= VAOW || wcz < 0 || wcz >= VAOD)
+                                p += snprintf(p, end-p, "out of window\n");
+                        else if (!AGEN_(wcx, wcz))
+                                p += snprintf(p, end-p, "not generated\n");
+                        else
+                        {
+                                unsigned th = 2166136261u, gh = 2166136261u;
+                                int x0 = wcx * CHUNKW, z0 = wcz * CHUNKD;
+                                for (int z = z0; z < z0 + CHUNKD; z++)
+                                for (int x = x0; x < x0 + CHUNKW; x++)
+                                {
+                                        for (int y = 0; y < TILESH; y++)
+                                                th = (th ^ T_(x, y, z)) * 16777619u;
+                                        gh = (gh ^ (unsigned)GNDH_(x, z)) * 16777619u;
+                                }
+                                p += snprintf(p, end-p, "csum %d %d tiles %08x gndh %08x\n",
+                                        acx, acz, th, gh);
+                        }
+                }
+                else
+                        p += snprintf(p, end-p, "usage: csum <acx> <acz>\n");
+        }
         else if (!strncmp(cmd, "regen", 5))
         {
                 regen_world();
@@ -953,7 +984,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         "screenshot [<path>] | noclip [<0|1>]\n"
                         "find <tile> <ax0> <az0> <ax1> <az1> | tile <ax> <ay> <az> | edits [clear]\n"
                         "noise [<knob> <val>] | form [near <r>|<knob> <val>]\n"
-                        "caves [<0|1>] | trees [<0|1>] | flat [<0|1>] | seed [<n>] | sum | dump [<path>]\n"
+                        "caves [<0|1>] | trees [<0|1>] | flat [<0|1>] | seed [<n>] | sum | csum <acx> <acz> | dump [<path>]\n"
                         "cull [<0|1>] | freeze [<0|1>] | lock [<msg>|0] | regen | sun <pitch> | quit\n"
                         "serve [<port>] | connect <host> [<port>] | net | say <text>\n");
         }
