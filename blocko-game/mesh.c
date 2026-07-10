@@ -342,6 +342,8 @@ void build_meshes()
                 LIGHTDIRTY_(myx, myz) = 0;
                 FACES_(myx, myz) = face_mask;
                 LOD_(myx, myz) = use_lod;
+                MESHGEN_SLOT(myx, myz).ax = myx - chunk_scootx; // the slot's mesh
+                MESHGEN_SLOT(myx, myz).az = myz - chunk_scootz; // is now this chunk's
                 meshes_built++;
                 nr_meshes_built++;
         }

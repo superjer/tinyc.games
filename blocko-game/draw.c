@@ -63,7 +63,10 @@ void sync_fresh_chunks()
                         int cx = just_generated[i].x + chunk_scootx; // absolute -> window
                         int cz = just_generated[i].z + chunk_scootz;
                         DIRTY_(cx, cz) = 1;
-                        VBOLEN_(cx, cz) = 0;
+                        if (!MESHGEN_(cx, cz))
+                                VBOLEN_(cx, cz) = 0; // another chunk's mesh: hide it
+                        // same chunk regenerated in place: keep the old mesh
+                        // up until the rebuild lands, so regens don't blink
                         fresh[nr_fresh][0] = just_generated[i].x;
                         fresh[nr_fresh][1] = just_generated[i].z;
                         nr_fresh++;
@@ -218,7 +221,9 @@ void draw_stuff()
         for (int i = 0; i < VAOW; i++) {
                 for (int j = 0; j < VAOD; j++) {
                         if (!VBOLEN_(i, j)) continue;
-                        if (!AGEN_(i, j)) continue; // slot holds another chunk's stale mesh
+                        if (!MESHGEN_(i, j)) continue; // slot holds another chunk's mesh
+                        // (a stale mesh of THIS chunk still draws: during a
+                        // regen the old terrain stays up until replaced)
 
                         // Check camera visibility
                         int camera_visible = chunk_in_frustum(cull_mtrx, i, j) && chunk_in_range(i, j);

@@ -318,6 +318,8 @@ void startup()
                 chunk_stamp[i][j].az = INT_MIN;
                 chunk_estamp[i][j].ax = INT_MIN;
                 chunk_estamp[i][j].az = INT_MIN;
+                mesh_stamp[i][j].ax = INT_MIN;
+                mesh_stamp[i][j].az = INT_MIN;
         }
 
         tiles = calloc(TILESD * TILESH * TILESW, sizeof *tiles);

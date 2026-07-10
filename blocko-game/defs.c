@@ -175,6 +175,13 @@ int mesh_threads = 8;
 #define VBO_(x,z)    vao[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define VBOLEN_(x,z) vbo_len[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define WBOSTART_(x,z) wbo_start[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
+// the mesh's own identity: which absolute chunk the slot's GPU buffers hold.
+// regen_world invalidates chunk_stamp but not this, so the old mesh keeps
+// drawing in place while its chunk regenerates (meshes are chunk-relative,
+// positioned per draw, so a same-chunk mesh is never misplaced); a slot
+// reused for a different chunk (scoot) mismatches and hides as before
+#define MESHGEN_SLOT(x,z) mesh_stamp[(z - chunk_scootz) & (VAOD-1)][(x - chunk_scootx) & (VAOW-1)]
+#define MESHGEN_(x,z) (MESHGEN_SLOT(x, z).ax == (x) - chunk_scootx && MESHGEN_SLOT(x, z).az == (z) - chunk_scootz)
 // GPU vertex buffers live in the ring too, so meshes follow their chunk
 #define WBUF_(x,z)    world_buf[((x - chunk_scootx) & (VAOW-1)) * VAOD + ((z - chunk_scootz) & (VAOD-1))]
 #define WMAPPED_(x,z) ((char *)world_mapped[(x - chunk_scootx) & (VAOW-1)] + ((z - chunk_scootz) & (VAOD-1)) * world_aligned_sz)
@@ -397,6 +404,8 @@ unsigned char *area_sun_scratch;   // one shared write-only sun buffer: gen neve
 struct area_fresh { struct warea *a; int acx, acz; } area_fresh[256];
 int area_fresh_len;
 volatile struct chunk_stamp chunk_stamp[VAOD][VAOW]; // slot holds (INT_MIN = never)
+// which chunk the slot's uploaded MESH is of (main thread only, see MESHGEN_)
+struct chunk_stamp mesh_stamp[VAOD][VAOW];
 // pass 1 (chunk edge columns) stamps: a chunk's interior can generate only
 // after its own and all 8 neighbors' edges exist, so nothing ever reads or
 // writes outside its own chunk
