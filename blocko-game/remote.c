@@ -50,6 +50,7 @@ int fps_base_chunks;
 int fps_base_gen_ticks;
 
 int remote_walk_frames; // hold forward key for this many frames
+int remote_tp_snap;     // tp landed: plant feet once the ground is known
 int remote_fly_frames;  // noclip along yaw for this many frames...
 float remote_fly_speed; // ...at this many blocks/sec (deterministic traversal)
 int remote_break_frames; // hold "left click" (mine) for this many frames
@@ -310,8 +311,9 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 {
                         player[my_player].pos.x = (ax + scootx) * BS;
                         player[my_player].pos.z = (az + scootz) * BS;
-                        player[my_player].pos.y = 0; // fall from the sky
+                        player[my_player].pos.y = 0;
                         player[my_player].grav = GRAV_ZERO;
+                        remote_tp_snap = 1; // land on the ground (remote_poll)
                         p += snprintf(p, end-p, "ok\n");
                 }
                 else
@@ -1029,6 +1031,20 @@ void remote_poll()
                 frame_ring[frame_ring_len++] = (float)(now - frame_prev_count)
                         * 1000.f / SDL_GetPerformanceFrequency();
         frame_prev_count = now;
+
+        // tp lands directly on the ground: the destination may not be
+        // generated yet, so hold the player at the sky (where they can't
+        // fall or get stuck) until the column has terrain, then plant
+        // their feet on it
+        if (remote_tp_snap)
+        {
+                struct player *pl = &player[my_player];
+                int gnd = sim_gndh((pl->pos.x + PLYR_W/2) / BS,
+                                   (pl->pos.z + PLYR_W/2) / BS);
+                pl->pos.y = gnd ? gnd * BS - PLYR_H - 1 : 0;
+                pl->grav = GRAV_ZERO;
+                if (gnd) remote_tp_snap = 0;
+        }
 
         // auto-walk countdown
         if (remote_walk_frames > 0 && --remote_walk_frames == 0)

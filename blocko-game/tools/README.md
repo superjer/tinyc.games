@@ -101,7 +101,7 @@ $bk timings   # build_meshes total; divide by meshes_built for per-mesh ms
 | Command | What it does |
 |---|---|
 | `pos` | Current position: `window_blocks` (x y z in the sliding window), `absolute_blocks` (world x z), and `scoot_chunks` (window offset in chunks). |
-| `tp <ax> <az>` | Teleport to absolute block coords `ax, az`; the player drops from the sky (`y=0`). |
+| `tp <ax> <az>` | Teleport to absolute block coords `ax, az`, landing on the ground (held at the sky until the destination terrain has generated). |
 | `save <name>` | Append `<seed> <ax> <ay> <az> <name>` (absolute blocks) to `blocko.saves` in the game's working directory, so a spot can be revisited later — set the seed, then `tp` to `ax az`. `<name>` is an arbitrary label (may contain spaces). |
 | `load [<name>]` | Restore a spot saved with `save`: set that line's seed, regen the world, and teleport to the saved location. `load <name>` picks the matching line (latest if a name repeats); bare `load` picks the most recent line in the file. |
 | `walk <frames>` | Hold forward + run for `frames` frames, then stop. |
