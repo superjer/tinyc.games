@@ -110,8 +110,6 @@ int mesh_threads = 8;
 #define SUNQLEN 64000
 #define GLOQLEN 64000
 
-#define SHADOW_SZ 4096
-
 // Shadow cascade indices
 #define SHADOW_NEAR   0
 #define SHADOW_MID    1
@@ -120,6 +118,11 @@ int mesh_threads = 8;
 #define SHADOW_EXT_A  4
 #define SHADOW_EXT_B  5
 #define SHADOW_COUNT  6
+
+// per-cascade shadow map resolution. The cascades cover ±5/±20/±40/±150
+// blocks, so one-size 4096 gave near ~410 texels per block - clear/fill cost
+// scales with texels, so size each map for roughly comparable texel density
+const int shadow_sz[SHADOW_COUNT] = { 1024, 2048, 4096, 4096, 4096, 4096 };
 
 #define ICLAMP(v, l, u) ((v < l) ? l : (v > u) ? u : v)
 #define MAX(a, b) ((a) > (b) ? (a) : (b))

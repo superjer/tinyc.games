@@ -365,7 +365,6 @@ void create_shadow_maps() {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType = VK_IMAGE_TYPE_2D,
         .format = VK_FORMAT_D32_SFLOAT,
-        .extent = { SHADOW_SZ, SHADOW_SZ, 1 },
         .mipLevels = 1,
         .arrayLayers = 1,
         .samples = VK_SAMPLE_COUNT_1_BIT,
@@ -375,32 +374,32 @@ void create_shadow_maps() {
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    // Create all shadow map images and allocate memory
+    // Create all shadow map images (sizes differ per cascade)
     for (int i = 0; i < SHADOW_COUNT; i++) {
+        imageInfo.extent = (VkExtent3D){ shadow_sz[i], shadow_sz[i], 1 };
         vkCreateImage(vk.device, &imageInfo, NULL, &shadow[i].image);
         shadow[i].slot = -1;  // Initialize slot to uninitialized
     }
 
-    // Allocate memory for shadow images
-    VkMemoryRequirements mem_reqs;
-    vkGetImageMemoryRequirements(vk.device, shadow[0].image, &mem_reqs);
-
-    uint32_t mem_type = 0;
-    for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++) {
-        if ((mem_reqs.memoryTypeBits & (1 << i)) &&
-            (mem_props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
-            mem_type = i;
-            break;
-        }
-    }
-
-    VkMemoryAllocateInfo allocInfo = {
-        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize = mem_reqs.size,
-        .memoryTypeIndex = mem_type,
-    };
-
+    // Allocate memory for each shadow image
     for (int i = 0; i < SHADOW_COUNT; i++) {
+        VkMemoryRequirements mem_reqs;
+        vkGetImageMemoryRequirements(vk.device, shadow[i].image, &mem_reqs);
+
+        uint32_t mem_type = 0;
+        for (uint32_t m = 0; m < mem_props.memoryTypeCount; m++) {
+            if ((mem_reqs.memoryTypeBits & (1 << m)) &&
+                (mem_props.memoryTypes[m].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+                mem_type = m;
+                break;
+            }
+        }
+
+        VkMemoryAllocateInfo allocInfo = {
+            .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            .allocationSize = mem_reqs.size,
+            .memoryTypeIndex = mem_type,
+        };
         vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow[i].memory);
         vkBindImageMemory(vk.device, shadow[i].image, shadow[i].memory, 0);
     }
@@ -495,7 +494,8 @@ void create_shadow_maps() {
     vkQueueWaitIdle(vk.drawingQueue);
     vkFreeCommandBuffers(vk.device, vk.commandPool, 1, &cmd);
 
-    fprintf(stderr, "Created shadow maps: %dx%d x %d\n", SHADOW_SZ, SHADOW_SZ, SHADOW_COUNT);
+    fprintf(stderr, "Created shadow maps: %d %d %d %d %d %d\n",
+        shadow_sz[0], shadow_sz[1], shadow_sz[2], shadow_sz[3], shadow_sz[4], shadow_sz[5]);
 }
 
 void create_shadow_framebuffers() {
@@ -503,12 +503,12 @@ void create_shadow_framebuffers() {
         .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
         .renderPass = shadow_render_pass,
         .attachmentCount = 1,
-        .width = SHADOW_SZ,
-        .height = SHADOW_SZ,
         .layers = 1,
     };
 
     for (int i = 0; i < SHADOW_COUNT; i++) {
+        framebufferInfo.width = shadow_sz[i];
+        framebufferInfo.height = shadow_sz[i];
         framebufferInfo.pAttachments = &shadow[i].image_view;
         if (vkCreateFramebuffer(vk.device, &framebufferInfo, NULL, &shadow[i].framebuffer) != VK_SUCCESS) {
             fprintf(stderr, "Failed to create shadow[%d] framebuffer!\n", i);

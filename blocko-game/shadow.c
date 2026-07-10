@@ -14,7 +14,7 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                 .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
                 .renderPass = shadow_render_pass,
                 .framebuffer = fb,
-                .renderArea = {{0, 0}, {SHADOW_SZ, SHADOW_SZ}},
+                .renderArea = {{0, 0}, {shadow_sz[cascade_idx], shadow_sz[cascade_idx]}},
                 .clearValueCount = 1,
                 .pClearValues = &clearValue,
         };
@@ -25,8 +25,8 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
         int terrain_pipe = (cascade_idx >= SHADOW_FAR_A) ? shadow_solid_pipe : shadow_pipe;
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[terrain_pipe].pipeline);
 
-        VkViewport viewport = {0, 0, SHADOW_SZ, SHADOW_SZ, 0, 1};
-        VkRect2D scissor = {{0, 0}, {SHADOW_SZ, SHADOW_SZ}};
+        VkViewport viewport = {0, 0, shadow_sz[cascade_idx], shadow_sz[cascade_idx], 0, 1};
+        VkRect2D scissor = {{0, 0}, {shadow_sz[cascade_idx], shadow_sz[cascade_idx]}};
         vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
         vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
         vkCmdSetDepthBias(cmdbuf, bias_constant, 0.0f, bias_slope);
