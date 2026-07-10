@@ -592,11 +592,10 @@ void font_end(float r, float g, float b)
         float px = 2.f / font_screenw;
         float py = 2.f / font_screenh;  // Positive for Vulkan's Y-down convention
 
-        // Push constant data: mat4 proj (64 bytes) + vec3 color (12 bytes) + padding (4 bytes)
+        // Push constant data: mat4 proj (64 bytes) + vec4 color (16 bytes)
         struct {
                 float proj[16];
-                float color[3];
-                float _pad;
+                float color[4];
         } push = {
                 .proj = {
                         px, 0,  0,  0,
@@ -604,7 +603,7 @@ void font_end(float r, float g, float b)
                         0,  0,  1,  0,
                        -1, -1,  0,  1,
                 },
-                .color = { r, g, b },
+                .color = { r, g, b, 1 },
         };
 
         VkCommandBuffer cmd = vk.commandBuffers[vk.imageIndex];
@@ -618,10 +617,34 @@ void font_end(float r, float g, float b)
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, font_pipeline_layout, 0, 1, &font_descriptor_set, 0, NULL);
-        vkCmdPushConstants(cmd, font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
 
         VkDeviceSize vb_offset = font_gpu_offset;
         vkCmdBindVertexBuffers(cmd, 0, 1, &font_vertex_buffer, &vb_offset);
+
+        // Blurry shadow: stack the text at sub-glyph offsets with low alpha,
+        // overlapping taps accumulate into a soft dark halo
+        float shadow = MIN(roundf(font_screenw / 600.f), roundf(font_screenh / 400.f));
+        if (shadow < 1) shadow = 1;
+        push.color[0] = r * .25f;
+        push.color[1] = g * .25f;
+        push.color[2] = b * .25f;
+        for (int dy = -1; dy <= 2; dy++) for (int dx = -1; dx <= 2; dx++)
+        {
+                float d2 = (dx - .5f) * (dx - .5f) + (dy - .5f) * (dy - .5f);
+                push.proj[12] = -1 + dx * shadow * px;
+                push.proj[13] = -1 + dy * shadow * py;
+                push.color[3] = .5f / (1 + d2);
+                vkCmdPushConstants(cmd, font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+                vkCmdDraw(cmd, vertex_count, 1, 0, 0);
+        }
+
+        push.proj[12] = -1;
+        push.proj[13] = -1;
+        push.color[0] = r;
+        push.color[1] = g;
+        push.color[2] = b;
+        push.color[3] = 1;
+        vkCmdPushConstants(cmd, font_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
         vkCmdDraw(cmd, vertex_count, 1, 0, 0);
 
         // Advance offset for next font_end() call this frame
