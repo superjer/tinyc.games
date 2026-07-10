@@ -297,28 +297,49 @@ void set_glolight(int xlo, int ylo, int zlo, int light)
         }
 }
 
-// remove direct or indirect sunlight
+// append to the flood queue without the brighter-than check: light here is
+// already correct, it just needs to spread into freshly darkened cells
+static void sun_requeue(int x, int y, int z)
+{
+        #pragma omp critical (sunq)
+        {
+                if (sq_next_len >= SUNQLEN)
+                        sunq_outta_room++;
+                else
+                {
+                        sunq_next[sq_next_len].x = x;
+                        sunq_next[sq_next_len].y = y;
+                        sunq_next[sq_next_len].z = z;
+                        sq_next_len++;
+                }
+        }
+}
+
+static void glo_requeue(int x, int y, int z)
+{
+        if (gq_next_len >= GLOQLEN)
+        {
+                gloq_outta_room++;
+                return;
+        }
+        gloq_next[gq_next_len].x = x;
+        gloq_next[gq_next_len].y = y;
+        gloq_next[gq_next_len].z = z;
+        gq_next_len++;
+}
+
+// unlight BFS queue, shared by sun and glo removal (main thread only).
+// each entry remembers the light the cell had before it was darkened
+struct unlit { int x, y, z, old; };
+#define UNLQLEN 32768
+static struct unlit unlq[UNLQLEN];
+
+// remove direct or indirect sunlight - two-phase BFS: darken every cell
+// whose light could have flowed through the changed block, and requeue the
+// brighter frontier so the normal flood refills anything over-darkened.
 // before calling, set opacity, but not light value
 void remove_sunlight(int px, int py, int pz)
 {
-        // FIXME: remove when confident
-        static int recursions = 0;
-        if (++recursions > 1000000)
-        {
-                fprintf(stderr, "1 million remove_sunlight() recursions\n");
-                return;
-        }
-
-        int my_light = SUN_(px, py, pz);
-        int im_opaque = IS_OPAQUE(px, py, pz);
-
-        if (my_light < 1) return;
-
-        struct qitem check_list[6];
-        struct qitem recur_list[6];
-        int check_len = 0;
-        int recur_len = 0;
-
         // FIXME: remove this when gndheight is already correct
         for (int y = 0; y < TILESH-1; y++)
                 if (IS_OPAQUE(px, y, pz))
@@ -331,130 +352,88 @@ void remove_sunlight(int px, int py, int pz)
         if (ABOVE_GROUND(px, py, pz))
                 return;
 
-        int incoming_light = 0;
-        int future_light = 0;
+        if (SUN_(px, py, pz) < 1) return;
 
-        // find valid neighbors to check
-        if (px > 0       ) check_list[check_len++] = QITEM(px-1, py  , pz  );
-        if (px < TILESW-1) check_list[check_len++] = QITEM(px+1, py  , pz  );
-        if (py > 0       ) check_list[check_len++] = QITEM(px  , py-1, pz  );
-        // never spread sunlight value 15 upward:
-        if (py < TILESH-1 && SUN_(px,py+1,pz) != 15) check_list[check_len++] = QITEM(px  , py+1, pz  );
-        if (pz > 0       ) check_list[check_len++] = QITEM(px  , py  , pz-1);
-        if (pz < TILESD-1) check_list[check_len++] = QITEM(px  , py  , pz+1);
+        unlq[0] = (struct unlit){px, py, pz, SUN_(px, py, pz)};
+        set_sunlight(px, py, pz, 0);
+        size_t head = 0, len = 1;
 
-        for (int i = 0; i < check_len; i++)
+        while (head < len)
         {
-                int x = check_list[i].x;
-                int y = check_list[i].y;
-                int z = check_list[i].z;
+                struct unlit u = unlq[head++];
+                struct qitem nb[6];
+                int nn = 0;
+                if (u.x > 0       ) nb[nn++] = QITEM(u.x-1, u.y  , u.z  );
+                if (u.x < TILESW-1) nb[nn++] = QITEM(u.x+1, u.y  , u.z  );
+                if (u.y > 0       ) nb[nn++] = QITEM(u.x  , u.y-1, u.z  );
+                if (u.y < TILESH-1) nb[nn++] = QITEM(u.x  , u.y+1, u.z  );
+                if (u.z > 0       ) nb[nn++] = QITEM(u.x  , u.y  , u.z-1);
+                if (u.z < TILESD-1) nb[nn++] = QITEM(u.x  , u.y  , u.z+1);
 
-                // no need to update my opaque neighbors
-                if (IS_OPAQUE(x, y, z)) continue;
+                for (int i = 0; i < nn; i++)
+                {
+                        int x = nb[i].x, y = nb[i].y, z = nb[i].z;
+                        int L = SUN_(x, y, z);
+                        if (L < 1 || IS_OPAQUE(x, y, z))
+                                continue;
 
-                // i am lit by a neighbor block as much or more than before
-                // so... there is no more light to remove in this branch
-                if (SUN_(x, y, z) > my_light && !im_opaque) return;
-
-                // i am [now] being lit by this neighbor
-                if (SUN_(x, y, z) == my_light && !im_opaque)
-                        incoming_light = MAX(incoming_light, SUN_(x, y, z) - 1);
-
-                // keep track of brightest neighboring light for queueing later
-                if (SUN_(x, y, z) > future_light && !im_opaque)
-                        future_light = SUN_(x, y, z);
-
-                // i could be the light source for this neighbor, need to recurse
-                if (SUN_(x, y, z) < my_light)
-                        recur_list[recur_len++] = QITEM(x, y, z);
+                        if (L < u.old && !ABOVE_GROUND(x, y, z))
+                        {
+                                // dimmer than the darkened cell was: its light
+                                // may have flowed through there. take it down
+                                if (len >= UNLQLEN) { sunq_outta_room++; continue; }
+                                unlq[len++] = (struct unlit){x, y, z, L};
+                                set_sunlight(x, y, z, 0);
+                        }
+                        else
+                        {
+                                // independently lit - respread from here
+                                sun_requeue(x, y, z);
+                        }
+                }
         }
-
-        if (incoming_light >= my_light)
-                fprintf(stderr, "INCOMING LIGHT > MY LIGHT when darkening\n");
-
-        set_sunlight(px, py, pz, incoming_light);
-
-        // re-lighting may be needed here
-        if (future_light)
-                sun_enqueue(px, py, pz, 0, future_light - 1);
-
-        // i had no light to give anyway
-        if (my_light < 2) return;
-
-        for (int i = 0; i < recur_len; i++)
-                remove_sunlight(recur_list[i].x, recur_list[i].y, recur_list[i].z);
 }
 
 void remove_glolight(int px, int py, int pz)
 {
-        // FIXME: remove when confident
-        static int recursions = 0;
-        if (++recursions > 1000000)
+        if (GLO_(px, py, pz) < 1) return;
+
+        unlq[0] = (struct unlit){px, py, pz, GLO_(px, py, pz)};
+        set_glolight(px, py, pz, 0);
+        size_t head = 0, len = 1;
+
+        while (head < len)
         {
-                fprintf(stderr, "1 million remove_glolight() recursions\n");
-                return;
+                struct unlit u = unlq[head++];
+                struct qitem nb[6];
+                int nn = 0;
+                if (u.x > 0       ) nb[nn++] = QITEM(u.x-1, u.y  , u.z  );
+                if (u.x < TILESW-1) nb[nn++] = QITEM(u.x+1, u.y  , u.z  );
+                if (u.y > 0       ) nb[nn++] = QITEM(u.x  , u.y-1, u.z  );
+                if (u.y < TILESH-1) nb[nn++] = QITEM(u.x  , u.y+1, u.z  );
+                if (u.z > 0       ) nb[nn++] = QITEM(u.x  , u.y  , u.z-1);
+                if (u.z < TILESD-1) nb[nn++] = QITEM(u.x  , u.y  , u.z+1);
+
+                for (int i = 0; i < nn; i++)
+                {
+                        int x = nb[i].x, y = nb[i].y, z = nb[i].z;
+                        int L = GLO_(x, y, z);
+                        if (L < 1 || IS_OPAQUE(x, y, z))
+                                continue;
+
+                        if (L < u.old)
+                        {
+                                if (len >= UNLQLEN) { gloq_outta_room++; continue; }
+                                unlq[len++] = (struct unlit){x, y, z, L};
+                                set_glolight(x, y, z, 0);
+                        }
+                        else
+                        {
+                                // independently lit - respread from here
+                                glo_requeue(x, y, z);
+                        }
+                }
         }
-
-        int my_light = GLO_(px, py, pz);
-        int im_opaque = IS_OPAQUE(px, py, pz);
-
-        if (my_light < 1) return;
-
-        struct qitem check_list[6];
-        struct qitem recur_list[6];
-        int check_len = 0;
-        int recur_len = 0;
-        int incoming_light = 0;
-        int future_light = 0;
-
-        // find valid neighbors to check
-        if (px > 0       ) check_list[check_len++] = QITEM(px-1, py  , pz  );
-        if (px < TILESW-1) check_list[check_len++] = QITEM(px+1, py  , pz  );
-        if (py > 0       ) check_list[check_len++] = QITEM(px  , py-1, pz  );
-        if (py < TILESH-1) check_list[check_len++] = QITEM(px  , py+1, pz  );
-        if (pz > 0       ) check_list[check_len++] = QITEM(px  , py  , pz-1);
-        if (pz < TILESD-1) check_list[check_len++] = QITEM(px  , py  , pz+1);
-
-        for (int i = 0; i < check_len; i++)
-        {
-                int x = check_list[i].x;
-                int y = check_list[i].y;
-                int z = check_list[i].z;
-
-                // no need to update my opaque neighbors
-                if (IS_OPAQUE(x, y, z)) continue;
-
-                // i am lit by a neighbor block as much or more than before
-                // so... there is no more light to remove in this branch
-                if (GLO_(x, y, z) > my_light && !im_opaque) return;
-
-                // i am [now] being lit by this neighbor
-                if (GLO_(x, y, z) == my_light && !im_opaque)
-                        incoming_light = MAX(incoming_light, GLO_(x, y, z) - 1);
-
-                // keep track of brightest neighboring light for queueing later
-                if (GLO_(x, y, z) > future_light && !im_opaque)
-                        future_light = GLO_(x, y, z);
-
-                // i could be the light source for this neighbor, need to recurse
-                if (GLO_(x, y, z) < my_light)
-                        recur_list[recur_len++] = QITEM(x, y, z);
-        }
-
-        if (incoming_light >= my_light)
-                fprintf(stderr, "GLO: INCOMING LIGHT > MY LIGHT when darkening\n");
-
-        set_glolight(px, py, pz, incoming_light);
-
-        // re-lighting may be needed here
-        if (future_light)
-                glo_enqueue(px, py, pz, 0, future_light - 1);
-
-        // i had no light to give anyway
-        if (my_light < 2) return;
-
-        for (int i = 0; i < recur_len; i++)
-                remove_glolight(recur_list[i].x, recur_list[i].y, recur_list[i].z);
 }
 
 #endif // BLOCKO_BLOCKLIGHT_C_INCLUDED
