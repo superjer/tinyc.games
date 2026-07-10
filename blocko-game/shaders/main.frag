@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "sky_color.glsl"
 
 layout(location = 0) out vec4 color;
 
@@ -24,18 +26,22 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 
     vec3 day_color;        // offset 592
     vec3 glo_color;        // offset 608
-    vec3 fog_color;        // offset 624
-    float fog_lo;          // offset 636
-    float fog_hi;          // offset 640
-    vec3 light_pos;        // offset 656
-    vec3 view_pos;         // offset 672
-    float sharpness;       // offset 684
-    bool shadow_mapping;   // offset 688
-    float sun_strength;    // offset 692
-    float sun_warmth;      // offset 696
-    float outside_cascade_lit; // offset 700
-    int water_frame;           // offset 704
-    float underwater;          // offset 708 (camera eye is in water)
+    float fog_lo;          // offset 620
+    float fog_hi;          // offset 624
+    vec3 light_pos;        // offset 640
+    vec3 view_pos;         // offset 656
+    float sharpness;       // offset 668
+    bool shadow_mapping;   // offset 672
+    float sun_strength;    // offset 676
+    float sun_warmth;      // offset 680
+    float outside_cascade_lit; // offset 684
+    int water_frame;           // offset 688
+    float underwater;          // offset 692 (camera eye is in water)
+    float scootx;              // offset 696 (window->world block offset)
+    float scootz;              // offset 700
+    vec3 sun_dir;              // offset 704 (unit vector toward the sun)
+    float night_amt;           // offset 716 (0 day, 0.5 dusk, 1 night)
+    float shadow_fade;         // offset 720 (1 full shadows, ->0 eases contrast out before the idle cutoff)
 } ubo;
 
 // No push constants here: this fragment shader is shared by the terrain
@@ -209,8 +215,8 @@ void main(void) {
             float shad_b = textureProj(shadow_ext_b, vec4(shadow_pos_ext_b.xy, shadow_pos_ext_b.z, 1.0));
             unshadow = inRange(shadow_pos_ext_b.xy) ? mix(shad_a, shad_b, ubo.shadow_ext_blend) : shad_a;
 
-            // Fade out shadow at edges of extreme cascade - only light up edges during day
-            // At night, areas outside shadow cascades should remain dark.
+            // Fade out shadow at edges of extreme cascade toward the current
+            // light strength (sun or moon).
             // The fade ramps over the outer 0.1 of the cascade and SATURATES past
             // the [0,1] boundary: beyond the cascade the raw shadow sample is
             // meaningless (z runs past the far plane -> spurious full shadow), so
@@ -223,6 +229,11 @@ void main(void) {
             unshadow = max(unshadow, edge_lit * edge);
         }
         }
+
+        // Ease shadow contrast out as the light nears the horizon, so the
+        // idle cutoff (shadow_mapping -> false at ~5% strength) lands on an
+        // already-shadowless scene instead of popping.
+        unshadow = mix(1.0, unshadow, ubo.shadow_fade);
 
         // Combine shadow with lighting
         float s0 = 0.6 + 0.4 * ubo.sharpness;
@@ -261,10 +272,11 @@ void main(void) {
     if (shiny > 0.5) c.rgb += glint;
 
     if (alpha < 1.0 && ubo.underwater < 0.5) {
-        // fresnel: mirror the horizon at grazing angles, clear straight down
+        // fresnel: mirror the sky at grazing angles, clear straight down
         vec3 vdir = normalize(ubo.view_pos - world_pos.xyz);
         float fresnel = pow(1.0 - abs(dot(vdir, N)), 3.0);
-        c.rgb = mix(c.rgb, ubo.fog_color, fresnel);
+        vec3 mirrored = sky_color(reflect(-vdir, N), ubo.sun_dir, ubo.night_amt);
+        c.rgb = mix(c.rgb, mirrored, fresnel);
         c.a = mix(0.5, 0.95, fresnel);
         c.rgb += glint;
     }
@@ -276,12 +288,14 @@ void main(void) {
         float wfog = smoothstep(ubo.BS * 2.0, ubo.BS * 40.0, length(ubo.view_pos.xyz - world_pos.xyz));
         color = mix(c, vec4(water_color, 1.0), wfog);
     } else {
-        // Fog based on distance from camera
+        // Fog based on distance from camera, colored per-pixel to match the
+        // sky in this exact direction so distant terrain melts into the dome
         float dist = length(ubo.view_pos.xz - world_pos.xz);
         float fog_linear = smoothstep(ubo.fog_lo, ubo.fog_hi, dist);
         float fog = fog_linear * fog_linear * fog_linear;
+        vec3 fog_color = sky_color(world_pos.xyz - ubo.view_pos, ubo.sun_dir, ubo.night_amt);
 
-        color = mix(c, vec4(ubo.fog_color, 1.0), fog);
+        color = mix(c, vec4(fog_color, 1.0), fog);
     }
 
     // debug viz: tint the reject+patch mesh red (socket `tint`, via reject_lo.w)

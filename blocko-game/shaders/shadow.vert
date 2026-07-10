@@ -36,7 +36,6 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     float shadow_ext_blend;
     vec3 day_color;
     vec3 glo_color;
-    vec3 fog_color;
     float fog_lo;
     float fog_hi;
     vec3 light_pos;

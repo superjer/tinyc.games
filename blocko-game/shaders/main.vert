@@ -32,20 +32,19 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 
     vec3 day_color;        // offset 592
     vec3 glo_color;        // offset 608
-    vec3 fog_color;        // offset 624
-    float fog_lo;          // offset 636
-    float fog_hi;          // offset 640
-    vec3 light_pos;        // offset 656
-    vec3 view_pos;         // offset 672
-    float sharpness;       // offset 684
-    bool shadow_mapping;   // offset 688
-    float sun_strength;    // offset 692
-    float sun_warmth;      // offset 696
-    float outside_cascade_lit; // offset 700
-    int water_frame;       // offset 704
-    float underwater;      // offset 708
-    float scootx;          // offset 712 (window->world block offset)
-    float scootz;          // offset 716
+    float fog_lo;          // offset 620
+    float fog_hi;          // offset 624
+    vec3 light_pos;        // offset 640
+    vec3 view_pos;         // offset 656
+    float sharpness;       // offset 668
+    bool shadow_mapping;   // offset 672
+    float sun_strength;    // offset 676
+    float sun_warmth;      // offset 680
+    float outside_cascade_lit; // offset 684
+    int water_frame;       // offset 688
+    float underwater;      // offset 692
+    float scootx;          // offset 696 (window->world block offset)
+    float scootz;          // offset 700
 } ubo;
 
 layout(push_constant) uniform Push {

@@ -26,18 +26,6 @@ void do_atmos_colors()
                 night_amt += 1.f;                   //  1 to .5
         }
 
-        if (night_amt > 0.5f)
-        {
-                fog_r = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_R, FOG_NIGHT_R);
-                fog_g = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_G, FOG_NIGHT_G);
-                fog_b = lerp(2.f*(night_amt - 0.5f), FOG_DUSK_B, FOG_NIGHT_B);
-        }
-        else
-        {
-                fog_r = lerp(2.f*night_amt, FOG_DAY_R, FOG_DUSK_R);
-                fog_g = lerp(2.f*night_amt, FOG_DAY_G, FOG_DUSK_G);
-                fog_b = lerp(2.f*night_amt, FOG_DAY_B, FOG_DUSK_B);
-        }
 }
 
 void sun_init()
@@ -207,31 +195,45 @@ void sun_draw(VkCommandBuffer cmdbuf, float *proj, float *view, float pitch, flo
         float pv[16];
         mat4_multiply(pv, proj, view_rot);
 
-        // Push constants: pv matrix, angles, and time (80 bytes, under 128 limit)
-        struct { float pv[16]; float pitch; float yaw; float roll; float time; } push;
+        // Push constants: pv matrix, angles, time, fade (84 bytes, under 128 limit)
+        struct { float pv[16]; float pitch; float yaw; float roll; float time; float alpha; } push;
         memcpy(push.pv, pv, sizeof push.pv);
         push.pitch = pitch;
         push.yaw = yaw;
         push.roll = roll;
         push.time = (float)pframe;
 
+        // Each body fades with its light contribution, so it vanishes right at
+        // the horizon instead of showing through terrain from below.
+        bool is_day = pitch < PI;
+        float sun_alpha = is_day ? main_ubo.sun_strength : 0.f;
+        float moon_alpha = is_day ? 0.f : main_ubo.sun_strength;
+
         // Draw sun
-        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[sun_pipe].pipeline);
-        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
-        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
-        vkCmdPushConstants(cmdbuf, vk.pipelines[sun_pipe].layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                0, sizeof push, &push);
-        vkCmdDraw(cmdbuf, 6, 1, 0, 0);
+        if (sun_alpha > 0.f)
+        {
+                push.alpha = sun_alpha;
+                vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[sun_pipe].pipeline);
+                vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
+                vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+                vkCmdPushConstants(cmdbuf, vk.pipelines[sun_pipe].layout,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                        0, sizeof push, &push);
+                vkCmdDraw(cmdbuf, 6, 1, 0, 0);
+        }
 
         // Draw moon (same push constants, moon.vert adds PI to pitch)
-        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[moon_pipe].pipeline);
-        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
-        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
-        vkCmdPushConstants(cmdbuf, vk.pipelines[moon_pipe].layout,
-                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                0, sizeof push, &push);
-        vkCmdDraw(cmdbuf, 6, 1, 0, 0);
+        if (moon_alpha > 0.f)
+        {
+                push.alpha = moon_alpha;
+                vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[moon_pipe].pipeline);
+                vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
+                vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+                vkCmdPushConstants(cmdbuf, vk.pipelines[moon_pipe].layout,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                        0, sizeof push, &push);
+                vkCmdDraw(cmdbuf, 6, 1, 0, 0);
+        }
 }
 
 #endif // BLOCKO_ATMOSPHERE_C_INCLUDED

@@ -132,6 +132,7 @@ foreach(SHADER ${SHADER_FILES})
     OUTPUT ${COMPILED_SHADER}
     COMMAND ${GLSLANG_VALIDATOR} --quiet -V ${CMAKE_SOURCE_DIR}/${SHADER} -o ${COMPILED_SHADER}
     DEPENDS ${CMAKE_SOURCE_DIR}/${SHADER}
+            ${CMAKE_SOURCE_DIR}/blocko-game/shaders/sky_color.glsl
     COMMENT "Compiling shader: ${SHADER}"
   )
   list(APPEND COMPILED_SHADER_FILES ${COMPILED_SHADER})

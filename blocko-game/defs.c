@@ -143,17 +143,6 @@ int mesh_threads = 8;
 #define DUSK_R 0.8f
 #define DUSK_G 0.5f
 #define DUSK_B 0.4f
-// Fog colors match sky horizon colors from sky.frag
-#define FOG_DAY_R 0.8f
-#define FOG_DAY_G 0.85f
-#define FOG_DAY_B 0.95f
-#define FOG_DUSK_R 1.0f
-#define FOG_DUSK_G 0.5f
-#define FOG_DUSK_B 0.3f
-#define FOG_NIGHT_R 0.05f
-#define FOG_NIGHT_G 0.05f
-#define FOG_NIGHT_B 0.1f
-
 // tile pos-to-mem-location macros
 #define T_(x,y,z)    tiles[    ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
 #define SUN_(x,y,z)  sunlight[ ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
@@ -303,6 +292,9 @@ int shadow_pipe;
 int shadow_far_render_ab = 0;
 int shadow_ext_render_ab = 0;
 
+// Light too low to matter: skip the whole shadow pipeline (set per-frame)
+int shadow_idle;
+
 struct main_ubo {
     float model[16];              // mat4 - offset 0
     float view[16];               // mat4 - offset 64
@@ -316,23 +308,24 @@ struct main_ubo {
     float day_color[3];   // vec3 - offset 592
     float padding2;       // Padding
     float glo_color[3];   // vec3 - offset 608
-    float padding3;       // Padding
-    float fog_color[3];   // vec3 - offset 624
-    float fog_lo;         // float - offset 636
-    float fog_hi;         // float - offset 640
-    float padding4[3];    // Padding to align light_pos to 16 bytes
-    float light_pos[3];   // vec3 - offset 656
-    float padding5;       // Padding
-    float view_pos[3];    // vec3 - offset 672
-    float sharpness;      // float - offset 684
-    int shadow_mapping;   // bool (as int) - offset 688
-    float sun_strength;   // float - offset 692
-    float sun_warmth;     // float - offset 696
-    float outside_cascade_lit; // float - offset 700
-    int water_frame;           // int   - offset 704
-    float underwater;          // float - offset 708 (camera eye is in water)
-    float scootx;              // float - offset 712 (window->world block offset x)
-    float scootz;              // float - offset 716 (window->world block offset z)
+    float fog_lo;         // float - offset 620
+    float fog_hi;         // float - offset 624
+    float padding3[3];    // Padding to align light_pos to 16 bytes
+    float light_pos[3];   // vec3 - offset 640
+    float padding4;       // Padding
+    float view_pos[3];    // vec3 - offset 656
+    float sharpness;      // float - offset 668
+    int shadow_mapping;   // bool (as int) - offset 672
+    float sun_strength;   // float - offset 676
+    float sun_warmth;     // float - offset 680
+    float outside_cascade_lit; // float - offset 684
+    int water_frame;           // int   - offset 688
+    float underwater;          // float - offset 692 (camera eye is in water)
+    float scootx;              // float - offset 696 (window->world block offset x)
+    float scootz;              // float - offset 700 (window->world block offset z)
+    float sun_dir[3];          // vec3  - offset 704 (unit vector toward the sun)
+    float night_amt;           // float - offset 716 (0 day, 0.5 dusk, 1 night)
+    float shadow_fade;         // float - offset 720 (1 full shadows, ->0 eases contrast out before the idle cutoff)
 } main_ubo;
 
 unsigned int vbo[VAOS], vao[VAOS];
@@ -361,7 +354,6 @@ struct vbufv vbuf_mt[MAX_MESH_THREADS][VERTEX_BUFLEN + 1000];
 struct vbufv wbuf_mt[MAX_MESH_THREADS][VERTEX_BUFLEN + 1000];
 
 float night_amt;
-float fog_r, fog_g, fog_b;
 
 unsigned char *tiles;
 unsigned char *sunlight;

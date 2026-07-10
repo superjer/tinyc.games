@@ -4,6 +4,15 @@ layout(location = 0) in vec2 uv;
 
 layout(location = 0) out vec4 color;
 
+layout(push_constant) uniform Push {
+    mat4 pv;
+    float pitch;
+    float yaw;
+    float roll;
+    float time;
+    float alpha;   // fade with light contribution (0 below horizon)
+} push;
+
 void main()
 {
     // Distance from center of quad
@@ -43,5 +52,5 @@ void main()
     // Slight limb darkening (darker at edges)
     moon_color *= 1.0 - dist * 0.15;
 
-    color = vec4(moon_color, alpha);
+    color = vec4(moon_color, alpha * push.alpha);
 }

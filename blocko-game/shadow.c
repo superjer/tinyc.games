@@ -130,6 +130,17 @@ void do_shadows()
         float light_pitch = is_night ? moon_pitch : sun_pitch;
         if (light_pitch < 0) light_pitch += TAU;
 
+        // Shadows never render below PI/16 elevation: the frustum ground
+        // footprint grows as 1/sin(elevation), so the last few degrees cost
+        // more than the rest of the day combined. PI/16 is where the
+        // sun_strength fade begins, so full-strength light always casts
+        // geometrically true shadows; during the fade they just stop
+        // lengthening (capped at ~5x object height) instead of sweeping
+        // the whole window.
+        const float min_elev = PI / 16.0f;
+        if (light_pitch < min_elev) light_pitch = min_elev;
+        else if (light_pitch > PI - min_elev) light_pitch = PI - min_elev;
+
         // Compute current slots for far/extreme cascades (A/B temporal blending)
         int far_slot = (int)floorf(light_pitch / FAR_QUANT_STEP);
         int extreme_slot = (int)floorf(light_pitch / EXTREME_QUANT_STEP);
@@ -164,7 +175,17 @@ void do_shadows()
 
         // Alternate between Far and Extreme cascades each frame (only render one)
         // Each cascade still alternates A/B within its own render schedule
-        if ((shadow_frame % 2) == 1) {
+        if (light_pitch < min_elev * 2 || light_pitch > PI - min_elev * 2) {
+                // Low sun: far/extreme sweep their longest ground strips right
+                // when they're cheapest to postpone (the quantized slots move
+                // ~seconds apart, and while clamped they're frozen entirely),
+                // so drop them to quarter cadence: far, rest, extreme, rest.
+                shadow_far_render_ab = shadow_ext_render_ab = -1;
+                if ((shadow_frame % 4) == 1)
+                        shadow_far_render_ab = (shadow_frame / 4) % 2;  // 0=A, 1=B
+                else if ((shadow_frame % 4) == 3)
+                        shadow_ext_render_ab = (shadow_frame / 4) % 2;
+        } else if ((shadow_frame % 2) == 1) {
                 // Odd frames: render Far, skip Extreme
                 shadow_far_render_ab = (shadow_frame / 2) % 2;  // 0=A, 1=B
                 shadow_ext_render_ab = -1;
@@ -187,7 +208,8 @@ void do_shadows()
         // When frozen (F6) skip the recompute: the stored shadow[].matrix values
         // are left as-is so apply_scoot()'s retranslate keeps them locked to the
         // world across scoots. The biased UBO matrices are rebuilt from them below.
-        if (shadow_mapping && !freeze_shadows) for(int s = 0; s < 4; s++)
+        // Same when idle (light at the horizon): the stale maps go unsampled.
+        if (shadow_mapping && !freeze_shadows && !shadow_idle) for(int s = 0; s < 4; s++)
         {
                 // Skip cascades not being rendered this frame (keeps matrix frozen)
                 if (s == 2 && shadow_far_render_ab < 0) continue;
@@ -331,7 +353,8 @@ void shadow_render(VkCommandBuffer cmdbuf)
 {
         // When frozen (F6) skip re-rendering: the shadow map textures keep their
         // last snapshot, staying valid even for chunks the main view later culls.
-        if (shadow_mapping && !freeze_shadows) {
+        // When idle (light at the horizon) the passes are pure waste - skip them.
+        if (shadow_mapping && !freeze_shadows && !shadow_idle) {
                 // Render shadow passes with per-cascade bias (using pre-built visible chunk list)
                 // Near cascade: rendered every frame with PCF
                 draw_shadow_pass(cmdbuf, SHADOW_NEAR, 1.5f, 1.5f, 1);

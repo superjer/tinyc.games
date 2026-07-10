@@ -119,6 +119,32 @@ void draw_stuff()
         moon_pos.y = shadow_target[1] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * cosf(sun_roll) + sinf(moon_pitch) * sinf(sun_roll));
         moon_pos.z = shadow_target[2] + dist2sun * (cosf(moon_pitch) * sinf(sun_yaw) * sinf(sun_roll) - sinf(moon_pitch) * cosf(sun_roll));
 
+        // While the light source sits within a couple degrees of the horizon its
+        // directional light has faded to nothing (same ramp as sun_strength
+        // below), but the low-angle shadow frustums sweep more terrain than at
+        // any other time of day - the most expensive shadows are the invisible
+        // ones. Idle the whole shadow pipeline until the light climbs back up.
+        {
+                float transition = PI / 16.0f;
+                float p = sun_pitch < PI ? sun_pitch : sun_pitch - PI; // moon mirrors the sun
+                float strength = 1.0f;
+                if (p < transition) {
+                        float t = p / transition;
+                        strength = t * t;
+                } else if (p > PI - transition) {
+                        float t = (p - (PI - transition)) / transition;
+                        strength = 1.0f - t * t;
+                }
+                shadow_idle = strength < 0.05f;
+
+                // Ease shadow contrast to zero over the bottom of the strength
+                // ramp (5%..50%, i.e. the last ~5.5 degrees of elevation) so the
+                // idle flip above has nothing visible left to cut off.
+                float f = (strength - 0.05f) / 0.45f;
+                f = f < 0.f ? 0.f : f > 1.f ? 1.f : f;
+                main_ubo.shadow_fade = f * f * (3.f - 2.f * f);
+        }
+
         // do_shadows() runs every frame even when frozen: the UBO is memset to 0
         // above, so it must refill shadow_space[] or the sampling coords collapse to
         // the origin and shadows vanish. When frozen it rebuilds those from the
@@ -199,7 +225,7 @@ void draw_stuff()
 
                         // Check shadow frustums
                         unsigned char shadow_mask = 0;
-                        if (shadow_mapping) {
+                        if (shadow_mapping && !shadow_idle) {
                                 if (chunk_in_frustum(shadow[SHADOW_NEAR].matrix, i, j)) shadow_mask |= 1;  // Near
                                 if (chunk_in_frustum(shadow[SHADOW_MID].matrix, i, j)) shadow_mask |= 2;  // Mid
                                 if (shadow_far_render_ab >= 0 && chunk_in_frustum(shadow[far_idx].matrix, i, j)) shadow_mask |= 4;  // Far
@@ -229,7 +255,9 @@ void draw_stuff()
         qsort(visible_chunks, visible_chunk_count, sizeof(struct visible_chunk),
               (int (*)(const void *, const void *))chunk_dist_compare);
 
-        main_ubo.shadow_mapping = shadow_mapping;
+        // When idle, tell the shader too: unshadow pins to 1.0, which is invisible
+        // under a <5%-strength directional light, and the PCF sampling is skipped
+        main_ubo.shadow_mapping = shadow_mapping && !shadow_idle;
 
         memcpy(main_ubo.proj, proj_mtrx, sizeof proj_mtrx);
         memcpy(main_ubo.view, translated_view_mtrx, sizeof translated_view_mtrx);
@@ -272,11 +300,15 @@ void draw_stuff()
                 main_ubo.glo_color[0] = 0.92f;
                 main_ubo.glo_color[1] = 0.83f;
                 main_ubo.glo_color[2] = 0.69f;
-                main_ubo.fog_color[0] = fog_r;
-                main_ubo.fog_color[1] = fog_g;
-                main_ubo.fog_color[2] = fog_b;
                 main_ubo.fog_lo = BS * 50.0f;
                 main_ubo.fog_hi = draw_dist * BS * 0.9f;
+
+                // sun direction + night_amt drive the per-pixel sky-colored
+                // fog (sky_color.glsl) — same formula as sky_draw's push
+                main_ubo.sun_dir[0] = cosf(sun_pitch) * cosf(sun_yaw);
+                main_ubo.sun_dir[1] = sinf(sun_pitch);
+                main_ubo.sun_dir[2] = -cosf(sun_pitch) * sinf(sun_yaw);
+                main_ubo.night_amt = night_amt;
 
                 // Sun strength and warmth for day/night cycle
                 // Full brightness between PI/16 and PI-PI/16, dimming/warming only near horizons
@@ -324,7 +356,7 @@ void draw_stuff()
                                 main_ubo.sun_strength = 1.0f;
                                 main_ubo.sun_warmth = 0.0f;
                         }
-                        main_ubo.outside_cascade_lit = 0.0f;      // Areas outside shadow cascade always dark at night
+                        main_ubo.outside_cascade_lit = main_ubo.sun_strength;
                 }
         }
 
