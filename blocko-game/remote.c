@@ -307,8 +307,12 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         }
         else if (!strncmp(cmd, "tp ", 3))
         {
-                float ax, az;
-                if (sscanf(cmd + 3, "%f %f", &ax, &az) == 2 && isfinite(ax) && isfinite(az))
+                float a, b, c;
+                int n = sscanf(cmd + 3, "%f %f %f", &a, &b, &c);
+                float ax = a;
+                float ay = (n == 3) ? b : 0;      // "tp x z" or "tp x y z"
+                float az = (n == 3) ? c : b;
+                if (n >= 2 && isfinite(ax) && isfinite(ay) && isfinite(az))
                 {
                         // past ~2M blocks the scoot rebase (dx * BS) overflows int and
                         // the window can never catch the player; stay well inside that
@@ -316,13 +320,25 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         az = CLAMP(az, -1000000.f, 1000000.f);
                         player[my_player].pos.x = (ax + scootx) * BS;
                         player[my_player].pos.z = (az + scootz) * BS;
-                        player[my_player].pos.y = 0;
                         player[my_player].grav = GRAV_ZERO;
-                        remote_tp_snap = 1; // land on the ground (remote_poll)
-                        p += snprintf(p, end-p, "ok %g %g\n", ax, az);
+                        if (n == 3)
+                        {
+                                // explicit height: start exactly there instead of
+                                // snapping to the ground. gravity still applies -
+                                // pair with noclip to hold a camera in the air
+                                player[my_player].pos.y = CLAMP(ay, 0.f, TILESH-1.f) * BS;
+                                remote_tp_snap = 0;
+                                p += snprintf(p, end-p, "ok %g %g %g\n", ax, ay, az);
+                        }
+                        else
+                        {
+                                player[my_player].pos.y = 0;
+                                remote_tp_snap = 1; // land on the ground (remote_poll)
+                                p += snprintf(p, end-p, "ok %g %g\n", ax, az);
+                        }
                 }
                 else
-                        p += snprintf(p, end-p, "usage: tp <abs_x_blocks> <abs_z_blocks>\n");
+                        p += snprintf(p, end-p, "usage: tp <abs_x> <abs_z>  or  tp <abs_x> <y> <abs_z>  (blocks)\n");
         }
         else if (!strncmp(cmd, "walk ", 5))
         {

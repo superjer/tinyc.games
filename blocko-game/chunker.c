@@ -243,7 +243,15 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
         }
 
         // carve caves: each point hollows its little sphere, clipped to the
-        // range - cost scales with cave volume, not with column count
+        // range - cost scales with cave volume, not with column count.
+        // never carve a cell beside sea water: the pocket would stay air (the
+        // sunlight pass only pours water straight down, not sideways) and the
+        // water mesh would wall it off, visible from the surface. HMAP knows
+        // where the sea is without reading neighbor chunks' tiles, so leave a
+        // 1-block shell wherever a lateral neighbor column is water at this y
+        #define SEA_BESIDE(x, y, z) ((y) > SEA_LEVEL && \
+                        ((y) < HMAP(x+1, z) || (y) < HMAP(x-1, z) || \
+                         (y) < HMAP(x, z+1) || (y) < HMAP(x, z-1)))
         for (int i = 0; i < cave_p_len; i++)
         {
                 struct qcave c = cave_points[i];
@@ -254,7 +262,8 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                 for (int x = cxlo; x <= cxhi; x++) for (int z = czlo; z <= czhi; z++)
                         for (int y = cylo; y <= cyhi; y++)
                                 if (DIST_SQ(c.x - x, c.y - y, c.z - z) <= c.radius_sq
-                                                && TT_(x, y, z) != WATR)
+                                                && TT_(x, y, z) != WATR
+                                                && !SEA_BESIDE(x, y, z))
                                         TT_(x, y, z) = OPEN;
         }
         gen_pass(&t0, GEN_CAVES);
