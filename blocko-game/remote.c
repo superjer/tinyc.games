@@ -1285,7 +1285,7 @@ void console_draw()
         float scale = MIN(roundf(screenw / 600.f), roundf(screenh / 400.f));
         if (scale < 1.f) scale = 1.f;
         int lh = FONT_CH_H * scale;
-        int inputy = screenh - 2 * lh;
+        int inputy = screenh - 3.5f * lh; // above the F3 coords readout (0.955 * screenh)
         int base = inputy; // chat stacks upward from here
 
         if (console_open)
