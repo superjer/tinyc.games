@@ -611,6 +611,12 @@ enum {
     GPU_TS_COUNT
 };
 
+// per-pass GPU ms summed since last "fps reset", read via the gpu socket cmd
+// (far/extreme render on alternating frames, so single-frame samples mislead)
+double gpu_ms_accum[GPU_TS_COUNT];
+unsigned gpu_ms_frames;
+unsigned long long shadow_polys_accum[SHADOW_COUNT]; // faces drawn per cascade
+
 int mouselook = false; // start with the mouse free; click the window to capture
 int target_x, target_y, target_z;
 int place_x, place_y, place_z;

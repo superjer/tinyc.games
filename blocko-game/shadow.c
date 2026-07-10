@@ -69,6 +69,7 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                 vkCmdDraw(cmdbuf, 4, terrain_verts, 0, 0);
                 shadow_polys += terrain_verts;
                 shadow[cascade_idx].polys += terrain_verts;
+                shadow_polys_accum[cascade_idx] += terrain_verts;
                 cascade_x_draw_calls++;
         }
 
@@ -97,6 +98,7 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
                         vkCmdDraw(cmdbuf, 4, water_verts, 0, 0);
                         shadow_polys += water_verts;
                         shadow[cascade_idx].polys += water_verts;
+                        shadow_polys_accum[cascade_idx] += water_verts;
                 }
         }
 

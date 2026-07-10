@@ -92,6 +92,12 @@ void draw_stuff()
                         0, GPU_TS_COUNT, sizeof(gpu_timestamps), gpu_timestamps,
                         sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
                 gpu_timestamps_valid = (result == VK_SUCCESS);
+                if (gpu_timestamps_valid && gpu_timestamp_period > 0) {
+                        double k = gpu_timestamp_period / 1e6;
+                        for (int i = 1; i < GPU_TS_COUNT; i++)
+                                gpu_ms_accum[i] += (gpu_timestamps[i] - gpu_timestamps[i-1]) * k;
+                        gpu_ms_frames++;
+                }
         }
 
         memset(&main_ubo, 0, sizeof main_ubo);

@@ -164,7 +164,37 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                 fps_base_chunks = nr_chunks_generated;
                 fps_base_gen_ticks = chunk_gen_ticks;
                 memset(gen_pass_ms, 0, sizeof gen_pass_ms);
+                memset(gpu_ms_accum, 0, sizeof gpu_ms_accum);
+                gpu_ms_frames = 0;
+                memset(shadow_polys_accum, 0, sizeof shadow_polys_accum);
                 p += snprintf(p, end-p, "ok\n");
+        }
+        else if (!strncmp(cmd, "gpu", 3))
+        {
+                if (!gpu_ms_frames)
+                        p += snprintf(p, end-p, "no gpu samples yet (fps reset, wait a bit)\n");
+                else
+                {
+                        unsigned n = gpu_ms_frames;
+                        p += snprintf(p, end-p,
+                                "frames %u\n"
+                                "shadow_near_ms %.3f\nshadow_mid_ms %.3f\n"
+                                "shadow_far_ms %.3f\nshadow_ext_ms %.3f\n"
+                                "terrain_ms %.3f\npost_ms %.3f\n",
+                                n,
+                                gpu_ms_accum[GPU_TS_SHADOW_N_END] / n,
+                                gpu_ms_accum[GPU_TS_SHADOW_M_END] / n,
+                                gpu_ms_accum[GPU_TS_SHADOW_F_END] / n,
+                                gpu_ms_accum[GPU_TS_SHADOW_X_END] / n,
+                                gpu_ms_accum[GPU_TS_TERRAIN_END] / n,
+                                gpu_ms_accum[GPU_TS_FRAME_END] / n);
+                        p += snprintf(p, end-p,
+                                "shadow_faces_per_frame n %llu m %llu f %llu x %llu\n",
+                                shadow_polys_accum[SHADOW_NEAR] / n,
+                                shadow_polys_accum[SHADOW_MID] / n,
+                                (shadow_polys_accum[SHADOW_FAR_A] + shadow_polys_accum[SHADOW_FAR_B]) / n,
+                                (shadow_polys_accum[SHADOW_EXT_A] + shadow_polys_accum[SHADOW_EXT_B]) / n);
+                }
         }
         else if (!strncmp(cmd, "fps", 3))
         {
@@ -1027,7 +1057,7 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
         {
                 // one line per group so it fits the on-screen console
                 p += snprintf(p, end-p, "commands:\n"
-                        "fps [reset] | timings [reset] | pos | tp <ax> <az>\n"
+                        "fps [reset] | timings [reset] | gpu | pos | tp <ax> <az>\n"
                         "save <name> | load [<name>]\n"
                         "walk <frames> | fly <frames> <bl/s> | turn <deg>\n"
                         "look [<yaw> <pitch>] | click <left|right> [frames] | target | patch\n"

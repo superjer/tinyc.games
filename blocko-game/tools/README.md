@@ -79,7 +79,8 @@ BLOCKO_SOCK=/tmp/blocko-b.sock blocko-game/tools/bk net   # talks to the client
 | Command | What it does |
 |---|---|
 | `fps` | Frame stats since the last `fps reset`: frame count, elapsed seconds, FPS, avg/p50/p99/worst frame ms, `meshes_built`, `chunks_generated`, terrain `gen_ms`, and a per-pass generation breakdown (hmap/soil/caves/water/trees/light/corners). |
-| `fps reset` | Zero the frame ring and the mesh/chunk/gen counters, and restart the elapsed timer. |
+| `fps reset` | Zero the frame ring, the mesh/chunk/gen counters, and the `gpu` accumulators, and restart the elapsed timer. |
+| `gpu` | Per-pass GPU times (ms/frame, averaged since `fps reset`): the four shadow cascades, terrain, and post, plus average faces drawn per frame into each cascade. Averaging matters — far/extreme cascades render on alternating frames. |
 | `timings` | Per-section CPU time breakdown (seconds and % of total) for the named `TIMER()` buckets — `build_meshes`, `gpu_sync`, `shadow_render`, `draw_terrain`, etc. |
 | `timings reset` | Snapshot the current timer totals as the new baseline, so `timings` reports deltas from here. |
 | `spike [w] [d] [h] [reps] [threads]` | Time meshing a `w×d×h` cell region centered on the player, `reps` times, and report ms/build plus vertex counts. Optional `threads` overrides the mesh OpenMP thread count for the measurement. Defaults: `w=64`, `d=w`, `h=256`, `reps=50`, current thread cap. Used to measure rebuild cost vs. region size and thread count. |
