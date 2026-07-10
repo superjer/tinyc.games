@@ -27,19 +27,16 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 model;            // offset 0
     mat4 view;             // offset 64
     mat4 proj;             // offset 128
-    mat4 shadow_space[6];  // offset 192 (near, mid, far_a, far_b, ext_a, ext_b)
-    float BS;              // offset 576
-    float shadow_far_blend;  // offset 580 (far: 0=A, 1=B)
-    float shadow_ext_blend;  // offset 584 (extreme: 0=A, 1=B)
-
-    vec3 day_color;        // offset 592
-    vec3 glo_color;        // offset 608
-    float fog_lo;          // offset 620
-    float fog_hi;          // offset 624
-    vec3 light_pos;        // offset 640
-    vec3 view_pos;         // offset 656
-    float sharpness;       // offset 668
-    bool shadow_mapping;   // offset 672
+    mat4 shadow_space;     // offset 192 (the one near cascade)
+    float BS;              // offset 256
+    vec3 day_color;        // offset 272
+    vec3 glo_color;        // offset 288
+    float fog_lo;          // offset 300
+    float fog_hi;          // offset 304
+    vec3 light_pos;        // offset 320
+    vec3 view_pos;         // offset 336
+    float sharpness;       // offset 348
+    bool shadow_mapping;   // offset 352
 } ubo;
 
 layout(push_constant) uniform Push {
@@ -145,5 +142,5 @@ void main(void) {
     // Near-cascade shadow position (mid/far computed in the fragment shader).
     // Use the rotated normal so the offset bias follows the spun face.
     vec4 shadow_sample_pos = world_pos + vec4(normal * 75.0, 0.0);
-    shadow_pos = ubo.shadow_space[0] * shadow_sample_pos;
+    shadow_pos = ubo.shadow_space * shadow_sample_pos;
 }

@@ -110,19 +110,11 @@ int mesh_threads = 8;
 #define SUNQLEN 64000
 #define GLOQLEN 64000
 
-// Shadow cascade indices
+// One shadow cascade: a ±10 block bubble around the player, fading to lit
+// at its edge (see main.frag)
 #define SHADOW_NEAR   0
-#define SHADOW_MID    1
-#define SHADOW_FAR_A  2
-#define SHADOW_FAR_B  3
-#define SHADOW_EXT_A  4
-#define SHADOW_EXT_B  5
-#define SHADOW_COUNT  6
-
-// per-cascade shadow map resolution. The cascades cover ±5/±20/±40/±150
-// blocks, so one-size 4096 gave near ~410 texels per block - clear/fill cost
-// scales with texels, so size each map for roughly comparable texel density
-const int shadow_sz[SHADOW_COUNT] = { 1024, 2048, 4096, 4096, 4096, 4096 };
+#define SHADOW_COUNT  1
+const int shadow_sz[SHADOW_COUNT] = { 2048 };
 
 #define ICLAMP(v, l, u) ((v < l) ? l : (v > u) ? u : v)
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -178,7 +170,6 @@ const int shadow_sz[SHADOW_COUNT] = { 1024, 2048, 4096, 4096, 4096, 4096 };
 #define VBO_(x,z)    vao[    ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define VBOLEN_(x,z) vbo_len[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define WBOSTART_(x,z) wbo_start[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
-#define LODEND_(x,z)   lod_end[  ((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 #define LEAFSTART_(x,z) leaf_start[((z - chunk_scootz) & (VAOD-1)) * (VAOW) + ((x - chunk_scootx) & (VAOW-1))]
 // the mesh's own identity: which absolute chunk the slot's GPU buffers hold.
 // regen_world invalidates chunk_stamp but not this, so the old mesh keeps
@@ -290,10 +281,7 @@ struct shadow_cascade {
     VkDeviceMemory memory;
     VkImageView image_view;
     VkFramebuffer framebuffer;
-    float matrix[16];      // stored PV matrix (for A/B temporal blending)
-    int slot;              // quantized slot (-1 = uninitialized)
-    int r_meshes;          // nr_meshes_built when this map was rendered (far/ext
-                           // skip re-rendering while view + world are unchanged)
+    float matrix[16];      // stored PV matrix
 };
 struct shadow_cascade shadow[SHADOW_COUNT];
 
@@ -302,10 +290,6 @@ VkRenderPass shadow_render_pass;
 int shadow_pipe;
 int shadow_solid_pipe; // no-op fragment stage: fast depth path, leaves solid
 
-// Which shadow map to render this frame (0=A, 1=B, -1=skip)
-int shadow_far_render_ab = 0;
-int shadow_ext_render_ab = 0;
-
 // Light too low to matter: skip the whole shadow pipeline (set per-frame)
 int shadow_idle;
 
@@ -313,43 +297,38 @@ struct main_ubo {
     float model[16];              // mat4 - offset 0
     float view[16];               // mat4 - offset 64
     float proj[16];               // mat4 - offset 128
-    float shadow_space[6][16];    // mat4[6] - offset 192 (near, mid, far_a, far_b, ext_a, ext_b)
-    float bs;                     // float - offset 576
-    float shadow_far_blend;       // float - offset 580 (far: 0=A, 1=B)
-    float shadow_ext_blend;       // float - offset 584 (extreme: 0=A, 1=B)
-    float padding1;               // Padding to align day_color to 16 bytes
+    float shadow_space[16];       // mat4 - offset 192 (the one near cascade)
+    float bs;                     // float - offset 256
+    float padding1[3];            // Padding to align day_color to 16 bytes
 
-    float day_color[3];   // vec3 - offset 592
+    float day_color[3];   // vec3 - offset 272
     float padding2;       // Padding
-    float glo_color[3];   // vec3 - offset 608
-    float fog_lo;         // float - offset 620
-    float fog_hi;         // float - offset 624
+    float glo_color[3];   // vec3 - offset 288
+    float fog_lo;         // float - offset 300
+    float fog_hi;         // float - offset 304
     float padding3[3];    // Padding to align light_pos to 16 bytes
-    float light_pos[3];   // vec3 - offset 640
+    float light_pos[3];   // vec3 - offset 320
     float padding4;       // Padding
-    float view_pos[3];    // vec3 - offset 656
-    float sharpness;      // float - offset 668
-    int shadow_mapping;   // bool (as int) - offset 672
-    float sun_strength;   // float - offset 676
-    float sun_warmth;     // float - offset 680
-    float outside_cascade_lit; // float - offset 684
-    int water_frame;           // int   - offset 688
-    float underwater;          // float - offset 692 (camera eye is in water)
-    float scootx;              // float - offset 696 (window->world block offset x)
-    float scootz;              // float - offset 700 (window->world block offset z)
-    float sun_dir[3];          // vec3  - offset 704 (unit vector toward the sun)
-    float night_amt;           // float - offset 716 (0 day, 0.5 dusk, 1 night)
-    float shadow_fade;         // float - offset 720 (1 full shadows, ->0 eases contrast out before the idle cutoff)
+    float view_pos[3];    // vec3 - offset 336
+    float sharpness;      // float - offset 348
+    int shadow_mapping;   // bool (as int) - offset 352
+    float sun_strength;   // float - offset 356
+    float sun_warmth;     // float - offset 360
+    int water_frame;           // int   - offset 364
+    float underwater;          // float - offset 368 (camera eye is in water)
+    float scootx;              // float - offset 372 (window->world block offset x)
+    float scootz;              // float - offset 376 (window->world block offset z)
+    float padding5;            // Padding to align sun_dir to 16 bytes
+    float sun_dir[3];          // vec3  - offset 384 (unit vector toward the sun)
+    float night_amt;           // float - offset 396 (0 day, 0.5 dusk, 1 night)
+    float shadow_fade;         // float - offset 400 (1 full shadows, ->0 eases contrast out before the idle cutoff)
 } main_ubo;
 
 unsigned int vbo[VAOS], vao[VAOS];
 size_t vbo_len[VAOS];
 size_t wbo_start[VAOS];
-size_t lod_end[VAOS]; // end of the 2x2x2 shadow-LOD section (starts at vbo_len)
 size_t leaf_start[VAOS]; // terrain section is [solid | leaves): leaves start
                          // here, so shadows can draw solids without alpha test
-float shadow_lod_dist = 160.f; // chunks beyond this many blocks cast 2x2x2 LOD
-                               // shadows in far/extreme cascades (<0 disables)
 
 struct vbufv {
     float tex;     // Location 0
@@ -606,7 +585,6 @@ int screenh = WINH;
 volatile struct qitem just_generated[VAOW*VAOD];
 volatile size_t just_gen_len;
 
-int nr_meshes_built = 0;
 int cave_enable = 1;
 int tree_enable = 1;
 int flat_world = 0; // force a perfectly flat world (debug: isolates seams)

@@ -255,89 +255,6 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                 }
 }
 
-// 2x2x2 shadow LOD mesh: downsample the chunk into coarse cells (solid only
-// when all 8 blocks cast shadows - leaves count, water/lights/grass don't),
-// then emit one face wherever a solid cell meets an empty one. The far and
-// extreme shadow passes draw this section instead of the full mesh for
-// distant chunks, with push.bs = 2*BS so the same shadow.vert scales the
-// quads up (pos_in is in coarse-cell units).
-//
-// The all-8 rule matters: it under-approximates, so the coarse surface never
-// pokes above the true surface. Any over-approximation (e.g. >=4/8) casts
-// false shadows onto real terrain - shallow steps showed alternating dark
-// bands wherever the rounded-up surface covered the lower step. The cost is
-// the opposite, invisible error: shadows of distant features end up to one
-// block short, and 1-block-thin features (trunks, thin roofs) stop casting
-// at LOD distance.
-#define TILESH2 (TILESH/2)
-// occupancy with a 1-cell x/z ring from the neighbor chunks for face culling
-static unsigned char lod_occ[CHUNKD2+2][CHUNKW2+2][TILESH2];
-#define LODOCC_(cx,cz,cy) lod_occ[(cz)+1][(cx)+1][cy]
-
-static struct vbufv *lod_region(struct vbufv *v, int xlo, int zlo)
-{
-        struct vbufv *start = v;
-
-        #pragma omp parallel num_threads(mesh_threads)
-        {
-                int cx, cy, cz;
-                #pragma omp for schedule(static)
-                for (cz = -1; cz <= CHUNKD2; cz++) for (cx = -1; cx <= CHUNKW2; cx++)
-                {
-                        int bx = xlo + 2*cx;
-                        int bz = zlo + 2*cz;
-                        // ring cells outside the window: treat as empty (emit the
-                        // face, matching the full mesh's window-edge convention).
-                        // ring cells in an un-generated chunk: treat as solid
-                        // (skip the face; the remesh when it generates fixes it)
-                        if (bx < 0 || bx >= TILESW || bz < 0 || bz >= TILESD)
-                        {
-                                for (cy = 0; cy < TILESH2; cy++)
-                                        LODOCC_(cx, cz, cy) = 0;
-                                continue;
-                        }
-                        if (!NBR_CHUNK_GEN(bx, bz))
-                        {
-                                for (cy = 0; cy < TILESH2; cy++)
-                                        LODOCC_(cx, cz, cy) = 1;
-                                continue;
-                        }
-                        for (cy = 0; cy < TILESH2; cy++)
-                        {
-                                int by = 2*cy;
-                                int n = 0;
-                                for (int dz = 0; dz < 2; dz++)
-                                for (int dx = 0; dx < 2; dx++)
-                                for (int dy = 0; dy < 2; dy++)
-                                {
-                                        int t = T_(bx+dx, by+dy, bz+dz);
-                                        if (t < OPEN || t == RLEF || t == YLEF || t == SLEF)
-                                                n++;
-                                }
-                                LODOCC_(cx, cz, cy) = n == 8;
-                        }
-                }
-        }
-
-        for (int cz = 0; cz < CHUNKD2; cz++)
-        for (int cx = 0; cx < CHUNKW2; cx++)
-        for (int cy = 0; cy < TILESH2; cy++)
-        {
-                if (!LODOCC_(cx, cz, cy)) continue;
-                if (v + 6 > v_limit) return start; // no room: draw full mesh instead
-                // illum/glow are unused by the shadow pass; tex is never sampled
-                // (the solid pipeline has no fragment shader)
-                if (cy == 0          || !LODOCC_(cx, cz, cy-1)) *v++ = (struct vbufv){ 5,    UP, cx, cy, cz, 1,1,1,1, 0,0,0,0, 1 };
-                if (cy+1 >= TILESH2  || !LODOCC_(cx, cz, cy+1)) *v++ = (struct vbufv){ 5,  DOWN, cx, cy, cz, 1,1,1,1, 0,0,0,0, 1 };
-                if (!LODOCC_(cx, cz-1, cy)) *v++ = (struct vbufv){ 5, SOUTH, cx, cy, cz, 1,1,1,1, 0,0,0,0, 1 };
-                if (!LODOCC_(cx, cz+1, cy)) *v++ = (struct vbufv){ 5, NORTH, cx, cy, cz, 1,1,1,1, 0,0,0,0, 1 };
-                if (!LODOCC_(cx-1, cz, cy)) *v++ = (struct vbufv){ 5,  WEST, cx, cy, cz, 1,1,1,1, 0,0,0,0, 1 };
-                if (!LODOCC_(cx+1, cz, cy)) *v++ = (struct vbufv){ 5,  EAST, cx, cy, cz, 1,1,1,1, 0,0,0,0, 1 };
-        }
-
-        return v;
-}
-
 void build_meshes()
 {
         // Collect all dirty chunks with distances from current player position
@@ -428,9 +345,6 @@ void build_meshes()
 
                 VBOLEN_(myx, myz) = v - vbuf;
 
-                v = lod_region(v, xlo, zlo);
-                LODEND_(myx, myz) = v - vbuf;
-
                 // world_buf is single-buffered and persistently mapped, but a
                 // prior frame may still be reading this slot on the GPU. Wait for
                 // the in-flight frames to drain before overwriting it in place,
@@ -450,7 +364,6 @@ void build_meshes()
                 MESHGEN_SLOT(myx, myz).ax = myx - chunk_scootx; // the slot's mesh
                 MESHGEN_SLOT(myx, myz).az = myz - chunk_scootz; // is now this chunk's
                 meshes_built++;
-                nr_meshes_built++;
         }
 }
 

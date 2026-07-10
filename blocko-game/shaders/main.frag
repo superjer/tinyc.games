@@ -19,29 +19,25 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 model;            // offset 0
     mat4 view;             // offset 64
     mat4 proj;             // offset 128
-    mat4 shadow_space[6];  // offset 192 (near, mid, far_a, far_b, ext_a, ext_b)
-    float BS;              // offset 576
-    float shadow_far_blend;  // offset 580 (far: 0=A, 1=B)
-    float shadow_ext_blend;  // offset 584 (extreme: 0=A, 1=B)
-
-    vec3 day_color;        // offset 592
-    vec3 glo_color;        // offset 608
-    float fog_lo;          // offset 620
-    float fog_hi;          // offset 624
-    vec3 light_pos;        // offset 640
-    vec3 view_pos;         // offset 656
-    float sharpness;       // offset 668
-    bool shadow_mapping;   // offset 672
-    float sun_strength;    // offset 676
-    float sun_warmth;      // offset 680
-    float outside_cascade_lit; // offset 684
-    int water_frame;           // offset 688
-    float underwater;          // offset 692 (camera eye is in water)
-    float scootx;              // offset 696 (window->world block offset)
-    float scootz;              // offset 700
-    vec3 sun_dir;              // offset 704 (unit vector toward the sun)
-    float night_amt;           // offset 716 (0 day, 0.5 dusk, 1 night)
-    float shadow_fade;         // offset 720 (1 full shadows, ->0 eases contrast out before the idle cutoff)
+    mat4 shadow_space;     // offset 192 (the one near cascade)
+    float BS;              // offset 256
+    vec3 day_color;        // offset 272
+    vec3 glo_color;        // offset 288
+    float fog_lo;          // offset 300
+    float fog_hi;          // offset 304
+    vec3 light_pos;        // offset 320
+    vec3 view_pos;         // offset 336
+    float sharpness;       // offset 348
+    bool shadow_mapping;   // offset 352
+    float sun_strength;    // offset 356
+    float sun_warmth;      // offset 360
+    int water_frame;           // offset 364
+    float underwater;          // offset 368 (camera eye is in water)
+    float scootx;              // offset 372 (window->world block offset)
+    float scootz;              // offset 376
+    vec3 sun_dir;              // offset 384 (unit vector toward the sun)
+    float night_amt;           // offset 396 (0 day, 0.5 dusk, 1 night)
+    float shadow_fade;         // offset 400 (1 full shadows, ->0 eases contrast out before the idle cutoff)
 } ubo;
 
 // No push constants here: this fragment shader is shared by the terrain
@@ -49,13 +45,8 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 // layouts. The per-draw scalars it needs (shiny, tint) arrive as flat varyings.
 
 layout(set = 0, binding = 1) uniform sampler2DArray tarray;
-// Shadow maps at bindings 2-7 (must match descriptor layout in glsetup.c)
+// Shadow map at binding 2 (must match descriptor layout in vksetup.c)
 layout(set = 0, binding = 2) uniform sampler2DShadow shadow_near;
-layout(set = 0, binding = 3) uniform sampler2DShadow shadow_mid;
-layout(set = 0, binding = 4) uniform sampler2DShadow shadow_far_a;
-layout(set = 0, binding = 5) uniform sampler2DShadow shadow_far_b;
-layout(set = 0, binding = 6) uniform sampler2DShadow shadow_ext_a;
-layout(set = 0, binding = 7) uniform sampler2DShadow shadow_ext_b;
 
 // Poisson disk samples for soft shadows (16 samples, well-distributed)
 const vec2 poissonDisk[16] = vec2[](
@@ -90,12 +81,6 @@ float vnoise(vec2 q) {
     vec2 u = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash2(i),               hash2(i + vec2(1, 0)), u.x),
                mix(hash2(i + vec2(0, 1)),  hash2(i + vec2(1, 1)), u.x), u.y);
-}
-
-// true when a projected shadow coord lands inside the map (a hair in from the
-// border, so we never sample the CLAMP_TO_BORDER "lit" edge texel)
-bool inRange(vec2 uv) {
-    return uv.x > 0.001 && uv.x < 0.999 && uv.y > 0.001 && uv.y < 0.999;
 }
 
 // PCF shadow sampling with Poisson disk
@@ -201,67 +186,22 @@ void main(void) {
         float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
         float rotation = ign * 6.28318;
 
-        // Compute shadow positions for all cascades
-        // Apply normal offset bias to prevent shadow bleeding at cube edges
-        // shadow_space indices: 0=near, 1=mid, 2=far_a, 3=far_b, 4=ext_a, 5=ext_b
-        vec4 shadow_sample_pos = world_pos + vec4(normal * 75.0, 0.0);
-        vec4 shadow_pos_mid = ubo.shadow_space[1] * shadow_sample_pos;
-        vec4 shadow_pos_far_a = ubo.shadow_space[2] * shadow_sample_pos;
-        vec4 shadow_pos_far_b = ubo.shadow_space[3] * shadow_sample_pos;
-        vec4 shadow_pos_ext_a = ubo.shadow_space[4] * shadow_sample_pos;
-        vec4 shadow_pos_ext_b = ubo.shadow_space[5] * shadow_sample_pos;
-
-        // Toggling shadow mapping off (M key) skips the maps and leaves unshadow at
+        // Toggling shadow mapping off skips the map and leaves unshadow at
         // 1.0 - as if nothing casts a shadow - so the lighting model is otherwise
         // identical, instead of switching to a separate ambient-only path.
         float unshadow = 1.0;
         if (ubo.shadow_mapping) {
-        // The near/mid ortho volumes are +-5/+-20 block columns running the
-        // whole depth range along the sun ray, so the xy-in-range tests alone
-        // also match terrain far away down the column; gate them by camera
-        // distance (2x each cascade's radius) so far fragments fall through
-        // to the cascades meant for them.
-        float cam_dist = distance(ubo.view_pos, world_pos.xyz);
-        if (cam_dist < 10.0 * ubo.BS
-                && shadow_pos.x > 0.007 && shadow_pos.x < 0.993 && shadow_pos.y > 0.007 && shadow_pos.y < 0.993) {
-            // Near cascade - soft shadows with PCF
-            unshadow = sampleShadowPCF(shadow_near, shadow_pos.xyz, 0.006, rotation);
-        } else if (cam_dist < 40.0 * ubo.BS
-                && shadow_pos_mid.x > 0.002 && shadow_pos_mid.x < 0.998 && shadow_pos_mid.y > 0.002 && shadow_pos_mid.y < 0.998) {
-            // Mid cascade - PCF, no A/B blending
-            unshadow = sampleShadowPCF(shadow_mid, shadow_pos_mid.xyz, 0.0015, rotation);
-        } else if (inRange(shadow_pos_far_a.xy) && inRange(shadow_pos_far_b.xy)) {
-            // Far cascade - blend between A and B shadow maps. We only take this
-            // cascade when BOTH maps cover the fragment: the A/B maps render on
-            // alternating frames, so while moving they sit at different positions
-            // and near the edge one projects out of [0,1], where CLAMP_TO_BORDER
-            // reads "lit" and would blend a gap into the seam. Where they don't
-            // both cover, fall through to the extreme cascade (which contains us).
-            float shad_a = textureProj(shadow_far_a, vec4(shadow_pos_far_a.xy, shadow_pos_far_a.z, 1.0));
-            float shad_b = textureProj(shadow_far_b, vec4(shadow_pos_far_b.xy, shadow_pos_far_b.z, 1.0));
-            unshadow = mix(shad_a, shad_b, ubo.shadow_far_blend);
-        } else {
-            // Extreme cascade - blend A and B, but the extreme cascade has nothing
-            // larger to fall through to, so where B is out of range (same A/B
-            // divergence as above) fall back to A alone instead of blending toward
-            // its lit border.
-            float shad_a = textureProj(shadow_ext_a, vec4(shadow_pos_ext_a.xy, shadow_pos_ext_a.z, 1.0));
-            float shad_b = textureProj(shadow_ext_b, vec4(shadow_pos_ext_b.xy, shadow_pos_ext_b.z, 1.0));
-            unshadow = inRange(shadow_pos_ext_b.xy) ? mix(shad_a, shad_b, ubo.shadow_ext_blend) : shad_a;
-
-            // Fade out shadow at edges of extreme cascade toward the current
-            // light strength (sun or moon).
-            // The fade ramps over the outer 0.1 of the cascade and SATURATES past
-            // the [0,1] boundary: beyond the cascade the raw shadow sample is
-            // meaningless (z runs past the far plane -> spurious full shadow), so
-            // clamp forces edge_lit there instead of leaving a dark band.
-            float edge_lit = ubo.outside_cascade_lit;
-            vec2 e = shadow_pos_ext_a.xy;
+            // The one cascade: soft shadows with PCF, fading to fully lit over
+            // the outer 0.1 of the map so the bubble has no hard edge. The fade
+            // SATURATES past the [0,1] boundary: beyond the cascade the raw
+            // sample is meaningless (z runs past the far plane -> spurious full
+            // shadow), so the clamp forces lit there instead of a dark band.
+            unshadow = sampleShadowPCF(shadow_near, shadow_pos.xyz, 0.003, rotation);
+            vec2 e = shadow_pos.xy;
             float fx = max((0.1 - e.x) * 10.0, (e.x - 0.9) * 10.0);
             float fy = max((0.1 - e.y) * 10.0, (e.y - 0.9) * 10.0);
             float edge = clamp(max(fx, fy), 0.0, 1.0);
-            unshadow = max(unshadow, edge_lit * edge);
-        }
+            unshadow = max(unshadow, edge);
         }
 
         // Ease shadow contrast out as the light nears the horizon, so the

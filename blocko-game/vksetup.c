@@ -374,11 +374,10 @@ void create_shadow_maps() {
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
-    // Create all shadow map images (sizes differ per cascade)
+    // Create the shadow map images
     for (int i = 0; i < SHADOW_COUNT; i++) {
         imageInfo.extent = (VkExtent3D){ shadow_sz[i], shadow_sz[i], 1 };
         vkCreateImage(vk.device, &imageInfo, NULL, &shadow[i].image);
-        shadow[i].slot = -1;  // Initialize slot to uninitialized
     }
 
     // Allocate memory for each shadow image
@@ -494,8 +493,7 @@ void create_shadow_maps() {
     vkQueueWaitIdle(vk.drawingQueue);
     vkFreeCommandBuffers(vk.device, vk.commandPool, 1, &cmd);
 
-    fprintf(stderr, "Created shadow maps: %d %d %d %d %d %d\n",
-        shadow_sz[0], shadow_sz[1], shadow_sz[2], shadow_sz[3], shadow_sz[4], shadow_sz[5]);
+    fprintf(stderr, "Created shadow map: %d\n", shadow_sz[0]);
 }
 
 void create_shadow_framebuffers() {

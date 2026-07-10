@@ -198,10 +198,8 @@ void draw_stuff()
         // below or the stale mesh gets drawn for a frame
         sync_fresh_chunks();
 
-        // Build visible chunk list (single pass: check all frustums)
+        // Build visible chunk list (single pass: check both frustums)
         visible_chunk_count = 0;
-        int far_idx = (shadow_far_render_ab == 0) ? SHADOW_FAR_A : SHADOW_FAR_B;
-        int ext_idx = (shadow_ext_render_ab == 0) ? SHADOW_EXT_A : SHADOW_EXT_B;
         for (int i = 0; i < VAOW; i++) {
                 for (int j = 0; j < VAOD; j++) {
                         if (!VBOLEN_(i, j)) continue;
@@ -212,15 +210,11 @@ void draw_stuff()
                         // Check camera visibility
                         int camera_visible = chunk_in_frustum(cull_mtrx, i, j) && chunk_in_range(i, j);
 
-                        // Check shadow frustums
+                        // Check the shadow frustum
                         unsigned char shadow_mask = 0;
-                        if (shadow_mapping && !shadow_idle) {
-                                if (chunk_in_frustum(shadow[SHADOW_NEAR].matrix, i, j)) shadow_mask |= 1;  // Near
-                                if (chunk_in_frustum(shadow[SHADOW_MID].matrix, i, j)) shadow_mask |= 2;  // Mid
-                                if (shadow_far_render_ab >= 0 && chunk_in_frustum(shadow[far_idx].matrix, i, j)) shadow_mask |= 4;  // Far
-                                // Extreme cascade: only include if camera-visible (too far to cast visible shadows from behind)
-                                if (camera_visible && shadow_ext_render_ab >= 0 && chunk_in_frustum(shadow[ext_idx].matrix, i, j)) shadow_mask |= 8;
-                        }
+                        if (shadow_mapping && !shadow_idle
+                                && chunk_in_frustum(shadow[SHADOW_NEAR].matrix, i, j))
+                                shadow_mask = 1;
 
                         // Include if visible to camera OR any shadow frustum
                         if (!camera_visible && !shadow_mask) continue;
@@ -323,7 +317,6 @@ void draw_stuff()
                                 main_ubo.sun_strength = 1.0f;
                                 main_ubo.sun_warmth = 0.0f;
                         }
-                        main_ubo.outside_cascade_lit = main_ubo.sun_strength;
                 } else {
                         // Nighttime - moonlight fades in/out near horizons
                         float transition = PI / 16.0f;
@@ -345,7 +338,6 @@ void draw_stuff()
                                 main_ubo.sun_strength = 1.0f;
                                 main_ubo.sun_warmth = 0.0f;
                         }
-                        main_ubo.outside_cascade_lit = main_ubo.sun_strength;
                 }
         }
 

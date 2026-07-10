@@ -30,10 +30,8 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 model;
     mat4 view;
     mat4 proj;
-    mat4 shadow_space[6];
+    mat4 shadow_space;
     float BS;
-    float shadow_far_blend;
-    float shadow_ext_blend;
     vec3 day_color;
     vec3 glo_color;
     float fog_lo;
@@ -44,7 +42,6 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     bool shadow_mapping;
     float sun_strength;
     float sun_warmth;
-    float outside_cascade_lit;
     int water_frame;
     float underwater;
     float scootx;
