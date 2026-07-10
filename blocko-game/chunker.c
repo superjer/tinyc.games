@@ -303,7 +303,7 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
                                 int mz = z - tscootz + scootz;
                                 if (gen_area == &main_area
                                                 && mx >= 0 && mx < TILESW && mz >= 0 && mz < TILESD)
-                                        sun_enqueue_raw(mx, y-1, mz, light_level);
+                                        sun_enqueue(mx, y-1, mz, light_level);
                         }
                         // the ground block and everything below start dark
                         memset(sun + y, 0, TILESH-1 - y);

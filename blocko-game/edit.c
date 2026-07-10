@@ -124,7 +124,7 @@ static void tile_light_update(int x, int y, int z, int old, int t)
                         // the caller goes on to use (patch box at the wrong height)
                         for (int yy = y; yy <= TILESH-1; yy++)
                         {
-                                sun_enqueue(x, yy, z, 0, 15);
+                                sun_enqueue(x, yy, z, 15);
                                 if (!ABOVE_GROUND(x, yy+1, z)) break;
                         }
                 }
@@ -137,7 +137,7 @@ static void tile_light_update(int x, int y, int z, int old, int t)
                         if (y < TILESH-1 && SUN_(x  , y+1, z  ) > max) max = SUN_(x  , y+1, z  );
                         if (z > 0        && SUN_(x  , y  , z-1) > max) max = SUN_(x  , y  , z-1);
                         if (z < TILESD-1 && SUN_(x  , y  , z+1) > max) max = SUN_(x  , y  , z+1);
-                        sun_enqueue(x, y, z, 0, max ? max - 1 : 0);
+                        sun_enqueue(x, y, z, max ? max - 1 : 0);
                 }
 
                 max = 0;
@@ -147,11 +147,11 @@ static void tile_light_update(int x, int y, int z, int old, int t)
                 if (y < TILESH-1 && GLO_(x  , y+1, z  ) > max) max = GLO_(x  , y+1, z  );
                 if (z > 0        && GLO_(x  , y  , z-1) > max) max = GLO_(x  , y  , z-1);
                 if (z < TILESD-1 && GLO_(x  , y  , z+1) > max) max = GLO_(x  , y  , z+1);
-                glo_enqueue(x, y, z, 0, max ? max - 1 : 0);
+                glo_enqueue(x, y, z, max ? max - 1 : 0);
         }
 
         if (t == LITE)
-                glo_enqueue(x, y, z, 0, 15);
+                glo_enqueue(x, y, z, 15);
 }
 
 // change one block (window tile coords): write the tile, record it in the

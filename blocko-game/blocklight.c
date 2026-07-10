@@ -2,19 +2,29 @@
 #ifndef BLOCKO_BLOCKLIGHT_C_INCLUDED
 #define BLOCKO_BLOCKLIGHT_C_INCLUDED
 
-void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
+// how much light survives entering this block. caller ensures light >= 1
+static unsigned char attenuate(int t, unsigned char light)
+{
+        if (t == WATR)
+                light--; // water blocks more light
+
+        if (t == RLEF || t == YLEF || t == SLEF)
+        {
+                light--; // leaves block more light
+                if (light) light--;
+        }
+        return light;
+}
+
+// no dedup scan here: the brighter-than guard already rejects same-value
+// repeats, so a duplicate queue entry needs a cell to get brighter twice
+// within one layer - rare, and it only costs one redundant neighbor scan
+void sun_enqueue(int x, int y, int z, unsigned char incoming_light)
 {
         if (incoming_light == 0)
                 return;
 
-        if (T_(x, y, z) == WATR)
-                incoming_light--; // water blocks more light
-
-        if (T_(x, y, z) == RLEF || T_(x, y, z) == YLEF || T_(x, y, z) == SLEF)
-        {
-                incoming_light--; // leaves block more light
-                if (incoming_light) incoming_light--;
-        }
+        incoming_light = attenuate(T_(x, y, z), incoming_light);
 
         if (SUN_(x, y, z) >= incoming_light)
                 return; // already brighter
@@ -25,57 +35,6 @@ void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
         set_sunlight(x, y, z, incoming_light);
 
         // builder threads and the main thread all enqueue here
-        #pragma omp critical (sunq)
-        {
-                if (sq_next_len >= SUNQLEN)
-                {
-                        sunq_outta_room++; // out of room in sun queue
-                }
-                else
-                {
-                        int queued = 0;
-                        for (size_t i = base; i < sq_curr_len && !queued; i++)
-                                if (sunq_curr[i].x == x && sunq_curr[i].y == y && sunq_curr[i].z == z)
-                                        queued = 1;
-                        for (size_t i = 0; i < sq_next_len && !queued; i++)
-                                if (sunq_next[i].x == x && sunq_next[i].y == y && sunq_next[i].z == z)
-                                        queued = 1;
-                        if (!queued)
-                        {
-                                sunq_next[sq_next_len].x = x;
-                                sunq_next[sq_next_len].y = y;
-                                sunq_next[sq_next_len].z = z;
-                                sq_next_len++;
-                        }
-                }
-        }
-}
-
-// gen-time variant: same light rules, but skips the duplicate scan - the
-// chunk builders enqueue each column once, and a stray dupe just re-floods
-// one block. keeps the lock hold tiny so builder threads don't fight
-void sun_enqueue_raw(int x, int y, int z, unsigned char incoming_light)
-{
-        if (incoming_light == 0)
-                return;
-
-        if (T_(x, y, z) == WATR)
-                incoming_light--; // water blocks more light
-
-        if (T_(x, y, z) == RLEF || T_(x, y, z) == YLEF || T_(x, y, z) == SLEF)
-        {
-                incoming_light--; // leaves block more light
-                if (incoming_light) incoming_light--;
-        }
-
-        if (SUN_(x, y, z) >= incoming_light)
-                return; // already brighter
-
-        if (T_(x, y, z) < OPEN)
-                return; // no lighting for solid blocks
-
-        set_sunlight(x, y, z, incoming_light);
-
         #pragma omp critical (sunq)
         {
                 if (sq_next_len >= SUNQLEN)
@@ -90,19 +49,13 @@ void sun_enqueue_raw(int x, int y, int z, unsigned char incoming_light)
         }
 }
 
-void glo_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
+// main thread only (edits and step_glolight) - no critical needed
+void glo_enqueue(int x, int y, int z, unsigned char incoming_light)
 {
         if (incoming_light == 0)
                 return;
 
-        if (T_(x, y, z) == WATR)
-                incoming_light--; // water blocks more light
-
-        if (T_(x, y, z) == RLEF || T_(x, y, z) == YLEF || T_(x, y, z) == SLEF)
-        {
-                incoming_light--; // leaves block more light
-                if (incoming_light) incoming_light--;
-        }
+        incoming_light = attenuate(T_(x, y, z), incoming_light);
 
         if (GLO_(x, y, z) >= incoming_light)
                 return; // already brighter
@@ -117,14 +70,6 @@ void glo_enqueue(int x, int y, int z, int base, unsigned char incoming_light)
                 gloq_outta_room++;
                 return; // out of room in glo queue
         }
-
-        for (size_t i = base; i < gq_curr_len; i++)
-                if (gloq_curr[i].x == x && gloq_curr[i].y == y && gloq_curr[i].z == z)
-                        return; // already queued in current queue
-
-        for (size_t i = 0; i < gq_next_len; i++)
-                if (gloq_next[i].x == x && gloq_next[i].y == y && gloq_next[i].z == z)
-                        return; // already queued in next queue
 
         gloq_next[gq_next_len].x = x;
         gloq_next[gq_next_len].y = y;
@@ -150,12 +95,12 @@ int step_sunlight()
                 int z = sunq_curr[i].z;
                 char pass_on = SUN_(x, y, z);
                 if (pass_on) pass_on--; else continue;
-                if (x           ) sun_enqueue(x-1, y  , z  , i+1, pass_on);
-                if (x < TILESW-1) sun_enqueue(x+1, y  , z  , i+1, pass_on);
-                if (y           ) sun_enqueue(x  , y-1, z  , i+1, pass_on);
-                if (y < TILESH-1) sun_enqueue(x  , y+1, z  , i+1, pass_on);
-                if (z           ) sun_enqueue(x  , y  , z-1, i+1, pass_on);
-                if (z < TILESD-1) sun_enqueue(x  , y  , z+1, i+1, pass_on);
+                if (x           ) sun_enqueue(x-1, y  , z  , pass_on);
+                if (x < TILESW-1) sun_enqueue(x+1, y  , z  , pass_on);
+                if (y           ) sun_enqueue(x  , y-1, z  , pass_on);
+                if (y < TILESH-1) sun_enqueue(x  , y+1, z  , pass_on);
+                if (z           ) sun_enqueue(x  , y  , z-1, pass_on);
+                if (z < TILESD-1) sun_enqueue(x  , y  , z+1, pass_on);
         }
 
         return sq_curr_len;
@@ -176,12 +121,12 @@ int step_glolight()
                 int z = gloq_curr[i].z;
                 char pass_on = GLO_(x, y, z);
                 if (pass_on) pass_on--; else continue;
-                if (x           ) glo_enqueue(x-1, y  , z  , i+1, pass_on);
-                if (x < TILESW-1) glo_enqueue(x+1, y  , z  , i+1, pass_on);
-                if (y           ) glo_enqueue(x  , y-1, z  , i+1, pass_on);
-                if (y < TILESH-1) glo_enqueue(x  , y+1, z  , i+1, pass_on);
-                if (z           ) glo_enqueue(x  , y  , z-1, i+1, pass_on);
-                if (z < TILESD-1) glo_enqueue(x  , y  , z+1, i+1, pass_on);
+                if (x           ) glo_enqueue(x-1, y  , z  , pass_on);
+                if (x < TILESW-1) glo_enqueue(x+1, y  , z  , pass_on);
+                if (y           ) glo_enqueue(x  , y-1, z  , pass_on);
+                if (y < TILESH-1) glo_enqueue(x  , y+1, z  , pass_on);
+                if (z           ) glo_enqueue(x  , y  , z-1, pass_on);
+                if (z < TILESD-1) glo_enqueue(x  , y  , z+1, pass_on);
         }
 
         return gq_curr_len;

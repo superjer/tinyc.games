@@ -730,8 +730,8 @@ int world_collide(struct box box, int wet);
 void debrief();
 
 // blocklight.c protos
-void sun_enqueue(int x, int y, int z, int base, unsigned char incoming_light);
-void glo_enqueue(int x, int y, int z, int base, unsigned char incoming_light);
+void sun_enqueue(int x, int y, int z, unsigned char incoming_light);
+void glo_enqueue(int x, int y, int z, unsigned char incoming_light);
 int step_sunlight();
 int step_glolight();
 void remove_sunlight(int px, int py, int pz);
