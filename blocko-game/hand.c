@@ -130,13 +130,13 @@ void hand_build()
         // lit flat and bright so the held block always reads clearly; main.vert
         // still darkens the side/bottom faces by its per-orient factor, which
         // gives the cube a little shape.
-        float il = 0.9f, gl = 0.f;
-        hbuf[0] = (struct vbufv){ tile_face_tex(t,UP),    UP,    0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-        hbuf[1] = (struct vbufv){ tile_face_tex(t,SOUTH), SOUTH, 0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-        hbuf[2] = (struct vbufv){ tile_face_tex(t,NORTH), NORTH, 0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-        hbuf[3] = (struct vbufv){ tile_face_tex(t,WEST),  WEST,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-        hbuf[4] = (struct vbufv){ tile_face_tex(t,EAST),  EAST,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-        hbuf[5] = (struct vbufv){ tile_face_tex(t,DOWN),  DOWN,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
+        float il = 0.9f;
+        hbuf[0] = (struct vbufv){ tile_face_tex(t,UP),    UP,    0,0,0, il,il,il,il, 1 };
+        hbuf[1] = (struct vbufv){ tile_face_tex(t,SOUTH), SOUTH, 0,0,0, il,il,il,il, 1 };
+        hbuf[2] = (struct vbufv){ tile_face_tex(t,NORTH), NORTH, 0,0,0, il,il,il,il, 1 };
+        hbuf[3] = (struct vbufv){ tile_face_tex(t,WEST),  WEST,  0,0,0, il,il,il,il, 1 };
+        hbuf[4] = (struct vbufv){ tile_face_tex(t,EAST),  EAST,  0,0,0, il,il,il,il, 1 };
+        hbuf[5] = (struct vbufv){ tile_face_tex(t,DOWN),  DOWN,  0,0,0, il,il,il,il, 1 };
 
         int fr = vk.currentFrame;
         if (!hand_alloc[fr].buf)

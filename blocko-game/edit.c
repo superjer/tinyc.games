@@ -92,66 +92,27 @@ int edit_next(int *it, int *x, int *y, int *z, int *tile)
 }
 
 // ground-height and lighting consequences of one tile change (window coords).
-// shared by live edits (set_tile) and overlay replay (edit_apply_chunk)
+// shared by live edits (set_tile) and overlay replay (edit_apply_chunk).
+// light is a pure function of the ground line, so only an edit that moves it
+// changes anything - and then only the four corner columns touching it
 static void tile_light_update(int x, int y, int z, int old, int t)
 {
-        unsigned char max;
-
-        if (old == LITE)
-                remove_glolight(x, y, z);
-
-        if (t < LASTSOLID) // now solid: block light out
+        if (t < LASTSOLID) // now solid: maybe a new highest block
         {
-                if (ABOVE_GROUND(x, y, z))
-                        GNDH_(x, z) = y;
-                remove_glolight(x, y, z);
-                int yy = y;
-                do {
-                        remove_sunlight(x, yy, z);
-                        yy++;
-                } while (yy < TILESH-1 && !IS_OPAQUE(x, yy, z));
+                if (!ABOVE_GROUND(x, y, z))
+                        return;
+                GNDH_(x, z) = y;
         }
-        else if (old < LASTSOLID) // was solid: let light in
+        else if (old < LASTSOLID) // was solid: maybe broke the ground
         {
-                // gndheight needs to change if we broke the ground
-                if (AT_GROUND(x, y, z))
-                        recalc_gndheight(x, z);
-
-                if (ABOVE_GROUND(x, y, z))
-                {
-                        // flood sunlight down the newly-opened column, but with a
-                        // scratch index - mutating y here would corrupt the coords
-                        // the caller goes on to use (patch box at the wrong height)
-                        for (int yy = y; yy <= TILESH-1; yy++)
-                        {
-                                sun_enqueue(x, yy, z, 15);
-                                if (!ABOVE_GROUND(x, yy+1, z)) break;
-                        }
-                }
-                else
-                {
-                        max = 0;
-                        if (x > 0        && SUN_(x-1, y  , z  ) > max) max = SUN_(x-1, y  , z  );
-                        if (x < TILESW-1 && SUN_(x+1, y  , z  ) > max) max = SUN_(x+1, y  , z  );
-                        if (y > 0        && SUN_(x  , y-1, z  ) > max) max = SUN_(x  , y-1, z  );
-                        if (y < TILESH-1 && SUN_(x  , y+1, z  ) > max) max = SUN_(x  , y+1, z  );
-                        if (z > 0        && SUN_(x  , y  , z-1) > max) max = SUN_(x  , y  , z-1);
-                        if (z < TILESD-1 && SUN_(x  , y  , z+1) > max) max = SUN_(x  , y  , z+1);
-                        sun_enqueue(x, y, z, max ? max - 1 : 0);
-                }
-
-                max = 0;
-                if (x > 0        && GLO_(x-1, y  , z  ) > max) max = GLO_(x-1, y  , z  );
-                if (x < TILESW-1 && GLO_(x+1, y  , z  ) > max) max = GLO_(x+1, y  , z  );
-                if (y > 0        && GLO_(x  , y-1, z  ) > max) max = GLO_(x  , y-1, z  );
-                if (y < TILESH-1 && GLO_(x  , y+1, z  ) > max) max = GLO_(x  , y+1, z  );
-                if (z > 0        && GLO_(x  , y  , z-1) > max) max = GLO_(x  , y  , z-1);
-                if (z < TILESD-1 && GLO_(x  , y  , z+1) > max) max = GLO_(x  , y  , z+1);
-                glo_enqueue(x, y, z, max ? max - 1 : 0);
+                if (!AT_GROUND(x, y, z))
+                        return;
+                recalc_gndheight(x, z);
         }
+        else
+                return; // open <-> open (e.g. water/air): ground line unmoved
 
-        if (t == LITE)
-                glo_enqueue(x, y, z, 15);
+        recalc_corners_at(x, z);
 }
 
 // change one block (window tile coords): write the tile, record it in the

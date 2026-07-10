@@ -158,21 +158,18 @@ void item_build()
 
                 // light the whole item from the block it currently sits in, the
                 // same flat-shading mob.c uses for its body
-                float il = 0.4f, gl = 0.f;
+                float il = 0.4f;
                 int bx = (px + bw/2) / BS, by = (py + bw/2) / BS, bz = (pz + bw/2) / BS;
                 if (legit_tile(bx, by, bz))
-                {
                         il = CORN_(bx, by, bz);
-                        gl = KORN_(bx, by, bz);
-                }
 
                 int t = it->tile;
-                *b++ = (struct vbufv){ tile_face_tex(t,UP),    UP,    0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ tile_face_tex(t,SOUTH), SOUTH, 0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ tile_face_tex(t,NORTH), NORTH, 0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ tile_face_tex(t,WEST),  WEST,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ tile_face_tex(t,EAST),  EAST,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ tile_face_tex(t,DOWN),  DOWN,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
+                *b++ = (struct vbufv){ tile_face_tex(t,UP),    UP,    0,0,0, il,il,il,il, 1 };
+                *b++ = (struct vbufv){ tile_face_tex(t,SOUTH), SOUTH, 0,0,0, il,il,il,il, 1 };
+                *b++ = (struct vbufv){ tile_face_tex(t,NORTH), NORTH, 0,0,0, il,il,il,il, 1 };
+                *b++ = (struct vbufv){ tile_face_tex(t,WEST),  WEST,  0,0,0, il,il,il,il, 1 };
+                *b++ = (struct vbufv){ tile_face_tex(t,EAST),  EAST,  0,0,0, il,il,il,il, 1 };
+                *b++ = (struct vbufv){ tile_face_tex(t,DOWN),  DOWN,  0,0,0, il,il,il,il, 1 };
                 item_count++;
         }
 

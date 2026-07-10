@@ -216,9 +216,6 @@ void draw_stuff()
         main_ubo.view_pos[1] = peye1;
         main_ubo.view_pos[2] = peye2;
 
-        main_ubo.glo_color[0] = 0.92f;
-        main_ubo.glo_color[1] = 0.83f;
-        main_ubo.glo_color[2] = 0.69f;
         main_ubo.fog_lo = BS * 50.0f;
         main_ubo.fog_hi = draw_dist * BS * 0.9f;
 

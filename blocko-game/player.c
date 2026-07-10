@@ -201,11 +201,6 @@ void update_player(struct player *p, int real)
                 p->cooldown = 10;
         }
 
-        if (real && p->lighting && !p->cooldown && place_x >= 0) {
-                set_tile(place_x, place_y, place_z, LITE);
-                p->cooldown = 10;
-        }
-
         // double tap forward to run
         if (p->cooldownf > 10) p->runningf = true;
         if (p->cooldownf > 0) p->cooldownf--;

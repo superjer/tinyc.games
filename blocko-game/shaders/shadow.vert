@@ -7,8 +7,7 @@ layout(location = 0) in float tex_in;
 layout(location = 1) in float orient_in;
 layout(location = 2) in vec3 pos_in;
 layout(location = 3) in vec4 illum_in;
-layout(location = 4) in vec4 glow_in;
-layout(location = 5) in float alpha_in;
+layout(location = 4) in float alpha_in;
 
 layout(location = 0) flat out float tex;
 layout(location = 1) out vec2 uv;
@@ -32,7 +31,6 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 proj;
     mat4 shadow_space;
     float BS;
-    vec3 glo_color;
     float fog_lo;
     float fog_hi;
     vec3 light_pos;
@@ -55,10 +53,9 @@ void main(void) {
     // and jitter exactly. everything else in the transparent buffer (water,
     // alpha < 1) is collapsed so only grass casts here.
     bool grass = o >= 20;
-    // in the transparent buffer only grass casts: collapse water (alpha < 1)
-    // and the mushroom light (tex 18, which never cast a shadow). terrain draws
-    // never carry either, so this is a no-op there.
-    if (!grass && (alpha_in < 1.0 || tex_in == 18.0)) {
+    // in the transparent buffer only grass casts: collapse water (alpha < 1).
+    // terrain draws never carry it, so this is a no-op there.
+    if (!grass && alpha_in < 1.0) {
         gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
         return;
     }

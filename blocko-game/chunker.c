@@ -5,7 +5,7 @@
 #include "../common/tinyc.games/taylor_noise.c"
 #include "../common/tinyc.games/terrain.c"
 
-// generate soil and initial sunlight for columns [xlo,xhi) x [zlo,zhi).
+// generate soil and ground height for columns [xlo,xhi) x [zlo,zhi).
 // a range never crosses a chunk boundary, and nothing here reads or writes
 // world state outside the range - neighbor heights come straight from noise
 void gen_columns(int xlo, int xhi, int zlo, int zhi)
@@ -117,53 +117,26 @@ void gen_columns(int xlo, int xhi, int zlo, int zhi)
         }
         #undef BAND
 
-        // set gndheight and initial lighting
+        // set gndheight (the ground line all lighting derives from), and pour
+        // water down into any air pockets below it
         for (int x = xlo; x < xhi; x++) for (int z = zlo; z < zhi; z++)
         {
                 unsigned char *t = &TT_(x, 0, z);
-                unsigned char *sun = &TSUN_(x, 0, z);
 
-                // open sky is the bulk of the column: full sun in one run
                 int y = 0;
                 while (y < TILESH-1 && t[y] == OPEN) y++;
-                memset(sun, 15, y);
 
-                // water and anything else above ground, block by block:
-                // sunlight dims through water, and water pours down into
-                // air pockets the caves carved below it
-                int light_level = 15;
                 int wet = false;
                 for (; y < TILESH-1 && !(t[y] < LASTSOLID); y++)
                 {
                         if (wet && t[y] == OPEN)
                                 t[y] = WATR;
                         if (t[y] == WATR)
-                        {
                                 wet = true;
-                                if (light_level) light_level--;
-                                if (light_level) light_level--;
-                        }
-                        sun[y] = light_level;
                 }
 
                 if (y < TILESH-1) // found the ground
-                {
                         TGNDH_(x, z) = y;
-                        if (y)
-                        {
-                                sun[y-1] = 0;
-                                // the queue works in the main thread's
-                                // window mapping, which can differ mid-scoot.
-                                // light is render: sim areas skip the queue
-                                int mx = x - tscootx + scootx;
-                                int mz = z - tscootz + scootz;
-                                if (gen_area == &main_area
-                                                && mx >= 0 && mx < TILESW && mz >= 0 && mz < TILESD)
-                                        sun_enqueue(mx, y-1, mz, light_level);
-                        }
-                        // the ground block and everything below start dark
-                        memset(sun + y, 0, TILESH-1 - y);
-                }
         }
         #undef HMAP
 }

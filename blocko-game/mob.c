@@ -443,7 +443,7 @@ static int mob_count;
 // one textured cube instance for a remote player's body part, lit like a mob
 static struct vbufv *netplayer_cube(struct vbufv *b, float x, float y, float z,
                 float size, float yaw, float cx, float cz, int tex, int eyes,
-                float il, float gl)
+                float il)
 {
         mob_inst[mob_count].x = x;
         mob_inst[mob_count].y = y;
@@ -456,14 +456,14 @@ static struct vbufv *netplayer_cube(struct vbufv *b, float x, float y, float z,
         mob_inst[mob_count].start = b - mbuf;
         mob_inst[mob_count].eyes = eyes;
 
-        *b++ = (struct vbufv){ tex,    UP, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-        *b++ = (struct vbufv){ tex, SOUTH, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-        *b++ = (struct vbufv){ tex, NORTH, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-        *b++ = (struct vbufv){ tex,  WEST, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-        *b++ = (struct vbufv){ tex,  EAST, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-        *b++ = (struct vbufv){ tex,  DOWN, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
+        *b++ = (struct vbufv){ tex,    UP, 0, 0, 0, il,il,il,il, 1 };
+        *b++ = (struct vbufv){ tex, SOUTH, 0, 0, 0, il,il,il,il, 1 };
+        *b++ = (struct vbufv){ tex, NORTH, 0, 0, 0, il,il,il,il, 1 };
+        *b++ = (struct vbufv){ tex,  WEST, 0, 0, 0, il,il,il,il, 1 };
+        *b++ = (struct vbufv){ tex,  EAST, 0, 0, 0, il,il,il,il, 1 };
+        *b++ = (struct vbufv){ tex,  DOWN, 0, 0, 0, il,il,il,il, 1 };
         if (eyes)
-                *b++ = (struct vbufv){ TEX_SLIME_EYES, SOUTH, 0, 0, -MOB_EYE_OUT, il,il,il,il, gl,gl,gl,gl, 1 };
+                *b++ = (struct vbufv){ TEX_SLIME_EYES, SOUTH, 0, 0, -MOB_EYE_OUT, il,il,il,il, 1 };
         mob_count++;
         return b;
 }
@@ -504,27 +504,24 @@ void mob_build()
                 mob_inst[mob_count].eyes = 1;
 
                 // light the whole body from the block the head is in
-                float il = 0.4f, gl = 0.f;
+                float il = 0.4f;
                 int bx = (px + bw/2) / BS, by = py / BS, bz = (pz + bw/2) / BS;
                 if (legit_tile(bx, by, bz))
-                {
                         il = CORN_(bx, by, bz);
-                        gl = KORN_(bx, by, bz);
-                }
-                if (m->dying) gl = 1.5f; // white-hot death flash
+                if (m->dying) il = 1.5f; // white-hot death flash
 
-                *b++ = (struct vbufv){ TEX_SLIME_BODY,    UP, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ TEX_SLIME_BODY, SOUTH, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ TEX_SLIME_BODY, NORTH, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ TEX_SLIME_BODY,  WEST, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ TEX_SLIME_BODY,  EAST, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ TEX_SLIME_BODY,  DOWN, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
+                *b++ = (struct vbufv){ TEX_SLIME_BODY,    UP, 0, 0, 0, il,il,il,il, 1 };
+                *b++ = (struct vbufv){ TEX_SLIME_BODY, SOUTH, 0, 0, 0, il,il,il,il, 1 };
+                *b++ = (struct vbufv){ TEX_SLIME_BODY, NORTH, 0, 0, 0, il,il,il,il, 1 };
+                *b++ = (struct vbufv){ TEX_SLIME_BODY,  WEST, 0, 0, 0, il,il,il,il, 1 };
+                *b++ = (struct vbufv){ TEX_SLIME_BODY,  EAST, 0, 0, 0, il,il,il,il, 1 };
+                *b++ = (struct vbufv){ TEX_SLIME_BODY,  DOWN, 0, 0, 0, il,il,il,il, 1 };
 
                 // eyes: a full-face quad over the front (south) face, textured
                 // with a transparent-bordered eyes layer (the frag shader
                 // discards the clear part). Nudged out along -z so it doesn't
                 // z-fight the body face; the shader spins it to face the heading.
-                *b++ = (struct vbufv){ TEX_SLIME_EYES, SOUTH, 0, 0, -MOB_EYE_OUT, il,il,il,il, gl,gl,gl,gl, 1 };
+                *b++ = (struct vbufv){ TEX_SLIME_EYES, SOUTH, 0, 0, -MOB_EYE_OUT, il,il,il,il, 1 };
                 mob_count++;
         }
 
@@ -540,17 +537,14 @@ void mob_build()
                 // heading; a player's forward (sin yaw, cos yaw) maps to PI - yaw
                 float yaw = PI - r->yaw;
 
-                float il = 0.4f, gl = 0.f;
+                float il = 0.4f;
                 int bx = cx / BS, by = y / BS, bz = cz / BS;
                 if (legit_tile(bx, by, bz))
-                {
                         il = CORN_(bx, by, bz);
-                        gl = KORN_(bx, by, bz);
-                }
 
-                b = netplayer_cube(b, x + 100, y,        z + 100, 500, yaw, cx, cz,  6, 1, il, gl);
-                b = netplayer_cube(b, x,       y + 500,  z,       700, yaw, cx, cz, 14, 0, il, gl);
-                b = netplayer_cube(b, x + 50,  y + 1200, z + 50,  600, yaw, cx, cz,  5, 0, il, gl);
+                b = netplayer_cube(b, x + 100, y,        z + 100, 500, yaw, cx, cz,  6, 1, il);
+                b = netplayer_cube(b, x,       y + 500,  z,       700, yaw, cx, cz, 14, 0, il);
+                b = netplayer_cube(b, x + 50,  y + 1200, z + 50,  600, yaw, cx, cz,  5, 0, il);
         }
 
         if (!mob_count) return;

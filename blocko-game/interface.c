@@ -39,11 +39,6 @@ void key_move(int down)
                         jump(down);
                         break;
 
-                // place a light
-                case SDLK_E:
-                        player[my_player].lighting = down;
-                        break;
-
                 // spawn a slime where the crosshair points
                 case SDLK_B:
                         if (down && place_x >= 0)

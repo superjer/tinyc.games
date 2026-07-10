@@ -9,8 +9,7 @@ layout(location = 0) in float tex_in;
 layout(location = 1) in float orient_in;
 layout(location = 2) in vec3 pos_in;
 layout(location = 3) in vec4 illum_in;
-layout(location = 4) in vec4 glow_in;
-layout(location = 5) in float alpha_in;
+layout(location = 4) in float alpha_in;
 
 layout(location = 0) flat out float tex;
 layout(location = 1) out vec2 uv;

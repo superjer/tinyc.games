@@ -29,7 +29,6 @@
 // Blocks that faces should be drawn against (transparent or non-solid)
 #define IS_SEE_THROUGH(t) ((t) >= OPEN || (t) == RLEF || (t) == YLEF || (t) == SLEF)
 #define WATR 76
-#define LITE 77
 #define TLGR 78            // tall grass: non-solid billboard growing on GRAS
 #define TMGR 79            // tall mountain grass: non-solid billboard growing on MTGR
 
@@ -107,8 +106,6 @@
 // the core count in startup(); tunable at runtime via the meshthr command.
 // (MAX_MESH_THREADS only sizes the per-thread scratch buffers.)
 int mesh_threads = 8;
-#define SUNQLEN 64000
-#define GLOQLEN 64000
 
 // One shadow cascade: a ±10 block bubble around the player, fading to lit
 // at its edge (see main.frag)
@@ -131,20 +128,14 @@ const int shadow_sz[SHADOW_COUNT] = { 2048 };
 
 // tile pos-to-mem-location macros
 #define T_(x,y,z)    tiles[    ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
-#define SUN_(x,y,z)  sunlight[ ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
-#define GLO_(x,y,z)  glolight[ ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
 #define CORN_(x,y,z) cornlight[((z - scootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - scootx) & (TILESW-1)) * (TILESH+1) + (y)]
-#define KORN_(x,y,z) kornlight[((z - scootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - scootx) & (TILESW-1)) * (TILESH+1) + (y)]
 #define GNDH_(x,z)   gndheight[((z - scootz) & (TILESD-1))              * (TILESW+0) + ((x - scootx) & (TILESW-1))                   ]
 
-// for terrain/worker. tiles/sun/gndheight writes go through the thread's
+// for terrain/worker. tiles/gndheight writes go through the thread's
 // claimed destination window (gen_area) so the same gen code can fill the
 // main ring or a per-player sim area; light stays main-ring (light = render)
 #define TT_(x,y,z)    gen_area->tiles[((z - tscootz) & gen_area->maskd) * gen_area->pitchz + ((x - tscootx) & gen_area->maskw) * gen_area->pitchx + (y)]
-#define TSUN_(x,y,z)  gen_area->sun[  ((z - tscootz) & gen_area->maskd) * gen_area->pitchz + ((x - tscootx) & gen_area->maskw) * gen_area->pitchx + (y)]
-#define TGLO_(x,y,z)  glolight[ ((z - tscootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - tscootx) & (TILESW-1)) * (TILESH+0) + (y)]
 #define TCORN_(x,y,z) cornlight[((z - tscootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - tscootx) & (TILESW-1)) * (TILESH+1) + (y)]
-#define TKORN_(x,y,z) kornlight[((z - tscootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - tscootx) & (TILESW-1)) * (TILESH+1) + (y)]
 #define TGNDH_(x,z)   gen_area->gndh[ ((z - tscootz) & gen_area->maskd) * (gen_area->maskw + 1) + ((x - tscootx) & gen_area->maskw)]
 
 // chunk pos-to-mem-location macros
@@ -287,20 +278,17 @@ struct main_ubo {
     float proj[16];               // mat4 - offset 128
     float shadow_space[16];       // mat4 - offset 192 (the one near cascade)
     float bs;                     // float - offset 256
-    float padding1[3];            // Padding to align glo_color to 16 bytes
-
-    float glo_color[3];   // vec3 - offset 272
-    float fog_lo;         // float - offset 284
-    float fog_hi;         // float - offset 288
-    float padding2[3];    // Padding to align light_pos to 16 bytes
-    float light_pos[3];   // vec3 - offset 304
-    float padding3;       // Padding
-    float view_pos[3];    // vec3 - offset 320
-    int shadow_mapping;   // bool (as int) - offset 332
-    int water_frame;      // int   - offset 336
-    float underwater;     // float - offset 340 (camera eye is in water)
-    float scootx;         // float - offset 344 (window->world block offset x)
-    float scootz;         // float - offset 348 (window->world block offset z)
+    float fog_lo;         // float - offset 260
+    float fog_hi;         // float - offset 264
+    float padding1;       // Padding to align light_pos to 16 bytes
+    float light_pos[3];   // vec3 - offset 272
+    float padding2;       // Padding
+    float view_pos[3];    // vec3 - offset 288
+    int shadow_mapping;   // bool (as int) - offset 300
+    int water_frame;      // int   - offset 304
+    float underwater;     // float - offset 308 (camera eye is in water)
+    float scootx;         // float - offset 312 (window->world block offset x)
+    float scootz;         // float - offset 316 (window->world block offset z)
 } main_ubo;
 
 unsigned int vbo[VAOS], vao[VAOS];
@@ -314,8 +302,7 @@ struct vbufv {
     float orient;  // Location 1
     float x, y, z;  // Location 2
     float illum0, illum1, illum2, illum3; // Location 3
-    float glow0, glow1, glow2, glow3;  // Location 4
-    float alpha;   // Location 5
+    float alpha;   // Location 4
 } ShaderInput;
 
 struct vbufv vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding
@@ -335,22 +322,18 @@ struct vbufv lbuf_mt[MAX_MESH_THREADS][VERTEX_BUFLEN/8 + 1000];
 size_t mesh_leaf_start; // solid face count of the last mesh_region build
 
 unsigned char *tiles;
-unsigned char *sunlight;
-unsigned char *glolight;
 unsigned char gndheight[TILESW * TILESD];
 float *cornlight;
-float *kornlight;
 struct chunk_stamp { int ax, az; };                  // absolute chunk coords a ring
 // a windowed piece of world: a power-of-2 ring of tile columns addressed by
 // absolute coords masked. The main render ring is one (main_area, aliasing
-// tiles/sunlight/gndheight); per-player sim areas are small ones. Gen writes
+// tiles/gndheight); per-player sim areas are small ones. Gen writes
 // go through the thread-local gen_area so one set of macros fits all sizes.
 #define SIM_AREA_CHUNKS 4                     // sim area ring size in chunks
 #define SIM_AREA_W (SIM_AREA_CHUNKS * CHUNKW) // ^ in blocks
 #define SIM_AREA_CMASK (SIM_AREA_CHUNKS - 1)
 struct warea {
         unsigned char *tiles;
-        unsigned char *sun;   // sim areas: gen scratch only (light = render)
         unsigned char *gndh;
         int maskw, maskd;     // block coord masks (TILESW-1 etc for main)
         int pitchx, pitchz;   // array elements per block step in x / z
@@ -369,8 +352,6 @@ struct warea {
 struct warea main_area; // filled in startup() once the buffers exist
 _Thread_local struct warea *gen_area = &main_area;
 struct warea sim_area[NR_PLAYERS]; // [i] follows remote player i (server only)
-unsigned char *area_sun_scratch;   // one shared write-only sun buffer: gen never
-                                   // reads sun, and areas skip light entirely
 // freshly generated area chunks awaiting main-thread edit-overlay replay
 // (the area cousin of just_generated); guarded by the (chunks) critical
 struct area_fresh { struct warea *a; int acx, acz; } area_fresh[256];
@@ -410,21 +391,6 @@ struct point { float x, y, z; };
 struct qchunk { int x, y, z, sqdist; };
 struct qitem { int x; union { int y; int d; }; int z; };
 
-struct qitem sunq0_[SUNQLEN+1];
-struct qitem sunq1_[SUNQLEN+1];
-struct qitem *sunq_curr = sunq0_;
-struct qitem *sunq_next = sunq1_;
-size_t sq_curr_len;
-size_t sq_next_len;
-
-struct qitem gloq0_[GLOQLEN+1];
-struct qitem gloq1_[GLOQLEN+1];
-struct qitem *gloq_curr = gloq0_;
-struct qitem *gloq_next = gloq1_;
-size_t gq_curr_len;
-size_t gq_next_len;
-
-
 struct player {
         struct box pos;
         struct point vel;
@@ -444,7 +410,6 @@ struct player {
         int running;
         int breaking;
         int building;
-        int lighting;
         int cooldown;
         int mine_progress; // frames held on the current target block
         int fvel;
@@ -544,7 +509,7 @@ float mine_frac;    // 0..1 mining progress, shown on the crosshair
 int patch_active;               // a persistent edit patch is pending a rebuild
 int patch_lo[3], patch_hi[3];   // union box of pending edits, ABSOLUTE tiles, inclusive
 int patch_vert_count;           // opaque verts staged for this frame's patch draw
-int patch_water_count;          // water/glow verts staged for this frame's patch draw
+int patch_water_count;          // water verts staged for this frame's patch draw
 // the effective reject/patch box for THIS frame = union of the persistent edit
 // box (break/place, above) and the transient mining box (the block being dug,
 // still solid in tiles but shown as a hole). Recomputed each frame in patch_update
@@ -660,12 +625,6 @@ int world_collide(struct box box, int wet);
 void debrief();
 
 // blocklight.c protos
-void sun_enqueue(int x, int y, int z, unsigned char incoming_light);
-void glo_enqueue(int x, int y, int z, unsigned char incoming_light);
-int step_sunlight();
-int step_glolight();
-void remove_sunlight(int px, int py, int pz);
-void remove_glolight(int px, int py, int pz);
 
 // mesh.c protos
 void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned char face_mask,
@@ -677,8 +636,7 @@ int chunk_in_range(int chunk_x, int chunk_z);
 
 // main.c protos
 void recalc_corner_lighting(int xlo, int xhi, int zlo, int zhi);
-void set_sunlight(int xlo, int ylo, int zlo, int light);
-void set_glolight(int xlo, int ylo, int zlo, int light);
+void recalc_corners_at(int x, int z);
 void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2);
 void move_to_ground(float *inout, int x, int y, int z);
 void recalc_gndheight(int x, int z);

@@ -9,12 +9,10 @@ layout(location = 0) in float tex_in;
 layout(location = 1) in float orient_in;
 layout(location = 2) in vec3 pos_in;
 layout(location = 3) in vec4 illum_in;
-layout(location = 4) in vec4 glow_in;
-layout(location = 5) in float alpha_in;
+layout(location = 4) in float alpha_in;
 
 layout(location = 0) flat out float tex;
 layout(location = 1) out float illum;
-layout(location = 2) out float glow;
 layout(location = 3) flat out float alpha;
 layout(location = 4) out vec2 uv;
 layout(location = 5) out vec4 world_pos_out;
@@ -29,12 +27,11 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 proj;             // offset 128
     mat4 shadow_space;     // offset 192 (the one near cascade)
     float BS;              // offset 256
-    vec3 glo_color;        // offset 272
-    float fog_lo;          // offset 284
-    float fog_hi;          // offset 288
-    vec3 light_pos;        // offset 304
-    vec3 view_pos;         // offset 320
-    bool shadow_mapping;   // offset 332
+    float fog_lo;          // offset 260
+    float fog_hi;          // offset 264
+    vec3 light_pos;        // offset 272
+    vec3 view_pos;         // offset 288
+    bool shadow_mapping;   // offset 300
 } ubo;
 
 layout(push_constant) uniform Push {
@@ -133,7 +130,6 @@ void main(void) {
     gl_Position = push.pv * world_pos;
 
     illum = (0.1 + illum_in[i]) * sidel;
-    glow = (0.1 + glow_in[i]) * sidel;
     uv = uvs[i];
     world_pos_out = world_pos;
 

@@ -131,10 +131,7 @@ void sim_area_write(int ax, int ay, int az, int t)
 
 static void sim_area_alloc(struct warea *a)
 {
-        if (!area_sun_scratch)
-                area_sun_scratch = malloc(SIM_AREA_W * SIM_AREA_W * TILESH);
         a->tiles = malloc(SIM_AREA_W * SIM_AREA_W * TILESH);
-        a->sun = area_sun_scratch;
         a->gndh = malloc(SIM_AREA_W * SIM_AREA_W);
         a->maskw = SIM_AREA_W - 1;
         a->maskd = SIM_AREA_W - 1;

@@ -8,7 +8,6 @@ layout(location = 0) out vec4 color;
 
 layout(location = 0) flat in float tex;
 layout(location = 1) in float illum;
-layout(location = 2) in float glow;
 layout(location = 3) flat in float alpha;
 layout(location = 4) in vec2 uv;
 layout(location = 5) in vec4 world_pos;
@@ -23,16 +22,15 @@ layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 proj;             // offset 128
     mat4 shadow_space;     // offset 192 (the one near cascade)
     float BS;              // offset 256
-    vec3 glo_color;        // offset 272
-    float fog_lo;          // offset 284
-    float fog_hi;          // offset 288
-    vec3 light_pos;        // offset 304
-    vec3 view_pos;         // offset 320
-    bool shadow_mapping;   // offset 332
-    int water_frame;       // offset 336
-    float underwater;      // offset 340 (camera eye is in water)
-    float scootx;          // offset 344 (window->world block offset)
-    float scootz;          // offset 348
+    float fog_lo;          // offset 260
+    float fog_hi;          // offset 264
+    vec3 light_pos;        // offset 272
+    vec3 view_pos;         // offset 288
+    bool shadow_mapping;   // offset 300
+    int water_frame;       // offset 304
+    float underwater;      // offset 308 (camera eye is in water)
+    float scootx;          // offset 312 (window->world block offset)
+    float scootz;          // offset 316
 } ubo;
 
 // No push constants here: this fragment shader is shared by the terrain
@@ -218,9 +216,7 @@ void main(void) {
         sky = vec3(illum + 0.6 * directional);
     }
 
-    vec3 glo_contrib = vec3(glow) * ubo.glo_color;
-    vec3 combined = sky + glo_contrib * (vec3(1.0) - sky);
-    vec4 c = texel * vec4(combined, alpha);
+    vec4 c = texel * vec4(sky, alpha);
 
     if (shiny > 0.5) c.rgb += glint;
 

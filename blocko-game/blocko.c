@@ -249,14 +249,12 @@ void main_loop()
                         sinf(p->pitch),
                         cosf(p->pitch) * cosf(p->yaw));
 
-                // no drawing: adopt fresh chunks (otherwise draw_stuff's job),
-                // keep the light queues draining, and sleep out the rest of
-                // the tick so the loop still runs at ~60Hz. Round the sleep
-                // UP: rounding down leaves sub-ms of tick unspent and the
-                // loop spins through it at hundreds of frames per tick
+                // no drawing: adopt fresh chunks (otherwise draw_stuff's job)
+                // and sleep out the rest of the tick so the loop still runs
+                // at ~60Hz. Round the sleep UP: rounding down leaves sub-ms
+                // of tick unspent and the loop spins through it at hundreds
+                // of frames per tick
                 sync_fresh_chunks();
-                step_sunlight();
-                step_glolight();
                 SDL_Delay((int)(interval - accumulated_elapsed) + 1);
                 frame++;
                 continue;
@@ -267,8 +265,6 @@ void main_loop()
 
         mob_lerp_t = accumulated_elapsed / interval;
         lerp_camera(accumulated_elapsed / interval, &player[my_player], &camplayer);
-        step_sunlight();
-        step_glolight();
         draw_stuff();
         frame++;
 } }
@@ -292,12 +288,9 @@ void startup()
         }
 
         tiles = calloc(TILESD * TILESH * TILESW, sizeof *tiles);
-        sunlight = calloc(TILESD * TILESH * TILESW, sizeof *sunlight);
-        glolight = calloc(TILESD * TILESH * TILESW, sizeof *glolight);
-        main_area = (struct warea){ .tiles = tiles, .sun = sunlight, .gndh = gndheight,
+        main_area = (struct warea){ .tiles = tiles, .gndh = gndheight,
                 .maskw = TILESW-1, .maskd = TILESD-1, .pitchx = TILESH, .pitchz = TILESW * TILESH };
         cornlight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *cornlight);
-        kornlight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *kornlight);
 }
 
 void new_game()
@@ -449,13 +442,7 @@ void apply_scoot()
                         mob_scoot(dx, dz);
                         item_scoot(dx, dz);
 
-                        // pending light updates hold window coords
-                        for (size_t i = 0; i < sq_curr_len; i++) { sunq_curr[i].x += dx; sunq_curr[i].z += dz; }
-                        for (size_t i = 0; i < sq_next_len; i++) { sunq_next[i].x += dx; sunq_next[i].z += dz; }
-                        for (size_t i = 0; i < gq_curr_len; i++) { gloq_curr[i].x += dx; gloq_curr[i].z += dz; }
-                        for (size_t i = 0; i < gq_next_len; i++) { gloq_next[i].x += dx; gloq_next[i].z += dz; }
-
-                        // so does the current block target
+                        // the current block target holds window coords
                         if (target_x >= 0) { target_x += dx; target_z += dz; }
                         if (place_x >= 0)  { place_x  += dx; place_z  += dz; }
 

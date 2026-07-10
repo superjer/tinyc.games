@@ -37,7 +37,7 @@ static int sorter(const void * _a, const void * _b)
 #define W_DOWN_VISIBLE(x, y, z)  (y+1 >= TILESH   || WATER_OPEN(x, y+1, z))
 
 // Emit terrain vertices for an arbitrary box of cells into the global vbuf
-// (opaque, v points past the end) and wbuf (water/glow, w past the end).
+// (opaque, v points past the end) and wbuf (water/grass, w past the end).
 // Parameterized bounds let build_meshes mesh a whole chunk while the spike
 // command (remote.c) measures the cost of smaller regions.
 //
@@ -112,43 +112,35 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                         float dse = CORN_(x+1, y+1, z  );
                         float dnw = CORN_(x  , y+1, z+1);
                         float dne = CORN_(x+1, y+1, z+1);
-                        float USW = KORN_(x  , y  , z  );
-                        float USE = KORN_(x+1, y  , z  );
-                        float UNW = KORN_(x  , y  , z+1);
-                        float UNE = KORN_(x+1, y  , z+1);
-                        float DSW = KORN_(x  , y+1, z  );
-                        float DSE = KORN_(x+1, y+1, z  );
-                        float DNW = KORN_(x  , y+1, z+1);
-                        float DNE = KORN_(x+1, y+1, z+1);
                         int m = x - origin_x;
                         int n = z - origin_z;
 
                         if (t == GRAS)
                         {
-                                if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ 0,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 1, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 1, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 1,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 1,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ 0,    UP, m, y, n, usw, use, unw, une, 1 };
+                                if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 1, SOUTH, m, y, n, use, usw, dse, dsw, 1 };
+                                if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 1, NORTH, m, y, n, unw, une, dnw, dne, 1 };
+                                if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 1,  WEST, m, y, n, usw, unw, dsw, dnw, 1 };
+                                if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 1,  EAST, m, y, n, une, use, dne, dse, 1 };
+                                if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, 1 };
                         }
                         else if (t == MTGR)
                         {
-                                if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ 37,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 38, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 38, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 38,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 38,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){  2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ 37,    UP, m, y, n, usw, use, unw, une, 1 };
+                                if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 38, SOUTH, m, y, n, use, usw, dse, dsw, 1 };
+                                if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 38, NORTH, m, y, n, unw, une, dnw, dne, 1 };
+                                if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 38,  WEST, m, y, n, usw, unw, dsw, dnw, 1 };
+                                if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 38,  EAST, m, y, n, une, use, dne, dse, 1 };
+                                if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){  2,  DOWN, m, y, n, dse, dsw, dne, dnw, 1 };
                         }
                         else if (t == DIRT)
                         {
-                                if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ 2,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 2, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 2, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ 2,    UP, m, y, n, usw, use, unw, une, 1 };
+                                if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 2, SOUTH, m, y, n, use, usw, dse, dsw, 1 };
+                                if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *tv++ = (struct vbufv){ 2, NORTH, m, y, n, unw, une, dnw, dne, 1 };
+                                if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  WEST, m, y, n, usw, unw, dsw, dnw, 1 };
+                                if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  EAST, m, y, n, une, use, dne, dse, 1 };
+                                if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 2,  DOWN, m, y, n, dse, dsw, dne, dnw, 1 };
                         }
                         else if (t == STON || t == SAND || t == ORE || t == OREH || t == HARD || t == WOOD || t == GRAN ||
                                  t == RLEF || t == YLEF || t == SLEF)
@@ -169,12 +161,12 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                                 // a full leaf buffer spills to solid (solid shadow)
                                 int leaf = (t == RLEF || t == YLEF || t == SLEF) && tl < tl_limit;
                                 struct vbufv *o = leaf ? tl : tv;
-                                if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *o++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *o++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 1 };
-                                if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *o++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 1 };
-                                if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *o++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
-                                if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *o++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
-                                if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *o++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                                if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *o++ = (struct vbufv){ f,    UP, m, y, n, usw, use, unw, une, 1 };
+                                if ((face_mask & FACE_SOUTH) && SOUTH_VISIBLE(x, y, z)) *o++ = (struct vbufv){ f, SOUTH, m, y, n, use, usw, dse, dsw, 1 };
+                                if ((face_mask & FACE_NORTH) && NORTH_VISIBLE(x, y, z)) *o++ = (struct vbufv){ f, NORTH, m, y, n, unw, une, dnw, dne, 1 };
+                                if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *o++ = (struct vbufv){ f,  WEST, m, y, n, usw, unw, dsw, dnw, 1 };
+                                if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *o++ = (struct vbufv){ f,  EAST, m, y, n, une, use, dne, dse, 1 };
+                                if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *o++ = (struct vbufv){ f,  DOWN, m, y, n, dse, dsw, dne, dnw, 1 };
                                 if (leaf) tl = o; else tv = o;
                         }
                         else if (t == WATR)
@@ -191,35 +183,26 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                                 int rec = surf ? 10 : 0;
                                 // top surface: only where air is directly above
                                 if (surf)
-                                        *tw++ = (struct vbufv){ 7,  UP+10, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 0.5f };
+                                        *tw++ = (struct vbufv){ 7,  UP+10, m, y, n, usw, use, unw, une, 0.5f };
                                 // sides + bottom: the exposed walls and floor, so a body
                                 // of water doesn't look like it's hovering
-                                if (W_SOUTH_VISIBLE(x, y, z)) *tw++ = (struct vbufv){ 7, SOUTH+rec, m, y, n, use, usw, dse, dsw, USE, USW, DSE, DSW, 0.5f };
-                                if (W_NORTH_VISIBLE(x, y, z)) *tw++ = (struct vbufv){ 7, NORTH+rec, m, y, n, unw, une, dnw, dne, UNW, UNE, DNW, DNE, 0.5f };
-                                if (W_WEST_VISIBLE(x, y, z))  *tw++ = (struct vbufv){ 7,  WEST+rec, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 0.5f };
-                                if (W_EAST_VISIBLE(x, y, z))  *tw++ = (struct vbufv){ 7,  EAST+rec, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 0.5f };
-                                if (W_DOWN_VISIBLE(x, y, z))  *tw++ = (struct vbufv){ 7,      DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 0.5f };
-                        }
-                        else if (t == LITE)
-                        {
-                                // a two-plane billboard (one quad per axis) crossed at
-                                // the cell center. the water pipe is no-cull, so a single
-                                // quad on each axis shows from both sides - emitting the
-                                // opposite-facing twin too would just z-fight it.
-                                *tw++ = (struct vbufv){ 18, SOUTH, m     , y, n+0.5f, use, usw, dse, dsw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
-                                *tw++ = (struct vbufv){ 18,  WEST, m+0.5f, y, n     , usw, unw, dsw, dnw, 1.3f, 1.3f, 1.3f, 1.3f, 1 };
+                                if (W_SOUTH_VISIBLE(x, y, z)) *tw++ = (struct vbufv){ 7, SOUTH+rec, m, y, n, use, usw, dse, dsw, 0.5f };
+                                if (W_NORTH_VISIBLE(x, y, z)) *tw++ = (struct vbufv){ 7, NORTH+rec, m, y, n, unw, une, dnw, dne, 0.5f };
+                                if (W_WEST_VISIBLE(x, y, z))  *tw++ = (struct vbufv){ 7,  WEST+rec, m, y, n, usw, unw, dsw, dnw, 0.5f };
+                                if (W_EAST_VISIBLE(x, y, z))  *tw++ = (struct vbufv){ 7,  EAST+rec, m, y, n, une, use, dne, dse, 0.5f };
+                                if (W_DOWN_VISIBLE(x, y, z))  *tw++ = (struct vbufv){ 7,      DOWN, m, y, n, dse, dsw, dne, dnw, 0.5f };
                         }
                         else if (t == TLGR || t == TMGR)
                         {
-                                // tall grass: two crossed billboard planes like
-                                // LITE, but the vertex shader rotates and jitters
-                                // them per-cell (orient 20/21 = grass plane A/B).
+                                // tall grass: two crossed billboard planes, which
+                                // the vertex shader rotates and jitters
+                                // per-cell (orient 20/21 = grass plane A/B).
                                 // integer m,y,n so the shader can hash the cell;
                                 // lit by the sky corners of the air cell it sits in.
                                 // TLGR uses the lowland texture, TMGR the mountain one
                                 int gtex = (t == TMGR) ? 41 : 40;
-                                *tw++ = (struct vbufv){ gtex, 20, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
-                                *tw++ = (struct vbufv){ gtex, 21, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                *tw++ = (struct vbufv){ gtex, 20, m, y, n, usw, use, unw, une, 1 };
+                                *tw++ = (struct vbufv){ gtex, 21, m, y, n, usw, use, unw, une, 1 };
                         }
 
                 }

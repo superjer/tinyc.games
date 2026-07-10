@@ -31,7 +31,6 @@ static int tile_face_tex(int t, int orient)
                 case RLEF: return 16;
                 case YLEF: return 17;
                 case SLEF: return 39;
-                case LITE: return 18;
                 // BARR has no mesh.c case, so it stays invisible in the world grid,
                 // but a stand-in / dropped item / hand copy is labelled so you can
                 // tell what it is off the grid
@@ -62,17 +61,13 @@ void mine_overlay_build()
         float unw = CORN_(x  , y  , z+1), une = CORN_(x+1, y  , z+1);
         float dsw = CORN_(x  , y+1, z  ), dse = CORN_(x+1, y+1, z  );
         float dnw = CORN_(x  , y+1, z+1), dne = CORN_(x+1, y+1, z+1);
-        float USW = KORN_(x  , y  , z  ), USE = KORN_(x+1, y  , z  );
-        float UNW = KORN_(x  , y  , z+1), UNE = KORN_(x+1, y  , z+1);
-        float DSW = KORN_(x  , y+1, z  ), DSE = KORN_(x+1, y+1, z  );
-        float DNW = KORN_(x  , y+1, z+1), DNE = KORN_(x+1, y+1, z+1);
 
-        obuf[0] = (struct vbufv){ tile_face_tex(t,UP),    UP,    0,0,0, usw,use,unw,une, USW,USE,UNW,UNE, 1 };
-        obuf[1] = (struct vbufv){ tile_face_tex(t,SOUTH), SOUTH, 0,0,0, use,usw,dse,dsw, USE,USW,DSE,DSW, 1 };
-        obuf[2] = (struct vbufv){ tile_face_tex(t,NORTH), NORTH, 0,0,0, unw,une,dnw,dne, UNW,UNE,DNW,DNE, 1 };
-        obuf[3] = (struct vbufv){ tile_face_tex(t,WEST),  WEST,  0,0,0, usw,unw,dsw,dnw, USW,UNW,DSW,DNW, 1 };
-        obuf[4] = (struct vbufv){ tile_face_tex(t,EAST),  EAST,  0,0,0, une,use,dne,dse, UNE,USE,DNE,DSE, 1 };
-        obuf[5] = (struct vbufv){ tile_face_tex(t,DOWN),  DOWN,  0,0,0, dse,dsw,dne,dnw, DSE,DSW,DNE,DNW, 1 };
+        obuf[0] = (struct vbufv){ tile_face_tex(t,UP),    UP,    0,0,0, usw,use,unw,une, 1 };
+        obuf[1] = (struct vbufv){ tile_face_tex(t,SOUTH), SOUTH, 0,0,0, use,usw,dse,dsw, 1 };
+        obuf[2] = (struct vbufv){ tile_face_tex(t,NORTH), NORTH, 0,0,0, unw,une,dnw,dne, 1 };
+        obuf[3] = (struct vbufv){ tile_face_tex(t,WEST),  WEST,  0,0,0, usw,unw,dsw,dnw, 1 };
+        obuf[4] = (struct vbufv){ tile_face_tex(t,EAST),  EAST,  0,0,0, une,use,dne,dse, 1 };
+        obuf[5] = (struct vbufv){ tile_face_tex(t,DOWN),  DOWN,  0,0,0, dse,dsw,dne,dnw, 1 };
 
         int fr = vk.currentFrame;
         if (!mine_alloc[fr].buf)
