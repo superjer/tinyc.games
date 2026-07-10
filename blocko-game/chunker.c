@@ -438,7 +438,7 @@ void gen_chunk_pass2(int cx, int cz)
         // edge corners read the neighbors' edge columns (pass 1 data).
         // light is render: sim areas skip it
         if (gen_area == &main_area)
-                recalc_corner_lighting(xlo, MIN(xhi+1, TILESW-1), zlo, MIN(zhi+1, TILESD-1));
+                recalc_corner_lighting(xlo, MIN(xhi+1, TILESW), zlo, MIN(zhi+1, TILESD));
         gen_pass(&t0, GEN_CORNERS);
 }
 
