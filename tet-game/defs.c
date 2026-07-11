@@ -153,12 +153,10 @@ struct player {
         int crash_time;                 // countdown timer for crash animation
 } play[1], *p;                          // the one player
 
-enum state { MAIN_MENU = 0, PAUSE_MENU, MAX_MENU, PLAY, GAMEOVER} state;
 int win_x = 2000;         // window size
 int win_y = 1500;
 int bs, bs2, bs4;         // individual block size, in half, in quarters
 int tick;                 // counts up one per frame
-int menu_pos;             // current position in menu
 int text_x, text_y;       // position of text drawing
 int line_height;          // text line height
 

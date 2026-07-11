@@ -163,35 +163,6 @@ void set_color(int r, int g, int b)
         color_b = b / 255.f;
 }
 
-void draw_menu()
-{
-        if (state > MAX_MENU) return;
-
-        menu_pos = MAX(menu_pos, 0);
-        menu_pos = MIN(menu_pos, 1);
-        text_x = win_x / 3;
-        text_y = win_y / 3;
-
-        set_color(60, 60, 60);
-        rect(text_x - bs2, text_y - bs2, p->board_w + bs, line_height * 3 + bs);
-        set_color(0, 0, 0);
-        rect(text_x, text_y + line_height * (menu_pos + 1), p->board_w, line_height);
-        draw_end();
-
-        if (state == MAIN_MENU)
-        {
-                text("Main Menu"  , 0);
-                text("Play"       , 0);
-                text("Quit"       , 0);
-        }
-        else if (state == PAUSE_MENU)
-        {
-                text("Pause Menu" , 0);
-                text("Resume game", 0);
-                text("End game"   , 0);
-        }
-}
-
 // draw a single mino (square) of a shape
 void draw_mino(int x, int y, int shape, int outline, int part)
 {
@@ -230,8 +201,6 @@ void draw_shape(int x, int y, int color, int rot, int flags)
 // draw everything in the game on the screen for current player
 void draw_player()
 {
-        if (state == MAIN_MENU) return;
-
         int x = p->board_x + bs * p->shake_x;
         int y = p->board_y + bs * p->shake_y;
 
@@ -341,8 +310,6 @@ void draw_player()
         text_y = y + bs2 * 19;
         if (p->countdown_time > 0)
                 text(countdown_msg[p->countdown_time / CTDN_TICKS], 0);
-
-        if (state == GAMEOVER) text("Game over", 0);
 }
 
 // recalculate sizes and positions on resize

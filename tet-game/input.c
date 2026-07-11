@@ -83,54 +83,12 @@ void gamepad_remove()
         printf("Gamepad removed: id=%d\n", event.gdevice.which);
 }
 
-int menu_input(int key_or_button)
-{
-        switch (key_or_button)
-        {
-                case SDLK_S:  case SDLK_DOWN:
-                case SDL_GAMEPAD_BUTTON_DPAD_DOWN:   menu_pos++; break;
-
-                case SDLK_W:  case SDLK_UP:
-                case SDL_GAMEPAD_BUTTON_DPAD_UP:     menu_pos--; break;
-
-                case SDLK_RETURN:  case SDLK_Z:
-                case SDL_GAMEPAD_BUTTON_SOUTH:
-                        if (state == MAIN_MENU)
-                        {
-                                if (menu_pos == 1) exit(0);
-                                new_game();
-                                state = PLAY;
-                        }
-                        else if (state == PAUSE_MENU)
-                        {
-                                state = menu_pos == 1 ? MAIN_MENU : PLAY;
-                        }
-                        menu_pos = 0;
-                        break;
-                case SDLK_ESCAPE:
-                case SDL_GAMEPAD_BUTTON_START:
-                        if (state == PAUSE_MENU)
-                        {
-                                state = PLAY;
-                                menu_pos = 0;
-                        }
-                        break;
-        }
-
-        p->countdown_time = 4 * CTDN_TICKS;
-
-        return 0;
-}
-
 // handle a key press from a player
 int key_down()
 {
         if (event.key.repeat)    return 0;
 
-        if (state < MAX_MENU)    return menu_input(event.key.key);
-        if (state == GAMEOVER)   return (state = MAIN_MENU);
-
-        if (event.key.key == SDLK_ESCAPE) return (state = PAUSE_MENU);
+        if (event.key.key == SDLK_ESCAPE) exit(0);
 
         if (!p->it.color || p->countdown_time >= CTDN_TICKS) return 0;
 
@@ -161,10 +119,7 @@ void key_up()
 
 int btn_down()
 {
-        if (state == GAMEOVER) return (state = MAIN_MENU);
-        if (state < MAX_MENU) return menu_input(event.gbutton.button);
-
-        if (event.gbutton.button == SDL_GAMEPAD_BUTTON_START) return (state = PAUSE_MENU);
+        if (event.gbutton.button == SDL_GAMEPAD_BUTTON_START) exit(0);
 
         if (p->it.color) switch(event.gbutton.button)
         {

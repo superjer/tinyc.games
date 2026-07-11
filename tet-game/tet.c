@@ -61,7 +61,6 @@ int main()
 
                 draw_start();
                 draw_player();
-                draw_menu();
                 draw_end();
                 vulkan_submit();
 
@@ -107,6 +106,7 @@ void setup()
         audio_init();
         font_init();
         draw_setup();
+        new_game();
 }
 
 void kill_lines()
@@ -250,8 +250,6 @@ void move(int dx, int dy, int gravity)
 // update everything related to current player, while the game is running normally
 void update_player()
 {
-        if (state != PLAY) return;
-
         if (p->countdown_time > 0)
         {
                 int note = p->countdown_time > CTDN_TICKS ? A4 : A5;
