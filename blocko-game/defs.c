@@ -766,7 +766,10 @@ void pmodel_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 unsigned char *pmodel_make_tiles(int *nr_layers);
 void pmodel_net_recv(int slot, const unsigned char *data, int len);
 void pmodel_local_moved(int old_slot);
-void update_texture_layers(int first_layer, int layer_count, unsigned char *rgba); // vksetup.c
+
+// texture.c protos
+void create_texture_array(char **files, int file_count, unsigned char *extra_rgba, int extra_count);
+void update_texture_layers(int first_layer, int layer_count, unsigned char *rgba);
 
 // mine.c protos
 void mine_overlay_build();

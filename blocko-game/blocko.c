@@ -57,6 +57,7 @@
 #include "../common/tinyc.games/font.c"
 #include "cursor.c"
 #include "vksetup.c"
+#include "texture.c"
 #include "remote.c"
 #include "interface.c"
 #include "blocklight.c"
