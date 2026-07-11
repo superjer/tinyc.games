@@ -32,7 +32,6 @@ void key_move(int down)
                 case SDLK_D:      player[my_player].goingr   = down; break;
                 case SDLK_LSHIFT: player[my_player].sneaking = down; break;
                 case SDLK_LCTRL:  player[my_player].running  = down; break;
-                case SDLK_Z:      zooming            = down; break;
 
                 // instantaneous movement
                 case SDLK_SPACE:

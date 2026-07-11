@@ -258,11 +258,6 @@ void update_player(struct player *p, int real)
                 p->ground = 0;
                 p->wet = 0;
                 p->submerged = 0;
-                if (real)
-                {
-                        zoom_amt *= zooming ? 0.9f : 1.2f;
-                        zoom_amt = CLAMP(zoom_amt, 0.25f, 1.0f);
-                }
                 return;
         }
 
@@ -306,13 +301,6 @@ void update_player(struct player *p, int real)
 
         if (p->ground)
                 p->grav = GRAV_ZERO;
-
-        //zooming
-        if (real)
-        {
-                zoom_amt *= zooming ? 0.9f : 1.2f;
-                zoom_amt = CLAMP(zoom_amt, 0.25f, 1.0f);
-        }
 }
 
 #endif // BLOCKO_PLAYER_C_INCLUDED

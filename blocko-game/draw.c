@@ -124,7 +124,7 @@ void draw_stuff()
         float near = 100.f;
         float far = 1000 * BS;  // 1000 blocks with BS=1000
         float fov_degrees = 90.f;  // horizontal FOV in degrees
-        float frustw = near * tanf(fov_degrees * PI / 360.f) * zoom_amt * underwater_zoom;
+        float frustw = near * tanf(fov_degrees * PI / 360.f) * underwater_zoom;
         float frusth = frustw * screenh / screenw;
         float proj_mtrx[] = {
                 near/frustw,            0,                                0,  0,
