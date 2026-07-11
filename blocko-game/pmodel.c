@@ -458,17 +458,20 @@ static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
                                    + fabsf(sinf(an->walk_phase)) * 0.6f * an->speed;
                                 break;
                         case PM_T_TAIL:
-                                // lazy idle sway; wags faster and wider on the
-                                // move, and lifts a little (lift is negative
-                                // pitch, same as the arms' forward-up)
-                                pyaw = sinf(an->t * (1.2f + 2.f * an->speed))
-                                        * (0.25f + 0.25f * an->speed);
+                                // lazy idle sway crossfading into a wag locked
+                                // to the stride (one sway per stride, in step
+                                // with the legs); lifts a little on the move
+                                // (lift is negative pitch, the arms' forward-up)
+                                pyaw = sinf(an->tail_phase) * 0.25f * (1 - an->speed)
+                                     + sinf(an->walk_phase) * 0.45f * an->speed;
                                 pitch = -0.4f * an->speed;
                                 break;
                         case PM_T_JIGGLE:
-                                // rides the damped spring pm_animate keeps -
-                                // landings and the walk bob set it wobbling
-                                pitch = an->bounce;
+                                // the damped spring (landings) plus a pulse
+                                // locked to the torso's walk bob, so it
+                                // bounces in step instead of ringing free
+                                pitch = an->bounce + sinf(an->walk_phase * 2)
+                                        * 0.25f * an->speed;
                                 break;
                         default: break;
                 }
@@ -530,6 +533,7 @@ static struct pm_state {
         float px, py, pz;           // last frame's position
         float walk_phase, speed, crouch, body_yaw, fall, mine, flail;
         float pdy, jp, jv;          // jiggle spring: prev dy, position, velocity
+        float tailp;                // accumulated tail-sway phase
         int airborne, fallt;
         int seen;
 } pm_state[NR_PLAYERS];
@@ -578,17 +582,21 @@ static struct pm_anim *pm_animate(int slot, struct player *pl, float t)
         if (s->airborne) s->fallt++; else s->fallt = 0;
         s->flail += ((s->fallt > 120 ? 1.f : 0.f) - s->flail) * 0.1f;
 
-        // JIGGLE pieces ride a damped spring: vertical jolts kick it
-        // (landings above all - dy collapsing to zero is a big jerk) and
-        // the walk bob keeps it stirred while moving
+        // JIGGLE pieces ride a damped spring kicked by vertical jolts
+        // (landings above all - dy collapsing to zero is a big jerk). The
+        // walking wobble is NOT fed through here: it's a direct bob-locked
+        // pulse in pm_resolve, so it stays in step with the torso
         s->jv += (s->pdy - dy) * 0.003f;
         s->pdy = dy;
-        s->jv += sinf(s->walk_phase * 2) * 0.02f * s->speed;
         s->jv -= s->jp * 0.2f;  // spring toward rest
         s->jv *= 0.9f;          // damping
         s->jp += s->jv;
         if (s->jp >  0.7f) s->jp =  0.7f;
         if (s->jp < -0.7f) s->jp = -0.7f;
+
+        // idle tail-sway phase (walking hands the wag to walk_phase instead);
+        // accumulated, never t * rate - that teleports when the rate moves
+        s->tailp += 1.2f * 0.05f;
 
         // the item arm hammers away while breaking or building
         s->mine += ((pl->breaking || pl->building ? 1.f : 0.f) - s->mine) * 0.3f;
@@ -620,19 +628,20 @@ static struct pm_anim *pm_animate(int slot, struct player *pl, float t)
                 .mine = s->mine,
                 .flail = s->flail,
                 .bounce = s->jp,
+                .tail_phase = s->tailp,
                 .t = t,
                 .style = pm_models[slot].style,
         };
         return a;
 }
 
-// EYES pieces blink by simply not being drawn for ~0.15s every 3-5s. The
+// EYES pieces blink by simply not being drawn for ~0.08s every 3-5s. The
 // cycle is offset and stretched per slot so a crowd never blinks in unison.
 // (t advances 3.0 per second - see pmodel_build)
 static int pm_blinking(int slot, float t)
 {
         float per = 9.f + slot * 5 % 7; // 3..5s in t-units
-        return fmodf(t + slot * 1.7f, per) < 0.45f;
+        return fmodf(t + slot * 1.7f, per) < 0.25f;
 }
 
 static struct pmvert *pm_emit(struct pmvert *b, int slot,

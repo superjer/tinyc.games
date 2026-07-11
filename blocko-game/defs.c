@@ -412,6 +412,8 @@ struct pm_anim {
     float mine;       // 0..1, eased while breaking/building - item arm swings
     float flail;      // 0..1, falling 2s+ - full panic, limbs flail
     float bounce;     // jiggle excitation (landings, walk bob)
+    float tail_phase; // accumulated tail-sway phase (never t * rate: with a
+                      // varying rate that multiplies old t and teleports)
     float t;          // wall clock, for idle motion
     unsigned char style; // PM_STYLE_*, copied from the model
 };

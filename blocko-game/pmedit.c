@@ -286,6 +286,7 @@ struct pmvert *pmedit_emit(struct pmvert *b)
                         .look_pitch = sinf(anim_t * 0.3f) * 0.35f,
                         // canned wobble so JIGGLE pieces preview too
                         .bounce = sinf(anim_t * 2.5f) * 0.3f,
+                        .tail_phase = anim_t * 2.f,
                         .t = anim_t,
                         .style = mo->style,
                 };
