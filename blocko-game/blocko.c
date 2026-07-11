@@ -347,7 +347,22 @@ void new_game()
         while(just_gen_len < 4)
                 SDL_Delay(1); // wait for worker thread build first chunk
 
-        printf("1st 4 chunks generated, ready to start game\n");
+        // and wait for the SPAWN chunk specifically: with two builder
+        // threads, four OTHER chunks can finish while the slow one (a
+        // formation carve, say) is still mid-write - scanning the column
+        // then finds a surface a few blocks low (pass 1 only) or none at
+        // all, and the player starts buried under the finished terrain
+        int scx = (STARTPX/BS + CHUNKW2) / CHUNKW;
+        int scz = (STARTPZ/BS + CHUNKD2) / CHUNKD;
+        for (int ready = 0; !ready; )
+        {
+                #pragma omp critical (chunks)
+                ready = TAGEN_(scx, scz);
+                if (!ready)
+                        SDL_Delay(1);
+        }
+
+        printf("spawn chunk generated, ready to start game\n");
 
         recalc_gndheight(STARTPX/BS, STARTPZ/BS);
         move_to_ground(&player[my_player].pos.y, STARTPX/BS, STARTPY/BS, STARTPZ/BS);
