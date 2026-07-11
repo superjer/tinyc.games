@@ -355,6 +355,16 @@ struct vbufv {
     float alpha;   // Location 5
 } ShaderInput;
 
+// one instance per player-model prism face; the piece's world transform rides
+// along as three matrix rows (pmodel.c fills these, pmodel.vert consumes them)
+struct pmvert {
+    float r0[4], r1[4], r2[4]; // rows of the piece's px -> world matrix
+    float dims[3];             // prism size in px
+    float orient;              // face 1..6, same codes as vbufv
+    float tex;                 // texture array layer for this face
+    float illum, glow;
+};
+
 struct vbufv vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding
 struct vbufv *v_limit = vbuf + VERTEX_BUFLEN;
 struct vbufv *v = vbuf;
@@ -603,6 +613,9 @@ int water_solid_pipe;// opaque water pipeline (far chunks: no blend, back-face
                      // culled, front-to-back for early-Z - see draw.c water pass)
 int mob_pipe;        // mob rendering pipeline (mob.vert + shared main.frag)
 int mob_shadow_pipe; // mob shadow-cast pipeline (mob_shadow.vert + shadow.frag)
+int pmodel_pipe;        // player model pipeline (pmodel.vert + shared main.frag)
+int pmodel_shadow_pipe; // player model shadow caster (pmodel_shadow.vert + shadow.frag)
+int pmodel_tex_base;    // first texture array layer of the player model face tiles
 
 // GPU timestamp queries
 #define GPU_TIMESTAMP_COUNT 8
@@ -717,6 +730,11 @@ void mob_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 void mob_scoot(int dx, int dz);
 int mob_spawn(int bx, int bz);
 int mob_spawn_at(int bx, int by, int bz);
+
+// pmodel.c protos
+void pmodel_build();
+void pmodel_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
+unsigned char *pmodel_make_tiles(int *nr_layers);
 
 // mine.c protos
 void mine_overlay_build();

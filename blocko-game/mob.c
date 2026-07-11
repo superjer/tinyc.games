@@ -685,43 +685,14 @@ void update_mobs()
 // mob geometry is built once per frame (mob_build) then drawn into as many
 // passes as needed (mob_render): the main scene plus the near shadow cascade
 static struct allocation mob_alloc[MAX_FRAMES_IN_FLIGHT];
-// slimes are 6 body faces + 1 eyes overlay each; remote players ride along as
-// three cubes (head with eyes, torso, legs)
-static struct vbufv mbuf[NR_MOBS * 8 + NR_PLAYERS * 20];
+// slimes are 6 body faces + 1 eyes overlay each
+// (remote players draw as articulated models in pmodel.c)
+static struct vbufv mbuf[NR_MOBS * 8];
 // bs is the slime's full body width (from its size); scale is the extra
 // death-shrink factor on top of that (1.0 when alive)
 static struct { float x, y, z, bs, scale, yaw, cx, cz; int start, eyes; }
-        mob_inst[NR_MOBS + NR_PLAYERS * 3];
+        mob_inst[NR_MOBS];
 static int mob_count;
-
-// one textured cube instance for a remote player's body part, lit like a mob
-static struct vbufv *netplayer_cube(struct vbufv *b, float x, float y, float z,
-                float size, float yaw, float cx, float cz, int tex, int eyes,
-                float il, float gl)
-{
-        mob_inst[mob_count].x = x;
-        mob_inst[mob_count].y = y;
-        mob_inst[mob_count].z = z;
-        mob_inst[mob_count].bs = size;
-        mob_inst[mob_count].scale = 1.f;
-        mob_inst[mob_count].yaw = yaw;
-        mob_inst[mob_count].cx = cx;
-        mob_inst[mob_count].cz = cz;
-        mob_inst[mob_count].start = b - mbuf;
-        mob_inst[mob_count].eyes = eyes;
-
-        *b++ = (struct vbufv){ tex,    UP, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-        *b++ = (struct vbufv){ tex, SOUTH, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-        *b++ = (struct vbufv){ tex, NORTH, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-        *b++ = (struct vbufv){ tex,  WEST, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-        *b++ = (struct vbufv){ tex,  EAST, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-        *b++ = (struct vbufv){ tex,  DOWN, 0, 0, 0, il,il,il,il, gl,gl,gl,gl, 1 };
-        if (eyes)
-                *b++ = (struct vbufv){ TEX_SLIME_EYES, SOUTH, 0, 0, -MOB_EYE_OUT, il,il,il,il, gl,gl,gl,gl, 1 };
-        polys += 6 + eyes;
-        mob_count++;
-        return b;
-}
 
 void mob_build()
 {
@@ -782,31 +753,6 @@ void mob_build()
                 *b++ = (struct vbufv){ TEX_SLIME_EYES, SOUTH, 0, 0, -MOB_EYE_OUT, il,il,il,il, gl,gl,gl,gl, 1 };
                 polys += 7;
                 mob_count++;
-        }
-
-        // remote players (net.c): head (sand, with eyes), torso (wood), and
-        // legs (stone) stacked down from pos.y, all spun about the body axis
-        for (int i = 0; net_mode != NET_OFF && i < NR_PLAYERS; i++)
-        {
-                if (!net_player_active(i)) continue;
-                struct player *r = &player[i];
-                float x = r->pos.x, y = r->pos.y, z = r->pos.z;
-                float cx = x + PLYR_W / 2, cz = z + PLYR_W / 2;
-                // the mob shader's yaw spins the south (eyes) face to the
-                // heading; a player's forward (sin yaw, cos yaw) maps to PI - yaw
-                float yaw = PI - r->yaw;
-
-                float il = 0.4f, gl = 0.f;
-                int bx = cx / BS, by = y / BS, bz = cz / BS;
-                if (legit_tile(bx, by, bz))
-                {
-                        il = CORN_(bx, by, bz);
-                        gl = KORN_(bx, by, bz);
-                }
-
-                b = netplayer_cube(b, x + 100, y,        z + 100, 500, yaw, cx, cz,  6, 1, il, gl);
-                b = netplayer_cube(b, x,       y + 500,  z,       700, yaw, cx, cz, 14, 0, il, gl);
-                b = netplayer_cube(b, x + 50,  y + 1200, z + 50,  600, yaw, cx, cz,  5, 0, il, gl);
         }
 
         if (!mob_count) return;

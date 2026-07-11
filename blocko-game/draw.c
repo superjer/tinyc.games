@@ -447,6 +447,7 @@ void draw_stuff()
         // Build mob + mining geometry once so both the shadow pass (near
         // cascade) and the main pass can draw the same vertex buffers
         mob_build();
+        pmodel_build();
         mine_overlay_build();
         item_build();
         hand_build();
@@ -520,6 +521,7 @@ void draw_stuff()
         // pipeline afterward for the block-breaking overlay and the edit patch.
         mob_render(cmdbuf, mob_pipe, proj_view_mtrx);
         item_render(cmdbuf, mob_pipe, proj_view_mtrx); // spins on the mob pipeline
+        pmodel_render(cmdbuf, pmodel_pipe, proj_view_mtrx);
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);
         mine_overlay_render(cmdbuf, main_pipe, proj_view_mtrx);
 

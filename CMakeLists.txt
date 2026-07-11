@@ -111,6 +111,8 @@ set(SHADER_FILES
   blocko-game/shaders/main.frag
   blocko-game/shaders/mob.vert
   blocko-game/shaders/mob_shadow.vert
+  blocko-game/shaders/pmodel.vert
+  blocko-game/shaders/pmodel_shadow.vert
   blocko-game/shaders/shadow.vert
   blocko-game/shaders/shadow.frag
   blocko-game/shaders/shadow_solid.frag
