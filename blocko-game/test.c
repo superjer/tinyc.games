@@ -13,27 +13,15 @@ void debrief()
                 font_end(1, .5f, 1);
         }
 
-        if (help_layer == 1)
+        if (help_layer)
         {
-                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nQ/E \nT   \nH                  \nPress G for more";
-                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nChange held block\nChat\nHide this help text";
+                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nQ/E \nT   \nF   \nN   \nH";
+                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nChange held block\nChat\nFast\nNoclip\nHide this help text";
                 font_begin(screenw, screenh);
                 font_add_text(h1, screenw/100.f, screenh/4.f, 0);
                 font_end(1, 0.5, 1);
                 font_begin(screenw, screenh);
                 font_add_text(h2, screenw/9.f, screenh/4.f, 0);
-                font_end(1, 1, 1);
-        }
-
-        if (help_layer == 2)
-        {
-                char *g1 = "F\nN";
-                char *g2 = "Fast\nNoclip";
-                font_begin(screenw, screenh);
-                font_add_text(g1, screenw/100.f, screenh/4.f, 0);
-                font_end(0.5, 1, 1);
-                font_begin(screenw, screenh);
-                font_add_text(g2, screenw/20.f, screenh/4.f, 0);
                 font_end(1, 1, 1);
         }
 

@@ -59,11 +59,7 @@ void key_move(int down)
                         break;
                 case SDLK_H: // show help
                         if (down)
-                                help_layer = (help_layer == 1) ? 0 : 1;
-                        break;
-                case SDLK_G: // show help
-                        if (down)
-                                help_layer = (help_layer == 2) ? 0 : 2;
+                                help_layer = !help_layer;
                         break;
                 case SDLK_N: // noclip: fly through solids, no gravity
                         if (down) player[my_player].noclip = !player[my_player].noclip;
