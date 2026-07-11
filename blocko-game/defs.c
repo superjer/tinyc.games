@@ -548,7 +548,6 @@ void mob_build();
 void mob_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 void mob_scoot(int dx, int dz);
 int mob_spawn(int bx, int bz);
-int mob_spawn_at(int bx, int by, int bz);
 
 // mine.c protos
 void mine_overlay_build();

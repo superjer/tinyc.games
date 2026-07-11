@@ -71,30 +71,6 @@ int mob_spawn(int bx, int bz)
         return 1;
 }
 
-// drop a slime into block cell (bx,by,bz), standing on the cell floor. used
-// by the "spawn where I'm pointing" shortcut - unlike mob_spawn it doesn't
-// snap to the ground column, so it lands exactly where you aimed.
-int mob_spawn_at(int bx, int by, int bz)
-{
-        struct mob *m = NULL;
-        for (int i = 0; i < NR_MOBS; i++)
-                if (!mob[i].alive) { m = &mob[i]; break; }
-        if (!m) return 0;
-
-        *m = (struct mob){
-                .pos = { bx * BS + (BS - MOB_W) / 2, (by + 1) * BS - MOB_H - 1,
-                         bz * BS + (BS - MOB_W) / 2, MOB_W, MOB_H, MOB_W },
-                .alive = 1,
-                .grav = GRAV_ZERO,
-                .yaw = 0, .prev_yaw = 0, .target_yaw = 0,
-                .hop_cooldown = 15,
-        };
-
-        if (world_collide(m->pos, 0)) { m->alive = 0; return 0; }
-        m->prev = m->pos;
-        return 1;
-}
-
 // a click aimed at a mob punches it instead of mining the block behind it
 void mob_punch()
 {

@@ -38,12 +38,6 @@ void key_move(int down)
                         jump(down);
                         break;
 
-                // spawn a slime where the crosshair points
-                case SDLK_B:
-                        if (down && place_x >= 0)
-                                mob_spawn_at(place_x, place_y, place_z);
-                        break;
-
                 // menu stuff
                 case SDLK_ESCAPE:
                         SDL_SetWindowRelativeMouseMode(vk.window, false);

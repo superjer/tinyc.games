@@ -27,8 +27,8 @@ void debrief()
 
         if (help_layer == 2)
         {
-                char *g1 = "Q\nF\nB\nN";
-                char *g2 = "Go up!\nFast\nSpawn slime\nNoclip";
+                char *g1 = "Q\nF\nN";
+                char *g2 = "Go up!\nFast\nNoclip";
                 font_begin(screenw, screenh);
                 font_add_text(g1, screenw/100.f, screenh/4.f, 0);
                 font_end(0.5, 1, 1);
