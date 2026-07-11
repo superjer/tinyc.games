@@ -162,11 +162,19 @@ void do_shadows()
                 float sfar = dist2sun * 2;
                 float mag = 40000.f;
 
+                // jitter the ortho window a sub-texel amount each frame (hashed
+                // from the frame counter - no rand(), renders stay deterministic)
+                // so the texel staircase on shadow edges lands somewhere new
+                // every frame and flickers into a softer average to the eye
+                float texel = 2.f / shadow_sz[SHADOW_NEAR]; // one texel in NDC
+                float jx = (((pframe * 37u) & 63) / 63.f - 0.5f) * texel;
+                float jy = (((pframe * 23u) & 63) / 63.f - 0.5f) * texel;
+
                 float ortho_mtrx[] = {
                         1.f/mag, 0,       0,                        0,
                         0,       1.f/mag, 0,                        0,
                         0,       0,       -1.f/(sfar - snear),      0,
-                        0,       0,       -snear/(sfar - snear),    1,
+                        jx,      jy,      -snear/(sfar - snear),    1,
                 };
 
                 mat4_multiply(shadow[SHADOW_NEAR].matrix, ortho_mtrx, view_mtrx);
