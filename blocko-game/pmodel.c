@@ -323,6 +323,13 @@ static void pm_mat_yaw(float *m, float a)
         m[0] = c; m[2] = s; m[8] = -s; m[10] = c;
 }
 
+static void pm_mat_roll(float *m, float a) // around z: lateral raises
+{
+        float c = cosf(a), s = sinf(a);
+        pm_mat_ident(m);
+        m[0] = c; m[1] = s; m[4] = -s; m[5] = c;
+}
+
 static void pm_mat_pitch(float *m, float a)
 {
         pm_mat_ident(m);
@@ -382,7 +389,10 @@ static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
                 else
                         par = root; // unreachable (cycle): hang from the box
 
-                float pitch = 0, pyaw = 0;
+                // torso forward-tilt at full crouch; legs counter it (and a
+                // bit more, so knees lead) and the head cancels it entirely
+                #define PM_CROUCH_TILT 0.3f
+                float pitch = 0, pyaw = 0, roll = 0, dy = 0;
                 if (an && an->style == PM_STYLE_FLAIL)
                 {
                         // FLAIL: wave everything but the torso around, index-
@@ -401,25 +411,79 @@ static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
                         // left by default - if a model reads wrong, swap its
                         // leg types)
                         case PM_T_LEG1:
-                                pitch =  sinf(an->walk_phase) * 0.9f * an->speed;
+                                pitch =  sinf(an->walk_phase) * 0.9f * an->speed
+                                       - an->crouch * PM_CROUCH_TILT * 1.5f;
                                 break;
                         case PM_T_LEG2:
-                                pitch = -sinf(an->walk_phase) * 0.9f * an->speed;
+                                pitch = -sinf(an->walk_phase) * 0.9f * an->speed
+                                       - an->crouch * PM_CROUCH_TILT * 1.5f;
                                 break;
                         case PM_T_ARM_L:
-                                pitch = -sinf(an->walk_phase) * 0.45f * an->speed;
+                                // walking swing fades out while falling; the
+                                // arms raise to the sides instead, T-pose, wheee
+                                pitch = -sinf(an->walk_phase) * 0.45f
+                                                * an->speed * (1 - an->fall);
+                                roll = -an->fall * (PI / 2);
                                 break;
                         case PM_T_ARM_R:
-                                pitch =  sinf(an->walk_phase) * 0.45f * an->speed;
+                                pitch =  sinf(an->walk_phase) * 0.45f
+                                                * an->speed * (1 - an->fall);
+                                // mining/attacking: match the first-person
+                                // hand's swing (hand.c) - a 9-tick half-sine
+                                // arc, cocked up between swings, chopping
+                                // down-and-forward at mid-arc (forward-up is
+                                // negative pitch). Wins over the T-pose raise
+                                // or they gimbal-fight
+                                {
+                                float arc = sinf(PI * fmodf(an->t / 0.45f, 1.f));
+                                pitch = pitch * (1 - an->mine)
+                                      - (1.25f - arc * 0.85f) * an->mine;
+                                }
+                                roll = an->fall * (PI / 2) * (1 - an->mine);
+                                break;
+                        case PM_T_HEAD:
+                                // track the real look; yaw is body-relative
+                                // and already limited (the body drags along).
+                                // cancels the crouch tilt it inherits
+                                pitch = an->look_pitch - an->crouch * PM_CROUCH_TILT;
+                                pyaw = -an->look_yaw;
+                                break;
+                        case PM_T_TORSO:
+                                // crouching: sink a little and tilt forward
+                                // (the tilt brings the head down, so only half
+                                // the dip is needed); bob down a touch at full
+                                // stride spread. The whole rig follows
+                                pitch = an->crouch * PM_CROUCH_TILT;
+                                dy = an->crouch * 1.25f
+                                   + fabsf(sinf(an->walk_phase)) * 0.6f * an->speed;
                                 break;
                         default: break;
+                }
+                // a long fall blends every limb into the panic flail (the
+                // FLAIL-style sines, plus yaw on the legs - it's a panic)
+                if (an && an->style == PM_STYLE_WALK && an->flail > 0.001f
+                                && (p->type == PM_T_LEG1 || p->type == PM_T_LEG2
+                                 || p->type == PM_T_ARM_L || p->type == PM_T_ARM_R))
+                {
+                        float pt = an->t * 2.f; // panic runs double speed
+                        float fp = sinf(pt * (1.1f + 0.2f * i) + i) * 0.9f;
+                        float fy = sinf(pt * (0.7f + 0.3f * i) + 2 * i) * 0.9f;
+                        pitch += (fp - pitch) * an->flail;
+                        pyaw  += (fy - pyaw)  * an->flail;
                 }
                 pm_mat_yaw(tmp, pyaw);
                 pm_mat_pitch(tmp2, pitch);
                 mat4_multiply(rot, tmp, tmp2);
+                if (roll != 0)
+                {
+                        pm_mat_roll(tmp, roll);
+                        mat4_multiply(tmp2, rot, tmp);
+                        memcpy(rot, tmp2, sizeof rot);
+                }
 
-                // parent space -> this piece's space: pin origin to attach, rotate there
-                pm_mat_translate(tmp, p->attach[0], p->attach[1], p->attach[2]);
+                // parent space -> this piece's space: pin origin to attach
+                // (plus any vertical offset the animation asked for), rotate there
+                pm_mat_translate(tmp, p->attach[0], p->attach[1] + dy, p->attach[2]);
                 mat4_multiply(tmp2, par, tmp);
                 mat4_multiply(tmp, tmp2, rot);
                 pm_mat_translate(tmp2, -p->origin[0], -p->origin[1], -p->origin[2]);
@@ -448,10 +512,20 @@ static int pm_remote; // instances the main camera sees (the local player's own
 // players' pos/yaw/pitch sync over the net so this works for everyone;
 // sneaking doesn't travel yet, so remote crouch just stays 0.
 static struct pm_state {
-        float px, pz;               // last frame's horizontal position
-        float walk_phase, speed, crouch;
+        float px, py, pz;           // last frame's position
+        float walk_phase, speed, crouch, body_yaw, fall, mine, flail;
+        int airc, airq, airborne, fallt; // freefall detection (see below)
         int seen;
 } pm_state[NR_PLAYERS];
+
+#define PM_HEAD_LIM (PI / 3) // how far the head turns before dragging the body
+
+static float pm_angwrap(float a)
+{
+        while (a >  PI) a -= 2 * PI;
+        while (a < -PI) a += 2 * PI;
+        return a;
+}
 
 static struct pm_anim *pm_animate(int slot, struct player *pl, float t)
 {
@@ -463,6 +537,7 @@ static struct pm_anim *pm_animate(int slot, struct player *pl, float t)
         float dist = sqrtf(dx * dx + dz * dz);
         // a jump bigger than any legal move is a teleport or a world scoot:
         // no stride for those
+        if (!s->seen) s->body_yaw = pl->yaw;
         if (!s->seen || dist > PLYR_SPD_R * 2) dist = 0;
         s->px = pl->pos.x; s->pz = pl->pos.z; s->seen = 1;
 
@@ -472,12 +547,58 @@ static struct pm_anim *pm_animate(int slot, struct player *pl, float t)
         s->speed += (norm - s->speed) * 0.2f;
         s->crouch += ((pl->sneaking ? 1.f : 0.f) - s->crouch) * 0.25f;
 
+        // freefall raises the arms - jumping up counts too. The local player
+        // just KNOWS (the physics ground flag); remote players are inferred
+        // from vertical motion: a few consecutive fast frames arm it (so
+        // stair steps don't flap), and it stays armed across the slow patch
+        // at a jump's apex
+        float dy = pl->pos.y - s->py;
+        s->py = pl->pos.y;
+        if (fabsf(dy) > BS) dy = 0; // teleport
+        if (fabsf(dy) > 50.f) { s->airc++; s->airq = 0; }
+        else                  { s->airc = 0; s->airq++; }
+        if (s->airc >= 5)  s->airborne = 1;
+        if (s->airq >= 15) s->airborne = 0;
+        if (slot == my_player)
+                s->airborne = !pl->ground && !pl->noclip && !pl->wet;
+        // the raise drifts up slowly; settling back is 4x quicker
+        float ft = (float)s->airborne;
+        s->fall += (ft - s->fall) * (ft > s->fall ? 0.02f : 0.08f);
+
+        // a LONG fall (2s+) goes to full panic: arms and legs flail
+        if (s->airborne) s->fallt++; else s->fallt = 0;
+        s->flail += ((s->fallt > 120 ? 1.f : 0.f) - s->flail) * 0.1f;
+
+        // the item arm hammers away while breaking or building. These flags
+        // don't sync, so like crouch it's local-only until they do
+        s->mine += ((pl->breaking || pl->building ? 1.f : 0.f) - s->mine) * 0.3f;
+
+        // the body faces the direction walked - flipped 180 when that's
+        // behind you (S, S+A, S+D back up rather than moonwalk) - and eases
+        // there; standing still it holds
+        if (dist > 1.f)
+        {
+                float move = atan2f(dx, dz);
+                if (fabsf(pm_angwrap(move - pl->yaw)) > PI / 2 + 0.001f)
+                        move += PI;
+                s->body_yaw += pm_angwrap(move - s->body_yaw) * 0.25f;
+        }
+        // the head only turns PM_HEAD_LIM past the body before dragging it
+        float d = pm_angwrap(pl->yaw - s->body_yaw);
+        if (d >  PM_HEAD_LIM) s->body_yaw += d - PM_HEAD_LIM;
+        if (d < -PM_HEAD_LIM) s->body_yaw += d + PM_HEAD_LIM;
+        s->body_yaw = pm_angwrap(s->body_yaw);
+
         *a = (struct pm_anim){
                 .walk_phase = s->walk_phase,
                 .speed = s->speed,
+                .body_yaw = s->body_yaw,
                 .look_pitch = pl->pitch,
-                .look_yaw = 0,
+                .look_yaw = pm_angwrap(pl->yaw - s->body_yaw),
                 .crouch = s->crouch,
+                .fall = s->fall,
+                .mine = s->mine,
+                .flail = s->flail,
                 .bounce = 0,
                 .t = t,
                 .style = pm_models[slot].style,
@@ -534,15 +655,24 @@ void pmodel_build()
         {
                 if (!net_player_active(i)) continue;
                 struct player *r = &player[i];
-                // a player's forward (sin yaw, cos yaw) maps to model yaw PI - yaw
-                b = pm_emit(b, i, r->pos.x, r->pos.y, r->pos.z, PI - r->yaw,
-                                pm_animate(i, r, t));
+                struct pm_anim *a = pm_animate(i, r, t);
+                // a facing of (sin yaw, cos yaw) maps to model yaw PI - yaw;
+                // the model turns with the BODY, the head makes up the look
+                b = pm_emit(b, i, r->pos.x, r->pos.y, r->pos.z,
+                                PI - a->body_yaw, a);
         }
         pm_remote = b - pmbuf;
 
-        // the local player casts a shadow but is never drawn to the camera
-        b = pm_emit(b, my_player, camplayer.pos.x, camplayer.pos.y, camplayer.pos.z,
-                        PI - camplayer.yaw, pm_animate(my_player, &camplayer, t));
+        // the local player: drawn from lerped_pos, the same smoothed position
+        // the camera rides - camplayer.pos is extrapolated a whole tick ahead
+        // and stutters against it in third person
+        struct player lp = camplayer;
+        lp.pos.x = lerped_pos.x;
+        lp.pos.y = lerped_pos.y;
+        lp.pos.z = lerped_pos.z;
+        struct pm_anim *a = pm_animate(my_player, &lp, t);
+        b = pm_emit(b, my_player, lp.pos.x, lp.pos.y, lp.pos.z,
+                        PI - a->body_yaw, a);
         pm_count = b - pmbuf;
 
         // the model editor's preview rides in the same buffer, past pm_count
@@ -558,7 +688,10 @@ void pmodel_build()
 
 void pmodel_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
 {
-        int count = pipe == pmodel_pipe ? pm_remote : pm_count;
+        // the main camera skips your own model only in first person; the
+        // shadow passes always draw everyone
+        int count = pipe == pmodel_pipe && cam_view == CAM_FIRST
+                        ? pm_remote : pm_count;
         if (!count) return;
 
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[pipe].pipeline);

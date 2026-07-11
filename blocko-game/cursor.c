@@ -84,16 +84,21 @@ void cursor(VkCommandBuffer cmdbuf)
         float y = -1.f / (h / 2.f);
         float z = -1.f / ((far - near) / 2.f);
         float tz = -(far + near) / (far - near);
+        // the vertex buffer is built around screen center; the ortho's
+        // translation slides the whole crosshair to the aim point (screen
+        // center in first person, the looked-at spot in the other views)
+        float tx = -1 + (2.f * aim_px / w - 1);
+        float ty =  1 + (2.f * aim_py / h - 1);
         struct {
                 float ortho[16];
                 float incolor[3];
                 float padding;
         } push = {
                 {
-                        x, 0, 0,  0,
-                        0, y, 0,  0,
-                        0, 0, z,  0,
-                       -1, 1, tz, 1
+                        x,  0, 0,  0,
+                        0,  y, 0,  0,
+                        0,  0, z,  0,
+                       tx, ty, tz, 1
                 },
                 { 0.0f, 0.0f, 0.0f }
         };

@@ -104,8 +104,8 @@ void debrief()
 
         if (help_layer == 1)
         {
-                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nWheel\nE          \nT   \n/   \nZ   \nC            \nU   \nH                  \nPress G for more";
-                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nChange held block\nPlace Light\nChat\nCommand\nZoom\nDraw Distance\nEdit your model\nHide this help text";
+                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nWheel\nE          \nT   \n/   \nZ   \nC            \nU   \nV   \nH                  \nPress G for more";
+                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nChange held block\nPlace Light\nChat\nCommand\nZoom\nDraw Distance\nEdit your model\nCamera view\nHide this help text";
                 font_begin(screenw, screenh);
                 font_add_text(h1, screenw/100.f, screenh/4.f, 0);
                 font_end(1, 0.5, 1);

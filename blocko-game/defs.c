@@ -403,9 +403,14 @@ struct pmodel {
 struct pm_anim {
     float walk_phase; // accumulated from horizontal DISTANCE, so feet don't skate
     float speed;      // 0..1 smoothed horizontal speed
+    float body_yaw;   // where the BODY faces: the walk direction (flipped when
+                      // backing up), dragged around when the head hits its limit
     float look_pitch; // the player's real pitch
-    float look_yaw;   // head yaw relative to body facing
+    float look_yaw;   // head yaw relative to body facing, within the head limit
     float crouch;     // 0..1, eased from the sneaking flag
+    float fall;       // 0..1, eased while in freefall - arms go up, wheee
+    float mine;       // 0..1, eased while breaking/building - item arm swings
+    float flail;      // 0..1, falling 2s+ - full panic, limbs flail
     float bounce;     // jiggle excitation (landings, walk bob)
     float t;          // wall clock, for idle motion
     unsigned char style; // PM_STYLE_*, copied from the model
@@ -414,6 +419,17 @@ struct pm_anim {
 struct pmodel pm_models[NR_PLAYERS]; // slot's model; defaults until one arrives
 int pmodel_have[NR_PLAYERS];         // slot has a real (non-default) model
 int pmedit_on;                       // the in-game model editor is open (U key)
+
+// camera views (F5 cycles): first person; third person over the shoulder;
+// second person = in front of the player looking back at you
+enum { CAM_FIRST, CAM_THIRD, CAM_SECOND, CAM_NR_VIEWS };
+int cam_view;
+
+// where the crosshair lands on screen: the player's aim point projected
+// through the camera (dead center in first person, wherever the model is
+// looking otherwise; hidden when it falls behind the camera)
+float aim_px, aim_py;
+int aim_hide;
 
 struct vbufv vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding
 struct vbufv *v_limit = vbuf + VERTEX_BUFLEN;

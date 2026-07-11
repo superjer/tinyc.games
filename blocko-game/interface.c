@@ -40,6 +40,11 @@ void key_move(int down)
                 case SDLK_LCTRL:  player[my_player].running  = down; break;
                 case SDLK_Z:      zooming            = down; break;
 
+                // cycle camera: first person / third person / second person
+                case SDLK_V:
+                        if (down) cam_view = (cam_view + 1) % CAM_NR_VIEWS;
+                        break;
+
                 // instantaneous movement
                 case SDLK_SPACE:
                         jump(down);

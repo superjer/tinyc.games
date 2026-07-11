@@ -174,9 +174,50 @@ void draw_stuff()
         peye0 = lerped_pos.x + PLYR_W / 2;
         peye1 = lerped_pos.y + EYEDOWN * (camplayer.sneaking ? 2 : 1);
         peye2 = lerped_pos.z + PLYR_W / 2;
-        int eyex = peye0 / BS;
-        int eyey = peye1 / BS;
-        int eyez = peye2 / BS;
+
+        // the player's own look direction: aiming and block picking use this
+        // no matter where the camera is (matches lookit()'s forward)
+        float pfwd[3] = { cosf(camplayer.pitch) * sinf(camplayer.yaw),
+                          sinf(camplayer.pitch),
+                          cosf(camplayer.pitch) * cosf(camplayer.yaw) };
+
+        // the camera: at the eye in first person; pulled back over the right
+        // shoulder in third person; out in front looking back at you in
+        // second person. It marches toward its spot and stops short of any
+        // solid block so walls never end up between camera and player.
+        float ceye0 = peye0, ceye1 = peye1, ceye2 = peye2;
+        float cpitch = camplayer.pitch, cyaw = camplayer.yaw;
+        if (cam_view != CAM_FIRST)
+        {
+                float back = cam_view == CAM_THIRD ? -3200.f : 3200.f;
+                float shoulder = cam_view == CAM_THIRD ? 700.f : 0.f;
+                float off0 = pfwd[0] * back + cosf(camplayer.yaw) * shoulder;
+                float off1 = pfwd[1] * back;
+                float off2 = pfwd[2] * back - sinf(camplayer.yaw) * shoulder;
+                float len = sqrtf(off0*off0 + off1*off1 + off2*off2);
+                float t = 0;
+                for (; t < len; t += 50)
+                {
+                        float m = (t + 150) / len; // probe a bit ahead
+                        int bx = (peye0 + off0 * m) / BS;
+                        int by = (peye1 + off1 * m) / BS;
+                        int bz = (peye2 + off2 * m) / BS;
+                        if (legit_tile(bx, by, bz) && IS_SOLID(bx, by, bz))
+                                break;
+                }
+                ceye0 = peye0 + off0 * (t / len);
+                ceye1 = peye1 + off1 * (t / len);
+                ceye2 = peye2 + off2 * (t / len);
+                if (cam_view == CAM_SECOND)
+                {
+                        cyaw = camplayer.yaw + PI;
+                        cpitch = -camplayer.pitch;
+                }
+        }
+
+        int eyex = ceye0 / BS;
+        int eyey = ceye1 / BS;
+        int eyez = ceye2 / BS;
         main_ubo.underwater =
                 (legit_tile(eyex, eyey, eyez) && T_(eyex, eyey, eyez) == WATR) ? 1.f : 0.f;
 
@@ -198,26 +239,53 @@ void draw_stuff()
                           0,            0, -(far * near) / (far - near),  0
         };
 
-        // compute view matrix
+        // compute view matrix (from the camera, wherever it is)
         float f[3];
         float view_mtrx[16];
-        lookit(view_mtrx, f, peye0, peye1, peye2, camplayer.pitch, camplayer.yaw);
+        lookit(view_mtrx, f, ceye0, ceye1, ceye2, cpitch, cyaw);
 
-        // find where we are pointing at
-        rayshot(peye0, peye1, peye2, f[0], f[1], f[2]);
+        // find where we are pointing at - always from the player's own eye
+        rayshot(peye0, peye1, peye2, pfwd[0], pfwd[1], pfwd[2]);
 
         // translate by hand
         float translated_view_mtrx[16];
         memcpy(translated_view_mtrx, view_mtrx, sizeof view_mtrx);
-        translate(translated_view_mtrx, -peye0, -peye1, -peye2);
+        translate(translated_view_mtrx, -ceye0, -ceye1, -ceye2);
 
         mat4_multiply(proj_view_mtrx, proj_mtrx, translated_view_mtrx);
+
+        // pin the crosshair to the aim point on screen: the spot on the
+        // targeted block, or a point out along the look ray on a miss. In
+        // first person that's exactly screen center; elsewhere it lands
+        // where the model is looking (often off screen in second person)
+        {
+                float aimd = 7.f * BS;
+                if (target_x >= 0)
+                        for (float d = 0; d < 8.f * BS; d += 25.f)
+                                if ((int)((peye0 + pfwd[0] * d) / BS) == target_x
+                                 && (int)((peye1 + pfwd[1] * d) / BS) == target_y
+                                 && (int)((peye2 + pfwd[2] * d) / BS) == target_z)
+                                        { aimd = d; break; }
+                float a0 = peye0 + pfwd[0] * aimd;
+                float a1 = peye1 + pfwd[1] * aimd;
+                float a2 = peye2 + pfwd[2] * aimd;
+                float *pv = proj_view_mtrx;
+                float cw = pv[3]*a0 + pv[7]*a1 + pv[11]*a2 + pv[15];
+                aim_hide = cw < 1.f; // at/behind the camera plane
+                if (!aim_hide)
+                {
+                        float cx = pv[0]*a0 + pv[4]*a1 + pv[8]*a2  + pv[12];
+                        float cy = pv[1]*a0 + pv[5]*a1 + pv[9]*a2  + pv[13];
+                        aim_px = (cx / cw * 0.5f + 0.5f) * screenw;
+                        aim_py = (cy / cw * 0.5f + 0.5f) * screenh;
+                }
+        }
 
         if (!lock_culling)
         {
                 memcpy(cull_mtrx, proj_view_mtrx, sizeof cull_mtrx);
-                cull_x = camplayer.pos.x;
-                cull_z = camplayer.pos.z;
+                cull_x = ceye0;
+                cull_z = ceye2;
         }
 
         // Adopt newly generated chunks - must happen before the visible list
@@ -530,8 +598,9 @@ void draw_stuff()
         patch_render(cmdbuf, main_pipe, proj_view_mtrx);
 
         // the held block, floating at the lower right; drawn on top of the world
-        // via a squashed depth range so it never clips into nearby terrain
-        if (!pmedit_on)
+        // via a squashed depth range so it never clips into nearby terrain.
+        // It's a first-person prop: outside first person you see your model
+        if (!pmedit_on && cam_view == CAM_FIRST)
                 hand_render(cmdbuf, main_pipe, proj_view_mtrx);
 
         // Render sky/sun between opaque terrain and transparent water
@@ -619,7 +688,7 @@ void draw_stuff()
         // the model editor's preview draws over the finished world
         pmedit_render(cmdbuf);
 
-        if (mouselook) cursor(cmdbuf);
+        if (mouselook && !aim_hide) cursor(cmdbuf);
 
         // GPU timestamp after terrain
         if (gpu_timestamp_pool) vkCmdWriteTimestamp(cmdbuf, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, gpu_timestamp_pool, GPU_TS_TERRAIN_END);

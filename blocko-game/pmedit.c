@@ -281,6 +281,9 @@ struct pmvert *pmedit_emit(struct pmvert *b)
                 an = (struct pm_anim){
                         .walk_phase = anim_t * 4.f,
                         .speed = 1,
+                        // gentle look sweep so HEAD tracking shows off
+                        .look_yaw = sinf(anim_t * 0.5f) * 0.8f,
+                        .look_pitch = sinf(anim_t * 0.3f) * 0.35f,
                         .t = anim_t,
                         .style = mo->style,
                 };
