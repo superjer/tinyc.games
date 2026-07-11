@@ -152,6 +152,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "OpenMP threads available: %d\n", omp_get_max_threads());
         startup();
 
+        // roll my player model before any networking: joining exchanges
+        // models as part of the handshake below
+        pmodel_init();
+
         // join/host before the terrain workers launch, so a client's first
         // chunks already generate from the server's seed (net_connect blocks
         // until WELCOME lands or times out)

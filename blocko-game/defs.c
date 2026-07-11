@@ -761,6 +761,7 @@ int mob_spawn(int bx, int bz);
 int mob_spawn_at(int bx, int by, int bz);
 
 // pmodel.c protos
+void pmodel_init();
 void pmodel_build();
 void pmodel_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 unsigned char *pmodel_make_tiles(int *nr_layers);

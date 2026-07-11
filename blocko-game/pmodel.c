@@ -132,6 +132,14 @@ static void pmodel_randomize(struct pmodel *mo, unsigned seed)
         pm_paint(mo, dumb_rand(&seed));
 }
 
+static unsigned pm_checksum(struct pmodel *mo) // debug: FNV-1a over the struct
+{
+        unsigned h = 2166136261u;
+        const unsigned char *p = (const unsigned char *)mo;
+        for (size_t i = 0; i < sizeof *mo; i++) { h ^= p[i]; h *= 16777619u; }
+        return h;
+}
+
 // ---- texture array layers: one 72-layer range per player slot --------------
 
 static int pm_slot_layers() { return PM_MAX_PIECES * PM_FACES; }
@@ -145,17 +153,27 @@ static void pm_expand(struct pmodel *mo, unsigned char *rgba)
                                 *out++ = mo->palette[mo->texel[i][f][t]];
 }
 
-// all slots' face tiles for startup: everyone defaults except my own slot,
-// which gets this instance's fresh random model
-unsigned char *pmodel_make_tiles(int *nr_layers)
+// roll this instance's model. Runs from main BEFORE any networking: the join
+// handshake blocks pre-vksetup, so models must exist (and mine must be
+// randomized) by the time WELCOME triggers the MSG_PMODEL exchange
+void pmodel_init()
 {
-        static unsigned char rgba[NR_PLAYERS * PM_MAX_PIECES * PM_FACES * PM_TILE * PM_TILE * 4];
         pm_paint(&pm_default, 12345); // a fixed, recognizable default coat
         for (int i = 0; i < NR_PLAYERS; i++)
                 pm_models[i] = pm_default;
-        pmodel_randomize(&pm_models[my_player], (unsigned)SDL_GetPerformanceCounter());
+        unsigned seed = (unsigned)SDL_GetPerformanceCounter();
+        pmodel_randomize(&pm_models[my_player], seed);
         pmodel_have[my_player] = 1;
+        fprintf(stderr, "pmodel: my model seed %u checksum %08x\n",
+                seed, pm_checksum(&pm_models[my_player]));
+}
 
+// all slots' face tiles for the texture array. By vksetup time the join
+// handshake may already have filled pm_models with remote players' real
+// models (their pre-texture uploads were skipped), so expand, don't reset
+unsigned char *pmodel_make_tiles(int *nr_layers)
+{
+        static unsigned char rgba[NR_PLAYERS * PM_MAX_PIECES * PM_FACES * PM_TILE * PM_TILE * 4];
         for (int i = 0; i < NR_PLAYERS; i++)
                 pm_expand(&pm_models[i], rgba + i * pm_slot_layers() * PM_TILE * PM_TILE * 4);
         *nr_layers = NR_PLAYERS * pm_slot_layers();
@@ -195,7 +213,8 @@ void pmodel_net_recv(int slot, const unsigned char *data, int len)
 
         pmodel_have[slot] = 1;
         pmodel_upload(slot);
-        fprintf(stderr, "pmodel: got player %d's model\n", slot);
+        fprintf(stderr, "pmodel: got player %d's model, checksum %08x\n",
+                slot, pm_checksum(mo));
 }
 
 // the client's slot changed at WELCOME: carry the local model to its new home
