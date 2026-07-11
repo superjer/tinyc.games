@@ -2,7 +2,7 @@
 #ifndef BLOCKO_SHADOW_C_INCLUDED
 #define BLOCKO_SHADOW_C_INCLUDED
 
-// One shadow cascade: a +-10 block ortho volume centered on the player,
+// One shadow cascade: a +-40 block ortho volume centered on the player,
 // rendered every frame. main.frag fades the shadow out over the outer 10%
 // of the map so the bubble has no hard edge.
 
@@ -157,10 +157,10 @@ void do_shadows()
                         1,
                 };
 
-                // Orthographic projection (Vulkan depth [0,1]), +-10 blocks
+                // Orthographic projection (Vulkan depth [0,1]), +-40 blocks
                 float snear = 10.f;
                 float sfar = dist2sun * 2;
-                float mag = 10000.f;
+                float mag = 40000.f;
 
                 float ortho_mtrx[] = {
                         1.f/mag, 0,       0,                        0,

@@ -188,7 +188,10 @@ void main(void) {
             // SATURATES past the [0,1] boundary: beyond the cascade the raw
             // sample is meaningless (z runs past the far plane -> spurious full
             // shadow), so the clamp forces lit there instead of a dark band.
-            unshadow = sampleShadowPCF(shadow_near, shadow_pos.xyz, 0.003, rotation);
+            // PCF radius is a fraction of the map: 0.00075 of the +-40 block
+            // volume = 60 world units, safely inside the 75-unit normal-offset
+            // bias in main.vert (offset must exceed the PCF world radius)
+            unshadow = sampleShadowPCF(shadow_near, shadow_pos.xyz, 0.00075, rotation);
             vec2 e = shadow_pos.xy;
             float fx = max((0.1 - e.x) * 10.0, (e.x - 0.9) * 10.0);
             float fy = max((0.1 - e.y) * 10.0, (e.y - 0.9) * 10.0);

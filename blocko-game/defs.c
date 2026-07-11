@@ -107,7 +107,7 @@
 // (MAX_MESH_THREADS only sizes the per-thread scratch buffers.)
 int mesh_threads = 8;
 
-// One shadow cascade: a ±10 block bubble around the player, fading to lit
+// One shadow cascade: a ±40 block bubble around the player, fading to lit
 // at its edge (see main.frag)
 #define SHADOW_NEAR   0
 #define SHADOW_COUNT  1
