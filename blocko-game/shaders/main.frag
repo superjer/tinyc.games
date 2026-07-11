@@ -60,21 +60,6 @@ const vec2 poissonDisk[16] = vec2[](
     vec2( 0.14383161, -0.14100790)
 );
 
-// cheap 2D value noise for breaking up water wave regularity
-float hash2(vec2 q) {
-    vec3 p3 = fract(vec3(q.xyx) * 0.1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return fract((p3.x + p3.y) * p3.z);
-}
-
-float vnoise(vec2 q) {
-    vec2 i = floor(q);
-    vec2 f = fract(q);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash2(i),               hash2(i + vec2(1, 0)), u.x),
-               mix(hash2(i + vec2(0, 1)),  hash2(i + vec2(1, 1)), u.x), u.y);
-}
-
 // PCF shadow sampling with Poisson disk
 float sampleShadowPCF(sampler2DShadow shadowMap, vec3 shadowCoord, float radius, float rotation) {
     float shadow = 0.0;
@@ -107,55 +92,29 @@ void main(void) {
     vec4 texel = texture(tarray, vec3(final_uv, final_tex));
     if (texel.a < 0.5) discard;
 
-    // water gets an animated rippled normal for lighting
+    // water gets an animated swell normal for lighting
     vec3 N = normal;
-    float swell_shade = 0.0;  // view-independent brightness roll from the long swell
+    float swell_shade = 0.0;  // view-independent brightness roll from the swell
     if (alpha < 1.0) {
         float t = float(ubo.water_frame) * 0.03;
         // absolute world coords (window mesh slides on scoot): subtract scoot so
         // the wave phase stays pinned to the world and doesn't snap at a scoot
         vec2 p = world_pos.xz / ubo.BS - vec2(ubo.scootx, ubo.scootz);
 
-        // fade ripple detail with distance so normals flatten out
-        // long before a pixel spans a whole wave (kills moire)
-        float dist_b = length(ubo.view_pos.xz - world_pos.xz) / ubo.BS;
-        float swell_amt = 1.0 - smoothstep(20.0, 120.0, dist_b);
-        float chop_amt  = 1.0 - smoothstep(4.0, 28.0, dist_b);
-
-        // noise kills the repetition: warp bends the wavefronts so they
-        // wander, energy makes patches of calm and choppy water
-        float warp = 6.283 * vnoise(p * 0.13 + t * 0.06);
-        float energy = 0.5 + vnoise(p * 0.045 - t * 0.03);
-
-        // directional waves at odd angles and incommensurate
-        // frequencies so no grid or repeat pattern lines up
-        const vec2 D1 = vec2( 0.36,  0.93), D2 = vec2(-0.80,  0.60),
-                   D3 = vec2( 0.98, -0.17), D4 = vec2(-0.51, -0.86);
-        vec2 slope = energy * (
-            swell_amt * (0.055 * D1 * cos(dot(p, D1) *  2.9 + t * 1.6 + warp)
-                       + 0.045 * D2 * cos(dot(p, D2) *  4.3 - t * 1.2 + 1.7 * warp))
-          + chop_amt  * (0.040 * D3 * cos(dot(p, D3) * 14.7 + t * 4.1 + 2.6 * warp)
-                       + 0.035 * D4 * cos(dot(p, D4) * 18.3 - t * 3.3 + 3.4 * warp)));
-
-        // Long, low-frequency swell that survives to the horizon. Its wavelength
-        // (~20-35 blocks) stays many pixels wide even at range, so unlike the
-        // short ripples above it doesn't alias when a pixel spans a wave - it
-        // gives distant water gently rolling light/dark detail instead of a flat
-        // mirror. Only lightly faded, so it's still present at the fog line.
-        const vec2 L1 = vec2( 0.71,  0.70), L2 = vec2(-0.34,  0.94);
-        float long_amt = 1.0 - 0.5 * smoothstep(40.0, 300.0, dist_b);
-        slope += long_amt * (
-              0.030 * L1 * cos(dot(p, L1) * 0.19 + t * 0.6 + warp)
-            + 0.024 * L2 * cos(dot(p, L2) * 0.28 - t * 0.5 + 0.7 * warp));
-
+        // two long swells at odd angles and incommensurate frequencies so
+        // their sum never lines up into a repeat. Wavelengths (~20-30 blocks)
+        // stay many pixels wide even at range, so no moire at distance.
+        const vec2 D1 = vec2( 0.71,  0.70), D2 = vec2(-0.34,  0.94);
+        float a1 = dot(p, D1) * 0.19 + t * 0.6;
+        float a2 = dot(p, D2) * 0.28 - t * 0.5;
+        vec2 slope = 0.060 * D1 * cos(a1) + 0.048 * D2 * cos(a2);
         N = normalize(N + vec3(slope.x, 0.0, slope.y));
 
-        // Height of that same long swell (sin is the integral of the cos slope
+        // Height of that same swell (sin is the integral of the cos slope
         // above), used as a view-INDEPENDENT brightness roll. The reflection
         // detail vanishes looking straight down (fresnel -> 0), so this term
         // keeps the crests bright and troughs dark from directly overhead.
-        swell_shade = long_amt * (0.5 * sin(dot(p, L1) * 0.19 + t * 0.6 + warp)
-                                + 0.5 * sin(dot(p, L2) * 0.28 - t * 0.5 + 0.7 * warp));
+        swell_shade = 0.5 * sin(a1) + 0.5 * sin(a2);
     }
 
     vec3 glint = vec3(0.0);
