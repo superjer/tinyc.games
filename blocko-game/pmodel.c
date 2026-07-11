@@ -457,6 +457,19 @@ static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
                                 dy = an->crouch * 1.25f
                                    + fabsf(sinf(an->walk_phase)) * 0.6f * an->speed;
                                 break;
+                        case PM_T_TAIL:
+                                // lazy idle sway; wags faster and wider on the
+                                // move, and lifts a little (lift is negative
+                                // pitch, same as the arms' forward-up)
+                                pyaw = sinf(an->t * (1.2f + 2.f * an->speed))
+                                        * (0.25f + 0.25f * an->speed);
+                                pitch = -0.4f * an->speed;
+                                break;
+                        case PM_T_JIGGLE:
+                                // rides the damped spring pm_animate keeps -
+                                // landings and the walk bob set it wobbling
+                                pitch = an->bounce;
+                                break;
                         default: break;
                 }
                 // a long fall blends every limb into the panic flail (the
@@ -514,6 +527,7 @@ static int pm_remote; // instances the main camera sees (the local player's own
 static struct pm_state {
         float px, py, pz;           // last frame's position
         float walk_phase, speed, crouch, body_yaw, fall, mine, flail;
+        float pdy, jp, jv;          // jiggle spring: prev dy, position, velocity
         int airc, airq, airborne, fallt; // freefall detection (see below)
         int seen;
 } pm_state[NR_PLAYERS];
@@ -569,6 +583,18 @@ static struct pm_anim *pm_animate(int slot, struct player *pl, float t)
         if (s->airborne) s->fallt++; else s->fallt = 0;
         s->flail += ((s->fallt > 120 ? 1.f : 0.f) - s->flail) * 0.1f;
 
+        // JIGGLE pieces ride a damped spring: vertical jolts kick it
+        // (landings above all - dy collapsing to zero is a big jerk) and
+        // the walk bob keeps it stirred while moving
+        s->jv += (s->pdy - dy) * 0.003f;
+        s->pdy = dy;
+        s->jv += sinf(s->walk_phase * 2) * 0.02f * s->speed;
+        s->jv -= s->jp * 0.2f;  // spring toward rest
+        s->jv *= 0.9f;          // damping
+        s->jp += s->jv;
+        if (s->jp >  0.7f) s->jp =  0.7f;
+        if (s->jp < -0.7f) s->jp = -0.7f;
+
         // the item arm hammers away while breaking or building. These flags
         // don't sync, so like crouch it's local-only until they do
         s->mine += ((pl->breaking || pl->building ? 1.f : 0.f) - s->mine) * 0.3f;
@@ -599,11 +625,20 @@ static struct pm_anim *pm_animate(int slot, struct player *pl, float t)
                 .fall = s->fall,
                 .mine = s->mine,
                 .flail = s->flail,
-                .bounce = 0,
+                .bounce = s->jp,
                 .t = t,
                 .style = pm_models[slot].style,
         };
         return a;
+}
+
+// EYES pieces blink by simply not being drawn for ~0.15s every 3-5s. The
+// cycle is offset and stretched per slot so a crowd never blinks in unison.
+// (t advances 3.0 per second - see pmodel_build)
+static int pm_blinking(int slot, float t)
+{
+        float per = 9.f + slot * 5 % 7; // 3..5s in t-units
+        return fmodf(t + slot * 1.7f, per) < 0.45f;
 }
 
 static struct pmvert *pm_emit(struct pmvert *b, int slot,
@@ -624,6 +659,9 @@ static struct pmvert *pm_emit(struct pmvert *b, int slot,
 
         for (int i = 0; i < mo->nr_pieces; i++)
         {
+                if (mo->piece[i].type == PM_T_EYES && an
+                                && pm_blinking(slot, an->t))
+                        continue;
                 float *m = geom[i];
                 for (int f = 0; f < PM_FACES; f++)
                 {
@@ -638,8 +676,8 @@ static struct pmvert *pm_emit(struct pmvert *b, int slot,
                         };
                         b++;
                 }
+                polys += PM_FACES;
         }
-        polys += mo->nr_pieces * PM_FACES;
         return b;
 }
 

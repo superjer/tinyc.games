@@ -284,6 +284,8 @@ struct pmvert *pmedit_emit(struct pmvert *b)
                         // gentle look sweep so HEAD tracking shows off
                         .look_yaw = sinf(anim_t * 0.5f) * 0.8f,
                         .look_pitch = sinf(anim_t * 0.3f) * 0.35f,
+                        // canned wobble so JIGGLE pieces preview too
+                        .bounce = sinf(anim_t * 2.5f) * 0.3f,
                         .t = anim_t,
                         .style = mo->style,
                 };
@@ -396,14 +398,18 @@ struct pmvert *pmedit_emit(struct pmvert *b)
         for (int i = 0; i < pmedit_nr; i++)
         {
                 if (i == pmedit_sel) continue;
+                // the ANIMATE preview blinks its EYES pieces like the game
+                // does (the selected piece stays visible - you're editing it)
+                if (pmedit_animate && mo->piece[i].type == PM_T_EYES
+                                && pm_blinking(my_player, anim_t))
+                        continue;
                 for (int fc = 0; fc < PM_FACES; fc++)
                         *b++ = PM_EDIT_FACE(pmedit_mats[i],
                                 mo->piece[i].dims[0], mo->piece[i].dims[1], mo->piece[i].dims[2],
                                 pmodel_tex_base + my_player * pm_slot_layers() + i * PM_FACES + fc,
                                 0.9f, 0.8f);
         }
-        pm_edit_rest_count = pmedit_sel < 0 ? pmedit_nr * PM_FACES
-                                            : (pmedit_nr - 1) * PM_FACES;
+        pm_edit_rest_count = (int)(b - pmbuf) - pm_edit_rest_start;
 
         // selection outline: the selected prism again, inflated by a pixel
         // membrane, in solid white (the extra layer past every slot's tiles).
