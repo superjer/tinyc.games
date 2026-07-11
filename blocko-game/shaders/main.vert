@@ -202,6 +202,17 @@ void main(void) {
     if (all(greaterThanEqual(cell, push.reject_lo.xyz - 0.5)) &&
         all(lessThanEqual(cell, push.reject_hi.xyz + 0.5)))
         gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
+
+    // fog reject: past fog_hi the fog (main.frag) is fully opaque, so a face
+    // whose whole quad sits out there paints nothing but sky color - collapse
+    // it like the edit-box reject above. Not a perf win (the pass is vertex-
+    // bound; this only skips near-free rasterization), but it stops fully-fogged
+    // terrain from writing depth over the sun/moon/stars, which draw after the
+    // terrain pass and would otherwise be occluded by that invisible geometry.
+    // `world` is the cell base; +bs*0.5 -> center, and a block-and-a-half of
+    // slop keeps any face still holding a visible (fog < 1) fragment.
+    if (length(ubo.view_pos.xz - (world.xz + bs * 0.5)) - bs * 1.5 > ubo.fog_hi)
+        gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
     illum = (0.1 + illum_in[i]) * sidel;
     glow = (0.1 + glow_in[i]) * sidel;
     uv = uvs[i];

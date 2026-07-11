@@ -43,11 +43,18 @@ int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z)
 
 int chunk_in_range(int chunk_x, int chunk_z)
 {
-        float draw_dist_sq = draw_dist * BS * draw_dist * BS;
-        float delta_x = cull_x - (chunk_x + .5f) * BS * CHUNKW;
-        float delta_z = cull_z - (chunk_z + .5f) * BS * CHUNKD;
+        // Fog (main.frag) hits full opacity at fog_hi, so a chunk whose NEAREST
+        // point is already past fog_hi paints nothing but sky color - cull it.
+        // Keep the 0.9f in sync with main_ubo.fog_hi in draw_stuff below. Nearest
+        // point (camera clamped to the chunk footprint) so no still-visible near
+        // corner gets clipped.
+        float fog_hi = draw_dist * BS * 0.9f;
+        float x0 = chunk_x * BS * CHUNKW, x1 = x0 + BS * CHUNKW;
+        float z0 = chunk_z * BS * CHUNKD, z1 = z0 + BS * CHUNKD;
+        float delta_x = cull_x - ICLAMP(cull_x, x0, x1);
+        float delta_z = cull_z - ICLAMP(cull_z, z0, z1);
         float dist_sq = delta_x * delta_x + delta_z * delta_z;
-        return dist_sq < draw_dist_sq;
+        return dist_sq < fog_hi * fog_hi;
 }
 
 // Adopt chunks the terrain workers finished since last frame: mark them dirty,
