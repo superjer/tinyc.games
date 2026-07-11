@@ -250,8 +250,6 @@ int key_down()
 {
         if (event.key.repeat)    return 0;
 
-        if (event.key.key == SDLK_M) return music_toggle();
-
         if (state < MAX_MENU)    return menu_input(event.key.key);
         if (state == GAMEOVER)   return (state = MAIN_MENU);
         if (state == ASSIGN)     return assign(device_from_key(), event.key.which);

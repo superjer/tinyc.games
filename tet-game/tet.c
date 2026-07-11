@@ -28,7 +28,6 @@
 #include "defs.c"
 #include "graphics.c"
 #include "input.c"
-#include "music.c"
 
 int get_interval()
 {
@@ -66,7 +65,6 @@ int main()
                 draw_menu();
                 draw_particles();
                 draw_end();
-                update_music();
                 vulkan_submit();
 
                 tick++;
@@ -110,7 +108,6 @@ void setup()
         audio_init();
         font_init();
         draw_setup();
-        music_setup();
 }
 
 unsigned garb_rand()
