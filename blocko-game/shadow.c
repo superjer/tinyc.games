@@ -102,7 +102,6 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
 
         // mobs and the block being mined cast shadows as well
         mob_render(cmdbuf, mob_shadow_pipe, shadow_pv);
-        item_render(cmdbuf, mob_shadow_pipe, shadow_pv);
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[shadow_pipe].pipeline);
         mine_overlay_render(cmdbuf, shadow_pipe, shadow_pv);
 

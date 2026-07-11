@@ -64,7 +64,6 @@
 #include "mob.c"
 #include "mine.c"
 #include "hand.c"
-#include "item.c"
 #include "test.c"
 #include "chunker.c"
 
@@ -227,7 +226,6 @@ void main_loop()
                 update_player(&player[my_player], 1);
                 hand_animate(&player[my_player]);
                 update_mobs();
-                update_items();
                 pframe++;
                 accumulated_elapsed -= interval;
         }
@@ -439,7 +437,6 @@ void apply_scoot()
                         }
 
                         mob_scoot(dx, dz);
-                        item_scoot(dx, dz);
 
                         // the current block target holds window coords
                         if (target_x >= 0) { target_x += dx; target_z += dz; }

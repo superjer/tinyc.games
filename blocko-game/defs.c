@@ -560,11 +560,6 @@ void hand_build();
 void hand_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 
 // item.c protos
-void item_spawn(int x, int y, int z, int tile);
-void update_items();
-void item_scoot(int dx, int dz);
-void item_build();
-void item_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 
 // edit.c protos
 void dirty_around(int x, int z);

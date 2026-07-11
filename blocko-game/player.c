@@ -169,7 +169,6 @@ void update_player(struct player *p, int real)
                 int x = target_x;
                 int y = target_y;
                 int z = target_z;
-                int broken = T_(x, y, z);
 
                 // tall grass grows on top of a block (the cell at y-1); with its
                 // footing gone it has nothing to root in, so clear it too - first,
@@ -180,10 +179,6 @@ void update_player(struct player *p, int real)
                 // set_tile (edit.c) records the edit and handles gndheight,
                 // lighting, and rebuilding the chunks around the block
                 set_tile(x, y, z, OPEN);
-
-                // pop a little half-size copy of the block loose to tumble to the
-                // ground (cosmetic; catches every break path, lights included)
-                item_spawn(x, y, z, broken);
                 mine_heal();
                 p->cooldown = 5;
                 // this target is spent. A long frame can run another update tick
