@@ -532,7 +532,6 @@ VkBuffer vulkan_fill_buffer(void *buf, size_t sz);
 void cursor(VkCommandBuffer cmdbuf);
 
 // atmosphere.c protos
-void sun_draw(VkCommandBuffer cmdbuf, float *proj, float *view);
 
 // player.c protos
 void lerp_camera(float t, struct player *a, struct player *b);

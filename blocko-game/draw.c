@@ -346,10 +346,6 @@ void draw_stuff()
         // via a squashed depth range so it never clips into nearby terrain
         hand_render(cmdbuf, main_pipe, proj_view_mtrx);
 
-        // Render the sun between opaque terrain and transparent water
-        if (!main_ubo.underwater) // too murky to see the sun
-                sun_draw(cmdbuf, proj_mtrx, view_mtrx);
-
         // Pass 2: water, split by distance. Far chunks are fully past the
         // smoothstep(40,100) alpha ramp in main.frag, so their fragments are
         // already opaque - out there we render on the solid pipeline (no blend,

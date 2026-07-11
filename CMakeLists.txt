@@ -120,8 +120,6 @@ set(SHADER_FILES
   common/tinyc.games/shaders/font.frag
   tet-game/shaders/tet.vert
   tet-game/shaders/tet.frag
-  blocko-game/shaders/sun.vert
-  blocko-game/shaders/sun.frag
   noise-demo/shaders/noise.vert
   noise-demo/shaders/noise.frag
 )

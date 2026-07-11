@@ -46,7 +46,6 @@
 #include "vector.c"
 #include "defs.c"
 #include "../common/tinyc.games/terrain.c"
-#include "atmosphere.c"
 #include "simarea.c"
 #include "collision.c"
 #include "mesh.c"
@@ -160,7 +159,6 @@ int main(int argc, char **argv)
                 vk.clear_color = (VkClearColorValue){{0.53f, 0.71f, 0.92f, 1.f}};
                 font_init();
                 cursor_init();
-                sun_init();
         }
         if (TERRAIN_THREAD)
                 new_game();
