@@ -15,8 +15,8 @@ void debrief()
 
         if (help_layer)
         {
-                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nQ/E \nT   \nF   \nN   \nH";
-                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nChange held block\nChat\nFast\nNoclip\nHide this help text";
+                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nQ/E \nT   \nN   \nH";
+                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nChange held block\nChat\nNoclip\nHide this help text";
                 font_begin(screenw, screenh);
                 font_add_text(h1, screenw/100.f, screenh/4.f, 0);
                 font_end(1, 0.5, 1);

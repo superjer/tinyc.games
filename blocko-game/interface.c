@@ -53,10 +53,6 @@ void key_move(int down)
                         break;
 
                 // debug stuff
-                case SDLK_F: // go fast
-                        if (down)
-                                fast = (fast == 1.f) ? 8.f : 1.f;
-                        break;
                 case SDLK_H: // show help
                         if (down)
                                 help_layer = !help_layer;

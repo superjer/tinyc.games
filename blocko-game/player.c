@@ -221,7 +221,6 @@ void update_player(struct player *p, int real)
         float limit = (p->running || p->runningf)  ? PLYR_SPD_R :
                       p->sneaking                  ? PLYR_SPD_S :
                                                      PLYR_SPD;
-        limit *= fast;
         if (p->wet) limit /= 2; // water drag
         if (totalvel > limit)
         {
@@ -238,14 +237,14 @@ void update_player(struct player *p, int real)
 
         if (p->noclip)
         {
-                // fly freely: move straight through the world with no collision
-                // and no gravity. jump rises, sneak sinks (y grows downward).
-                float vspeed = (p->running || p->runningf) ? PLYR_SPD_R :
-                               p->sneaking                 ? PLYR_SPD_S :
-                                                             PLYR_SPD;
-                vspeed *= fast;
-                p->pos.x += p->vel.x;
-                p->pos.z += p->vel.z;
+                // fly freely and fast: move straight through the world with no
+                // collision and no gravity, 8x speed. jump rises, sneak sinks
+                // (y grows downward).
+                float vspeed = 8.f * ((p->running || p->runningf) ? PLYR_SPD_R :
+                                      p->sneaking                 ? PLYR_SPD_S :
+                                                                    PLYR_SPD);
+                p->pos.x += p->vel.x * 8.f;
+                p->pos.z += p->vel.z * 8.f;
                 if (p->jump_held) p->pos.y -= vspeed;
                 if (p->sneaking)  p->pos.y += vspeed;
                 p->vel.y = 0;

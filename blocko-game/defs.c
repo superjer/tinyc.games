@@ -475,7 +475,6 @@ int help_layer = 0;
 float cull_mtrx[16]; // camera frustum used for chunk culling
 float cull_x, cull_z; // camera position for range culling
 float draw_dist = 480.f;
-float fast = 1.f;
 int headless; // dedicated server: no window, no vulkan, no input
 int shadow_mapping = true;
 // the sun never moves: ~45 degrees up, off-axis (render y grows downward,
