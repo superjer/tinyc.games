@@ -832,6 +832,7 @@ void create_texture_array(char **files, int file_count, unsigned char *extra_rgb
 void update_texture_layers(int first_layer, int layer_count, unsigned char *rgba);
 
 // mine.c protos
+int tile_face_tex(int t, int orient);
 void mine_overlay_build();
 void mine_overlay_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 

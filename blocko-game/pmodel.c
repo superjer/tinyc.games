@@ -513,10 +513,11 @@ static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
 // ---- per-frame build + render, mob.c-style ----
 
 static struct allocation pm_alloc[MAX_FRAMES_IN_FLIGHT];
-// world models for every slot + one more model's worth for the editor
-// preview, plus its selection-outline hull, a re-drawn parent (SOCKET mode)
-// and the joint/socket gizmo (cube + 3 axes + ghost cube)
-static struct pmvert pmbuf[(NR_PLAYERS + 1) * PM_MAX_PIECES * PM_FACES + 8 * PM_FACES];
+// world models for every slot (each plus a possible held-item cube) + one
+// more model's worth for the editor preview, plus its selection-outline hull,
+// a re-drawn parent (SOCKET mode) and the joint/socket gizmo (cube + 3 axes
+// + ghost cube)
+static struct pmvert pmbuf[(NR_PLAYERS + 1) * (PM_MAX_PIECES + 1) * PM_FACES + 8 * PM_FACES];
 static int pm_count;  // total face instances this frame
 static int pm_remote; // instances the main camera sees (the local player's own
                       // model is shadow-only until 2nd/3rd person cameras exist)
@@ -670,6 +671,34 @@ static struct pmvert *pm_emit(struct pmvert *b, int slot,
                         b++;
                 }
                 polys += PM_FACES;
+        }
+
+        // the held block rides in the RIGHT ARM's hand: a small cube at the
+        // arm's far (y-down: bottom) end, in the arm's own space so it swings
+        // with mining, raises with the T-pose, flails with the panic. Terrain
+        // layers share the texture array, so tile_face_tex works as-is.
+        int held = slot == my_player ? held_tile : pm_held[slot];
+        if (held) for (int i = 0; i < mo->nr_pieces; i++)
+        {
+                struct pm_piece *p = &mo->piece[i];
+                if (p->type != PM_T_ARM_R) continue;
+                float hm[16], tr[16];
+                pm_mat_translate(tr, p->corner[0] + p->dims[0] / 2.f - 3,
+                                     p->corner[1] + p->dims[1] - 4,
+                                     p->corner[2] + p->dims[2] / 2.f - 3);
+                mat4_multiply(hm, space[i], tr);
+                for (int f = 0; f < PM_FACES; f++)
+                        *b++ = (struct pmvert){
+                                .r0 = { hm[0], hm[4], hm[8],  hm[12] },
+                                .r1 = { hm[1], hm[5], hm[9],  hm[13] },
+                                .r2 = { hm[2], hm[6], hm[10], hm[14] },
+                                .dims = { 6, 6, 6 },
+                                .orient = f + 1,
+                                .tex = tile_face_tex(held, f + 1),
+                                .illum = il, .glow = gl,
+                        };
+                polys += PM_FACES;
+                break; // one held item, first right arm gets it
         }
         return b;
 }

@@ -13,7 +13,7 @@
 
 // the terrain texture index for one face of a block, matching mesh.c so the
 // mining stand-in looks exactly like the block it replaces
-static int tile_face_tex(int t, int orient)
+int tile_face_tex(int t, int orient)
 {
         switch (t)
         {
