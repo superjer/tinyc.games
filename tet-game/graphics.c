@@ -43,37 +43,11 @@ void draw_setup()
 
         // vertex buffer with one region per swapchain image, so we never
         // overwrite vertices a frame in flight is still reading
-        VkBufferCreateInfo buf_info = {
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size = VBUF_REGION * vk.swapchainImageCount,
-                .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        };
-        vkCreateBuffer(vk.device, &buf_info, NULL, &vbuf_gpu);
-
-        VkMemoryRequirements mem_reqs;
-        vkGetBufferMemoryRequirements(vk.device, vbuf_gpu, &mem_reqs);
-
-        VkPhysicalDeviceMemoryProperties mem_props;
-        vkGetPhysicalDeviceMemoryProperties(*vk.bestPhysicalDevice, &mem_props);
-        uint32_t mem_type = 0;
-        VkMemoryPropertyFlags wanted = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++)
-                if ((mem_reqs.memoryTypeBits & (1 << i)) &&
-                                (mem_props.memoryTypes[i].propertyFlags & wanted) == wanted)
-                {
-                        mem_type = i;
-                        break;
-                }
-
-        VkMemoryAllocateInfo alloc_info = {
-                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                .allocationSize = mem_reqs.size,
-                .memoryTypeIndex = mem_type,
-        };
-        vkAllocateMemory(vk.device, &alloc_info, NULL, &vbuf_gpu_memory);
-        vkBindBufferMemory(vk.device, vbuf_gpu, vbuf_gpu_memory, 0);
-        vkMapMemory(vk.device, vbuf_gpu_memory, 0, buf_info.size, 0, (void **)&vbuf_mapped);
+        VkDeviceSize buf_sz = VBUF_REGION * vk.swapchainImageCount;
+        vulkan_create_buffer(buf_sz, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                &vbuf_gpu, &vbuf_gpu_memory);
+        vkMapMemory(vk.device, vbuf_gpu_memory, 0, buf_sz, 0, (void **)&vbuf_mapped);
 }
 
 void vertex(float x, float y, float r, float g, float b)
@@ -109,12 +83,8 @@ void draw_end()
         if (vbuf_n == 0) return;
 
         size_t bytes = vbuf_n * sizeof(float);
-        if (vbuf_gpu_offset + bytes > VBUF_REGION)
-        {
-                fprintf(stderr, "vbuf GPU region overflow (%zu + %zu)\n", vbuf_gpu_offset, bytes);
-                vbuf_n = 0;
-                return;
-        }
+        if (vbuf_gpu_offset + bytes > VBUF_REGION) // out of per-frame GPU space
+                { vbuf_n = 0; return; }
 
         size_t base = vk.imageIndex * VBUF_REGION;
         memcpy(vbuf_mapped + base + vbuf_gpu_offset, vbuf, bytes);
@@ -142,8 +112,6 @@ void draw_end()
         vkCmdBindVertexBuffers(cmd, 0, 1, &vbuf_gpu, &vb_offset);
         vkCmdDraw(cmd, vbuf_n / 5, 1, 0, 0);
 
-        if (vbuf_n > VBUFLEN * 3 / 4)
-                fprintf(stderr, "vbuf fullness (%d/%d)\n", vbuf_n, VBUFLEN);
         vbuf_gpu_offset += bytes;
         vbuf_n = 0;
 }

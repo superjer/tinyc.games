@@ -134,10 +134,9 @@ struct player {
         int grounded;                   // is piece on the ground?
         int grounded_moves;             // how many moves have we made on the ground?
         int last_dx_tick;               // tick of most recent left/right movement
-        int lines, score, best;         // scoring
+        int lines, score;               // scoring
         int combo;                      // clears in-a-row
         int reward, reward_x, reward_y; // for hovering points indicator
-        int level;                      // difficultly level (lines/10)
         int countdown_time;             // ready-set-go countdown
         int idle_time;                  // how long the player has been idle in ticks
         int shiny_lines;
@@ -161,12 +160,10 @@ int text_x, text_y;       // position of text drawing
 int line_height;          // text line height
 
 SDL_Event event;
-SDL_Window *win;
 
 void do_events();
 void setup();
 void update_player();
-void move(int dx, int dy, int gravity);
 void reset_fall();
 void bake();
 void new_game();

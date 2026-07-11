@@ -5,24 +5,6 @@
 void resize(int, int);
 void hard();
 
-void down()
-{
-        p->down = 1;
-        p->move_cooldown = 0;
-}
-
-void left()
-{
-        p->left = 1;
-        p->move_cooldown = 0;
-}
-
-void right()
-{
-        p->right = 1;
-        p->move_cooldown = 0;
-}
-
 // spin the falling piece left or right, if possible
 void spin(int dir)
 {
@@ -70,19 +52,6 @@ void hold()
         reset_fall();
 }
 
-void gamepad_add()
-{
-        int id = event.gdevice.which;
-        SDL_Gamepad *cont = SDL_OpenGamepad(id);
-        printf("Gamepad added: %s cont=%p id=%d\n",
-                SDL_GetGamepadName(cont), (void*)cont, id);
-}
-
-void gamepad_remove()
-{
-        printf("Gamepad removed: id=%d\n", event.gdevice.which);
-}
-
 // handle a key press from a player
 int key_down()
 {
@@ -94,9 +63,9 @@ int key_down()
 
         switch (event.key.key)
         {
-                case SDLK_A:   case SDLK_LEFT:                        left();  break;
-                case SDLK_S:   case SDLK_DOWN:                        down();  break;
-                case SDLK_D:   case SDLK_RIGHT:                       right(); break;
+                case SDLK_A:   case SDLK_LEFT:   p->left  = 1; p->move_cooldown = 0; break;
+                case SDLK_S:   case SDLK_DOWN:   p->down  = 1; p->move_cooldown = 0; break;
+                case SDLK_D:   case SDLK_RIGHT:  p->right = 1; p->move_cooldown = 0; break;
 
                 case SDLK_W:   case SDLK_UP:                          hard();  break;
                 case SDLK_Z:   case SDLK_CAPSLOCK:  case SDLK_COMMA:  spin(3); break;
@@ -125,11 +94,11 @@ int btn_down()
         {
                 case SDL_GAMEPAD_BUTTON_SOUTH:            spin(3); break;
                 case SDL_GAMEPAD_BUTTON_EAST:            spin(1); break;
-                case SDL_GAMEPAD_BUTTON_DPAD_UP:      hard();  break;
-                case SDL_GAMEPAD_BUTTON_DPAD_DOWN:    down();  break;
-                case SDL_GAMEPAD_BUTTON_DPAD_LEFT:    left();  break;
-                case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:   right(); break;
-                case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: hold();  break;
+                case SDL_GAMEPAD_BUTTON_DPAD_UP:       hard(); break;
+                case SDL_GAMEPAD_BUTTON_DPAD_DOWN:  p->down  = 1; p->move_cooldown = 0; break;
+                case SDL_GAMEPAD_BUTTON_DPAD_LEFT:  p->left  = 1; p->move_cooldown = 0; break;
+                case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: p->right = 1; p->move_cooldown = 0; break;
+                case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: hold(); break;
         }
         return 0;
 }
