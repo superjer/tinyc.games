@@ -143,12 +143,144 @@ void draw_map()
         }
 }
 
+#define MPX (2*SCALE) // rendered size of one map pixel
+
+void map_pixel(int px, int py, unsigned char c)
+{
+        int r, g, b;
+        switch (c)
+        {
+                case 'T':           r =  20; g = 110; b =  40; break;
+                case 'R':           r = 150; g = 100; b =  60; break;
+                case 'S': case 'P': r = 130; g = 130; b = 140; break;
+                case 'W':           r =  40; g =  80; b = 220; break;
+                case 'V': case 'X': r =  70; g = 130; b = 255; break;
+                case 'B':           r = 170; g = 120; b =  60; break;
+                case 'C':           r =   0; g =   0; b =   0; break;
+                case 'A':           r = 230; g =  50; b =  50; break;
+                default:            r = 215; g = 185; b = 130; break;
+        }
+        fixed_color_box((SDL_FRect){px, py, MPX, MPX}, r, g, b, 255);
+}
+
+int edge_open_ew(int i, int j) // can you walk between screens (i,j) and (i+1,j)?
+{
+        for (int n = 0; n < sH; n++)
+                if (walkable(charout[j * sH + n][i * sW + sW - 1])
+                                && walkable(charout[j * sH + n][(i + 1) * sW]))
+                        return 1;
+        return 0;
+}
+
+int edge_open_ns(int i, int j) // can you walk between screens (i,j) and (i,j+1)?
+{
+        for (int m = 0; m < sW; m++)
+                if (walkable(charout[j * sH + sH - 1][i * sW + m])
+                                && walkable(charout[(j + 1) * sH][i * sW + m]))
+                        return 1;
+        return 0;
+}
+
+// full map screen: 1 map pixel per world tile, 2 pixel gap between screens
+void draw_map_screen()
+{
+        int mw = (sX * sW + 2 * (sX - 1)) * MPX;
+        int mh = (sY * sH + 2 * (sY - 1)) * MPX;
+        int mx = (W - mw) / 2;
+        int my = (H - mh) / 2;
+
+        fixed_color_box((SDL_FRect){mx - 2*MPX, my - 2*MPX, mw + 4*MPX, mh + 4*MPX},
+                        20, 20, 30, 235);
+
+        for (int i = 0; i < sX; i++) for (int j = 0; j < sY; j++)
+        {
+                if (!explored[j][i]) continue;
+
+                int sx0 = mx + i * (sW + 2) * MPX;
+                int sy0 = my + j * (sH + 2) * MPX;
+
+                for (int x = 0; x < sW; x++) for (int y = 0; y < sH; y++)
+                        map_pixel(sx0 + x * MPX, sy0 + y * MPX,
+                                  charout[j * sH + y][i * sW + x]);
+        }
+
+        // where explored screens connect, fill the gap by extending the
+        // edge pixels of each side; unconnected edges stay dark
+        for (int i = 0; i < sX - 1; i++) for (int j = 0; j < sY; j++)
+        {
+                if (!explored[j][i] || !explored[j][i + 1]) continue;
+                if (!edge_open_ew(i, j)) continue;
+
+                int gx = mx + (i * (sW + 2) + sW) * MPX;
+                for (int n = 0; n < sH; n++)
+                {
+                        int gy = my + (j * (sH + 2) + n) * MPX;
+                        map_pixel(gx,       gy, charout[j * sH + n][i * sW + sW - 1]);
+                        map_pixel(gx + MPX, gy, charout[j * sH + n][(i + 1) * sW]);
+                }
+        }
+        for (int i = 0; i < sX; i++) for (int j = 0; j < sY - 1; j++)
+        {
+                if (!explored[j][i] || !explored[j + 1][i]) continue;
+                if (!edge_open_ns(i, j)) continue;
+
+                int gy = my + (j * (sH + 2) + sH) * MPX;
+                for (int m = 0; m < sW; m++)
+                {
+                        int gx = mx + (i * (sW + 2) + m) * MPX;
+                        map_pixel(gx, gy,       charout[j * sH + sH - 1][i * sW + m]);
+                        map_pixel(gx, gy + MPX, charout[(j + 1) * sH][i * sW + m]);
+                }
+        }
+
+        // where all four screens connect around a shared corner, fill the
+        // 2x2 corner gap from each one's nearest diagonal tile
+        for (int i = 0; i < sX - 1; i++) for (int j = 0; j < sY - 1; j++)
+        {
+                if (!explored[j][i] || !explored[j][i + 1]
+                                || !explored[j + 1][i] || !explored[j + 1][i + 1]) continue;
+                if (!edge_open_ew(i, j) || !edge_open_ew(i, j + 1)) continue;
+                if (!edge_open_ns(i, j) || !edge_open_ns(i + 1, j)) continue;
+
+                int gx = mx + (i * (sW + 2) + sW) * MPX;
+                int gy = my + (j * (sH + 2) + sH) * MPX;
+                map_pixel(gx,       gy,       charout[(j + 1) * sH - 1][(i + 1) * sW - 1]);
+                map_pixel(gx + MPX, gy,       charout[(j + 1) * sH - 1][(i + 1) * sW]);
+                map_pixel(gx,       gy + MPX, charout[(j + 1) * sH][(i + 1) * sW - 1]);
+                map_pixel(gx + MPX, gy + MPX, charout[(j + 1) * sH][(i + 1) * sW]);
+        }
+
+        // outline the current screen
+        int ci = inside ? entry_roomx : roomx;
+        int cj = inside ? entry_roomy : roomy;
+        int sx0 = mx + ci * (sW + 2) * MPX;
+        int sy0 = my + cj * (sH + 2) * MPX;
+        fixed_color_box((SDL_FRect){sx0 - MPX, sy0 - MPX, (sW + 2) * MPX, MPX}, 255, 255, 255, 255);
+        fixed_color_box((SDL_FRect){sx0 - MPX, sy0 + sH * MPX, (sW + 2) * MPX, MPX}, 255, 255, 255, 255);
+        fixed_color_box((SDL_FRect){sx0 - MPX, sy0, MPX, sH * MPX}, 255, 255, 255, 255);
+        fixed_color_box((SDL_FRect){sx0 + sW * MPX, sy0, MPX, sH * MPX}, 255, 255, 255, 255);
+}
+
+void draw_apples(int rx, int ry, int offx, int offy)
+{
+        if (inside) return;
+
+        for (int k = 0; k < num_apples; k++)
+        {
+                if (apple_taken[k]) continue;
+                if (apples[k].x / TILESW != rx || apples[k].y / TILESH != ry) continue;
+
+                sprite(APPLE_SPR, (SDL_FRect){BS * (apples[k].x % TILESW) + offx,
+                                              BS * (apples[k].y % TILESH) + offy, BS, BS});
+        }
+}
+
 void draw_health()
 {
         int hp = player[0].hp;
         SDL_FRect src = (SDL_FRect){220, 200, 10, 10};
         SDL_FRect dest = (SDL_FRect){10, 10, SCALE*10, SCALE*10};
-        for(int hc = 20; hc > 0; hc -= 4)
+        for(int hc = player[0].hpmax; hc > 0; hc -= 4)
         {
                 src.x = 220 + 10 * (hp > 4 ? 4 :
                                     hp < 0 ? 0 : hp);
@@ -372,6 +504,10 @@ void draw_stuff()
                         draw_room_tile(tiles_old, x, y, offx, offy);
         }
 
+        draw_apples(roomx, roomy, 0, 0);
+        if (scrollx || scrolly)
+                draw_apples(oldroomx, oldroomy, offx, offy);
+
         for (int i = 0; i < NR_ENEMIES; i++)
                 draw_enemy(i);
 
@@ -388,6 +524,7 @@ void draw_stuff()
         if(drawclip) draw_clipping_boxes();
         draw_health();
         draw_map();
+        if(mapscreen) draw_map_screen();
 
         SDL_RenderPresent(renderer);
 }

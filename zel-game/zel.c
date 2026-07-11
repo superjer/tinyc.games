@@ -64,6 +64,8 @@
 
 #define OPEN 180       // invisible open, walkable space
 
+#define APPLE_SPR 8    // apple sprite, at 160x0 in sprites.bmp
+
 enum enemytypes { // these match their positions in sprites.bmp
         SCREW = 120,
         BOARD = 135,
@@ -109,6 +111,7 @@ struct player {
         int frame;
         int exists;
         int hp;
+        int hpmax;
         int stun;
 } player[NR_PLAYERS];
 
@@ -132,6 +135,10 @@ int idle_time = 30;
 int global_frame = 0;
 int drawclip = 0;
 int noclip = false;
+int mapscreen = false;
+int explored[DUNH][DUNW];
+int apple_taken[MAX_APPLES];
+int breakable_broken[MAX_BREAKS];
 
 SDL_Event event;
 SDL_Renderer *renderer;
@@ -144,6 +151,8 @@ SDL_Texture *edgetex[20];
 void setup();
 void enter_dungeon();
 void load_room();
+void update_apples();
+void update_breakables();
 void key_move(int down);
 int find_free_slot(int *slot);
 int collide(SDL_Rect plyr, SDL_Rect block);
@@ -178,8 +187,15 @@ int main()
                         case SDL_EVENT_KEY_UP:   key_move(0); break;
                 }
 
-                update_player(0);
-                update_enemies();
+                // in the overworld, the world freezes while the screen scrolls
+                int ow_scrolling = !inside && (scrollx || scrolly);
+                if (!mapscreen && !ow_scrolling)
+                {
+                        update_player(0);
+                        update_enemies();
+                        update_apples();
+                        update_breakables();
+                }
                 update_scroll();
                 draw_stuff();
                 SDL_Delay(1000 / 60);
@@ -281,6 +297,13 @@ void key_move(int down)
                 case SDLK_N:
                         if (down) noclip = !noclip;
                         break;
+                case SDLK_M:
+                        if (down) mapscreen = !mapscreen;
+                        break;
+                case SDLK_F10: // reveal whole map, for testing
+                        if (down) for (int i = 0; i < DUNW; i++) for (int j = 0; j < DUNH; j++)
+                                explored[j][i] = true;
+                        break;
                 case SDLK_Z:
                 case SDLK_X:
                         if(player[0].state == PL_NORMAL)
@@ -310,6 +333,7 @@ void new_game()
         player[0].pos.h = PLYR_H;
         player[0].dir = SOUTH;
         player[0].hp = 3*4;
+        player[0].hpmax = 3*4;
         roomx = key_points[kp_start].x / TILESW;
         roomy = key_points[kp_start].y / TILESH;
         load_room();
@@ -342,6 +366,8 @@ void load_room()
         }
         else
         {
+                explored[roomy][roomx] = true;
+
                 for(int x = 0; x < TILESW; x++) for(int y = 0; y < TILESH; y++)
                 {
                         int c = charout[y + roomy * TILESH][x + roomx * TILESW];
@@ -408,6 +434,47 @@ void load_room()
                 {
                         enemy[i].hp = 2;
                 }
+        }
+}
+
+// collect apples: +1 heart of max health
+void update_apples()
+{
+        if (inside) return;
+
+        for (int k = 0; k < num_apples; k++)
+        {
+                if (apple_taken[k]) continue;
+                if (apples[k].x / TILESW != roomx || apples[k].y / TILESH != roomy) continue;
+
+                SDL_Rect spot = {BS * (apples[k].x % TILESW), BS * (apples[k].y % TILESH), BS, BS};
+                if (!collide(player[0].pos, spot)) continue;
+
+                apple_taken[k] = true;
+                charout[apples[k].y][apples[k].x] = ' '; // so the map screen updates
+                player[0].hpmax += 4;
+                player[0].hp += 4;
+        }
+}
+
+// secret walls break from one sword hit
+void update_breakables()
+{
+        if (inside) return;
+        if (player[0].state != PL_STAB) return;
+
+        for (int k = 0; k < num_breaks; k++)
+        {
+                if (breakable_broken[k]) continue;
+                if (breakables[k].x / TILESW != roomx || breakables[k].y / TILESH != roomy) continue;
+
+                int tx = breakables[k].x % TILESW;
+                int ty = breakables[k].y % TILESH;
+                if (!collide(player[0].hitbox, (SDL_Rect){BS * tx, BS * ty, BS, BS})) continue;
+
+                breakable_broken[k] = true;
+                charout[breakables[k].y][breakables[k].x] = ' ';
+                tiles[ty][tx] = DIRT;
         }
 }
 
