@@ -10,8 +10,6 @@ void hard();
 
 void down()
 {
-        if (lightning_round) hard();
-
         p->down = 1;
         p->move_cooldown = 0;
 }
@@ -31,8 +29,6 @@ void right()
 // spin the falling piece left or right, if possible
 void spin(int dir)
 {
-        if (lightning_round) return;
-
         int new_rot = (p->it.rot + dir) % 4;
         int k = new_rot * 20 + (dir == 1 ? 0 : 10) + (p->it.color == 4 ? 80 : 0);
 
@@ -72,8 +68,6 @@ void hard()
 // hold a piece for later
 void hold()
 {
-        if (lightning_round) return;
-
         if (p->hold_uses++) return;
         SWAP(p->held.color, p->it.color);
         reset_fall();
@@ -270,7 +264,6 @@ int key_down()
                 case SDLK_Z:   case SDLK_CAPSLOCK:  case SDLK_COMMA:  spin(3); break;
                 case SDLK_X:   case SDLK_LSHIFT:    case SDLK_PERIOD: spin(1); break;
                 case SDLK_TAB: case SDLK_SLASH:                       hold();  break;
-                case SDLK_L:   lightning_round = !lightning_round;             break;
         }
 
         return 0;

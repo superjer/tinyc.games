@@ -190,7 +190,6 @@ int garbage_race;
 bool do_new_game;
 int npart;
 int seed;
-int lightning_round;
 
 SDL_Event event;
 SDL_Window *win;
