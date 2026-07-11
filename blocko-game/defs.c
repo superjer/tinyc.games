@@ -420,6 +420,17 @@ struct pmodel pm_models[NR_PLAYERS]; // slot's model; defaults until one arrives
 int pmodel_have[NR_PLAYERS];         // slot has a real (non-default) model
 int pmedit_on;                       // the in-game model editor is open (U key)
 
+// player state that rides MSG_PLAYER so everyone animates everyone right:
+// a flags byte mirroring the sim flags, and the held block (drawn in the
+// RIGHT ARM's hand). My own slot reads the live sim/held_tile instead.
+#define NET_PF_GROUND (1 << 0)
+#define NET_PF_SNEAK  (1 << 1)
+#define NET_PF_BREAK  (1 << 2)
+#define NET_PF_BUILD  (1 << 3)
+#define NET_PF_WET    (1 << 4)
+#define NET_PF_NOCLIP (1 << 5)
+unsigned char pm_held[NR_PLAYERS];   // remote players' held tile, from the net
+
 // camera views (F5 cycles): first person; third person over the shoulder;
 // second person = in front of the player looking back at you
 enum { CAM_FIRST, CAM_THIRD, CAM_SECOND, CAM_NR_VIEWS };

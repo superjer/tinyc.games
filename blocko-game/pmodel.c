@@ -522,13 +522,14 @@ static int pm_remote; // instances the main camera sees (the local player's own
                       // model is shadow-only until 2nd/3rd person cameras exist)
 
 // per-slot animation accumulators, fed from player[] each frame. Remote
-// players' pos/yaw/pitch sync over the net so this works for everyone;
-// sneaking doesn't travel yet, so remote crouch just stays 0.
+// players' pos/yaw/pitch sync over the net, and MSG_PLAYER's flags byte
+// mirrors ground/sneaking/breaking/building/wet/noclip, so everyone
+// animates from the same truth.
 static struct pm_state {
         float px, py, pz;           // last frame's position
         float walk_phase, speed, crouch, body_yaw, fall, mine, flail;
         float pdy, jp, jv;          // jiggle spring: prev dy, position, velocity
-        int airc, airq, airborne, fallt; // freefall detection (see below)
+        int airborne, fallt;
         int seen;
 } pm_state[NR_PLAYERS];
 
@@ -561,20 +562,13 @@ static struct pm_anim *pm_animate(int slot, struct player *pl, float t)
         s->speed += (norm - s->speed) * 0.2f;
         s->crouch += ((pl->sneaking ? 1.f : 0.f) - s->crouch) * 0.25f;
 
-        // freefall raises the arms - jumping up counts too. The local player
-        // just KNOWS (the physics ground flag); remote players are inferred
-        // from vertical motion: a few consecutive fast frames arm it (so
-        // stair steps don't flap), and it stays armed across the slow patch
-        // at a jump's apex
+        // freefall raises the arms - jumping up counts too. The physics
+        // ground flag rides MSG_PLAYER now, so remote players are as
+        // truthful as the local one (a few frames stale at worst)
         float dy = pl->pos.y - s->py;
         s->py = pl->pos.y;
         if (fabsf(dy) > BS) dy = 0; // teleport
-        if (fabsf(dy) > 50.f) { s->airc++; s->airq = 0; }
-        else                  { s->airc = 0; s->airq++; }
-        if (s->airc >= 5)  s->airborne = 1;
-        if (s->airq >= 15) s->airborne = 0;
-        if (slot == my_player)
-                s->airborne = !pl->ground && !pl->noclip && !pl->wet;
+        s->airborne = !pl->ground && !pl->noclip && !pl->wet;
         // the raise drifts up slowly; settling back is 4x quicker
         float ft = (float)s->airborne;
         s->fall += (ft - s->fall) * (ft > s->fall ? 0.02f : 0.08f);
@@ -595,8 +589,7 @@ static struct pm_anim *pm_animate(int slot, struct player *pl, float t)
         if (s->jp >  0.7f) s->jp =  0.7f;
         if (s->jp < -0.7f) s->jp = -0.7f;
 
-        // the item arm hammers away while breaking or building. These flags
-        // don't sync, so like crouch it's local-only until they do
+        // the item arm hammers away while breaking or building
         s->mine += ((pl->breaking || pl->building ? 1.f : 0.f) - s->mine) * 0.3f;
 
         // the body faces the direction walked - flipped 180 when that's

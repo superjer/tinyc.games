@@ -53,7 +53,7 @@ static int net_intr() { return errno == EINTR; }
 static void net_startup() {}
 #endif
 
-#define NET_PROTO 1
+#define NET_PROTO 2
 #define NET_MAX_CLIENTS (NR_PLAYERS - 1)
 #define NET_BUF_MAX (32 << 20) // a peer this far behind is gone: drop it
 
@@ -61,7 +61,8 @@ enum {
         MSG_HELLO = 1, // c->s: u32 protocol version
         MSG_WELCOME,   // s->c: u8 your player id, i32 seed, f32 sun_pitch, u32 nr edits
         MSG_EDIT,      // both: i32 ax, i32 ay, i32 az, u8 tile
-        MSG_PLAYER,    // both: u8 id, f32 abs pos xyz (units), f32 vel xyz, f32 yaw, pitch
+        MSG_PLAYER,    // both: u8 id, f32 abs pos xyz (units), f32 vel xyz, f32 yaw,
+                       //       pitch, u8 flags (NET_PF_*), u8 held tile
         MSG_MOB,       // s->c: u32 total kills, then per mob u8 slot, size, hurt, dying, f32 abs xyz, yaw
         MSG_PUNCH,     // c->s: u8 mob slot, f32 aim x, f32 aim z
         MSG_BONK,      // s->c: f32 knock x, f32 knock z - a slime hit YOU
@@ -275,6 +276,16 @@ static void net_store_player(int id, const unsigned char *p)
         st->vx = get_f32(p + 13); st->vy = get_f32(p + 17); st->vz = get_f32(p + 21);
         st->yaw = get_f32(p + 25);
         st->pitch = get_f32(p + 29);
+        // the animation flags apply straight to the player slot: remote
+        // players don't run physics, so nothing here fights the sim
+        struct player *pl = &player[id];
+        pl->ground   = !!(p[33] & NET_PF_GROUND);
+        pl->sneaking = !!(p[33] & NET_PF_SNEAK);
+        pl->breaking = !!(p[33] & NET_PF_BREAK);
+        pl->building = !!(p[33] & NET_PF_BUILD);
+        pl->wet      = !!(p[33] & NET_PF_WET);
+        pl->noclip   = !!(p[33] & NET_PF_NOCLIP);
+        pm_held[id] = p[34];
         st->seen = pframe ? pframe : 1;
         if (fresh)
         {
@@ -305,14 +316,14 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                                 conn_send(&conns[i], MSG_EDIT, p, 13);
                 break;
         case MSG_PLAYER:
-                if (len < 33 || !c->helloed) return;
+                if (len < 35 || !c->helloed) return;
                 net_store_player(c->player, p); // the slot is the identity, not the byte
-                unsigned char relay[33];
-                memcpy(relay, p, 33);
+                unsigned char relay[35];
+                memcpy(relay, p, 35);
                 relay[0] = c->player;
                 for (int i = 0; i < NET_MAX_CLIENTS; i++)
                         if (conns[i].helloed && &conns[i] != c)
-                                conn_send(&conns[i], MSG_PLAYER, relay, 33);
+                                conn_send(&conns[i], MSG_PLAYER, relay, 35);
                 break;
         case MSG_PUNCH:
                 if (len < 9 || !c->helloed) return;
@@ -360,7 +371,7 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                 edit_apply_remote(get_u32(p), y, get_u32(p + 8), p[12]);
                 break;
         case MSG_PLAYER:
-                if (len < 33) return;
+                if (len < 35) return;
                 net_store_player(p[0], p);
                 break;
         case MSG_MOB:
@@ -525,7 +536,7 @@ static void net_send_my_state()
         last_sent = pframe;
 
         struct player *p = &player[my_player];
-        unsigned char m[33];
+        unsigned char m[35];
         m[0] = my_player;
         put_f32(m + 1, p->pos.x - scootx * (float)BS); // window -> absolute units
         put_f32(m + 5, p->pos.y);
@@ -535,6 +546,13 @@ static void net_send_my_state()
         put_f32(m + 21, p->vel.z);
         put_f32(m + 25, p->yaw);
         put_f32(m + 29, p->pitch);
+        m[33] = (p->ground   ? NET_PF_GROUND : 0)
+              | (p->sneaking ? NET_PF_SNEAK  : 0)
+              | (p->breaking ? NET_PF_BREAK  : 0)
+              | (p->building ? NET_PF_BUILD  : 0)
+              | (p->wet      ? NET_PF_WET    : 0)
+              | (p->noclip   ? NET_PF_NOCLIP : 0);
+        m[34] = held_tile;
         if (net_mode == NET_CLIENT)
                 conn_send(&server_conn, MSG_PLAYER, m, sizeof m);
         else for (int i = 0; i < NET_MAX_CLIENTS; i++)
