@@ -30,8 +30,6 @@
 #define BAG_SZ 7   // bag size
 #define GARB_LVLS 4 // levels of queued garbage
 #define NPLAY 4
-#define NPARTS 1000
-#define NFLOWS 20
 #define CTDN_TICKS 96
 
 // collision test results
@@ -149,7 +147,6 @@ struct player {
         int garbage[GARB_LVLS + 1];     // queued garbage, e.g. received from opponents
         int garbage_tick;               // keeps track of when to age garbage
         int garbage_remaining;          // how many lines of garbage remain to clear to win
-        int garbage_bits;               // fractions of garbage attached to each particle
         int top_garb;                   // highest position of garbage stack drawn
         int level;                      // difficultly level (lines/10)
         int countdown_time;             // ready-set-go countdown
@@ -172,10 +169,6 @@ struct player {
         int crash_time;                 // countdown timer for crash animation
 } play[NPLAY], *p;                      // one per player
 
-struct particle { float x, y, r, vx, vy; int opponent, bits; };
-struct particle parts[NPARTS];
-struct particle flows[NFLOWS];
-
 enum state { MAIN_MENU = 0, NUMBER_MENU, PAUSE_MENU, MAX_MENU, ASSIGN, PLAY, GAMEOVER} state;
 int win_x = 2000;         // window size
 int win_y = 1500;
@@ -188,7 +181,6 @@ int text_x, text_y;       // position of text drawing
 int line_height;          // text line height
 int garbage_race;
 bool do_new_game;
-int npart;
 int seed;
 
 SDL_Event event;
@@ -204,6 +196,5 @@ void new_game();
 int is_solid_part(int shape, int rot, int i, int j);
 int is_tspin_part(int shape, int rot, int i, int j);
 int collide(int x, int y, int rot);
-void update_particles();
 
 #endif // TET_DEFS_C_INCLUDED

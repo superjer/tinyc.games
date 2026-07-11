@@ -57,13 +57,11 @@ int main()
                 {
                         for (p = play; p < play + nplay; p++) update_player();
                         accum_msec += (float)get_interval();
-                        update_particles();
                 }
 
                 draw_start();
                 for (p = play; p < play + nplay; p++) draw_player();
                 draw_menu();
-                draw_particles();
                 draw_end();
                 vulkan_submit();
 
@@ -152,24 +150,8 @@ void receive_garbage()
         }
 }
 
-void new_particle(int x, int y, int opponent, int garbage_bits)
-{
-        parts[npart++] = (struct particle){
-                p->board_x + x * bs,
-                p->board_y + (y + VHEIGHT - BHEIGHT) * bs + bs2,
-                bs * 0.8f,
-                (rand() % 10 - 5) * 0.02f,
-                (rand() % 30 + 30) * 0.02f,
-                opponent,
-                garbage_bits,
-        };
-        if (npart >= NPARTS) npart = 0;
-}
-
 void kill_lines()
 {
-        int opponent = -1; // target if we end up sending garbage
-
         p->lines += p->shiny_lines;
         p->level = p->lines / 10;
         p->reward = combo_bonus[MIN(MAX_COMBO, p->combo)] * rewards[p->shiny_lines];
@@ -177,24 +159,12 @@ void kill_lines()
         if (p->tspin == TSPIN_FULL)
                 p->reward *= 2;
         p->score += p->reward;
-        int sendable = p->reward / 400; // garbage to send
-        int garbage_bits = sendable * 12 / p->shiny_lines;
         p->shiny_lines = 0;
-
-        if (sendable && nplay > 1 && !garbage_race)
-        {
-                opponent = rand() % (nplay - 1);
-                if (play + opponent >= p)
-                        opponent++;
-        }
 
         // clean up sliced pieces
         for (int y = 0; y < BHEIGHT; y++)
         {
                 p->row[y].offset = 0;
-                if (p->row[y].fullness == 10)
-                        for (int x = 0; x < BWIDTH; x++)
-                                new_particle(x, y, opponent, garbage_bits);
 
                 if (y > 0 && p->row[y - 1].fullness == 10)
                         for (int x = 0; x < BWIDTH; x++)
@@ -225,8 +195,6 @@ void kill_lines()
 
                 memset(&p->row[0], 0, sizeof p->row[0]);
         }
-
-        reflow();
 
         if (garbage_race && p->garbage_remaining == 0)
         {
@@ -389,11 +357,7 @@ void update_player()
                 p->dead_time--;
                 int x = p->dead_time % BWIDTH;
                 int y = BHEIGHT - 1 - p->dead_time / BWIDTH;
-                if (p->row[y].col[x].part)
-                {
-                        new_particle(x, y, -1, 0);
-                        p->row[y].col[x].part = 0;
-                }
+                p->row[y].col[x].part = 0;
                 if (p->dead_time == 0)
                         new_game();
         }
@@ -529,100 +493,6 @@ int collide(int x, int y, int rot)
                 }
 
         return ret;
-}
-
-int in_rect(int x, int y, int left, int top, int width, int height)
-{
-        return x >= left && x <= left + width && y >= top && y <= top + height;
-}
-
-void update_particles()
-{
-        for (int i = 0; i < NPARTS; i++)
-        {
-                struct particle *q = parts + i;
-                if (q->r <= 0.1f)
-                        continue;
-                q->x += q->vx;
-                q->y += q->vy;
-
-                if (q->r < 2.f)
-                        q->r *= 0.996f + (rand() % 800) * 0.001f;
-                else
-                        q->r *= 0.992f + (rand() % 400) * 0.00001f;
-
-                struct player *o = q->opponent < 0 ? NULL :
-                        play + q->opponent;
-
-                // get contribution from flow nodes
-                float flow_vx = 0.f;
-                float flow_vy = 0.f;
-                for (int n = 0; n < NFLOWS; n++)
-                {
-                        float xdiff = flows[n].x - q->x;
-                        float ydiff = flows[n].y - q->y;
-                        float distsq = xdiff * xdiff + ydiff * ydiff;
-                        if (distsq > flows[n].r * flows[n].r)
-                                continue;
-                        flow_vx += flows[n].vx;
-                        flow_vy += flows[n].vy;
-                }
-
-                // get contribution from homing in on opponent
-                float targ_x = 0.f;
-                float targ_y = 0.f;
-                float homing_vx = 0.f;
-                float homing_vy = 0.f;
-                float dist = 1000.f;
-                if (o)
-                {
-                        targ_x = o->board_x - 3 * bs2;
-                        targ_y = CLAMP(o->top_garb - bs, q->y, o->board_y + bs * VHEIGHT);
-                        homing_vx = (targ_x - q->x);
-                        homing_vy = (targ_y - q->y);
-                        dist = sqrtf(homing_vx * homing_vx + homing_vy * homing_vy);
-                        homing_vx /= dist;
-                        homing_vy /= dist;
-                }
-
-                float normal_r = q->r / bs;
-                if (o && q->r && normal_r < .45f + (i % 3) * .07f) // particle has an opponent target
-                {
-                        if (dist < bs * 4 || normal_r < .5f)
-                        {
-                                q->vx *= .97f;
-                                q->vy *= .97f;
-                        }
-                        float t = (dist < bs * 4) ? (dist / (bs * 6)) :
-                                    .75f;
-                        q->vx += flow_vx * t + homing_vx * (1.f - t);
-                        q->vy += flow_vy * t + homing_vy * (1.f - t);
-                }
-                else if (!o && normal_r > .8f) // particle still just falling softly
-                {
-                        q->vy *= .82f;
-                }
-                else
-                {
-                        q->vx += flow_vx;
-                        q->vy += flow_vy;
-                }
-
-                if (o && in_rect(q->x + q->r * .5f, q->y + q->r * .5f, targ_x, targ_y - bs2, bs, bs))
-                {
-                        q->r = 0.f;
-                        o->flash += 50;
-                        o->garbage_bits += q->bits;
-                        if (o->garbage_bits >= 120)
-                        {
-                                audio_tone(SQUARE, G3, G4, 15, 15, 15, 100);
-                                o->garbage[GARB_LVLS - 1]++;
-                                o->garbage_tick = tick;
-                                o->garbage_bits -= 120;
-                        }
-                        audio_tone(SQUARE, G4, B5, 5, 10, 5, 20);
-                }
-        }
 }
 
 #endif // TET_C_INCLUDED

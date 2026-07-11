@@ -203,17 +203,6 @@ void draw_menu()
         }
 }
 
-void draw_particles()
-{
-        set_color(254, 254, 254);
-        for (int i = 0; i < NPARTS; i++)
-        {
-                if (parts[i].r <= 0.5f)
-                        continue;
-                rect(parts[i].x, parts[i].y, parts[i].r, parts[i].r);
-        }
-}
-
 // draw a single mino (square) of a shape
 void draw_mino(int x, int y, int shape, int outline, int part)
 {
@@ -331,7 +320,6 @@ void draw_player()
                 set_color(255, 255, 255);
                 int h = MAX(2, p->row[p->crash_row].offset);
                 int w = 200 - p->crash_time * 20;
-                int crash_x = x + bs * 5;
                 int crash_y = y + (p->crash_row - BHEIGHT + VHEIGHT + 1) * bs - h;
                 rect(x - w,
                      crash_y,
@@ -344,18 +332,6 @@ void draw_player()
                         audio_tone(SQUARE, D1, F1, 60, 20, 40, 300);
                         audio_tone(SQUARE, G1, B1, 20, 20, 40, 100);
                         p->shake_y += .04f;
-                        for (int i = 0; i < NPARTS; i++)
-                        {
-                                int xx = parts[i].x - crash_x;
-                                int yy = (parts[i].y - crash_y + bs4) * 3;
-                                int distsq = xx * xx + yy * yy;
-                                int maxdistsq = (bs * 10) * (bs * 10);
-                                if (distsq >= maxdistsq)
-                                        continue;
-                                float dist = sqrtf((float)distsq);
-                                parts[i].vx += (xx / dist) * (bs * 10 - dist) * 0.008f;
-                                parts[i].vy += (yy / dist) * (bs * 10 - dist) * 0.008f;
-                        }
                 }
         }
 
@@ -405,19 +381,6 @@ void draw_player()
         if (state == GAMEOVER) text("Game over", 0);
 }
 
-void reflow()
-{
-        float strength = 0.0005f * (1 + rand() % 10);
-        for (int n = 0; n < NFLOWS; n++)
-        {
-                flows[n].x = rand() % win_x;
-                flows[n].y = rand() % win_y;
-                flows[n].r = rand() % 100 + 100;
-                flows[n].vx = (rand() % 10 - 5) * strength;
-                flows[n].vy = (rand() % 10 - 5) * strength;
-        }
-}
-
 // recalculate sizes and positions on resize
 void resize(int x, int y)
 {
@@ -439,7 +402,6 @@ void resize(int x, int y)
                 p->preview_x = p->board_x + p->board_w + bs2;
                 p->preview_y = p->board_y;
         }
-        reflow();
 }
 
 #endif // TET_GRAPHICS_C_INCLUDED
