@@ -372,8 +372,11 @@ struct pmvert {
 #define PM_FACES 6         // tile order matches the vbufv orient codes 1..6
 #define PM_TILE 16
 
-#define PM_PITCH 1         // axes a piece may rotate on (animation reads these)
-#define PM_YAW   2
+// piece TYPE: tells the animation what a piece IS; motion dispatches on it.
+// FIXED = 0 so zeroed memory is inert
+enum pm_type { PM_T_FIXED, PM_T_TORSO, PM_T_HEAD, PM_T_ARM_L, PM_T_ARM_R,
+               PM_T_LEG1, PM_T_LEG2, PM_T_TAIL, PM_T_JIGGLE, PM_T_EYES,
+               PM_T_COUNT };
 
 struct pm_piece {
     unsigned char dims[3];   // prism size in px, 1..16
@@ -381,7 +384,7 @@ struct pm_piece {
     unsigned char origin[3]; // pivot point in its own 16^3 space
     unsigned char attach[3]; // where origin lands, in the parent's 16^3 space
     signed char parent;      // earlier piece index, or -1 = player center box
-    unsigned char axes;      // PM_PITCH|PM_YAW
+    unsigned char type;      // enum pm_type
 };
 
 struct pmodel {

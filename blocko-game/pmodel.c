@@ -29,13 +29,13 @@ enum { PM_BODY, PM_HEAD, PM_ARM_L, PM_ARM_R, PM_LEG_L, PM_LEG_R };
 static struct pmodel pm_default = {
         .nr_pieces = 6,
         .piece = {
-        //        dims       corner    origin     attach    parent   axes
-        [PM_BODY]  = { {8,12,4}, {4,2,6}, {8,8,8},  {8,5,8},   -1,      0 },
-        [PM_HEAD]  = { {8,8,8},  {4,4,4}, {8,12,8}, {8,2,8},   PM_BODY, PM_PITCH|PM_YAW },
-        [PM_ARM_L] = { {4,12,4}, {6,2,6}, {8,3,8},  {2,3,8},   PM_BODY, PM_PITCH|PM_YAW },
-        [PM_ARM_R] = { {4,12,4}, {6,2,6}, {8,3,8},  {14,3,8},  PM_BODY, PM_PITCH|PM_YAW },
-        [PM_LEG_L] = { {4,12,4}, {6,2,6}, {8,2,8},  {6,14,8},  PM_BODY, PM_PITCH },
-        [PM_LEG_R] = { {4,12,4}, {6,2,6}, {8,2,8},  {10,14,8}, PM_BODY, PM_PITCH },
+        //        dims       corner    origin     attach    parent   type
+        [PM_BODY]  = { {8,12,4}, {4,2,6}, {8,8,8},  {8,5,8},   -1,      PM_T_TORSO },
+        [PM_HEAD]  = { {8,8,8},  {4,4,4}, {8,12,8}, {8,2,8},   PM_BODY, PM_T_HEAD },
+        [PM_ARM_L] = { {4,12,4}, {6,2,6}, {8,3,8},  {2,3,8},   PM_BODY, PM_T_ARM_L },
+        [PM_ARM_R] = { {4,12,4}, {6,2,6}, {8,3,8},  {14,3,8},  PM_BODY, PM_T_ARM_R },
+        [PM_LEG_L] = { {4,12,4}, {6,2,6}, {8,2,8},  {6,14,8},  PM_BODY, PM_T_LEG1 },
+        [PM_LEG_R] = { {4,12,4}, {6,2,6}, {8,2,8},  {10,14,8}, PM_BODY, PM_T_LEG2 },
         },
 };
 
@@ -117,17 +117,19 @@ static void pmodel_randomize(struct pmodel *mo, unsigned seed)
         // box px p is 8 + K - p px above the feet, K = the box anchor height
         int K = (int)roundf((PLYR_H / 2) / PM_SCALE);
         pc[PM_BODY] = (struct pm_piece){ {bw,bh,bd}, {8-bw/2, 8-bh/2, 8-bd/2},
-                {8,8,8}, {8, 8 + K - lh - bh/2, 8}, -1, 0 };
+                {8,8,8}, {8, 8 + K - lh - bh/2, 8}, -1, PM_T_TORSO };
         pc[PM_HEAD] = (struct pm_piece){ {hw,hh,hd}, {8-hw/2, 8-hh/2, 8-hd/2},
-                {8, 8+hh/2, 8}, {8, 8-bh/2, 8}, PM_BODY, PM_PITCH|PM_YAW };
+                {8, 8+hh/2, 8}, {8, 8-bh/2, 8}, PM_BODY, PM_T_HEAD };
         pc[PM_ARM_L] = (struct pm_piece){ {aw,ah,aw}, {8-aw/2, 8-ah/2, 8-aw/2},
-                {8, 8-ah/2+1, 8}, {8-bw/2-aw/2, 8-bh/2+1, 8}, PM_BODY, PM_PITCH|PM_YAW };
+                {8, 8-ah/2+1, 8}, {8-bw/2-aw/2, 8-bh/2+1, 8}, PM_BODY, PM_T_ARM_L };
         pc[PM_ARM_R] = pc[PM_ARM_L];
         pc[PM_ARM_R].attach[0] = 8 + bw/2 + aw/2;
+        pc[PM_ARM_R].type = PM_T_ARM_R;
         pc[PM_LEG_L] = (struct pm_piece){ {lw,lh,lw}, {8-lw/2, 8-lh/2, 8-lw/2},
-                {8, 8-lh/2, 8}, {8-lw/2, 8+bh/2, 8}, PM_BODY, PM_PITCH };
+                {8, 8-lh/2, 8}, {8-lw/2, 8+bh/2, 8}, PM_BODY, PM_T_LEG1 };
         pc[PM_LEG_R] = pc[PM_LEG_L];
         pc[PM_LEG_R].attach[0] = 8 + lw/2;
+        pc[PM_LEG_R].type = PM_T_LEG2;
 
         pm_paint(mo, dumb_rand(&seed));
 }
@@ -149,6 +151,7 @@ static void pm_sanitize(struct pmodel *mo)
                 }
                 if (p->parent < 0 || p->parent >= mo->nr_pieces || p->parent == i)
                         p->parent = -1;
+                if (p->type >= PM_T_COUNT) p->type = PM_T_FIXED;
         }
 
         // parents may point at ANY other piece (the editor rewires them), so
@@ -377,10 +380,11 @@ static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
                 else
                         par = root; // unreachable (cycle): hang from the box
 
-                // placeholder: wave every rotatable piece around so hierarchy,
-                // pivots and axes are all visibly exercised
-                float pitch = (t >= 0 && p->axes & PM_PITCH) ? sinf(t * (1.1f + 0.2f * i) + i) * 0.9f : 0;
-                float pyaw  = (t >= 0 && p->axes & PM_YAW)   ? sinf(t * (0.7f + 0.3f * i) + 2 * i) * 0.9f : 0;
+                // FLAIL: wave everything but the torso around, index-seeded;
+                // legs keep to pitch only so they read as walking
+                int leg = p->type == PM_T_LEG1 || p->type == PM_T_LEG2;
+                float pitch = (t >= 0 && p->type != PM_T_TORSO) ? sinf(t * (1.1f + 0.2f * i) + i) * 0.9f : 0;
+                float pyaw  = (t >= 0 && p->type != PM_T_TORSO && !leg) ? sinf(t * (0.7f + 0.3f * i) + 2 * i) * 0.9f : 0;
                 pm_mat_yaw(tmp, pyaw);
                 pm_mat_pitch(tmp2, pitch);
                 mat4_multiply(rot, tmp, tmp2);

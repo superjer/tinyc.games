@@ -20,7 +20,9 @@
 // origin. PARENT mode re-wires the hierarchy: the selection drops BEHIND
 // everything, and clicking any other piece makes it the parent with the
 // click as the new attach point (clicks that would loop the chain are
-// ignored). The ANIMATE button plays the game's placeholder walk-wave on the
+// ignored). The TYPE button shows the selected piece's animation type (HEAD,
+// LEFT ARM, ...) - left-click cycles forward, right-click back. The ANIMATE
+// button plays the game's placeholder walk-wave on the
 // whole model - WASD still spins it, the other buttons hide, any click (or
 // ESC) stops it right back where you were, and the zoom stays fit to the
 // standing pose so it doesn't pump. Clicking off
@@ -85,10 +87,24 @@ static int pmedit_in_parent_btn(float x, float y)
                 x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 144 && y <= 204;
 }
 
+static int pmedit_in_type_btn(float x, float y)
+{
+        return pmedit_sel >= 0 &&
+                x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 208 && y <= 268;
+}
+
 static int pmedit_in_animate_btn(float x, float y)
 {
-        return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 208 && y <= 268;
+        return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 272 && y <= 332;
 }
+
+static const char *pmedit_type_name[PM_T_COUNT] = {
+        [PM_T_FIXED] = "FIXED",   [PM_T_TORSO] = "TORSO",
+        [PM_T_HEAD]  = "HEAD",    [PM_T_ARM_L] = "LEFT ARM",
+        [PM_T_ARM_R] = "RIGHT ARM", [PM_T_LEG1] = "LEG 1",
+        [PM_T_LEG2]  = "LEG 2",   [PM_T_TAIL]  = "TAIL",
+        [PM_T_JIGGLE] = "JIGGLE", [PM_T_EYES]  = "EYES",
+};
 
 // would re-parenting the selection to piece j loop the chain?
 static int pmedit_cycle(int j)
@@ -721,6 +737,14 @@ void pmedit_click(int down)
                 }
                 return;
         }
+        if (pmedit_in_type_btn(pmedit_mx, pmedit_my))
+        {
+                // left cycles forward, right cycles back
+                unsigned char *ty = &pm_models[my_player].piece[pmedit_sel].type;
+                *ty = (*ty + (btn == SDL_BUTTON_LEFT ? 1 : PM_T_COUNT - 1))
+                                % PM_T_COUNT;
+                return;
+        }
         if (pmedit_in_animate_btn(pmedit_mx, pmedit_my))
         {
                 // keeps the selection and modes: stopping puts you right
@@ -817,20 +841,19 @@ void pmedit_motion()
 // labels land on top. The boxes ARE the hit rects.
 static void pmedit_boxes()
 {
-        float r[4][4];
+        float r[5][4];
         int nr = 0;
-        if (pmedit_sel >= 0 && !pmedit_animate)
-                for (int i = 0; i < 3; i++)
-                {
-                        r[nr][0] = PMEDIT_BTN_X - 10; r[nr][1] = 16 + 64 * i;
-                        r[nr][2] = screenw - 8;       r[nr][3] = 76 + 64 * i;
-                        nr++;
-                }
-        r[nr][0] = PMEDIT_BTN_X - 10; r[nr][1] = 208;
-        r[nr][2] = screenw - 8;       r[nr][3] = 268;
+        for (int i = 0; i < 4; i++)
+        {
+                r[nr][0] = PMEDIT_BTN_X - 10; r[nr][1] = 16 + 64 * i;
+                r[nr][2] = screenw - 8;       r[nr][3] = 76 + 64 * i;
+                nr++;
+        }
+        r[nr][0] = PMEDIT_BTN_X - 10; r[nr][1] = 272;
+        r[nr][2] = screenw - 8;       r[nr][3] = 332;
         nr++;
 
-        float buf[4 * 12], *p = buf;
+        float buf[5 * 12], *p = buf;
         for (int i = 0; i < nr; i++)
         {
                 float x0 = r[i][0], y0 = r[i][1], x1 = r[i][2], y1 = r[i][3];
@@ -852,19 +875,29 @@ static void pmedit_boxes()
         vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
         vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
 
+        // the piece buttons grey down further when they don't apply
+        int enabled = pmedit_sel >= 0 && !pmedit_animate;
         struct { float proj[16]; float color[3]; float pad; } push = {
                 .proj = { 2.f / screenw, 0, 0, 0,
                           0, 2.f / screenh, 0, 0,
                           0, 0, 1, 0,
                          -1, -1, 0, 1 }, // pixel space, y 0 at the top
-                .color = { 0.13f, 0.13f, 0.16f },
         };
+        memcpy(push.color, enabled ? (float[3]){ 0.13f, 0.13f, 0.16f }
+                                   : (float[3]){ 0.08f, 0.08f, 0.10f },
+                        sizeof push.color);
         vkCmdPushConstants(cmdbuf, vk.pipelines[cursor_pipe].layout,
                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                         0, sizeof push, &push);
         VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers(cmdbuf, 0, 1, &alloc[vk.currentFrame].buf, &offset);
-        vkCmdDraw(cmdbuf, nr * 6, 1, 0, 0);
+        vkCmdDraw(cmdbuf, (nr - 1) * 6, 1, 0, 0); // piece buttons
+
+        memcpy(push.color, (float[3]){ 0.13f, 0.13f, 0.16f }, sizeof push.color);
+        vkCmdPushConstants(cmdbuf, vk.pipelines[cursor_pipe].layout,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                        0, sizeof push, &push);
+        vkCmdDraw(cmdbuf, 6, 1, (nr - 1) * 6, 0); // ANIMATE, always live
 }
 
 void pmedit_draw_ui()
@@ -873,26 +906,35 @@ void pmedit_draw_ui()
 
         pmedit_boxes();
 
-        if (pmedit_sel >= 0 && !pmedit_animate)
-        {
-                font_begin(screenw, screenh);
-                font_add_text("MOVE JOINT", PMEDIT_BTN_X, 28.f, 3);
-                if (pmedit_joint) font_end(1, 1, 0.25f);
-                else font_end(0.55f, 0.55f, 0.55f);
-
-                font_begin(screenw, screenh);
-                font_add_text("MOVE SOCKET", PMEDIT_BTN_X, 92.f, 3);
-                if (pmedit_socket) font_end(1, 1, 0.25f);
-                else font_end(0.55f, 0.55f, 0.55f);
-
-                font_begin(screenw, screenh);
-                font_add_text("SELECT PARENT", PMEDIT_BTN_X, 156.f, 3);
-                if (pmedit_parent) font_end(1, 1, 0.25f);
-                else font_end(0.55f, 0.55f, 0.55f);
-        }
+        // piece buttons always show; they grey down to "disabled" when no
+        // piece is selected or ANIMATE is playing
+        int enabled = pmedit_sel >= 0 && !pmedit_animate;
+        float dim = enabled ? 0.55f : 0.28f;
 
         font_begin(screenw, screenh);
-        font_add_text("ANIMATE", PMEDIT_BTN_X, 220.f, 3);
+        font_add_text("MOVE JOINT", PMEDIT_BTN_X, 28.f, 3);
+        if (enabled && pmedit_joint) font_end(1, 1, 0.25f);
+        else font_end(dim, dim, dim);
+
+        font_begin(screenw, screenh);
+        font_add_text("MOVE SOCKET", PMEDIT_BTN_X, 92.f, 3);
+        if (enabled && pmedit_socket) font_end(1, 1, 0.25f);
+        else font_end(dim, dim, dim);
+
+        font_begin(screenw, screenh);
+        font_add_text("SELECT PARENT", PMEDIT_BTN_X, 156.f, 3);
+        if (enabled && pmedit_parent) font_end(1, 1, 0.25f);
+        else font_end(dim, dim, dim);
+
+        font_begin(screenw, screenh);
+        font_add_text(pmedit_sel >= 0 ? (char *)pmedit_type_name[
+                        pm_models[my_player].piece[pmedit_sel].type] : "TYPE",
+                        PMEDIT_BTN_X, 220.f, 3);
+        if (enabled) font_end(0.55f, 0.7f, 0.55f);
+        else font_end(dim, dim, dim);
+
+        font_begin(screenw, screenh);
+        font_add_text("ANIMATE", PMEDIT_BTN_X, 284.f, 3);
         if (pmedit_animate) font_end(1, 1, 0.25f);
         else font_end(0.55f, 0.55f, 0.55f);
 
