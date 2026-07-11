@@ -238,13 +238,16 @@ void update_player(struct player *p, int real)
         if (p->noclip)
         {
                 // fly freely and fast: move straight through the world with no
-                // collision and no gravity, 8x speed. jump rises, sneak sinks
-                // (y grows downward).
+                // collision and no gravity, 8x speed. forward/backward follow
+                // the look direction exactly (pitch included); strafing stays
+                // level. jump rises, sneak sinks (y grows downward).
+                float c = cosf(p->pitch);
                 float vspeed = 8.f * ((p->running || p->runningf) ? PLYR_SPD_R :
                                       p->sneaking                 ? PLYR_SPD_S :
                                                                     PLYR_SPD);
-                p->pos.x += p->vel.x * 8.f;
-                p->pos.z += p->vel.z * 8.f;
+                p->pos.x += (fwdx * c * p->fvel + fwdz * p->rvel) * 8.f;
+                p->pos.z += (fwdz * c * p->fvel - fwdx * p->rvel) * 8.f;
+                p->pos.y += sinf(p->pitch) * p->fvel * 8.f;
                 if (p->jump_held) p->pos.y -= vspeed;
                 if (p->sneaking)  p->pos.y += vspeed;
                 p->vel.y = 0;
