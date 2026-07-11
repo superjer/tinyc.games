@@ -1,6 +1,6 @@
 // Tet -- http://tinyc.games -- (c) 2025 Jer Wilson
 //
-// Tet is tiny implementation of a fully-featured Tetris clone.
+// Tet is a tiny implementation of a Tetris clone.
 
 #ifndef TET_C_INCLUDED
 #define TET_C_INCLUDED
@@ -192,8 +192,7 @@ void new_piece()
         }
 
         p->it.color = p->next[0];
-        memmove(p->next, p->next + 1, sizeof *(p->next) * 4);
-        p->next[4] = p->bag[p->bag_idx++];
+        p->next[0] = p->bag[p->bag_idx++];
         reset_fall();
 }
 

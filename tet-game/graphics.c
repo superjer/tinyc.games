@@ -273,9 +273,8 @@ void draw_player()
                 }
         }
 
-        // draw next pieces
-        for (int n = 0; n < 5; n++)
-                draw_shape(p->preview_x, p->preview_y + 3 * bs * n, p->next[n], 0, CENTER);
+        // draw next piece
+        draw_shape(p->preview_x, p->preview_y, p->next[0], 0, CENTER);
 
         // draw held piece
         draw_shape(p->held.x, p->held.y, p->held.color, 0, CENTER);

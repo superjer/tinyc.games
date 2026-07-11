@@ -130,7 +130,7 @@ struct player {
         int hold_uses;                  // have we swapped with the hold already?
         int bag[BAG_SZ];                // "bag" of upcoming pieces
         int bag_idx;                    // last position used up in bag
-        int next[5];                    // next pieces in preview (take from bag)
+        int next[1];                    // next piece in preview (take from bag)
         int grounded;                   // is piece on the ground?
         int grounded_moves;             // how many moves have we made on the ground?
         int last_dx_tick;               // tick of most recent left/right movement
