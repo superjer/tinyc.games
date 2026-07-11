@@ -11,6 +11,8 @@ void createUniformBuffer(VkBuffer* buffer, VkDeviceMemory* bufferMemory) {
                  buffer, bufferMemory);
 }
 
+static int texture_w, texture_h, texture_mips; // for runtime layer updates
+
 // extra_rgba appends extra_count generated layers (same dimensions, RGBA8)
 // after the files - the player model face tiles ride along this way
 void create_texture_array(char **files, int file_count, unsigned char *extra_rgba, int extra_count) {
@@ -228,7 +230,114 @@ void create_texture_array(char **files, int file_count, unsigned char *extra_rgb
     };
     vkCreateSampler(vk.device, &sampler_info, NULL, &texture_sampler);
 
+    texture_w = tex_w;
+    texture_h = tex_h;
+    texture_mips = mip_levels;
     fprintf(stderr, "Created texture array: %dx%d, %d layers, %d mip levels\n", tex_w, tex_h, layer_count, mip_levels);
+}
+
+// overwrite a range of texture array layers at runtime (a player model
+// arriving over the net). Rare event, so a full device idle is fine.
+void update_texture_layers(int first_layer, int layer_count, unsigned char *rgba)
+{
+    if (!texture_image) return; // not created yet: startup path covers it
+
+    vkDeviceWaitIdle(vk.device); // frames in flight are sampling this image
+
+    VkDeviceSize layer_size = texture_w * texture_h * 4;
+    VkDeviceSize total_size = layer_size * layer_count;
+
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_memory;
+    vulkan_create_buffer(total_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &staging_buffer, &staging_memory);
+    void *data;
+    vkMapMemory(vk.device, staging_memory, 0, total_size, 0, &data);
+    memcpy(data, rgba, total_size);
+    vkUnmapMemory(vk.device, staging_memory);
+
+    VkCommandBuffer cmd;
+    VkCommandBufferAllocateInfo cmd_alloc = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .commandPool = vk.commandPool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+    };
+    vkAllocateCommandBuffers(vk.device, &cmd_alloc, &cmd);
+    VkCommandBufferBeginInfo begin_info = {
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    vkBeginCommandBuffer(cmd, &begin_info);
+
+    // all mips of the affected layers: shader-read -> transfer-dst
+    VkImageMemoryBarrier barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = texture_image,
+        .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, texture_mips, first_layer, layer_count },
+        .srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+    };
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 0, NULL, 0, NULL, 1, &barrier);
+
+    VkBufferImageCopy region = {
+        .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, first_layer, layer_count },
+        .imageExtent = { texture_w, texture_h, 1 },
+    };
+    vkCmdCopyBufferToImage(cmd, staging_buffer, texture_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    // regenerate the mip chain for just these layers (same dance as creation)
+    int32_t mip_w = texture_w, mip_h = texture_h;
+    for (int mip = 1; mip < texture_mips; mip++) {
+        barrier.subresourceRange.baseMipLevel = mip - 1;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0, 0, NULL, 0, NULL, 1, &barrier);
+
+        VkImageBlit blit = {
+            .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip - 1, first_layer, layer_count },
+            .srcOffsets = { {0, 0, 0}, {mip_w, mip_h, 1} },
+            .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip, first_layer, layer_count },
+            .dstOffsets = { {0, 0, 0}, {mip_w > 1 ? mip_w / 2 : 1, mip_h > 1 ? mip_h / 2 : 1, 1} },
+        };
+        vkCmdBlitImage(cmd, texture_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            texture_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
+
+        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0, 0, NULL, 0, NULL, 1, &barrier);
+
+        mip_w = mip_w > 1 ? mip_w / 2 : 1;
+        mip_h = mip_h > 1 ? mip_h / 2 : 1;
+    }
+    barrier.subresourceRange.baseMipLevel = texture_mips - 1;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0, 0, NULL, 0, NULL, 1, &barrier);
+
+    vkEndCommandBuffer(cmd);
+    VkSubmitInfo submit = { .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .commandBufferCount = 1, .pCommandBuffers = &cmd };
+    vkQueueSubmit(vk.drawingQueue, 1, &submit, VK_NULL_HANDLE);
+    vkQueueWaitIdle(vk.drawingQueue);
+    vkFreeCommandBuffers(vk.device, vk.commandPool, 1, &cmd);
+    vkDestroyBuffer(vk.device, staging_buffer, NULL);
+    vkFreeMemory(vk.device, staging_memory, NULL);
 }
 
 void create_shadow_maps() {

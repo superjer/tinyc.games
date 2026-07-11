@@ -365,6 +365,35 @@ struct pmvert {
     float illum, glow;
 };
 
+// player models: up to 12 rectangular prisms in 16^3 px local spaces, plus a
+// 256-color palette and 16x16 face tiles in a fixed box unwrap. One flat
+// integer struct so a model travels the net as raw bytes (MSG_PMODEL)
+#define PM_MAX_PIECES 12
+#define PM_FACES 6         // tile order matches the vbufv orient codes 1..6
+#define PM_TILE 16
+
+#define PM_PITCH 1         // axes a piece may rotate on (animation reads these)
+#define PM_YAW   2
+
+struct pm_piece {
+    unsigned char dims[3];   // prism size in px, 1..16
+    unsigned char corner[3]; // prism min-corner in its own 16^3 space
+    unsigned char origin[3]; // pivot point in its own 16^3 space
+    unsigned char attach[3]; // where origin lands, in the parent's 16^3 space
+    signed char parent;      // earlier piece index, or -1 = player center box
+    unsigned char axes;      // PM_PITCH|PM_YAW
+};
+
+struct pmodel {
+    unsigned char nr_pieces;
+    struct pm_piece piece[PM_MAX_PIECES];
+    unsigned palette[256];   // RGBA8, R in the low byte; index 0 = transparent
+    unsigned char texel[PM_MAX_PIECES][PM_FACES][PM_TILE * PM_TILE];
+};
+
+struct pmodel pm_models[NR_PLAYERS]; // slot's model; defaults until one arrives
+int pmodel_have[NR_PLAYERS];         // slot has a real (non-default) model
+
 struct vbufv vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding
 struct vbufv *v_limit = vbuf + VERTEX_BUFLEN;
 struct vbufv *v = vbuf;
@@ -735,6 +764,9 @@ int mob_spawn_at(int bx, int by, int bz);
 void pmodel_build();
 void pmodel_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 unsigned char *pmodel_make_tiles(int *nr_layers);
+void pmodel_net_recv(int slot, const unsigned char *data, int len);
+void pmodel_local_moved(int old_slot);
+void update_texture_layers(int first_layer, int layer_count, unsigned char *rgba); // vksetup.c
 
 // mine.c protos
 void mine_overlay_build();

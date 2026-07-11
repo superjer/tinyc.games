@@ -67,6 +67,7 @@ enum {
         MSG_BONK,      // s->c: f32 knock x, f32 knock z - a slime hit YOU
         MSG_TIME,      // s->c: f32 sun_pitch, so sunsets stay shared
         MSG_CHAT,      // both: u8 sender id, then the text (not NUL-terminated)
+        MSG_PMODEL,    // both: u8 owner id, then a raw struct pmodel (~19.6KB)
 };
 
 #define MOB_ENTRY 20 // bytes per mob in a MSG_MOB snapshot
@@ -201,6 +202,17 @@ static void server_welcome(struct conn *c)
                 e[12] = tile;
                 conn_send(c, MSG_EDIT, e, sizeof e);
         }
+        // every model this server knows (its own included), so the joiner
+        // sees everyone dressed right away; theirs arrives from them shortly
+        static unsigned char pm[1 + sizeof(struct pmodel)];
+        for (int i = 0; i < NR_PLAYERS; i++)
+        {
+                if (!pmodel_have[i] || i == c->player) continue;
+                pm[0] = i;
+                memcpy(pm + 1, &pm_models[i], sizeof(struct pmodel));
+                conn_send(c, MSG_PMODEL, pm, sizeof pm);
+        }
+
         fprintf(stderr, "net: player %d joined (%d edits sent)\n", c->player, edit_len);
 }
 
@@ -210,7 +222,17 @@ static void client_welcome(const unsigned char *p)
         my_player = p[0];
         if (my_player >= NR_PLAYERS) { conn_close(&server_conn); return; }
         if (my_player != old)
+        {
                 player[my_player] = player[old]; // carry the local body to its new slot
+                pmodel_local_moved(old);         // and its model + face tiles
+        }
+
+        // introduce my model; the server stores it and relays it to everyone
+        static unsigned char pm[1 + sizeof(struct pmodel)];
+        pm[0] = my_player;
+        memcpy(pm + 1, &pm_models[my_player], sizeof(struct pmodel));
+        conn_send(&server_conn, MSG_PMODEL, pm, sizeof pm);
+
         world_seed = get_u32(p + 1);
         sun_pitch = get_f32(p + 5);
 
@@ -284,6 +306,18 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                 if (p[0] < NR_MOBS)
                         mob_shatter(p[0], get_f32(p + 1), get_f32(p + 5));
                 break;
+        case MSG_PMODEL:
+        {
+                if (len < 1 + (int)sizeof(struct pmodel) || !c->helloed) return;
+                pmodel_net_recv(c->player, p + 1, len - 1); // the slot is the identity
+                static unsigned char relay[1 + sizeof(struct pmodel)];
+                relay[0] = c->player;
+                memcpy(relay + 1, p + 1, sizeof(struct pmodel));
+                for (int i = 0; i < NET_MAX_CLIENTS; i++)
+                        if (conns[i].helloed && &conns[i] != c)
+                                conn_send(&conns[i], MSG_PMODEL, relay, sizeof relay);
+                break;
+        }
         case MSG_CHAT:
         {
                 if (len < 2 || len > 256 || !c->helloed) return;
@@ -358,6 +392,10 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
         case MSG_TIME:
                 if (len < 4) return;
                 sun_pitch = get_f32(p); // the sun drifts apart slowly; snap to match
+                break;
+        case MSG_PMODEL:
+                if (len < 1 + (int)sizeof(struct pmodel)) return;
+                pmodel_net_recv(p[0], p + 1, len - 1);
                 break;
         case MSG_CHAT:
         {

@@ -7,43 +7,24 @@
 // center box (a 16^3 space centered on the physical hitbox); its origin point
 // is pinned to the attach point in the parent's space and it rotates there.
 // The whole definition - geometry, 256-color palette, and 16x16 face tiles in
-// a fixed box unwrap - is one flat integer struct, sized for net sync later.
+// a fixed box unwrap - is one flat integer struct (defs.c) that travels the
+// net as raw bytes: each instance randomizes its own model at startup and
+// peers exchange them via MSG_PMODEL (net.c).
 //
 // Face tiles ride as extra layers of the terrain texture array (16x16 RGBA,
-// expanded from the palette at startup), so pmodel.vert can share main.frag:
-// lighting, fog, near-shadow sampling and the a<0.5 discard all come free.
-
-#define PM_MAX_PIECES 12
-#define PM_FACES 6         // tile order matches the vbufv orient codes 1..6
-#define PM_TILE 16
-
-#define PM_PITCH 1         // axes a piece may rotate on (animation reads these)
-#define PM_YAW   2
+// expanded from the palette), one 72-layer range per player slot, so
+// pmodel.vert can share main.frag: lighting, fog, near-shadow sampling and
+// the a<0.5 discard all come free. A model arriving at runtime re-uploads
+// just its slot's layer range (update_texture_layers).
 
 // world units per model px, chosen so the default head center (28 px above the
 // feet: 12 leg + 12 body + half of the 8 head) sits exactly at the camera eye
 #define PM_SCALE ((PLYR_H - EYEDOWN) / 28.f)
 
-struct pm_piece {
-        unsigned char dims[3];   // prism size in px, 1..16
-        unsigned char corner[3]; // prism min-corner in its own 16^3 space
-        unsigned char origin[3]; // pivot point in its own 16^3 space
-        unsigned char attach[3]; // where origin lands, in the parent's 16^3 space
-        signed char parent;      // earlier piece index, or -1 = player center box
-        unsigned char axes;      // PM_PITCH|PM_YAW
-};
-
-struct pmodel {
-        unsigned char nr_pieces;
-        struct pm_piece piece[PM_MAX_PIECES];
-        unsigned palette[256];   // RGBA8, R in the low byte; index 0 = transparent
-        unsigned char texel[PM_MAX_PIECES][PM_FACES][PM_TILE * PM_TILE];
-};
-
 // default model: head, body, 2 arms, 2 legs, Minecraft-ish proportions.
 // local spaces are y-down like the world; the body carries everything and
 // hangs from the center box such that the feet land exactly on the ground
-// (the box anchor is snapped to the px grid in pm_root() to keep this integer)
+// (the box anchor is snapped to the px grid in pm_resolve to keep this integer)
 enum { PM_BODY, PM_HEAD, PM_ARM_L, PM_ARM_R, PM_LEG_L, PM_LEG_R };
 static struct pmodel pm_default = {
         .nr_pieces = 6,
@@ -70,56 +51,162 @@ static void pm_face_extent(struct pm_piece *p, int orient, int *eu, int *ev)
 
 #define PM_RGB(r, g, b) (0xff000000u | ((b) << 16) | ((g) << 8) | (r))
 
-// paint the default model: flat piece colors with a darker border around the
-// used region of each face tile, so articulation and UV extents are visible
-static void pm_default_texture(struct pmodel *mo)
+// paint a model's tiles: per-piece base/dark/accent colors and a random
+// pattern per piece, with a darker border around the used region of each face
+// so articulation and UV extents stay visible. Deterministic in the seed;
+// the painted texels are what travels the net, not the seed.
+static void pm_paint(struct pmodel *mo, unsigned seed)
 {
-        enum { C_SKIN = 1, C_SKIN_D, C_HAIR, C_SHIRT, C_SHIRT_D, C_PANTS, C_PANTS_D };
-        mo->palette[0]         = 0; // transparent
-        mo->palette[C_SKIN]    = PM_RGB(224, 172, 128);
-        mo->palette[C_SKIN_D]  = PM_RGB(176, 124, 88);
-        mo->palette[C_HAIR]    = PM_RGB(88, 56, 32);
-        mo->palette[C_SHIRT]   = PM_RGB(52, 140, 152);
-        mo->palette[C_SHIRT_D] = PM_RGB(32, 96, 108);
-        mo->palette[C_PANTS]   = PM_RGB(64, 72, 120);
-        mo->palette[C_PANTS_D] = PM_RGB(44, 50, 88);
-
-        static const unsigned char base[6] = { [PM_BODY] = C_SHIRT, [PM_HEAD] = C_SKIN,
-                [PM_ARM_L] = C_SKIN, [PM_ARM_R] = C_SKIN, [PM_LEG_L] = C_PANTS, [PM_LEG_R] = C_PANTS };
-        static const unsigned char dark[6] = { [PM_BODY] = C_SHIRT_D, [PM_HEAD] = C_SKIN_D,
-                [PM_ARM_L] = C_SKIN_D, [PM_ARM_R] = C_SKIN_D, [PM_LEG_L] = C_PANTS_D, [PM_LEG_R] = C_PANTS_D };
-
+        mo->palette[0] = 0; // transparent
         for (int i = 0; i < mo->nr_pieces; i++)
+        {
+                int base = 1 + i * 3, dark = base + 1, accent = base + 2;
+                int r = 64 + dumb_rand(&seed) % 192;
+                int g = 64 + dumb_rand(&seed) % 192;
+                int b = 64 + dumb_rand(&seed) % 192;
+                mo->palette[base]   = PM_RGB(r, g, b);
+                mo->palette[dark]   = PM_RGB(r * 2 / 3, g * 2 / 3, b * 2 / 3);
+                mo->palette[accent] = PM_RGB(64 + dumb_rand(&seed) % 192,
+                                             64 + dumb_rand(&seed) % 192,
+                                             64 + dumb_rand(&seed) % 192);
+                int pattern = dumb_rand(&seed) % 4;
+
                 for (int f = 0; f < PM_FACES; f++)
                 {
-                        int b = base[i], d = dark[i];
-                        if (i == PM_HEAD && f + 1 == UP) { b = C_HAIR; d = C_HAIR; }
                         int eu, ev;
                         pm_face_extent(&mo->piece[i], f + 1, &eu, &ev);
                         for (int v = 0; v < PM_TILE; v++)
                         for (int u = 0; u < PM_TILE; u++)
                         {
-                                int edge = u < eu && v < ev &&
-                                        (u == 0 || v == 0 || u == eu - 1 || v == ev - 1);
-                                mo->texel[i][f][v * PM_TILE + u] = edge ? d : b;
+                                int c = base;
+                                switch (pattern) {
+                                case 1: c = ((u / 2 + v / 2) & 1) ? accent : base; break;
+                                case 2: c = (v / 2 & 1) ? accent : base; break;
+                                case 3: c = (dumb_rand(&seed) % 5 == 0) ? accent : base; break;
+                                }
+                                if (u < eu && v < ev &&
+                                    (u == 0 || v == 0 || u == eu - 1 || v == ev - 1))
+                                        c = dark;
+                                mo->texel[i][f][v * PM_TILE + u] = c;
                         }
                 }
+        }
 }
 
-// expand every face tile of the default model to RGBA for the texture array.
-// all 12 piece slots get layers (unused ones stay transparent) so the layer of
-// piece i face f is always pmodel_tex_base + i*6 + f
-unsigned char *pmodel_make_tiles(int *nr_layers)
+// an even random size in [lo, hi] so halved dims stay on the integer px grid
+static int pm_even(unsigned *seed, int lo, int hi)
 {
-        static unsigned char rgba[PM_MAX_PIECES * PM_FACES * PM_TILE * PM_TILE * 4];
-        pm_default_texture(&pm_default);
+        return lo + 2 * (dumb_rand(seed) % ((hi - lo) / 2 + 1));
+}
+
+// random model: the default 6-piece skeleton with randomized prism sizes, the
+// connection points re-derived so limbs stay attached and feet stay on the
+// ground. (Head height varies, so only the default model's head sits exactly
+// at the camera eye.) Then random colors and patterns on top.
+static void pmodel_randomize(struct pmodel *mo, unsigned seed)
+{
+        *mo = pm_default;
+        struct pm_piece *pc = mo->piece;
+
+        int hw = pm_even(&seed, 6, 12), hh = pm_even(&seed, 6, 12), hd = pm_even(&seed, 6, 12);
+        int bw = pm_even(&seed, 6, 10), bh = pm_even(&seed, 8, 14), bd = pm_even(&seed, 2, 6);
+        int aw = pm_even(&seed, 2, 4),  ah = pm_even(&seed, 8, 14);
+        int lw = pm_even(&seed, 2, 4),  lh = pm_even(&seed, 8, 14);
+
+        // body hangs from the center box so the legs' feet land on the ground:
+        // box px p is 8 + K - p px above the feet, K = the box anchor height
+        int K = (int)roundf((PLYR_H / 2) / PM_SCALE);
+        pc[PM_BODY] = (struct pm_piece){ {bw,bh,bd}, {8-bw/2, 8-bh/2, 8-bd/2},
+                {8,8,8}, {8, 8 + K - lh - bh/2, 8}, -1, 0 };
+        pc[PM_HEAD] = (struct pm_piece){ {hw,hh,hd}, {8-hw/2, 8-hh/2, 8-hd/2},
+                {8, 8+hh/2, 8}, {8, 8-bh/2, 8}, PM_BODY, PM_PITCH|PM_YAW };
+        pc[PM_ARM_L] = (struct pm_piece){ {aw,ah,aw}, {8-aw/2, 8-ah/2, 8-aw/2},
+                {8, 8-ah/2+1, 8}, {8-bw/2-aw/2, 8-bh/2+1, 8}, PM_BODY, PM_PITCH|PM_YAW };
+        pc[PM_ARM_R] = pc[PM_ARM_L];
+        pc[PM_ARM_R].attach[0] = 8 + bw/2 + aw/2;
+        pc[PM_LEG_L] = (struct pm_piece){ {lw,lh,lw}, {8-lw/2, 8-lh/2, 8-lw/2},
+                {8, 8-lh/2, 8}, {8-lw/2, 8+bh/2, 8}, PM_BODY, PM_PITCH };
+        pc[PM_LEG_R] = pc[PM_LEG_L];
+        pc[PM_LEG_R].attach[0] = 8 + lw/2;
+
+        pm_paint(mo, dumb_rand(&seed));
+}
+
+// ---- texture array layers: one 72-layer range per player slot --------------
+
+static int pm_slot_layers() { return PM_MAX_PIECES * PM_FACES; }
+
+static void pm_expand(struct pmodel *mo, unsigned char *rgba)
+{
         unsigned *out = (unsigned *)rgba;
         for (int i = 0; i < PM_MAX_PIECES; i++)
                 for (int f = 0; f < PM_FACES; f++)
                         for (int t = 0; t < PM_TILE * PM_TILE; t++)
-                                *out++ = pm_default.palette[pm_default.texel[i][f][t]];
-        *nr_layers = PM_MAX_PIECES * PM_FACES;
+                                *out++ = mo->palette[mo->texel[i][f][t]];
+}
+
+// all slots' face tiles for startup: everyone defaults except my own slot,
+// which gets this instance's fresh random model
+unsigned char *pmodel_make_tiles(int *nr_layers)
+{
+        static unsigned char rgba[NR_PLAYERS * PM_MAX_PIECES * PM_FACES * PM_TILE * PM_TILE * 4];
+        pm_paint(&pm_default, 12345); // a fixed, recognizable default coat
+        for (int i = 0; i < NR_PLAYERS; i++)
+                pm_models[i] = pm_default;
+        pmodel_randomize(&pm_models[my_player], (unsigned)SDL_GetPerformanceCounter());
+        pmodel_have[my_player] = 1;
+
+        for (int i = 0; i < NR_PLAYERS; i++)
+                pm_expand(&pm_models[i], rgba + i * pm_slot_layers() * PM_TILE * PM_TILE * 4);
+        *nr_layers = NR_PLAYERS * pm_slot_layers();
         return rgba;
+}
+
+// re-upload one slot's layer range after its model changed at runtime
+static void pmodel_upload(int slot)
+{
+        static unsigned char rgba[PM_MAX_PIECES * PM_FACES * PM_TILE * PM_TILE * 4];
+        pm_expand(&pm_models[slot], rgba);
+        update_texture_layers(pmodel_tex_base + slot * pm_slot_layers(), pm_slot_layers(), rgba);
+}
+
+// a model arrived over the net: sanitize it (remote bytes!), store, upload
+void pmodel_net_recv(int slot, const unsigned char *data, int len)
+{
+        if (slot < 0 || slot >= NR_PLAYERS || slot == my_player) return;
+        if (len < (int)sizeof(struct pmodel)) return;
+        struct pmodel *mo = &pm_models[slot];
+        memcpy(mo, data, sizeof *mo);
+
+        if (mo->nr_pieces > PM_MAX_PIECES) mo->nr_pieces = PM_MAX_PIECES;
+        if (!mo->nr_pieces) { *mo = pm_default; }
+        for (int i = 0; i < mo->nr_pieces; i++)
+        {
+                struct pm_piece *p = &mo->piece[i];
+                for (int a = 0; a < 3; a++)
+                {
+                        p->dims[a] = ICLAMP(p->dims[a], 1, PM_TILE);
+                        p->corner[a] = ICLAMP(p->corner[a], 0, PM_TILE - p->dims[a]);
+                        p->origin[a] = ICLAMP(p->origin[a], 0, PM_TILE);
+                        p->attach[a] = ICLAMP(p->attach[a], 0, PM_TILE);
+                }
+                if (p->parent >= i) p->parent = -1; // parents point backward only
+        }
+
+        pmodel_have[slot] = 1;
+        pmodel_upload(slot);
+        fprintf(stderr, "pmodel: got player %d's model\n", slot);
+}
+
+// the client's slot changed at WELCOME: carry the local model to its new home
+void pmodel_local_moved(int old_slot)
+{
+        if (old_slot == my_player) return;
+        pm_models[my_player] = pm_models[old_slot];
+        pm_models[old_slot] = pm_default;
+        pmodel_have[my_player] = 1;
+        pmodel_have[old_slot] = 0;
+        pmodel_upload(my_player);
 }
 
 // ---- transforms: column-major mat4s, storage as in vector.c ----
@@ -209,9 +296,10 @@ static int pm_count;  // total face instances this frame
 static int pm_remote; // instances the main camera sees (the local player's own
                       // model is shadow-only until 2nd/3rd person cameras exist)
 
-static struct pmvert *pm_emit(struct pmvert *b, struct pmodel *mo,
+static struct pmvert *pm_emit(struct pmvert *b, int slot,
                 float x, float y, float z, float yaw, float t)
 {
+        struct pmodel *mo = &pm_models[slot];
         float space[PM_MAX_PIECES][16], geom[PM_MAX_PIECES][16];
         pm_resolve(mo, x, y, z, yaw, t, space, geom);
 
@@ -235,7 +323,7 @@ static struct pmvert *pm_emit(struct pmvert *b, struct pmodel *mo,
                                 .r2 = { m[2], m[6], m[10], m[14] },
                                 .dims = { mo->piece[i].dims[0], mo->piece[i].dims[1], mo->piece[i].dims[2] },
                                 .orient = f + 1,
-                                .tex = pmodel_tex_base + i * PM_FACES + f,
+                                .tex = pmodel_tex_base + slot * pm_slot_layers() + i * PM_FACES + f,
                                 .illum = il, .glow = gl,
                         };
                         b++;
@@ -258,12 +346,12 @@ void pmodel_build()
                 if (!net_player_active(i)) continue;
                 struct player *r = &player[i];
                 // a player's forward (sin yaw, cos yaw) maps to model yaw PI - yaw
-                b = pm_emit(b, &pm_default, r->pos.x, r->pos.y, r->pos.z, PI - r->yaw, t);
+                b = pm_emit(b, i, r->pos.x, r->pos.y, r->pos.z, PI - r->yaw, t);
         }
         pm_remote = b - pmbuf;
 
         // the local player casts a shadow but is never drawn to the camera
-        b = pm_emit(b, &pm_default, camplayer.pos.x, camplayer.pos.y, camplayer.pos.z,
+        b = pm_emit(b, my_player, camplayer.pos.x, camplayer.pos.y, camplayer.pos.z,
                         PI - camplayer.yaw, t);
         pm_count = b - pmbuf;
 
