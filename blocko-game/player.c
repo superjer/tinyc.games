@@ -179,7 +179,6 @@ void update_player(struct player *p, int real)
                 // set_tile (edit.c) records the edit and handles gndheight,
                 // lighting, and rebuilding the chunks around the block
                 set_tile(x, y, z, OPEN);
-                mine_fall(); // the stand-in drops loose and vanishes (mine.c)
                 mine_heal();
                 p->cooldown = 5;
                 // this target is spent. A long frame can run another update tick

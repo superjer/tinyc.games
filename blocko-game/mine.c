@@ -7,10 +7,9 @@
 // Hold left click to mine (see update_player in player.c): the target block is
 // carved out of its chunk mesh (a hole, in mesh.c) and this file draws a shaking
 // copy of that block sitting in the hole, so it reads as the block jostling
-// loose. When the block breaks, the same cube drops free for a few frames and
-// vanishes (mine_fall). Built once per frame (mine_overlay_build) then drawn
-// into as many passes as needed (mine_overlay_render): the main scene plus the
-// near shadow cascade - the same build/render split as mob.c.
+// loose. Built once per frame (mine_overlay_build) then drawn into as many
+// passes as needed (mine_overlay_render): the main scene plus the near shadow
+// cascade - the same build/render split as mob.c.
 
 // the terrain texture index for one face of a block, matching mesh.c so the
 // mining stand-in looks exactly like the block it replaces
@@ -50,34 +49,12 @@ static struct vbufv obuf[6];
 static int mine_draw_on;
 static float mine_px, mine_py, mine_pz, mine_bs;
 
-// the broken block's death drop: cell, tile, and the tick it broke on
-static int fall_x = -1, fall_y, fall_z, fall_tile, fall_start;
-
-// start the drop; called at break time, while mine_x/mine_tile still hold
-// the block that just broke
-void mine_fall()
-{
-        fall_x = mine_x; fall_y = mine_y; fall_z = mine_z;
-        fall_tile = mine_tile;
-        fall_start = pframe;
-}
-
-// the falling cube's cell is window coords, like everything drawn
-void mine_scoot(int dx, int dz)
-{
-        if (fall_x >= 0) { fall_x += dx; fall_z += dz; }
-}
-
 void mine_overlay_build()
 {
         mine_draw_on = 0;
-        int mining = mine_frac > 0.f && mine_x >= 0;
-        if (mining || pframe - fall_start > 10)
-                fall_x = -1; // drop over - or the cube is needed for a new dig
-        if (!mining && fall_x < 0) return;
+        if (mine_frac <= 0.f || mine_x < 0) return;
 
-        int x = mining ? mine_x : fall_x, y = mining ? mine_y : fall_y,
-            z = mining ? mine_z : fall_z, t = mining ? mine_tile : fall_tile;
+        int x = mine_x, y = mine_y, z = mine_z, t = mine_tile;
 
         // the block's eight corner lights, exactly as mesh.c samples them
         float usw = CORN_(x  , y  , z  ), use = CORN_(x+1, y  , z  );
@@ -98,22 +75,11 @@ void mine_overlay_build()
         vulkan_populate_vertex_buffer(obuf, sizeof obuf, &mine_alloc[fr]);
 
         // rattle harder as it works loose; sit a touch inside the socket so
-        // it never z-fights the walls of the hole. A broken block drops
-        // instead: accelerating straight down (y grows down), ~2 blocks by
-        // the time it vanishes
-        float jx = 0, jy = 0, jz = 0;
-        if (mining)
-        {
-                float shake = 22.f * mine_frac;
-                jx = sinf(pframe * 1.9f) * shake;
-                jy = sinf(pframe * 2.7f) * shake * 0.5f;
-                jz = cosf(pframe * 2.3f) * shake;
-        }
-        else
-        {
-                int ft = pframe - fall_start;
-                jy = 20.f * ft * ft;
-        }
+        // it never z-fights the walls of the hole
+        float shake = 22.f * mine_frac;
+        float jx = sinf(pframe * 1.9f) * shake;
+        float jy = sinf(pframe * 2.7f) * shake * 0.5f;
+        float jz = cosf(pframe * 2.3f) * shake;
         float inset = 15.f;
 
         mine_px = x * (float)BS + inset + jx;
