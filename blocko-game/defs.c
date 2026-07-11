@@ -387,11 +387,28 @@ struct pm_piece {
     unsigned char type;      // enum pm_type
 };
 
+#define PM_STYLE_WALK  0   // per-type motion driven by what the player does
+#define PM_STYLE_FLAIL 1   // the original index-seeded arm-waving, kept for fun
+
 struct pmodel {
     unsigned char nr_pieces;
+    unsigned char style;     // PM_STYLE_*
     struct pm_piece piece[PM_MAX_PIECES];
     unsigned palette[256];   // RGBA8, R in the low byte; index 0 = transparent
     unsigned char texel[PM_MAX_PIECES][PM_FACES][PM_TILE * PM_TILE];
+};
+
+// everything the animation needs to know about a player this frame;
+// NULL = plain standing pose (the editor's static preview)
+struct pm_anim {
+    float walk_phase; // accumulated from horizontal DISTANCE, so feet don't skate
+    float speed;      // 0..1 smoothed horizontal speed
+    float look_pitch; // the player's real pitch
+    float look_yaw;   // head yaw relative to body facing
+    float crouch;     // 0..1, eased from the sneaking flag
+    float bounce;     // jiggle excitation (landings, walk bob)
+    float t;          // wall clock, for idle motion
+    unsigned char style; // PM_STYLE_*, copied from the model
 };
 
 struct pmodel pm_models[NR_PLAYERS]; // slot's model; defaults until one arrives

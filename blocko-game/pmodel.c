@@ -139,6 +139,7 @@ static void pm_sanitize(struct pmodel *mo)
 {
         if (mo->nr_pieces > PM_MAX_PIECES) mo->nr_pieces = PM_MAX_PIECES;
         if (!mo->nr_pieces) { *mo = pm_default; }
+        if (mo->style > PM_STYLE_FLAIL) mo->style = PM_STYLE_WALK;
         for (int i = 0; i < mo->nr_pieces; i++)
         {
                 struct pm_piece *p = &mo->piece[i];
@@ -331,12 +332,13 @@ static void pm_mat_pitch(float *m, float a)
 
 // resolve the model's piece transforms (px in each piece's 16^3 space -> world)
 // for a player whose hitbox top corner is at (x,y,z), facing model-yaw `yaw`.
-// t drives the placeholder articulation until real animations exist;
-// t < 0 means a plain standing pose (the model editor's preview).
+// an drives the articulation; NULL means a plain standing pose (the model
+// editor's preview). Motion dispatches on each piece's TYPE, or flails
+// everything when the model's style says so.
 // root_out, when non-NULL, gets the center box's own px -> world matrix
 // (the editor needs it: a parent of -1 attaches into that space).
 static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
-                float t, float space[][16], float geom[][16], float *root_out)
+                struct pm_anim *an, float space[][16], float geom[][16], float *root_out)
 {
         float tmp[16], tmp2[16], rot[16];
 
@@ -380,11 +382,38 @@ static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
                 else
                         par = root; // unreachable (cycle): hang from the box
 
-                // FLAIL: wave everything but the torso around, index-seeded;
-                // legs keep to pitch only so they read as walking
-                int leg = p->type == PM_T_LEG1 || p->type == PM_T_LEG2;
-                float pitch = (t >= 0 && p->type != PM_T_TORSO) ? sinf(t * (1.1f + 0.2f * i) + i) * 0.9f : 0;
-                float pyaw  = (t >= 0 && p->type != PM_T_TORSO && !leg) ? sinf(t * (0.7f + 0.3f * i) + 2 * i) * 0.9f : 0;
+                float pitch = 0, pyaw = 0;
+                if (an && an->style == PM_STYLE_FLAIL)
+                {
+                        // FLAIL: wave everything but the torso around, index-
+                        // seeded; legs keep to pitch only so they read as walking
+                        int leg = p->type == PM_T_LEG1 || p->type == PM_T_LEG2;
+                        if (p->type != PM_T_TORSO)
+                                pitch = sinf(an->t * (1.1f + 0.2f * i) + i) * 0.9f;
+                        if (p->type != PM_T_TORSO && !leg)
+                                pyaw = sinf(an->t * (0.7f + 0.3f * i) + 2 * i) * 0.9f;
+                }
+                else if (an) switch (p->type)
+                {
+                        // WALK: per-type motion; stride is paced by distance
+                        // walked so feet never skate. Arms swing gently
+                        // opposite the same-side leg (LEG 1 pairs with the
+                        // left by default - if a model reads wrong, swap its
+                        // leg types)
+                        case PM_T_LEG1:
+                                pitch =  sinf(an->walk_phase) * 0.9f * an->speed;
+                                break;
+                        case PM_T_LEG2:
+                                pitch = -sinf(an->walk_phase) * 0.9f * an->speed;
+                                break;
+                        case PM_T_ARM_L:
+                                pitch = -sinf(an->walk_phase) * 0.45f * an->speed;
+                                break;
+                        case PM_T_ARM_R:
+                                pitch =  sinf(an->walk_phase) * 0.45f * an->speed;
+                                break;
+                        default: break;
+                }
                 pm_mat_yaw(tmp, pyaw);
                 pm_mat_pitch(tmp2, pitch);
                 mat4_multiply(rot, tmp, tmp2);
@@ -415,12 +444,53 @@ static int pm_count;  // total face instances this frame
 static int pm_remote; // instances the main camera sees (the local player's own
                       // model is shadow-only until 2nd/3rd person cameras exist)
 
+// per-slot animation accumulators, fed from player[] each frame. Remote
+// players' pos/yaw/pitch sync over the net so this works for everyone;
+// sneaking doesn't travel yet, so remote crouch just stays 0.
+static struct pm_state {
+        float px, pz;               // last frame's horizontal position
+        float walk_phase, speed, crouch;
+        int seen;
+} pm_state[NR_PLAYERS];
+
+static struct pm_anim *pm_animate(int slot, struct player *pl, float t)
+{
+        static struct pm_anim an[NR_PLAYERS];
+        struct pm_anim *a = &an[slot];
+        struct pm_state *s = &pm_state[slot];
+
+        float dx = pl->pos.x - s->px, dz = pl->pos.z - s->pz;
+        float dist = sqrtf(dx * dx + dz * dz);
+        // a jump bigger than any legal move is a teleport or a world scoot:
+        // no stride for those
+        if (!s->seen || dist > PLYR_SPD_R * 2) dist = 0;
+        s->px = pl->pos.x; s->pz = pl->pos.z; s->seen = 1;
+
+        s->walk_phase += dist * (2 * PI / 2000.f); // a full stride per 2 blocks
+        float norm = dist / PLYR_SPD_R;            // 1.0 at running speed
+        if (norm > 1) norm = 1;
+        s->speed += (norm - s->speed) * 0.2f;
+        s->crouch += ((pl->sneaking ? 1.f : 0.f) - s->crouch) * 0.25f;
+
+        *a = (struct pm_anim){
+                .walk_phase = s->walk_phase,
+                .speed = s->speed,
+                .look_pitch = pl->pitch,
+                .look_yaw = 0,
+                .crouch = s->crouch,
+                .bounce = 0,
+                .t = t,
+                .style = pm_models[slot].style,
+        };
+        return a;
+}
+
 static struct pmvert *pm_emit(struct pmvert *b, int slot,
-                float x, float y, float z, float yaw, float t)
+                float x, float y, float z, float yaw, struct pm_anim *an)
 {
         struct pmodel *mo = &pm_models[slot];
         float space[PM_MAX_PIECES][16], geom[PM_MAX_PIECES][16];
-        pm_resolve(mo, x, y, z, yaw, t, space, geom, NULL);
+        pm_resolve(mo, x, y, z, yaw, an, space, geom, NULL);
 
         // light the whole body from the block the hitbox center is in
         float il = 0.4f, gl = 0.f;
@@ -455,7 +525,7 @@ static struct pmvert *pm_emit(struct pmvert *b, int slot,
 void pmodel_build()
 {
         static float t;
-        t += 0.05f; // placeholder articulation clock
+        t += 0.05f; // wall clock for idle motion (and the FLAIL style)
 
         struct pmvert *b = pmbuf;
 
@@ -465,13 +535,14 @@ void pmodel_build()
                 if (!net_player_active(i)) continue;
                 struct player *r = &player[i];
                 // a player's forward (sin yaw, cos yaw) maps to model yaw PI - yaw
-                b = pm_emit(b, i, r->pos.x, r->pos.y, r->pos.z, PI - r->yaw, t);
+                b = pm_emit(b, i, r->pos.x, r->pos.y, r->pos.z, PI - r->yaw,
+                                pm_animate(i, r, t));
         }
         pm_remote = b - pmbuf;
 
         // the local player casts a shadow but is never drawn to the camera
         b = pm_emit(b, my_player, camplayer.pos.x, camplayer.pos.y, camplayer.pos.z,
-                        PI - camplayer.yaw, t);
+                        PI - camplayer.yaw, pm_animate(my_player, &camplayer, t));
         pm_count = b - pmbuf;
 
         // the model editor's preview rides in the same buffer, past pm_count

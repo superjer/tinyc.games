@@ -22,10 +22,13 @@
 // click as the new attach point (clicks that would loop the chain are
 // ignored). The TYPE button shows the selected piece's animation type (HEAD,
 // LEFT ARM, ...) - left-click cycles forward, right-click back. The ANIMATE
-// button plays the game's placeholder walk-wave on the
-// whole model - WASD still spins it, the other buttons hide, any click (or
-// ESC) stops it right back where you were, and the zoom stays fit to the
-// standing pose so it doesn't pump. Clicking off
+// button plays the model's animation (walking in place)
+// on the whole model - WASD still spins it, the piece buttons grey out, any
+// click (or ESC) stops it right back where you were, and the zoom stays fit
+// to the standing pose so it doesn't pump. The STYLE button below it flips
+// the model between WALK and FLAIL animation styles (a model property that
+// travels with it over the net) and is click-exempt so you can A/B styles
+// while ANIMATE plays. Clicking off
 // the piece or ESC goes back to the whole model; U closes the editor, saves
 // model.dat and announces the new look over the net.
 
@@ -96,6 +99,11 @@ static int pmedit_in_type_btn(float x, float y)
 static int pmedit_in_animate_btn(float x, float y)
 {
         return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 272 && y <= 332;
+}
+
+static int pmedit_in_style_btn(float x, float y)
+{
+        return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 336 && y <= 396;
 }
 
 static const char *pmedit_type_name[PM_T_COUNT] = {
@@ -262,12 +270,23 @@ struct pmvert *pmedit_emit(struct pmvert *b)
         float space[PM_MAX_PIECES][16], geom[PM_MAX_PIECES][16], root[16];
 
         // standing pose in the model frame: hitbox center at the origin,
-        // facing the camera; t < 0 = no placeholder animation. ANIMATE mode
-        // runs the game's wave clock instead.
+        // facing the camera; NULL context = no animation. ANIMATE mode feeds
+        // a synthetic walking-in-place context (full speed, phase advancing)
+        // so the WALK style previews too, not just the FLAIL clock.
         static float anim_t;
-        if (pmedit_animate) anim_t += 0.05f;
+        struct pm_anim an;
+        if (pmedit_animate)
+        {
+                anim_t += 0.05f;
+                an = (struct pm_anim){
+                        .walk_phase = anim_t * 4.f,
+                        .speed = 1,
+                        .t = anim_t,
+                        .style = mo->style,
+                };
+        }
         pm_resolve(mo, -PLYR_W / 2.f, -PLYR_H / 2.f, -PLYR_W / 2.f,
-                        -camplayer.yaw, pmedit_animate ? anim_t : -1.f,
+                        -camplayer.yaw, pmedit_animate ? &an : NULL,
                         space, geom, root);
         pmedit_nr = mo->nr_pieces;
         if (pmedit_sel >= pmedit_nr) pmedit_sel = -1;
@@ -279,7 +298,7 @@ struct pmvert *pmedit_emit(struct pmvert *b)
         if (pmedit_animate)
         {
                 pm_resolve(mo, -PLYR_W / 2.f, -PLYR_H / 2.f, -PLYR_W / 2.f,
-                                -camplayer.yaw, -1.f, sspace, sgeom, NULL);
+                                -camplayer.yaw, NULL, sspace, sgeom, NULL);
                 bgeom = sgeom;
         }
 
@@ -708,6 +727,16 @@ void pmedit_click(int down)
         }
         if (btn != SDL_BUTTON_LEFT && btn != SDL_BUTTON_RIGHT) return;
 
+        // STYLE toggles the model's animation style; it sits above the "any
+        // click stops ANIMATE" rule so you can A/B styles while it plays
+        if (pmedit_in_style_btn(pmedit_mx, pmedit_my))
+        {
+                struct pmodel *mo = &pm_models[my_player];
+                mo->style = mo->style == PM_STYLE_WALK ? PM_STYLE_FLAIL
+                                                       : PM_STYLE_WALK;
+                return;
+        }
+
         if (pmedit_animate) { pmedit_animate = 0; return; } // any click stops it
 
         if (pmedit_in_joint_btn(pmedit_mx, pmedit_my))
@@ -841,7 +870,7 @@ void pmedit_motion()
 // labels land on top. The boxes ARE the hit rects.
 static void pmedit_boxes()
 {
-        float r[5][4];
+        float r[6][4];
         int nr = 0;
         for (int i = 0; i < 4; i++)
         {
@@ -852,8 +881,11 @@ static void pmedit_boxes()
         r[nr][0] = PMEDIT_BTN_X - 10; r[nr][1] = 272;
         r[nr][2] = screenw - 8;       r[nr][3] = 332;
         nr++;
+        r[nr][0] = PMEDIT_BTN_X - 10; r[nr][1] = 336;
+        r[nr][2] = screenw - 8;       r[nr][3] = 396;
+        nr++;
 
-        float buf[5 * 12], *p = buf;
+        float buf[6 * 12], *p = buf;
         for (int i = 0; i < nr; i++)
         {
                 float x0 = r[i][0], y0 = r[i][1], x1 = r[i][2], y1 = r[i][3];
@@ -891,13 +923,13 @@ static void pmedit_boxes()
                         0, sizeof push, &push);
         VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers(cmdbuf, 0, 1, &alloc[vk.currentFrame].buf, &offset);
-        vkCmdDraw(cmdbuf, (nr - 1) * 6, 1, 0, 0); // piece buttons
+        vkCmdDraw(cmdbuf, (nr - 2) * 6, 1, 0, 0); // piece buttons
 
         memcpy(push.color, (float[3]){ 0.13f, 0.13f, 0.16f }, sizeof push.color);
         vkCmdPushConstants(cmdbuf, vk.pipelines[cursor_pipe].layout,
                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                         0, sizeof push, &push);
-        vkCmdDraw(cmdbuf, 6, 1, (nr - 1) * 6, 0); // ANIMATE, always live
+        vkCmdDraw(cmdbuf, 12, 1, (nr - 2) * 6, 0); // ANIMATE + STYLE, always live
 }
 
 void pmedit_draw_ui()
@@ -937,6 +969,11 @@ void pmedit_draw_ui()
         font_add_text("ANIMATE", PMEDIT_BTN_X, 284.f, 3);
         if (pmedit_animate) font_end(1, 1, 0.25f);
         else font_end(0.55f, 0.55f, 0.55f);
+
+        font_begin(screenw, screenh);
+        font_add_text(pm_models[my_player].style == PM_STYLE_FLAIL ?
+                        "FLAIL" : "WALK", PMEDIT_BTN_X, 348.f, 3);
+        font_end(0.55f, 0.7f, 0.55f);
 
         char *hint = pmedit_animate ?
                 "WASD rotate   click anywhere to stop" :
