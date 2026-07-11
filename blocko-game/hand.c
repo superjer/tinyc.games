@@ -3,8 +3,8 @@
 #define BLOCKO_HAND_C_INCLUDED
 
 // hand.c - the block you're about to place, shown floating in first person at
-// the lower right of the screen. The mouse wheel cycles which block is held
-// (held_cycle); right click places held_tile
+// the lower right of the screen. Q/E and the mouse wheel cycle which block is
+// held (held_cycle); right click places held_tile
 //
 // Rendering reuses the terrain pipeline exactly like the mining stand-in
 // (mine.c): six textured faces of one cube, built once per frame (hand_build)

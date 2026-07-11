@@ -38,6 +38,14 @@ void key_move(int down)
                         jump(down);
                         break;
 
+                // switch held block (the mouse wheel does this too)
+                case SDLK_Q:
+                        if (down) held_cycle(-1);
+                        break;
+                case SDLK_E:
+                        if (down) held_cycle(+1);
+                        break;
+
                 // menu stuff
                 case SDLK_ESCAPE:
                         SDL_SetWindowRelativeMouseMode(vk.window, false);
@@ -45,13 +53,6 @@ void key_move(int down)
                         break;
 
                 // debug stuff
-                case SDLK_Q: // go up alot
-                        if (!down)
-                        {
-                                player[my_player].pos.y -= 16000;
-                                player[my_player].grav = GRAV_ZERO - 5;
-                        }
-                        break;
                 case SDLK_F: // go fast
                         if (down)
                                 fast = (fast == 1.f) ? 8.f : 1.f;

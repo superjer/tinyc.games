@@ -15,7 +15,7 @@ void debrief()
 
         if (help_layer == 1)
         {
-                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nWheel\nT   \nH                  \nPress G for more";
+                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nQ/E \nT   \nH                  \nPress G for more";
                 char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nChange held block\nChat\nHide this help text";
                 font_begin(screenw, screenh);
                 font_add_text(h1, screenw/100.f, screenh/4.f, 0);
@@ -27,8 +27,8 @@ void debrief()
 
         if (help_layer == 2)
         {
-                char *g1 = "Q\nF\nN";
-                char *g2 = "Go up!\nFast\nNoclip";
+                char *g1 = "F\nN";
+                char *g2 = "Fast\nNoclip";
                 font_begin(screenw, screenh);
                 font_add_text(g1, screenw/100.f, screenh/4.f, 0);
                 font_end(0.5, 1, 1);
