@@ -96,9 +96,13 @@ void draw_stuff()
         memcpy(main_ubo.model, identity_mtrx, sizeof identity_mtrx);
 
         // The sun sits fixed in the sky; its position only follows the player
-        shadow_target[0] = camplayer.pos.x;
-        shadow_target[1] = camplayer.pos.y;
-        shadow_target[2] = camplayer.pos.z;
+        // snap the shadow window to the block grid: a smoothly moving window
+        // re-quantizes every shadow edge to its texels each frame (crawling);
+        // stepping it a whole block at a time keeps the render stable between
+        // steps
+        shadow_target[0] = roundf(camplayer.pos.x / BS) * BS;
+        shadow_target[1] = roundf(camplayer.pos.y / BS) * BS;
+        shadow_target[2] = roundf(camplayer.pos.z / BS) * BS;
         sun_pos.x = shadow_target[0] + dist2sun * sun_dir[0];
         sun_pos.y = shadow_target[1] + dist2sun * sun_dir[1];
         sun_pos.z = shadow_target[2] + dist2sun * sun_dir[2];
