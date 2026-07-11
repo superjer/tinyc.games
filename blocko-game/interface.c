@@ -67,19 +67,6 @@ void key_move(int down)
                 case SDLK_N: // noclip: fly through solids, no gravity
                         if (down) player[my_player].noclip = !player[my_player].noclip;
                         break;
-                case SDLK_C: // change view distance
-                        if (down) {
-                                if (draw_dist < 320.f)
-                                        draw_dist = 320.f;
-                                else if (draw_dist < 640.f)
-                                        draw_dist = 640.f;
-                                else if (draw_dist < 1024.f)
-                                        draw_dist = 1024.f;
-                                else
-                                        draw_dist = 160.f;
-                                fprintf(stderr, "draw_dist: %f\n", draw_dist);
-                        }
-                        break;
         }
 }
 
