@@ -55,12 +55,12 @@ int main()
                 accum_msec += (float)get_interval();
                 for (; accum_msec > 8.3333f; accum_msec -= 8.3333f)
                 {
-                        for (p = play; p < play + nplay; p++) update_player();
+                        update_player();
                         accum_msec += (float)get_interval();
                 }
 
                 draw_start();
-                for (p = play; p < play + nplay; p++) draw_player();
+                draw_player();
                 draw_menu();
                 draw_end();
                 vulkan_submit();
@@ -93,6 +93,7 @@ void do_events()
 void setup()
 {
         srand(time(NULL));
+        p = play;
         SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD | SDL_INIT_AUDIO);
         SDL_SetGamepadEventsEnabled(true);
 
@@ -106,48 +107,6 @@ void setup()
         audio_init();
         font_init();
         draw_setup();
-}
-
-unsigned garb_rand()
-{
-        return (p->seed1 = (1103515245 * p->seed1 + 12345) % 2147483648);
-}
-
-unsigned bag_rand()
-{
-        return (p->seed2 = (1103515245 * p->seed2 + 13456) % 2147483648);
-}
-
-void age_garbage()
-{
-        p->garbage[0] += p->garbage[1];
-        for (int i = 1; i < GARB_LVLS; i++)
-                p->garbage[i] = p->garbage[i + 1]; // last loop looks like it goes oob, but there's room!
-        p->garbage_tick = tick;
-}
-
-void receive_garbage()
-{
-        int gap = garb_rand() % 10;
-        int max_at_once = garbage_race ? 10 : 6; // no more than 6, 10 garbage at a time
-        for (int i = 0; p->garbage[0] && i < max_at_once; p->garbage[0]--, i++)
-        {
-                memmove(p->row, p->row + 1, (BHEIGHT - 1) * sizeof *p->row);
-                memset(&p->row[BHEIGHT - 1], 0, sizeof *p->row);
-                p->row[BHEIGHT - 1].special = 1; // special = garbage
-                p->row[BHEIGHT - 1].offset = (p->countdown_time ? 0 : -bs);
-                p->garbage_remaining++;
-
-                for (int i = 0; i < 10; i++)
-                        if (gap != i && (!garbage_race || garb_rand() % 20))
-                        {
-                                p->row[BHEIGHT - 1].col[i] = (struct spot){9, '@'};
-                                p->row[BHEIGHT - 1].fullness++;
-                        }
-
-                if (garbage_race) gap = garb_rand() % 10;
-                audio_tone(SQUARE, A1, D1, 50, 5, 50, 200);
-        }
 }
 
 void kill_lines()
@@ -185,8 +144,6 @@ void kill_lines()
                         p->crash_time = 1000;
                 }
 
-                if (p->row[y].special) p->garbage_remaining--;
-
                 for (int j = y; j > 0; j--)
                 {
                         p->row[j] = p->row[j - 1];
@@ -195,20 +152,11 @@ void kill_lines()
 
                 memset(&p->row[0], 0, sizeof p->row[0]);
         }
-
-        if (garbage_race && p->garbage_remaining == 0)
-        {
-                age_garbage();
-                receive_garbage();
-                if (p->garbage_remaining == 0)
-                        state = GAMEOVER;
-        }
 }
 
 void new_game()
 {
         memset(p->row, 0, sizeof p->row);
-        p->garbage_remaining = 0;
         p->bag_idx = BAG_SZ;
         if (p->best < p->score) p->best = p->score;
         p->score = 0;
@@ -217,17 +165,6 @@ void new_game()
         p->held.color = 0;
         p->hold_uses = 0;
         p->countdown_time = 4 * CTDN_TICKS;
-        p->seed1 = seed;
-        p->seed2 = seed;
-
-        if (garbage_race)
-        {
-                p->garbage[0] = 10;
-                p->garbage[1] = 5;
-                p->garbage[2] = 5;
-                p->garbage[3] = 5;
-                receive_garbage();
-        }
 }
 
 // set the current piece to the top, middle to start falling
@@ -251,7 +188,7 @@ void new_piece()
                         p->bag[i] = i % 7 + 1;
 
                 for (int i = 0; i < BAG_SZ; i++)
-                        SWAP(p->bag[i], p->bag[bag_rand() % BAG_SZ]);
+                        SWAP(p->bag[i], p->bag[rand() % BAG_SZ]);
         }
 
         p->it.color = p->next[0];
@@ -292,7 +229,6 @@ void move(int dx, int dy, int gravity)
         else if (dy && gravity)
         {
                 bake();
-                receive_garbage();
                 if (tick != p->beam_tick)
                         audio_tone(TRIANGLE, C4, F4, 10, 10, 10, 10);
         }
@@ -368,17 +304,11 @@ void update_player()
                 p->idle_time = 0;
         }
 
-        if (tick - p->garbage_tick > (garbage_race ? 6000 : 400))
-                age_garbage();
-
         // update shaky offsets
         if (p->shake_x < .01f && p->shake_x > -.01f) p->shake_x = .0f;
         if (p->shake_y < .01f && p->shake_y > -.01f) p->shake_y = .0f;
         if (p->shake_x) p-> shake_x *= .98f;
         if (p->shake_y) p-> shake_y *= .98f;
-
-        // decrease flash
-        p->flash = CLAMP(0, p->flash - 1, 18);
 }
 
 void game_over()

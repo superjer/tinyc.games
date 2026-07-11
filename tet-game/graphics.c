@@ -168,38 +168,27 @@ void draw_menu()
         if (state > MAX_MENU) return;
 
         menu_pos = MAX(menu_pos, 0);
-        menu_pos = MIN(menu_pos, state == NUMBER_MENU ? 3 : 2);
-        p = play; // just grab first player :)
+        menu_pos = MIN(menu_pos, 1);
         text_x = win_x / 3;
         text_y = win_y / 3;
 
         set_color(60, 60, 60);
-        rect(text_x - bs2, text_y - bs2, p->board_w + bs, line_height * 5 + bs);
+        rect(text_x - bs2, text_y - bs2, p->board_w + bs, line_height * 3 + bs);
         set_color(0, 0, 0);
         rect(text_x, text_y + line_height * (menu_pos + 1), p->board_w, line_height);
         draw_end();
 
         if (state == MAIN_MENU)
         {
-                text("Main Menu"        , 0);
-                text("Endless"          , 0);
-                text("Garbage Race"     , 0);
-                text("Quit"             , 0);
-        }
-        else if (state == NUMBER_MENU)
-        {
-                text("How many players?", 0);
-                text("1"                , 0);
-                text("2"                , 0);
-                text("3"                , 0);
-                text("4"                , 0);
+                text("Main Menu"  , 0);
+                text("Play"       , 0);
+                text("Quit"       , 0);
         }
         else if (state == PAUSE_MENU)
         {
-                text("Pause Menu"          , 0);
-                text("Resume game"         , 0);
-                text("Reassign controllers", 0);
-                text("End game"            , 0);
+                text("Pause Menu" , 0);
+                text("Resume game", 0);
+                text("End game"   , 0);
         }
 }
 
@@ -241,7 +230,7 @@ void draw_shape(int x, int y, int color, int rot, int flags)
 // draw everything in the game on the screen for current player
 void draw_player()
 {
-        if (state == MAIN_MENU || state == NUMBER_MENU) return;
+        if (state == MAIN_MENU) return;
 
         int x = p->board_x + bs * p->shake_x;
         int y = p->board_y + bs * p->shake_y;
@@ -289,26 +278,6 @@ void draw_player()
                 draw_mino(x + bs * i, y + bs * (j-5) - p->row[j].offset,
                                 p->row[j].col[i].color, 0, p->row[j].col[i].part);
 
-        // draw queued garbage
-        p->top_garb = y + bs * VHEIGHT;
-        int garb_height = 0;
-        for (int i = 0; i < GARB_LVLS; i++)
-                for (int j = 0; j < p->garbage[i]; j++)
-                {
-                        draw_mino(x - 3 * bs2, (p->top_garb -= bs), (3 - i) + 9, 0, '@');
-                        garb_height++;
-                }
-        if (p->flash > 8)
-        {
-                int flash_sq = p->flash * p->flash;
-                set_color(flash_sq, flash_sq, flash_sq);
-                rect(x - 3 * bs2 - bs4, p->top_garb - bs4, bs + bs4 + bs4, garb_height * bs + bs2);
-        }
-        p->top_garb = y + bs * VHEIGHT;
-        for (int i = 0; i < GARB_LVLS; i++)
-                for (int j = 0; j < p->garbage[i]; j++)
-                        draw_mino(x - 3 * bs2, (p->top_garb -= bs), (3 - i) + 9, 0, '@');
-
         // draw falling piece & ghost
         draw_shape(x + bs * p->it.x, y + bs * (ghost_y - 5), p->it.color, p->it.rot, OUTLINE);
         draw_shape(x + bs * p->it.x, y + bs * (p->it.y - 5), p->it.color, p->it.rot, 0);
@@ -347,8 +316,7 @@ void draw_player()
         // draw scores etc
         text_x = p->held.x;
         text_y = p->held.y + p->box_w + bs2;
-        if (!garbage_race)
-                text("%d pts ", p->score);
+        text("%d pts ", p->score);
         text("%d lines ", p->lines);
 
         int secs = p->ticks / 120 % 60;
@@ -356,7 +324,6 @@ void draw_player()
         char minsec[80];
         sprintf(minsec, "%d:%02d.%02d ", mins, secs, p->ticks % 120 * 1000 / 1200);
         text(minsec, 0);
-        text(p->dev_name, 0);
         if (p->combo > 1) text("%d combo ", p->combo);
         if (p->tspin == TSPIN_FULL)
                 text("T-SPIN", 0);
@@ -375,9 +342,6 @@ void draw_player()
         if (p->countdown_time > 0)
                 text(countdown_msg[p->countdown_time / CTDN_TICKS], 0);
 
-        if (state == ASSIGN)
-                text(p->device == -1 ? "Press button to join" : p->dev_name, 0);
-
         if (state == GAMEOVER) text("Game over", 0);
 }
 
@@ -386,22 +350,18 @@ void resize(int x, int y)
 {
         win_x = x;
         win_y = y;
-        bs = MIN(win_x / (nplay * 22), win_y / 24);
+        bs = MIN(win_x / 22, win_y / 24);
         bs2 = bs / 2;
         bs4 = bs / 4;
         line_height = bs * 125 / 100;
-        int n = 0;
-        for (p = play; p < play + nplay; p++, n++)
-        {
-                p->board_x = (x / (nplay * 2)) * (2 * n + 1) - bs2 * BWIDTH;
-                p->board_y = (y / 2) - bs2 * VHEIGHT;
-                p->board_w = bs * 10;
-                p->box_w = bs * 5;
-                p->held.x = p->board_x - p->box_w - bs2;
-                p->held.y = p->board_y;
-                p->preview_x = p->board_x + p->board_w + bs2;
-                p->preview_y = p->board_y;
-        }
+        p->board_x = (x / 2) - bs2 * BWIDTH;
+        p->board_y = (y / 2) - bs2 * VHEIGHT;
+        p->board_w = bs * 10;
+        p->box_w = bs * 5;
+        p->held.x = p->board_x - p->box_w - bs2;
+        p->held.y = p->board_y;
+        p->preview_x = p->board_x + p->board_w + bs2;
+        p->preview_y = p->board_y;
 }
 
 #endif // TET_GRAPHICS_C_INCLUDED

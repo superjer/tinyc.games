@@ -28,8 +28,6 @@
 */
 
 #define BAG_SZ 7   // bag size
-#define GARB_LVLS 4 // levels of queued garbage
-#define NPLAY 4
 #define CTDN_TICKS 96
 
 // collision test results
@@ -86,10 +84,6 @@ int colors[] = {
         0x89c926, // S
         0x88488f, // T
         0xffffff, // shine color
-        0x6f7866, // garbage colors
-        0x9fa896,
-        0xffca39,
-        0xff5a5f,
 };
 
 int kicks[] = {   // clockwise                            counterclockwise
@@ -122,7 +116,6 @@ struct spot { int color, part; };
 struct row {
         struct spot col[BWIDTH];
         int fullness;
-        int special;
         int offset;
 };
 
@@ -144,10 +137,6 @@ struct player {
         int lines, score, best;         // scoring
         int combo;                      // clears in-a-row
         int reward, reward_x, reward_y; // for hovering points indicator
-        int garbage[GARB_LVLS + 1];     // queued garbage, e.g. received from opponents
-        int garbage_tick;               // keeps track of when to age garbage
-        int garbage_remaining;          // how many lines of garbage remain to clear to win
-        int top_garb;                   // highest position of garbage stack drawn
         int level;                      // difficultly level (lines/10)
         int countdown_time;             // ready-set-go countdown
         int idle_time;                  // how long the player has been idle in ticks
@@ -158,30 +147,20 @@ struct player {
         int preview_x, preview_y;       // position of preview
         int box_w;                      // width of hold box / preview box
         int ticks;                      // counts up while game is going
-        int seed1, seed2;               // make garbage and bags fair
         float shake_x, shake_y;         // amount the board is offset by shaking
-        int flash;                      // flashing from receiving garbage
         int tspin;
-        int device_type;                // 'L'/'R' = keyboard or 'G' = gamepad
-        int device;                     // SDL's input device id
-        char dev_name[80];              // input device "name"
         int crash_row;                  // row that just crashed into the ground from falling
         int crash_time;                 // countdown timer for crash animation
-} play[NPLAY], *p;                      // one per player
+} play[1], *p;                          // the one player
 
-enum state { MAIN_MENU = 0, NUMBER_MENU, PAUSE_MENU, MAX_MENU, ASSIGN, PLAY, GAMEOVER} state;
+enum state { MAIN_MENU = 0, PAUSE_MENU, MAX_MENU, PLAY, GAMEOVER} state;
 int win_x = 2000;         // window size
 int win_y = 1500;
 int bs, bs2, bs4;         // individual block size, in half, in quarters
 int tick;                 // counts up one per frame
-int nplay = 1;            // number of players
-int assign_me;            // who is getting an input device assigned?
 int menu_pos;             // current position in menu
 int text_x, text_y;       // position of text drawing
 int line_height;          // text line height
-int garbage_race;
-bool do_new_game;
-int seed;
 
 SDL_Event event;
 SDL_Window *win;
