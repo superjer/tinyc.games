@@ -30,57 +30,6 @@ void cursor_rect(int x0, int y0, int x1, int y1)
         *cursor_buf_p++ = y1;
 }
 
-uint32_t find_memory_type(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
-        VkPhysicalDeviceMemoryProperties memProperties;
-        vkGetPhysicalDeviceMemoryProperties(*vk.bestPhysicalDevice, &memProperties);
-
-        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-                if ((typeFilter & (1 << i)) && 
-                        (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-                        return i;
-                }
-        }
-
-        fprintf(stderr, "Failed to find a suitable memory type!\n");
-        exit(-12);
-}
-
-void vulkan_allocate_vertex_buffer(size_t sz, struct allocation *alloc)
-{
-        alloc->buf_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        alloc->buf_info.size = sz;
-        alloc->buf_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        alloc->buf_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        vkCreateBuffer(vk.device, &alloc->buf_info, NULL, &alloc->buf);
-
-        VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(vk.device, alloc->buf, &memRequirements);
-
-        VkMemoryAllocateInfo allocInfo = {};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = find_memory_type(memRequirements.memoryTypeBits, 
-                                                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | 
-                                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-        vkAllocateMemory(vk.device, &allocInfo, NULL, &alloc->mem);
-        vkBindBufferMemory(vk.device, alloc->buf, alloc->mem, 0);
-}
-
-void vulkan_populate_vertex_buffer(void *buf, size_t sz, struct allocation *alloc)
-{
-        void *data;
-        vkMapMemory(vk.device, alloc->mem, 0, alloc->buf_info.size, 0, &data);
-        memcpy(data, buf, sz);
-        vkUnmapMemory(vk.device, alloc->mem);
-}
-
-void vulkan_free_vertex_buffer(struct allocation *alloc)
-{
-        vkFreeMemory(vk.device, alloc->mem, NULL);
-}
-
 void cursor(VkCommandBuffer cmdbuf)
 {
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[cursor_pipe].pipeline);

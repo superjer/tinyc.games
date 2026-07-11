@@ -122,6 +122,12 @@ struct vk {
         VkClearColorValue clear_color;
 } vk;
 
+// these helpers use the vk global, so they come after it
+#include "buffer.c"
+#include "texture.c"
+#include "depth.c"
+#include "descriptor.c"
+
 void vulkan_create_swapchain();
 void vulkan_destroy_swapchain();
 void vulkan_recreate_swapchain();

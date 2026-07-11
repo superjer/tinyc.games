@@ -216,12 +216,6 @@ unsigned dumb_rand(unsigned *seed) { return (*seed = (1103515245 * *seed + 12345
 
 #define ALIGN_UP(n, alignment) (((n) + (alignment) - 1) & ~((alignment) - 1))
 
-struct allocation {
-        VkDeviceMemory mem;
-        VkBuffer buf;
-        VkBufferCreateInfo buf_info;
-};
-
 VkBuffer world_buf[VAOS];
 VkBufferCreateInfo world_buf_info;
 VkDeviceMemory world_mem[VAOW];
