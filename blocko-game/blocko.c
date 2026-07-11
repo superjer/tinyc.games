@@ -155,7 +155,7 @@ int main(int argc, char **argv)
                 vksetup();
                 // the flat sky IS the clear color (keep in sync with SKY_COLOR
                 // in main.frag, which fogs distant terrain to match)
-                vk.clear_color = (VkClearColorValue){{0.40f, 0.62f, 0.95f, 1.f}};
+                vk.clear_color = (VkClearColorValue){{0.067f, 0.60f, 1.00f, 1.f}};
                 font_init();
                 cursor_init();
         }

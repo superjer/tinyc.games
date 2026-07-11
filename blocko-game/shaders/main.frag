@@ -2,7 +2,7 @@
 
 // The whole sky is one flat color: it's the render clear color (set in
 // blocko.c), the fog color, and what water mirrors. Keep the three in sync.
-const vec3 SKY_COLOR = vec3(0.40, 0.62, 0.95);
+const vec3 SKY_COLOR = vec3(0.067, 0.60, 1.00); // #19F
 
 layout(location = 0) out vec4 color;
 
