@@ -14,7 +14,6 @@ layout(location = 5) in vec4 world_pos;
 layout(location = 6) in vec4 shadow_pos;
 layout(location = 8) flat in vec3 normal;
 layout(location = 9) flat in float shiny;  // >0 = wet/glossy surface (slimes); set by the vertex shader
-layout(location = 10) flat in float tint;  // >0 = debug: blend this fragment 50% red (patch viz)
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 model;            // offset 0
@@ -35,7 +34,7 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 
 // No push constants here: this fragment shader is shared by the terrain
 // (main.vert), water, and mob (mob.vert) pipelines, which have different push
-// layouts. The per-draw scalars it needs (shiny, tint) arrive as flat varyings.
+// layouts. The per-draw scalars it needs (shiny) arrive as flat varyings.
 
 layout(set = 0, binding = 1) uniform sampler2DArray tarray;
 // Shadow map at binding 2 (must match descriptor layout in vksetup.c)
@@ -258,8 +257,4 @@ void main(void) {
 
         color = mix(c, vec4(SKY_COLOR, 1.0), fog);
     }
-
-    // debug viz: tint the reject+patch mesh red (socket `tint`, via reject_lo.w)
-    if (tint > 0.5)
-        color.rgb = mix(color.rgb, vec3(1.0, 0.0, 0.0), 0.5);
 }

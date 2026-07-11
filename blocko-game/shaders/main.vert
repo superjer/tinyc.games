@@ -17,7 +17,6 @@ layout(location = 5) out vec4 world_pos_out;
 layout(location = 6) out vec4 shadow_pos;
 layout(location = 8) flat out vec3 normal;
 layout(location = 9) flat out float shiny;  // terrain is never glossy -> 0
-layout(location = 10) flat out float tint;  // debug patch tint flag (reject_lo.w)
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 model;            // offset 0
@@ -42,9 +41,6 @@ layout(push_constant) uniform Push {
     float chunk_y;
     float chunk_z;
     float bs;
-    vec4 reject_lo;   // .xyz = window-tile box lo (inclusive); box empty when lo > hi
-    vec4 reject_hi;   // faces of cells inside the box are culled (the patch redraws them)
-                      // .w of reject_lo = debug patch tint flag (passed to the frag as `tint`)
 } push;
 
 void main(void) {
@@ -135,8 +131,8 @@ void main(void) {
     // tall grass: rotate the crossed planes about the cell's vertical center
     // axis by a per-cell random angle, and jitter them within the cell. both
     // planes of a cell share the same angle/jitter so they stay crossed. all
-    // deterministic from the absolute cell coords (reconstructed like `cell`
-    // below), so the shaggy patch pattern is stable in the world grid.
+    // deterministic from the absolute cell coords, so the shaggy patch
+    // pattern is stable in the world grid.
     if (grass) {
         vec3 gcell = vec3(push.chunk_x, push.chunk_y, push.chunk_z) / bs + pos_in;
         // window->world: the mesh is built in window coords that slide with
@@ -178,19 +174,10 @@ void main(void) {
     alpha = alpha_in;
     normal = face_normal;
     shiny = 0.0;               // terrain is matte
-    tint = push.reject_lo.w;   // debug: patch_render sets this to tint the patch red
 
     vec4 world_pos = vertex_pos + offsets[i];
     gl_Position = push.pv * world_pos;
 
-    // reject: if this face's block-cell is inside the pending edit box, collapse
-    // the whole quad to a zero-area degenerate so it emits no fragments. pos_in
-    // is the cell (chunk-local m,y,n); reconstruct the absolute window cell the
-    // same way world position is built. The patch mesh redraws the box.
-    vec3 cell = vec3(push.chunk_x, push.chunk_y, push.chunk_z) / push.bs + pos_in;
-    if (all(greaterThanEqual(cell, push.reject_lo.xyz - 0.5)) &&
-        all(lessThanEqual(cell, push.reject_hi.xyz + 0.5)))
-        gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
     illum = (0.1 + illum_in[i]) * sidel;
     uv = uvs[i];
     world_pos_out = world_pos;

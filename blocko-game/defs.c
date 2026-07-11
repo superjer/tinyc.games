@@ -503,22 +503,6 @@ int mine_x = -1, mine_y = -1, mine_z = -1; // block progress is accumulating on
 int mine_tile = -1; // that block's tile type, for the shaking stand-in
 int mine_hole;      // carve the block out of its chunk mesh while mining
 float mine_frac;    // 0..1 mining progress, shown on the crosshair
-// reject+patch: a block edit shows instantly by rejecting the stale faces in a
-// small box (in the vertex shader) and drawing a tiny corrected "patch" mesh
-// over it, while the big chunk buffer folds the edit in on a debounced rebuild
-int patch_active;               // a persistent edit patch is pending a rebuild
-int patch_lo[3], patch_hi[3];   // union box of pending edits, ABSOLUTE tiles, inclusive
-int patch_vert_count;           // opaque verts staged for this frame's patch draw
-int patch_water_count;          // water verts staged for this frame's patch draw
-// the effective reject/patch box for THIS frame = union of the persistent edit
-// box (break/place, above) and the transient mining box (the block being dug,
-// still solid in tiles but shown as a hole). Recomputed each frame in patch_update
-int patch_box_on;
-int patch_box_lo[3], patch_box_hi[3]; // ABSOLUTE tiles, inclusive
-int patch_meshing;              // set only while the patch calls mesh_region, so the
-                                // mine_hole carve happens for the patch, not for chunks
-int patch_tint;                 // debug viz: tint the patch mesh red (socket `tint`).
-                                // rides the unused reject_lo.w slot, read in main.frag
 int screenw = WINW;
 int screenh = WINH;
 volatile struct qitem just_generated[VAOW*VAOD];
@@ -585,14 +569,8 @@ void item_scoot(int dx, int dz);
 void item_build();
 void item_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 
-// patch.c protos
-void patch_edit(int wx, int wy, int wz);
-void patch_update();
-void patch_reject_box(float lo[4], float hi[4]);
-void patch_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
-void patch_render_water(VkCommandBuffer cmdbuf, int pipe, float *pv);
-
 // edit.c protos
+void dirty_around(int x, int z);
 void set_tile(int x, int y, int z, int t);
 void edit_record(int x, int y, int z, int tile);
 void edit_apply_chunk(int acx, int acz);
@@ -627,8 +605,7 @@ void debrief();
 // blocklight.c protos
 
 // mesh.c protos
-void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned char face_mask,
-                 int origin_x, int origin_z);
+void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned char face_mask);
 
 // draw.c protos
 int chunk_in_frustum(float *matrix, int chunk_x, int chunk_z);

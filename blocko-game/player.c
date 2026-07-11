@@ -93,11 +93,12 @@ int move_player(struct player *p, int velx, int vely, int velz)
 
 
 // forget the current dig. The block stays solid in tiles the whole time, so
-// there's nothing to "put back" - dropping mine_frac/mine_hole retires the
-// transient reject+patch (patch.c) and the untouched chunk buffer shows the
-// block again next frame.
+// there's nothing to "put back" - drop mine_hole and rebuild the chunks around
+// the block, and the fresh mesh shows it solid again.
 void mine_heal()
 {
+        if (mine_x >= 0)
+                dirty_around(mine_x, mine_z);
         mine_hole = 0;
         mine_x = mine_y = mine_z = -1;
         mine_tile = -1;
@@ -136,22 +137,24 @@ void update_player(struct player *p, int real)
 
         // hold left click to mine: progress builds only while aimed at the
         // same block, so releasing (a quick click) never breaks anything.
-        // The block shows as a hole instantly via the shader reject box + patch
-        // mesh (patch.c), with a shaking stand-in drawn in its place (mine.c) -
-        // no chunk rebuild, so nothing hitches while you dig.
+        // The block shows as a hole (carved by mesh_region while mine_hole is
+        // set) with a shaking stand-in drawn in its place (mine.c); the chunks
+        // around it rebuild when the dig starts, moves, or stops.
         if (real && p->breaking && target_x >= 0)
         {
                 if (target_x == mine_x && target_y == mine_y && target_z == mine_z)
                         p->mine_progress++;
                 else
                 {
-                        // aim moved: the reject box just follows mine_x next frame,
-                        // so the old block reappears with no rebuild
+                        // aim moved: rebuild heals the old hole and carves the new
+                        if (mine_x >= 0)
+                                dirty_around(mine_x, mine_z);
                         mine_x = target_x;
                         mine_y = target_y;
                         mine_z = target_z;
                         mine_tile = T_(mine_x, mine_y, mine_z);
                         mine_hole = 1;
+                        dirty_around(mine_x, mine_z);
                         p->mine_progress = 1;
                 }
                 mine_frac = (float)p->mine_progress / MINE_TIME;
@@ -175,7 +178,7 @@ void update_player(struct player *p, int real)
                         set_tile(x, y-1, z, OPEN);
 
                 // set_tile (edit.c) records the edit and handles gndheight,
-                // lighting, and the instant reject+patch - no chunk rebuild here
+                // lighting, and rebuilding the chunks around the block
                 set_tile(x, y, z, OPEN);
 
                 // pop a little half-size copy of the block loose to tumble to the

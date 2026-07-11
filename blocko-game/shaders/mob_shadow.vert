@@ -2,8 +2,8 @@
 
 // Mob shadow pass: same instanced quads as mob.vert, spun about the vertical
 // axis so a mob's shadow matches its facing. Depth-only; pairs with shadow.frag.
-// No reject box (mobs are never patched). Push layout matches mob.vert so
-// mob_render can push one struct for both the color and shadow pipelines.
+// Push layout matches mob.vert so mob_render can push one struct for both the
+// color and shadow pipelines.
 
 layout(location = 0) in float tex_in;
 layout(location = 1) in float orient_in;

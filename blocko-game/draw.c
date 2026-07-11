@@ -255,10 +255,6 @@ void draw_stuff()
 
         build_meshes();
 
-        // refresh (or retire) the reject+patch for any pending block edit; must
-        // run after build_meshes so it sees which chunks just rebuilt
-        patch_update();
-
         main_ubo.water_frame = pframe;
 
         // Upload UBO to per-frame buffer
@@ -314,15 +310,9 @@ void draw_stuff()
         vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 vk.pipelines[main_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
-        struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
-                 float reject_lo[4], reject_hi[4]; } push;
+        struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs; } push;
         memcpy(push.pv, proj_view_mtrx, sizeof push.pv);
         push.bs = BS;
-
-        // opaque terrain rejects the faces of any cell in the pending edit box
-        // (window tile coords this frame); patch_render redraws them. Empty box
-        // (lo > hi) when no edit is pending, so nothing is rejected.
-        patch_reject_box(push.reject_lo, push.reject_hi);
 
         VkDeviceSize voffset = 0;
         int chunks_drawn = 0;
@@ -348,15 +338,11 @@ void draw_stuff()
         }
 
         // Mobs draw on their own pipeline (mob.vert); rebind the opaque terrain
-        // pipeline afterward for the block-breaking overlay and the edit patch.
+        // pipeline afterward for the block-breaking overlay.
         mob_render(cmdbuf, mob_pipe, proj_view_mtrx);
         item_render(cmdbuf, mob_pipe, proj_view_mtrx); // spins on the mob pipeline
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[main_pipe].pipeline);
         mine_overlay_render(cmdbuf, main_pipe, proj_view_mtrx);
-
-        // Draw the patch: the corrected mesh of the pending edit box, filling in
-        // the faces the reject test just culled from the big chunk buffers
-        patch_render(cmdbuf, main_pipe, proj_view_mtrx);
 
         // the held block, floating at the lower right; drawn on top of the world
         // via a squashed depth range so it never clips into nearby terrain
@@ -378,11 +364,6 @@ void draw_stuff()
         float halfdiag = 0.5f * sqrtf((float)(CHUNKW*BS)*(float)(CHUNKW*BS)
                                     + (float)(CHUNKD*BS)*(float)(CHUNKD*BS));
         float solid_thresh_sq = (solid_near + halfdiag) * (solid_near + halfdiag);
-
-        // reject stale water faces inside the pending edit box; patch_render_water
-        // redraws them (Phase 2). Empty box when no edit is pending. Shared by both
-        // water passes (far chunks never overlap the edit box, so it's a no-op there).
-        patch_reject_box(push.reject_lo, push.reject_hi);
 
         // Pass 2a: far water, solid pipeline, front-to-back (early-Z)
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[water_solid_pipe].pipeline);
@@ -437,9 +418,6 @@ void draw_stuff()
                 vkCmdDraw(cmdbuf, 4, water_verts, 0, 0);
                 total_verts += water_verts;
         }
-
-        // patch the edit box's water/glow faces the reject test just culled
-        patch_render_water(cmdbuf, water_pipe, proj_view_mtrx);
 
         if (mouselook) cursor(cmdbuf);
 

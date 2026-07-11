@@ -158,16 +158,13 @@ void hand_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
                 vk.bestSwapchainExtent.width, vk.bestSwapchainExtent.height, 0.f, 0.1f };
         vkCmdSetViewport(cmdbuf, 0, 1, &near_vp);
 
-        // same push layout as the terrain pipeline; empty reject box (lo > hi)
-        struct { float pv[16]; float x, y, z, bs;
-                 float reject_lo[4], reject_hi[4]; } push;
+        // same push layout as the terrain pipeline
+        struct { float pv[16]; float x, y, z, bs; } push;
         memcpy(push.pv, pv, sizeof push.pv);
         push.x = hand_px;
         push.y = hand_py;
         push.z = hand_pz;
         push.bs = hand_bs;
-        push.reject_lo[0] = 1; push.reject_lo[1] = push.reject_lo[2] = push.reject_lo[3] = 0;
-        push.reject_hi[0] = 0; push.reject_hi[1] = push.reject_hi[2] = push.reject_hi[3] = 0;
 
         vkCmdPushConstants(cmdbuf, vk.pipelines[pipe].layout,
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);

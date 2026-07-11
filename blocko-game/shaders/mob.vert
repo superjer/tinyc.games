@@ -3,7 +3,7 @@
 // Mob geometry: instanced quads (one instance per face) like the terrain, but
 // each piece spins about a vertical axis so the mob faces its heading. Shares
 // main.frag with the terrain/water pipelines; the varying interface below must
-// match main.vert's outputs exactly. No reject box (mobs are never patched).
+// match main.vert's outputs exactly.
 
 layout(location = 0) in float tex_in;
 layout(location = 1) in float orient_in;
@@ -19,7 +19,6 @@ layout(location = 5) out vec4 world_pos_out;
 layout(location = 6) out vec4 shadow_pos;
 layout(location = 8) flat out vec3 normal;
 layout(location = 9) flat out float shiny;  // slimes read as wet/glossy
-layout(location = 10) flat out float tint;  // mobs are never tinted -> 0
 
 layout(std140, set = 0, binding = 0) uniform UBO {
     mat4 model;            // offset 0
@@ -113,7 +112,6 @@ void main(void) {
     alpha = alpha_in;
     normal = face_normal;
     shiny = push.shiny;
-    tint = 0.0;
 
     vec4 world_pos = vertex_pos + offsets[i];
 

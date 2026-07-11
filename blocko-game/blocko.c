@@ -65,7 +65,6 @@
 #include "mine.c"
 #include "hand.c"
 #include "item.c"
-#include "patch.c"
 #include "test.c"
 #include "chunker.c"
 

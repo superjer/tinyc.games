@@ -38,15 +38,9 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
         vkCmdBindDescriptorSets(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 vk.pipelines[terrain_pipe].layout, 0, 1, &main_descriptor_set[vk.currentFrame], 0, NULL);
 
-        struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs;
-                 float reject_lo[4], reject_hi[4];
-                 float yaw, cx, cz, shiny; } push;
+        struct { float pv[16]; float chunk_x, chunk_y, chunk_z, bs; } push;
         memcpy(push.pv, shadow_pv, sizeof push.pv);
         push.bs = BS;
-        push.yaw = push.cx = push.cz = push.shiny = 0; // terrain never rotates
-
-        // reject the pending edit box's stale shadow (the patch redraws it below)
-        patch_reject_box(push.reject_lo, push.reject_hi);
 
         for (int k = 0; k < visible_chunk_count; k++) {
                 if (!(visible_chunks[k].shadow_mask & cascade_bit)) continue;
@@ -111,8 +105,6 @@ void draw_shadow_pass(VkCommandBuffer cmdbuf, int cascade_idx, float bias_consta
         item_render(cmdbuf, mob_shadow_pipe, shadow_pv);
         vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipelines[shadow_pipe].pipeline);
         mine_overlay_render(cmdbuf, shadow_pipe, shadow_pv);
-        // patch the edit box's shadow the reject test just culled above
-        patch_render(cmdbuf, shadow_pipe, shadow_pv);
 
         vkCmdEndRenderPass(cmdbuf);
 }

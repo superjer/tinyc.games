@@ -36,18 +36,11 @@ static int sorter(const void * _a, const void * _b)
 #define W_EAST_VISIBLE(x, y, z)  (x+1 < TILESW   && WATER_OPEN(x+1, y, z) && NBR_CHUNK_GEN(x+1, z))
 #define W_DOWN_VISIBLE(x, y, z)  (y+1 >= TILESH   || WATER_OPEN(x, y+1, z))
 
-// Emit terrain vertices for an arbitrary box of cells into the global vbuf
+// Emit terrain vertices for one chunk's box of cells into the global vbuf
 // (opaque, v points past the end) and wbuf (water/grass, w past the end).
-// Parameterized bounds let build_meshes mesh a whole chunk while the spike
-// command (remote.c) measures the cost of smaller regions.
-//
-// pos_in (the per-face position baked into each vertex) is emitted relative to
-// (origin_x, origin_z): build_meshes passes the chunk's (xlo, zlo) so pos_in is
-// chunk-local (identical to the old x & (CHUNKW-1)); the patch mesh (patch.c)
-// passes (0, 0) so pos_in is absolute window coords and can be drawn with a zero
-// chunk origin over a box that straddles chunk seams.
-void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned char face_mask,
-                 int origin_x, int origin_z)
+// pos_in (the per-face position baked into each vertex) is chunk-local,
+// relative to (xlo, zlo).
+void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned char face_mask)
 {
         v = vbuf; // reset vertex buffer pointer
         w = wbuf; // same for water buffer
@@ -59,13 +52,12 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
 
         // carve the block being mined out of this mesh so a shaking stand-in
         // (mine.c) can take its place. Only a transient swap here - rayshot and
-        // collision still see the block as solid. Gated on patch_meshing so only
-        // the patch mesh (patch.c) carves: the big chunk buffers keep the block
-        // solid and let the shader reject box hide it instead.
+        // collision still see the block as solid. Unconditional (not bounds-
+        // checked) so a neighboring chunk meshed mid-dig draws its wall of the
+        // hole too; player.c dirties the chunks around the block on dig
+        // start/move/stop, and the rebuilds carve and heal the hole.
         int mine_carved = 0, mine_save = 0;
-        if (patch_meshing && mine_hole && mine_x >= xlo && mine_x < xhi
-                      && mine_y >= ylo && mine_y < yhi
-                      && mine_z >= zlo && mine_z < zhi)
+        if (mine_hole && mine_x >= 0)
         {
                 mine_save = T_(mine_x, mine_y, mine_z);
                 if (mine_save != OPEN)
@@ -112,8 +104,8 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                         float dse = CORN_(x+1, y+1, z  );
                         float dnw = CORN_(x  , y+1, z+1);
                         float dne = CORN_(x+1, y+1, z+1);
-                        int m = x - origin_x;
-                        int n = z - origin_z;
+                        int m = x - xlo;
+                        int n = z - zlo;
 
                         if (t == GRAS)
                         {
@@ -315,7 +307,7 @@ void build_meshes()
                 }
 
 
-                mesh_region(xlo, xhi, 0, TILESH, zlo, zhi, face_mask, xlo, zlo);
+                mesh_region(xlo, xhi, 0, TILESH, zlo, zhi, face_mask);
 
                 LEAFSTART_(myx, myz) = mesh_leaf_start;
                 WBOSTART_(myx, myz) = v - vbuf;

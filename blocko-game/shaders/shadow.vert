@@ -19,8 +19,6 @@ layout(push_constant) uniform Push {
     float chunk_y;
     float chunk_z;
     float bs;
-    vec4 reject_lo;   // .xyz = window-tile box lo (inclusive); box empty when lo > hi
-    vec4 reject_hi;   // faces of cells inside the box are culled (the patch redraws them)
 } push;
 
 // only scootx/scootz are read here; the rest replicate the std140 layout so
@@ -142,12 +140,5 @@ void main(void) {
     alpha = alpha_in;
     vec4 world_pos = vertex_pos + offsets[i];
     gl_Position = push.pv * world_pos;
-
-    // reject: cull the shadow of any face whose block-cell is in the pending edit
-    // box (the patch casts the corrected shadow instead). Mirrors main.vert.
-    vec3 cell = vec3(push.chunk_x, push.chunk_y, push.chunk_z) / push.bs + pos_in;
-    if (all(greaterThanEqual(cell, push.reject_lo.xyz - 0.5)) &&
-        all(lessThanEqual(cell, push.reject_hi.xyz + 0.5)))
-        gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
     uv = uvs[i];
 }

@@ -6,7 +6,7 @@
 //
 // Every block edit goes through set_tile, which writes the tile, records the
 // edit in an overlay hash table keyed by ABSOLUTE tile coords, and handles the
-// ground-height/lighting/patch consequences. Freshly (re)generated chunks
+// ground-height/lighting/remesh consequences. Freshly (re)generated chunks
 // replay their overlay entries (edit_apply_chunk, called from draw.c as chunks
 // come out of the builders), so edits now survive scooting out of the window
 // and back - terrain regenerates from the seed, then the overlay reapplies
@@ -115,10 +115,19 @@ static void tile_light_update(int x, int y, int z, int old, int t)
         recalc_corners_at(x, z);
 }
 
+// a changed block changes the visible faces of its neighbors too, so rebuild
+// every chunk touching the 3x3 around it (window tile coords). Immediate, not
+// debounced: the edit shows the frame it lands, costing a few ms of remesh
+void dirty_around(int x, int z)
+{
+        for (int cx = B2C(MAX(x - 1, 0)); cx <= B2C(MIN(x + 1, TILESW - 1)); cx++)
+        for (int cz = B2C(MAX(z - 1, 0)); cz <= B2C(MIN(z + 1, TILESD - 1)); cz++)
+                DIRTY_(cx, cz) = 1;
+}
+
 // change one block (window tile coords): write the tile, record it in the
-// overlay, update ground height + lighting, and show the edit instantly via
-// the reject+patch (patch.c). Gameplay effects (item drops, cooldowns, hand
-// swings) stay with the callers.
+// overlay, update ground height + lighting, and rebuild the chunks it touches.
+// Gameplay effects (item drops, cooldowns, hand swings) stay with the callers.
 void set_tile(int x, int y, int z, int t)
 {
         int old = T_(x, y, z);
@@ -129,7 +138,7 @@ void set_tile(int x, int y, int z, int t)
         edit_record(x - scootx, y, z - scootz, t);
         sim_area_write(x - scootx, y, z - scootz, t);
         tile_light_update(x, y, z, old, t);
-        patch_edit(x, y, z);
+        dirty_around(x, z);
         net_send_edit(x - scootx, y, z - scootz, t);
 }
 
@@ -150,12 +159,12 @@ void edit_apply_remote(int ax, int ay, int az, int tile)
         if (old == tile) return;
         T_(x, ay, z) = tile;
         tile_light_update(x, ay, z, old, tile);
-        patch_edit(x, ay, z);
+        dirty_around(x, z);
 }
 
 // replay the overlay onto a freshly generated chunk (ABSOLUTE chunk coords).
-// The chunk is already marked dirty for meshing, so no patch: just the tiles
-// and their light consequences
+// The chunk is already marked dirty for meshing, so just the tiles and their
+// light consequences
 void edit_apply_chunk(int acx, int acz)
 {
         if (!edit_len)
