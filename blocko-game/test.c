@@ -15,8 +15,8 @@ void debrief()
 
         if (help_layer)
         {
-                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nQ/E \nT   \nN   \nH";
-                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nChange held block\nChat\nNoclip\nHide this help text";
+                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nQ/E \nN   \nH";
+                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nChange held block\nNoclip\nHide this help text";
                 font_begin(screenw, screenh);
                 font_add_text(h1, screenw/100.f, screenh/4.f, 0);
                 font_end(1, 0.5, 1);
@@ -38,8 +38,6 @@ void debrief()
                 font_add_text(compass_buf, screenw/2.1f, 0.f, 0);
                 font_end(1, 1, 1);
         }
-
-        console_draw();
 }
 
 #endif // BLOCKO_TEST_C_INCLUDED

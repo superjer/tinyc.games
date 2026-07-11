@@ -54,7 +54,6 @@
 #include "../common/tinyc.games/font.c"
 #include "cursor.c"
 #include "vksetup.c"
-#include "console.c"
 #include "interface.c"
 #include "blocklight.c"
 #include "edit.c"
@@ -167,7 +166,7 @@ int main(int argc, char **argv)
 
 void game_shutdown(int code) // "shutdown" collides with the sockets API
 {
-        // every normal quit path (window close, `bk quit`, console quit) routes
+        // every normal quit path (window close, SIGINT) routes
         // through here with code 0. announce it so a clean close isn't mistaken
         // for a crash by anything watching the process; nonzero is reserved for
         // real errors, which exit() elsewhere with a message of their own.
@@ -190,7 +189,6 @@ void main_loop()
         {
                 case SDL_EVENT_QUIT:              game_shutdown(0);  break;
                 case SDL_EVENT_KEY_DOWN:          key_move(1);       break;
-                case SDL_EVENT_TEXT_INPUT:        console_text(event.text.text); break;
                 case SDL_EVENT_KEY_UP:            key_move(0);       break;
                 case SDL_EVENT_MOUSE_MOTION:      mouse_move();      break;
                 case SDL_EVENT_MOUSE_BUTTON_DOWN: mouse_button(1);   break;
