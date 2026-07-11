@@ -29,7 +29,6 @@
 #include "graphics.c"
 #include "input.c"
 #include "music.c"
-#include "timer.c"
 
 int get_interval()
 {
@@ -43,8 +42,6 @@ int get_interval()
 // the entry point and main game loop
 int main()
 {
-        float frame_times[10] = {0.f};
-        int frame_time_idx = 0;
         setup();
         float accum_msec = 0.f;
         for (;;)
@@ -52,53 +49,27 @@ int main()
                 accum_msec += (float)get_interval();
 
                 if (accum_msec < 7.3333f)
-                {
-                        int sleep_for = 8 - (int)accum_msec;
-                        TIMECALL(SDL_Delay, (sleep_for));
-                        //fprintf(stderr, "Slept for %dms\n", sleep_for);
-                }
+                        SDL_Delay(8 - (int)accum_msec);
 
-                TIMECALL(do_events, ());
+                do_events();
 
                 accum_msec += (float)get_interval();
                 for (; accum_msec > 8.3333f; accum_msec -= 8.3333f)
                 {
-                        TIMER(update_player);
                         for (p = play; p < play + nplay; p++) update_player();
                         accum_msec += (float)get_interval();
-                        TIMECALL(update_particles, ());
-                        // MAX_LOOPS?
+                        update_particles();
                 }
 
-                TIMECALL(draw_start, ());
-                TIMER(draw_player);
+                draw_start();
                 for (p = play; p < play + nplay; p++) draw_player();
-                TIMECALL(draw_menu, ());
-                TIMECALL(draw_particles, ());
-                TIMECALL(draw_end, ());
-                TIMECALL(update_music, ());
-                TIMECALL(vulkan_submit, ());
+                draw_menu();
+                draw_particles();
+                draw_end();
+                update_music();
+                vulkan_submit();
 
                 tick++;
-
-                unsigned long long now = SDL_GetPerformanceCounter();
-                static unsigned long long then;
-                float diff = (float)(now - then) / (float)SDL_GetPerformanceFrequency() * 1000.f;
-                frame_times[frame_time_idx++] = diff;
-                frame_time_idx %= 10;
-                then = now;
-
-                if (SHOW_FPS && frame_time_idx == 0)
-                {
-                        float sum = 0.f;
-                        char timings_buf[8000];
-                        timer_print(timings_buf, 8000, true);
-                        fprintf(stderr, "%s", timings_buf);
-                        for (int i = 0; i < 10; i++)
-                                sum += frame_times[i];
-                        fprintf(stderr, "avg frame time %.2fms = %.1f fps\n",
-                                        sum / 10.f, 10000.f / sum);
-                }
         }
 }
 

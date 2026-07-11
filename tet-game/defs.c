@@ -33,7 +33,6 @@
 #define NPARTS 1000
 #define NFLOWS 20
 #define CTDN_TICKS 96
-#define SHOW_FPS 0
 
 // collision test results
 enum { NONE = 0, WALL, NORMAL };
