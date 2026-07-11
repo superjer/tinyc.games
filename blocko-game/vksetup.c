@@ -2,425 +2,23 @@
 #ifndef BLOCKO_VKSETUP_C_INCLUDED
 #define BLOCKO_VKSETUP_C_INCLUDED
 
-void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
-                  VkMemoryPropertyFlags properties, VkBuffer* buffer, VkDeviceMemory* bufferMemory) {
-    
-    // 1. Create the buffer
-    VkBufferCreateInfo bufferInfo = {};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = size;
-    bufferInfo.usage = usage;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    if (vkCreateBuffer(vk.device, &bufferInfo, NULL, buffer) != VK_SUCCESS) {
-        printf("Failed to create buffer!\n");
-        exit(1);
-    }
-
-    // 2. Get memory requirements
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(vk.device, *buffer, &memRequirements);
-
-    // 3. Allocate memory
-    VkMemoryAllocateInfo allocInfo = {};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = find_memory_type(memRequirements.memoryTypeBits, properties);
-
-    if (vkAllocateMemory(vk.device, &allocInfo, NULL, bufferMemory) != VK_SUCCESS) {
-        printf("Failed to allocate buffer memory!\n");
-        exit(1);
-    }
-
-    // 4. Bind buffer to allocated memory
-    vkBindBufferMemory(vk.device, *buffer, *bufferMemory, 0);
-}
-
 void createUniformBuffer(VkBuffer* buffer, VkDeviceMemory* bufferMemory) {
     VkDeviceSize bufferSize = sizeof(struct main_ubo);
 
-    createBuffer(bufferSize, 
-                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, 
+    vulkan_create_buffer(bufferSize,
+                 VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                  buffer, bufferMemory);
 }
 
-void createDescriptorSetLayout(VkDescriptorSetLayout* descriptorSetLayout) {
-    // Binding 0: UBO, Binding 1: texture array, Bindings 2-7: shadow maps
-    VkDescriptorSetLayoutBinding bindings[2 + SHADOW_COUNT] = {0};
-
-    // UBO binding
-    bindings[0].binding = 0;
-    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    bindings[0].descriptorCount = 1;
-    bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-
-    // Texture array binding
-    bindings[1].binding = 1;
-    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    bindings[1].descriptorCount = 1;
-    bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-    // Shadow map bindings
-    for (int i = 0; i < SHADOW_COUNT; i++) {
-        bindings[2 + i].binding = 2 + i;
-        bindings[2 + i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        bindings[2 + i].descriptorCount = 1;
-        bindings[2 + i].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-    }
-
-    VkDescriptorSetLayoutCreateInfo layoutInfo = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        .bindingCount = 2 + SHADOW_COUNT,
-        .pBindings = bindings,
-    };
-
-    vkCreateDescriptorSetLayout(vk.device, &layoutInfo, NULL, descriptorSetLayout);
-}
-
-void create_texture_array(char **files, int file_count) {
-    // Load first texture to get dimensions
-    int tex_w, tex_h, tex_n;
-    unsigned char *first = stbi_load(files[0], &tex_w, &tex_h, &tex_n, 4);
-    if (!first) { fprintf(stderr, "Failed to load texture %s\n", files[0]); exit(1); }
-    stbi_image_free(first);
-
-    // Calculate mip levels
-    uint32_t mip_levels = (uint32_t)floor(log2(tex_w > tex_h ? tex_w : tex_h)) + 1;
-
-    VkDeviceSize layer_size = tex_w * tex_h * 4;
-    VkDeviceSize total_size = layer_size * file_count;
-
-    // Create staging buffer
-    VkBuffer staging_buffer;
-    VkDeviceMemory staging_memory;
-    VkBufferCreateInfo staging_info = {
-        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = total_size,
-        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    };
-    vkCreateBuffer(vk.device, &staging_info, NULL, &staging_buffer);
-
-    VkMemoryRequirements mem_reqs;
-    vkGetBufferMemoryRequirements(vk.device, staging_buffer, &mem_reqs);
-
-    VkPhysicalDeviceMemoryProperties mem_props;
-    vkGetPhysicalDeviceMemoryProperties(*vk.bestPhysicalDevice, &mem_props);
-    uint32_t mem_type = 0;
-    for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++) {
-        if ((mem_reqs.memoryTypeBits & (1 << i)) &&
-            (mem_props.memoryTypes[i].propertyFlags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))) {
-            mem_type = i;
-            break;
-        }
-    }
-
-    VkMemoryAllocateInfo alloc_info = {
-        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize = mem_reqs.size,
-        .memoryTypeIndex = mem_type,
-    };
-    vkAllocateMemory(vk.device, &alloc_info, NULL, &staging_memory);
-    vkBindBufferMemory(vk.device, staging_buffer, staging_memory, 0);
-
-    // Load all textures into staging buffer
-    void *data;
-    vkMapMemory(vk.device, staging_memory, 0, total_size, 0, &data);
-    for (int i = 0; i < file_count; i++) {
-        int w, h, n;
-        unsigned char *texels = stbi_load(files[i], &w, &h, &n, 4);  // Force RGBA
-        if (!texels) { fprintf(stderr, "Failed to load texture %s\n", files[i]); continue; }
-        memcpy((char*)data + i * layer_size, texels, layer_size);
-        stbi_image_free(texels);
-    }
-    vkUnmapMemory(vk.device, staging_memory);
-
-    // Create texture image with mip levels
-    VkImageCreateInfo image_info = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType = VK_IMAGE_TYPE_2D,
-        .format = VK_FORMAT_R8G8B8A8_UNORM,
-        .extent = { tex_w, tex_h, 1 },
-        .mipLevels = mip_levels,
-        .arrayLayers = file_count,
-        .samples = VK_SAMPLE_COUNT_1_BIT,
-        .tiling = VK_IMAGE_TILING_OPTIMAL,
-        .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    };
-    vkCreateImage(vk.device, &image_info, NULL, &texture_image);
-
-    vkGetImageMemoryRequirements(vk.device, texture_image, &mem_reqs);
-    for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++) {
-        if ((mem_reqs.memoryTypeBits & (1 << i)) &&
-            (mem_props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
-            mem_type = i;
-            break;
-        }
-    }
-    alloc_info.allocationSize = mem_reqs.size;
-    alloc_info.memoryTypeIndex = mem_type;
-    vkAllocateMemory(vk.device, &alloc_info, NULL, &texture_memory);
-    vkBindImageMemory(vk.device, texture_image, texture_memory, 0);
-
-    // Transition and copy using a one-time command buffer
-    VkCommandBuffer cmd;
-    VkCommandBufferAllocateInfo cmd_alloc = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = vk.commandPool,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
-    };
-    vkAllocateCommandBuffers(vk.device, &cmd_alloc, &cmd);
-
-    VkCommandBufferBeginInfo begin_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-    };
-    vkBeginCommandBuffer(cmd, &begin_info);
-
-    // Transition all mip levels to TRANSFER_DST
-    VkImageMemoryBarrier barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = texture_image,
-        .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, mip_levels, 0, file_count },
-        .srcAccessMask = 0,
-        .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
-    };
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-        0, 0, NULL, 0, NULL, 1, &barrier);
-
-    // Copy each layer
-    VkBufferImageCopy *regions = malloc(file_count * sizeof(VkBufferImageCopy));
-    for (int i = 0; i < file_count; i++) {
-        regions[i] = (VkBufferImageCopy){
-            .bufferOffset = i * layer_size,
-            .bufferRowLength = 0,
-            .bufferImageHeight = 0,
-            .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, i, 1 },
-            .imageOffset = { 0, 0, 0 },
-            .imageExtent = { tex_w, tex_h, 1 },
-        };
-    }
-    vkCmdCopyBufferToImage(cmd, staging_buffer, texture_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, file_count, regions);
-    free(regions);
-
-    // Generate mipmaps via blitting
-    int32_t mip_w = tex_w, mip_h = tex_h;
-    for (uint32_t mip = 1; mip < mip_levels; mip++) {
-        // Transition previous mip level to TRANSFER_SRC
-        barrier.subresourceRange.baseMipLevel = mip - 1;
-        barrier.subresourceRange.levelCount = 1;
-        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-            0, 0, NULL, 0, NULL, 1, &barrier);
-
-        // Blit from previous mip to current mip for all layers
-        VkImageBlit blit = {
-            .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip - 1, 0, file_count },
-            .srcOffsets = { {0, 0, 0}, {mip_w, mip_h, 1} },
-            .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, file_count },
-            .dstOffsets = { {0, 0, 0}, {mip_w > 1 ? mip_w / 2 : 1, mip_h > 1 ? mip_h / 2 : 1, 1} },
-        };
-        vkCmdBlitImage(cmd, texture_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            texture_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit, VK_FILTER_LINEAR);
-
-        // Transition previous mip to SHADER_READ_ONLY
-        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            0, 0, NULL, 0, NULL, 1, &barrier);
-
-        mip_w = mip_w > 1 ? mip_w / 2 : 1;
-        mip_h = mip_h > 1 ? mip_h / 2 : 1;
-    }
-
-    // Transition last mip level to SHADER_READ_ONLY
-    barrier.subresourceRange.baseMipLevel = mip_levels - 1;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-        0, 0, NULL, 0, NULL, 1, &barrier);
-
-    vkEndCommandBuffer(cmd);
-
-    VkSubmitInfo submit = { .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .commandBufferCount = 1, .pCommandBuffers = &cmd };
-    vkQueueSubmit(vk.drawingQueue, 1, &submit, VK_NULL_HANDLE);
-    vkQueueWaitIdle(vk.drawingQueue);
-    vkFreeCommandBuffers(vk.device, vk.commandPool, 1, &cmd);
-
-    // Cleanup staging
-    vkDestroyBuffer(vk.device, staging_buffer, NULL);
-    vkFreeMemory(vk.device, staging_memory, NULL);
-
-    // Create image view with all mip levels
-    VkImageViewCreateInfo view_info = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image = texture_image,
-        .viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-        .format = VK_FORMAT_R8G8B8A8_UNORM,
-        .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, mip_levels, 0, file_count },
-    };
-    vkCreateImageView(vk.device, &view_info, NULL, &texture_image_view);
-
-    // Create sampler with mipmap support
-    VkSamplerCreateInfo sampler_info = {
-        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-        .magFilter = VK_FILTER_NEAREST,
-        .minFilter = VK_FILTER_LINEAR,
-        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-        .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-        .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-        .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-        .minLod = 0.0f,
-        .maxLod = (float)mip_levels,
-    };
-    vkCreateSampler(vk.device, &sampler_info, NULL, &texture_sampler);
-
-    fprintf(stderr, "Created texture array: %dx%d, %d layers, %d mip levels\n", tex_w, tex_h, file_count, mip_levels);
-}
-
-void create_shadow_render_pass() {
-    VkAttachmentDescription depthAttachment = {
-        .format = VK_FORMAT_D32_SFLOAT,
-        .samples = VK_SAMPLE_COUNT_1_BIT,
-        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    };
-
-    VkAttachmentReference depthAttachmentRef = {
-        .attachment = 0,
-        .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-    };
-
-    VkSubpassDescription subpass = {
-        .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-        .colorAttachmentCount = 0,
-        .pColorAttachments = NULL,
-        .pDepthStencilAttachment = &depthAttachmentRef,
-    };
-
-    // Dependency for transitioning depth image to shader-readable after render pass
-    VkSubpassDependency dependencies[2] = {
-        {
-            .srcSubpass = VK_SUBPASS_EXTERNAL,
-            .dstSubpass = 0,
-            .srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-            .srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
-            .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
-        },
-        {
-            .srcSubpass = 0,
-            .dstSubpass = VK_SUBPASS_EXTERNAL,
-            .srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-            .dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
-        },
-    };
-
-    VkRenderPassCreateInfo renderPassInfo = {
-        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-        .attachmentCount = 1,
-        .pAttachments = &depthAttachment,
-        .subpassCount = 1,
-        .pSubpasses = &subpass,
-        .dependencyCount = 2,
-        .pDependencies = dependencies,
-    };
-
-    if (vkCreateRenderPass(vk.device, &renderPassInfo, NULL, &shadow_render_pass) != VK_SUCCESS) {
-        fprintf(stderr, "Failed to create shadow render pass!\n");
-        exit(1);
-    }
-    fprintf(stderr, "Created shadow render pass\n");
-}
-
 void create_shadow_maps() {
-    VkPhysicalDeviceMemoryProperties mem_props;
-    vkGetPhysicalDeviceMemoryProperties(*vk.bestPhysicalDevice, &mem_props);
-
-    // Create shadow depth images
-    VkImageCreateInfo imageInfo = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType = VK_IMAGE_TYPE_2D,
-        .format = VK_FORMAT_D32_SFLOAT,
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = VK_SAMPLE_COUNT_1_BIT,
-        .tiling = VK_IMAGE_TILING_OPTIMAL,
-        .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    };
-
-    // Create all shadow map images (sizes differ per cascade)
+    // Depth images + views + framebuffers per cascade (sizes differ)
     for (int i = 0; i < SHADOW_COUNT; i++) {
-        imageInfo.extent = (VkExtent3D){ shadow_sz[i], shadow_sz[i], 1 };
-        vkCreateImage(vk.device, &imageInfo, NULL, &shadow[i].image);
+        vulkan_create_depth_target(shadow_sz[i],
+            &shadow[i].image, &shadow[i].memory, &shadow[i].image_view);
+        vulkan_create_depth_framebuffer(shadow_render_pass, shadow[i].image_view,
+            shadow_sz[i], &shadow[i].framebuffer);
         shadow[i].slot = -1;  // Initialize slot to uninitialized
-    }
-
-    // Allocate memory for each shadow image
-    for (int i = 0; i < SHADOW_COUNT; i++) {
-        VkMemoryRequirements mem_reqs;
-        vkGetImageMemoryRequirements(vk.device, shadow[i].image, &mem_reqs);
-
-        uint32_t mem_type = 0;
-        for (uint32_t m = 0; m < mem_props.memoryTypeCount; m++) {
-            if ((mem_reqs.memoryTypeBits & (1 << m)) &&
-                (mem_props.memoryTypes[m].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
-                mem_type = m;
-                break;
-            }
-        }
-
-        VkMemoryAllocateInfo allocInfo = {
-            .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-            .allocationSize = mem_reqs.size,
-            .memoryTypeIndex = mem_type,
-        };
-        vkAllocateMemory(vk.device, &allocInfo, NULL, &shadow[i].memory);
-        vkBindImageMemory(vk.device, shadow[i].image, shadow[i].memory, 0);
-    }
-
-    // Create image views
-    VkImageViewCreateInfo viewInfo = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .viewType = VK_IMAGE_VIEW_TYPE_2D,
-        .format = VK_FORMAT_D32_SFLOAT,
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        },
-    };
-
-    for (int i = 0; i < SHADOW_COUNT; i++) {
-        viewInfo.image = shadow[i].image;
-        vkCreateImageView(vk.device, &viewInfo, NULL, &shadow[i].image_view);
     }
 
     // Create shadow sampler with depth comparison
@@ -441,168 +39,31 @@ void create_shadow_maps() {
     };
     vkCreateSampler(vk.device, &samplerInfo, NULL, &shadow_sampler);
 
-    // Transition shadow images to SHADER_READ_ONLY_OPTIMAL so they can be sampled
-    // even when shadow mapping is disabled
-    VkCommandBuffer cmd;
-    VkCommandBufferAllocateInfo cmdAllocInfo = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .commandPool = vk.commandPool,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
-    };
-    vkAllocateCommandBuffers(vk.device, &cmdAllocInfo, &cmd);
-
-    VkCommandBufferBeginInfo beginInfo = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-    };
-    vkBeginCommandBuffer(cmd, &beginInfo);
-
-    VkImageMemoryBarrier barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-        .srcAccessMask = 0,
-        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        },
-    };
-
-    for (int i = 0; i < SHADOW_COUNT; i++) {
-        barrier.image = shadow[i].image;
-        vkCmdPipelineBarrier(cmd,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            0, 0, NULL, 0, NULL, 1, &barrier);
-    }
-
-    vkEndCommandBuffer(cmd);
-
-    VkSubmitInfo submitInfo = {
-        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &cmd,
-    };
-    vkQueueSubmit(vk.drawingQueue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(vk.drawingQueue);
-    vkFreeCommandBuffers(vk.device, vk.commandPool, 1, &cmd);
-
     fprintf(stderr, "Created shadow maps: %d %d %d %d %d %d\n",
         shadow_sz[0], shadow_sz[1], shadow_sz[2], shadow_sz[3], shadow_sz[4], shadow_sz[5]);
 }
 
-void create_shadow_framebuffers() {
-    VkFramebufferCreateInfo framebufferInfo = {
-        .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-        .renderPass = shadow_render_pass,
-        .attachmentCount = 1,
-        .layers = 1,
-    };
-
-    for (int i = 0; i < SHADOW_COUNT; i++) {
-        framebufferInfo.width = shadow_sz[i];
-        framebufferInfo.height = shadow_sz[i];
-        framebufferInfo.pAttachments = &shadow[i].image_view;
-        if (vkCreateFramebuffer(vk.device, &framebufferInfo, NULL, &shadow[i].framebuffer) != VK_SUCCESS) {
-            fprintf(stderr, "Failed to create shadow[%d] framebuffer!\n", i);
-            exit(1);
-        }
-    }
-
-    fprintf(stderr, "Created %d shadow framebuffers\n", SHADOW_COUNT);
-}
-
 void create_descriptor_pool_and_set() {
-    // Create descriptor pool (sized for MAX_FRAMES_IN_FLIGHT descriptor sets)
-    // 1 + SHADOW_COUNT samplers: texture array + shadow maps
-    VkDescriptorPoolSize pool_sizes[] = {
-        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, MAX_FRAMES_IN_FLIGHT },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, (1 + SHADOW_COUNT) * MAX_FRAMES_IN_FLIGHT },
+    // Sampled images: binding 1 is the texture array, 2.. are the shadow maps
+    VkDescriptorImageInfo samplers[1 + SHADOW_COUNT] = {
+        {
+            .sampler = texture_sampler,
+            .imageView = texture_image_view,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        },
     };
-    VkDescriptorPoolCreateInfo pool_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .maxSets = MAX_FRAMES_IN_FLIGHT,
-        .poolSizeCount = 2,
-        .pPoolSizes = pool_sizes,
-    };
-    vkCreateDescriptorPool(vk.device, &pool_info, NULL, &descriptor_pool);
-
-    // Allocate per-frame descriptor sets
-    VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT];
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-        layouts[i] = main_descriptor_set_layout;
-
-    VkDescriptorSetAllocateInfo set_alloc = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .descriptorPool = descriptor_pool,
-        .descriptorSetCount = MAX_FRAMES_IN_FLIGHT,
-        .pSetLayouts = layouts,
-    };
-    vkAllocateDescriptorSets(vk.device, &set_alloc, main_descriptor_set);
-
-    // Prepare image infos
-    VkDescriptorImageInfo texture_info = {
-        .sampler = texture_sampler,
-        .imageView = texture_image_view,
-        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    };
-    VkDescriptorImageInfo shadow_info[SHADOW_COUNT];
     for (int i = 0; i < SHADOW_COUNT; i++) {
-        shadow_info[i] = (VkDescriptorImageInfo){
+        samplers[1 + i] = (VkDescriptorImageInfo){
             .sampler = shadow_sampler,
             .imageView = shadow[i].image_view,
             .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         };
     }
 
-    // Update each per-frame descriptor set
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        VkDescriptorBufferInfo buffer_info = {
-            .buffer = main_buffer[i],
-            .offset = 0,
-            .range = sizeof(struct main_ubo),
-        };
-
-        // 2 base writes (UBO + texture) + SHADOW_COUNT shadow writes
-        VkWriteDescriptorSet writes[2 + SHADOW_COUNT] = {
-            {
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = main_descriptor_set[i],
-                .dstBinding = 0,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .pBufferInfo = &buffer_info,
-            },
-            {
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = main_descriptor_set[i],
-                .dstBinding = 1,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .pImageInfo = &texture_info,
-            },
-        };
-
-        for (int j = 0; j < SHADOW_COUNT; j++) {
-            writes[2 + j] = (VkWriteDescriptorSet){
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = main_descriptor_set[i],
-                .dstBinding = 2 + j,
-                .descriptorCount = 1,
-                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .pImageInfo = &shadow_info[j],
-            };
-        }
-
-        vkUpdateDescriptorSets(vk.device, 2 + SHADOW_COUNT, writes, 0, NULL);
-    }
+    vulkan_create_descriptor_sets(main_descriptor_set_layout, MAX_FRAMES_IN_FLIGHT,
+        main_buffer, sizeof(struct main_ubo),
+        samplers, 1 + SHADOW_COUNT,
+        &descriptor_pool, main_descriptor_set);
 }
 
 void allocate_world()
@@ -690,7 +151,8 @@ void vksetup()
         };
 
         // Must create descriptor set layout BEFORE using it in pipeline creation
-        createDescriptorSetLayout(&main_descriptor_set_layout);
+        // binding 0: UBO, binding 1: texture array, bindings 2..: shadow maps
+        vulkan_create_descriptor_set_layout(1 + SHADOW_COUNT, &main_descriptor_set_layout);
         main_pipe = vulkan_make_pipeline("main.vert", NULL, "main.frag",
                 1, &mainBindingDesc, 6, mainAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP);
         // no-cull so every water face is visible from both sides (you can see the
@@ -762,12 +224,12 @@ void vksetup()
                 TINYC_DIR "/blocko-game/assets/barrier.png",         // 43 (debug)
         };
         int texture_count = sizeof(texture_files) / sizeof(texture_files[0]);
-        create_texture_array(texture_files, texture_count);
+        vulkan_create_texture_array(texture_files, texture_count,
+                &texture_image, &texture_memory, &texture_image_view, &texture_sampler);
 
         // Create shadow mapping resources (must happen before create_descriptor_pool_and_set)
-        create_shadow_render_pass();
+        vulkan_create_depth_render_pass(&shadow_render_pass);
         create_shadow_maps();
-        create_shadow_framebuffers();
 
         // Create shadow pipeline with same vertex layout as main pipeline
         // Use main_descriptor_set_layout to access texture for alpha testing leaves
