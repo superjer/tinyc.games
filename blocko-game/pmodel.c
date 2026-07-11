@@ -132,6 +132,37 @@ static void pmodel_randomize(struct pmodel *mo, unsigned seed)
         pm_paint(mo, dumb_rand(&seed));
 }
 
+// force any model's bytes into a valid shape (net arrivals, disk loads)
+static void pm_sanitize(struct pmodel *mo)
+{
+        if (mo->nr_pieces > PM_MAX_PIECES) mo->nr_pieces = PM_MAX_PIECES;
+        if (!mo->nr_pieces) { *mo = pm_default; }
+        for (int i = 0; i < mo->nr_pieces; i++)
+        {
+                struct pm_piece *p = &mo->piece[i];
+                for (int a = 0; a < 3; a++)
+                {
+                        p->dims[a] = ICLAMP(p->dims[a], 1, PM_TILE);
+                        p->corner[a] = ICLAMP(p->corner[a], 0, PM_TILE - p->dims[a]);
+                        p->origin[a] = ICLAMP(p->origin[a], 0, PM_TILE);
+                        p->attach[a] = ICLAMP(p->attach[a], 0, PM_TILE);
+                }
+                if (p->parent < 0 || p->parent >= mo->nr_pieces || p->parent == i)
+                        p->parent = -1;
+        }
+
+        // parents may point at ANY other piece (the editor rewires them), so
+        // cut cycles: anything that can't reach the center box in nr_pieces
+        // hops gets re-hung from it
+        for (int i = 0; i < mo->nr_pieces; i++)
+        {
+                int j = i, hops = 0;
+                while (j >= 0 && hops++ < mo->nr_pieces)
+                        j = mo->piece[j].parent;
+                if (j >= 0) mo->piece[i].parent = -1;
+        }
+}
+
 static unsigned pm_checksum(struct pmodel *mo) // debug: FNV-1a over the struct
 {
         unsigned h = 2166136261u;
@@ -153,6 +184,34 @@ static void pm_expand(struct pmodel *mo, unsigned char *rgba)
                                 *out++ = mo->palette[mo->texel[i][f][t]];
 }
 
+// my model persists on disk as the exact MSG_PMODEL packet it travels the
+// net as: [u8 owner id][raw struct pmodel]. The id byte is ignored on load.
+#define PM_FILE "model.dat"
+
+void pmodel_save()
+{
+        FILE *f = fopen(PM_FILE, "wb");
+        if (!f) { fprintf(stderr, "pmodel: can't write " PM_FILE "\n"); return; }
+        unsigned char id = my_player;
+        fwrite(&id, 1, 1, f);
+        fwrite(&pm_models[my_player], sizeof(struct pmodel), 1, f);
+        fclose(f);
+        fprintf(stderr, "pmodel: saved " PM_FILE ", checksum %08x\n",
+                pm_checksum(&pm_models[my_player]));
+}
+
+static int pmodel_load(struct pmodel *mo)
+{
+        FILE *f = fopen(PM_FILE, "rb");
+        if (!f) return 0;
+        unsigned char id;
+        int ok = fread(&id, 1, 1, f) == 1 && fread(mo, sizeof *mo, 1, f) == 1;
+        fclose(f);
+        if (!ok) fprintf(stderr, "pmodel: " PM_FILE " truncated, ignoring\n");
+        else pm_sanitize(mo);
+        return ok;
+}
+
 // roll this instance's model. Runs from main BEFORE any networking: the join
 // handshake blocks pre-vksetup, so models must exist (and mine must be
 // randomized) by the time WELCOME triggers the MSG_PMODEL exchange
@@ -161,22 +220,46 @@ void pmodel_init()
         pm_paint(&pm_default, 12345); // a fixed, recognizable default coat
         for (int i = 0; i < NR_PLAYERS; i++)
                 pm_models[i] = pm_default;
-        unsigned seed = (unsigned)SDL_GetPerformanceCounter();
-        pmodel_randomize(&pm_models[my_player], seed);
+        if (pmodel_load(&pm_models[my_player]))
+                fprintf(stderr, "pmodel: loaded " PM_FILE ", checksum %08x\n",
+                        pm_checksum(&pm_models[my_player]));
+        else
+        {
+                unsigned seed = (unsigned)SDL_GetPerformanceCounter();
+                pmodel_randomize(&pm_models[my_player], seed);
+                fprintf(stderr, "pmodel: my model seed %u checksum %08x\n",
+                        seed, pm_checksum(&pm_models[my_player]));
+        }
         pmodel_have[my_player] = 1;
-        fprintf(stderr, "pmodel: my model seed %u checksum %08x\n",
-                seed, pm_checksum(&pm_models[my_player]));
 }
 
-// all slots' face tiles for the texture array. By vksetup time the join
-// handshake may already have filled pm_models with remote players' real
-// models (their pre-texture uploads were skipped), so expand, don't reset
+// solid-color layers appended after every slot's tiles, for the model editor:
+// white (the selection outline) then six cycling hues (the joint gizmo)
+#define PM_LAYER_WHITE (pmodel_tex_base + NR_PLAYERS * pm_slot_layers())
+#define PM_LAYER_HUES  (PM_LAYER_WHITE + 1)
+#define PM_NR_HUES 6
+
+// all slots' face tiles for the texture array, plus the editor's solid-color
+// layers at the end. By vksetup time the join handshake may already have
+// filled pm_models with remote players' real models (their pre-texture
+// uploads were skipped), so expand, don't reset
 unsigned char *pmodel_make_tiles(int *nr_layers)
 {
-        static unsigned char rgba[NR_PLAYERS * PM_MAX_PIECES * PM_FACES * PM_TILE * PM_TILE * 4];
+        static unsigned char rgba[(NR_PLAYERS * PM_MAX_PIECES * PM_FACES + 1 + PM_NR_HUES)
+                * PM_TILE * PM_TILE * 4];
         for (int i = 0; i < NR_PLAYERS; i++)
                 pm_expand(&pm_models[i], rgba + i * pm_slot_layers() * PM_TILE * PM_TILE * 4);
-        *nr_layers = NR_PLAYERS * pm_slot_layers();
+
+        unsigned *solid = (unsigned *)(rgba
+                + NR_PLAYERS * pm_slot_layers() * PM_TILE * PM_TILE * 4);
+        unsigned colors[1 + PM_NR_HUES] = { PM_RGB(255, 255, 255),
+                PM_RGB(255, 60, 60), PM_RGB(255, 230, 60), PM_RGB(60, 255, 60),
+                PM_RGB(60, 230, 255), PM_RGB(60, 60, 255), PM_RGB(255, 60, 255) };
+        for (int i = 0; i < 1 + PM_NR_HUES; i++)
+                for (int t = 0; t < PM_TILE * PM_TILE; t++)
+                        *solid++ = colors[i];
+
+        *nr_layers = NR_PLAYERS * pm_slot_layers() + 1 + PM_NR_HUES;
         return rgba;
 }
 
@@ -195,21 +278,7 @@ void pmodel_net_recv(int slot, const unsigned char *data, int len)
         if (len < (int)sizeof(struct pmodel)) return;
         struct pmodel *mo = &pm_models[slot];
         memcpy(mo, data, sizeof *mo);
-
-        if (mo->nr_pieces > PM_MAX_PIECES) mo->nr_pieces = PM_MAX_PIECES;
-        if (!mo->nr_pieces) { *mo = pm_default; }
-        for (int i = 0; i < mo->nr_pieces; i++)
-        {
-                struct pm_piece *p = &mo->piece[i];
-                for (int a = 0; a < 3; a++)
-                {
-                        p->dims[a] = ICLAMP(p->dims[a], 1, PM_TILE);
-                        p->corner[a] = ICLAMP(p->corner[a], 0, PM_TILE - p->dims[a]);
-                        p->origin[a] = ICLAMP(p->origin[a], 0, PM_TILE);
-                        p->attach[a] = ICLAMP(p->attach[a], 0, PM_TILE);
-                }
-                if (p->parent >= i) p->parent = -1; // parents point backward only
-        }
+        pm_sanitize(mo);
 
         pmodel_have[slot] = 1;
         pmodel_upload(slot);
@@ -259,9 +328,12 @@ static void pm_mat_pitch(float *m, float a)
 
 // resolve the model's piece transforms (px in each piece's 16^3 space -> world)
 // for a player whose hitbox top corner is at (x,y,z), facing model-yaw `yaw`.
-// t drives the placeholder articulation until real animations exist.
+// t drives the placeholder articulation until real animations exist;
+// t < 0 means a plain standing pose (the model editor's preview).
+// root_out, when non-NULL, gets the center box's own px -> world matrix
+// (the editor needs it: a parent of -1 attaches into that space).
 static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
-                float t, float space[][16], float geom[][16])
+                float t, float space[][16], float geom[][16], float *root_out)
 {
         float tmp[16], tmp2[16], rot[16];
 
@@ -280,21 +352,40 @@ static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
         mat4_multiply(tmp2, tmp, root);
         pm_mat_translate(tmp, x + PLYR_W / 2, anchor, z + PLYR_W / 2);
         mat4_multiply(root, tmp, tmp2);
+        if (root_out) memcpy(root_out, root, sizeof root);
 
+        // pieces may parent to ANY other piece (the editor's PARENT mode can
+        // point at a later index), so resolve in dependency order: sweep
+        // until everything whose parent is ready is done. The sanitizer cuts
+        // cycles, but if one sneaks through, the final sweep hangs its pieces
+        // from the center box rather than leaving garbage matrices.
+        unsigned done = 0;
+        for (int pass = 0; pass <= mo->nr_pieces; pass++)
         for (int i = 0; i < mo->nr_pieces; i++)
         {
                 struct pm_piece *p = &mo->piece[i];
+                if (done & 1u << i) continue;
+
+                float *par;
+                int pi = p->parent;
+                if (pi < 0 || pi >= mo->nr_pieces || pi == i)
+                        par = root;
+                else if (done & 1u << pi)
+                        par = space[pi];
+                else if (pass < mo->nr_pieces)
+                        continue; // parent not resolved yet: next sweep
+                else
+                        par = root; // unreachable (cycle): hang from the box
 
                 // placeholder: wave every rotatable piece around so hierarchy,
                 // pivots and axes are all visibly exercised
-                float pitch = (p->axes & PM_PITCH) ? sinf(t * (1.1f + 0.2f * i) + i) * 0.9f : 0;
-                float pyaw  = (p->axes & PM_YAW)   ? sinf(t * (0.7f + 0.3f * i) + 2 * i) * 0.9f : 0;
+                float pitch = (t >= 0 && p->axes & PM_PITCH) ? sinf(t * (1.1f + 0.2f * i) + i) * 0.9f : 0;
+                float pyaw  = (t >= 0 && p->axes & PM_YAW)   ? sinf(t * (0.7f + 0.3f * i) + 2 * i) * 0.9f : 0;
                 pm_mat_yaw(tmp, pyaw);
                 pm_mat_pitch(tmp2, pitch);
                 mat4_multiply(rot, tmp, tmp2);
 
                 // parent space -> this piece's space: pin origin to attach, rotate there
-                float *par = p->parent < 0 ? root : space[(int)p->parent];
                 pm_mat_translate(tmp, p->attach[0], p->attach[1], p->attach[2]);
                 mat4_multiply(tmp2, par, tmp);
                 mat4_multiply(tmp, tmp2, rot);
@@ -304,13 +395,18 @@ static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
                 // geometry runs 0..dims from the prism's min corner
                 pm_mat_translate(tmp, p->corner[0], p->corner[1], p->corner[2]);
                 mat4_multiply(geom[i], space[i], tmp);
+
+                done |= 1u << i;
         }
 }
 
 // ---- per-frame build + render, mob.c-style ----
 
 static struct allocation pm_alloc[MAX_FRAMES_IN_FLIGHT];
-static struct pmvert pmbuf[NR_PLAYERS * PM_MAX_PIECES * PM_FACES];
+// world models for every slot + one more model's worth for the editor
+// preview, plus its selection-outline hull, a re-drawn parent (SOCKET mode)
+// and the joint/socket gizmo (cube + 3 axes + ghost cube)
+static struct pmvert pmbuf[(NR_PLAYERS + 1) * PM_MAX_PIECES * PM_FACES + 8 * PM_FACES];
 static int pm_count;  // total face instances this frame
 static int pm_remote; // instances the main camera sees (the local player's own
                       // model is shadow-only until 2nd/3rd person cameras exist)
@@ -320,7 +416,7 @@ static struct pmvert *pm_emit(struct pmvert *b, int slot,
 {
         struct pmodel *mo = &pm_models[slot];
         float space[PM_MAX_PIECES][16], geom[PM_MAX_PIECES][16];
-        pm_resolve(mo, x, y, z, yaw, t, space, geom);
+        pm_resolve(mo, x, y, z, yaw, t, space, geom, NULL);
 
         // light the whole body from the block the hitbox center is in
         float il = 0.4f, gl = 0.f;
@@ -374,10 +470,15 @@ void pmodel_build()
                         PI - camplayer.yaw, t);
         pm_count = b - pmbuf;
 
+        // the model editor's preview rides in the same buffer, past pm_count
+        // so neither the main pass nor the shadow passes draw it
+        if (pmedit_on)
+                b = pmedit_emit(b);
+
         int fr = vk.currentFrame;
         if (!pm_alloc[fr].buf)
                 vulkan_allocate_vertex_buffer(sizeof pmbuf, &pm_alloc[fr]);
-        vulkan_populate_vertex_buffer(pmbuf, pm_count * sizeof *pmbuf, &pm_alloc[fr]);
+        vulkan_populate_vertex_buffer(pmbuf, (b - pmbuf) * sizeof *pmbuf, &pm_alloc[fr]);
 }
 
 void pmodel_render(VkCommandBuffer cmdbuf, int pipe, float *pv)

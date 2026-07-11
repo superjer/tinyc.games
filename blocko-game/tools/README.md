@@ -131,6 +131,7 @@ $bk timings   # build_meshes total; divide by meshes_built for per-mesh ms
 | `shadowlod [<blocks>]` | Get/set the distance beyond which chunks cast 2×2×2 LOD shadows in the far/extreme cascades (default 160). `0` = LOD everywhere, `-1` = disabled (full detail always). |
 | `screenshot [<path>]` | Save the current frame as a PNG. Default path is per-worktree (`/tmp/blocko-<tag>_shot.png`), like the socket/dump. Captured inside the frame while its swapchain image is still acquired, so it's Vulkan-clean. |
 | `noclip [<0\|1>]` | Fly through solids with no gravity. While on: jump (Space) rises, sneak (LShift) sinks, WASD moves horizontally through anything. Toggles with no arg. |
+| `pmedit` | Toggle the player-model editor, exactly like the U key (frees the cursor; closing it saves `model.dat` and announces the model over the net). Replies with the new state. |
 
 ## World inspection
 

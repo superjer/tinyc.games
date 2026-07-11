@@ -393,6 +393,7 @@ struct pmodel {
 
 struct pmodel pm_models[NR_PLAYERS]; // slot's model; defaults until one arrives
 int pmodel_have[NR_PLAYERS];         // slot has a real (non-default) model
+int pmedit_on;                       // the in-game model editor is open (U key)
 
 struct vbufv vbuf[VERTEX_BUFLEN + 1000]; // vertex buffer + padding
 struct vbufv *v_limit = vbuf + VERTEX_BUFLEN;
@@ -767,6 +768,17 @@ void pmodel_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 unsigned char *pmodel_make_tiles(int *nr_layers);
 void pmodel_net_recv(int slot, const unsigned char *data, int len);
 void pmodel_local_moved(int old_slot);
+void pmodel_save();
+
+// pmedit.c protos
+struct pmvert *pmedit_emit(struct pmvert *b);
+void pmedit_toggle();
+int pmedit_key(int down);
+void pmedit_click(int down);
+void pmedit_motion();
+void pmedit_update();
+void pmedit_render(VkCommandBuffer cmdbuf);
+void pmedit_draw_ui();
 
 // texture.c protos
 void create_texture_array(char **files, int file_count, unsigned char *extra_rgba, int extra_count);
@@ -818,6 +830,7 @@ int net_player_active(int i);
 void net_send_punch(int slot, float aimx, float aimz);
 void net_send_bonk(int pi, float nx, float nz);
 void net_send_chat(const char *text);
+void pmodel_send_mine();
 void chat_add(const char *s); // remote.c: append a line to the on-screen chat
 void regen_world(); // blocko.c: invalidate all chunk stamps
 

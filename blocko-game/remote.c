@@ -748,6 +748,17 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         p += snprintf(p, end-p, "ok %s\n", path);
                 }
         }
+        else if (!strncmp(cmd, "pmedit", 6))
+        {
+                // toggle the model editor, exactly like the U key
+                if (headless)
+                        p += snprintf(p, end-p, "headless: no editor\n");
+                else
+                {
+                        pmedit_toggle();
+                        p += snprintf(p, end-p, "pmedit %d\n", pmedit_on);
+                }
+        }
         else if (!strncmp(cmd, "noclip", 6))
         {
                 // fly through solids with no gravity; jump rises, sneak sinks

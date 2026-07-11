@@ -22,6 +22,9 @@ void key_move(int down)
         if (test_lock) return; // test running: only the console works
         if (tweak_key(down)) return; // terrain tweaker panel (before the
                                      // repeat gate: held arrows keep stepping)
+        if (pmedit_key(down)) return; // model editor (U toggles it); sits
+                                      // before the repeat gate so held keys
+                                      // keep nudging the joint origin
         if (event.key.repeat) return;
 
         switch (event.key.key)
@@ -158,6 +161,7 @@ void key_move(int down)
 
 void mouse_move()
 {
+        if (pmedit_on) { pmedit_motion(); return; }
         if (!mouselook) return;
 
         player[my_player].yaw += event.motion.xrel * 0.001;
@@ -173,6 +177,7 @@ void mouse_move()
 
 void mouse_wheel()
 {
+        if (pmedit_on) return;
         if (!mouselook) return;
         // scroll up = next block, scroll down = previous
         if (event.wheel.y > 0) held_cycle(+1);
@@ -181,6 +186,7 @@ void mouse_wheel()
 
 void mouse_button(int down)
 {
+        if (pmedit_on) { pmedit_click(down); return; }
         if (!mouselook)
         {
                 if (down)

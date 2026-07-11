@@ -66,6 +66,7 @@
 #include "player.c"
 #include "mob.c"
 #include "pmodel.c"
+#include "pmedit.c"
 #include "mine.c"
 #include "hand.c"
 #include "item.c"
@@ -262,6 +263,7 @@ void main_loop()
                 TIMECALL(update_mobs, ());
                 update_items();
                 TIMECALL(update_world, ());
+                pmedit_update();
                 pframe++;
                 accumulated_elapsed -= interval;
         }

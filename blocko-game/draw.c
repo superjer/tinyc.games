@@ -531,7 +531,8 @@ void draw_stuff()
 
         // the held block, floating at the lower right; drawn on top of the world
         // via a squashed depth range so it never clips into nearby terrain
-        hand_render(cmdbuf, main_pipe, proj_view_mtrx);
+        if (!pmedit_on)
+                hand_render(cmdbuf, main_pipe, proj_view_mtrx);
 
         // Render sky/sun between opaque terrain and transparent water
         sky_draw(cmdbuf, proj_mtrx, view_mtrx);
@@ -614,6 +615,9 @@ void draw_stuff()
 
         // patch the edit box's water/glow faces the reject test just culled
         patch_render_water(cmdbuf, water_pipe, proj_view_mtrx);
+
+        // the model editor's preview draws over the finished world
+        pmedit_render(cmdbuf);
 
         if (mouselook) cursor(cmdbuf);
 

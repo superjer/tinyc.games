@@ -181,6 +181,22 @@ static void conn_flush(struct conn *c)
         }
 }
 
+// announce my model: a client sends it to the server (which stores + relays),
+// the server broadcasts it to every client directly. Used at WELCOME and
+// whenever the model editor closes with changes.
+void pmodel_send_mine()
+{
+        static unsigned char pm[1 + sizeof(struct pmodel)];
+        pm[0] = my_player;
+        memcpy(pm + 1, &pm_models[my_player], sizeof(struct pmodel));
+        if (net_mode == NET_CLIENT)
+                conn_send(&server_conn, MSG_PMODEL, pm, sizeof pm);
+        else if (net_mode == NET_SERVER)
+                for (int i = 0; i < NET_MAX_CLIENTS; i++)
+                        if (conns[i].helloed)
+                                conn_send(&conns[i], MSG_PMODEL, pm, sizeof pm);
+}
+
 // --- message handling -------------------------------------------------------
 
 static void server_welcome(struct conn *c)
@@ -228,10 +244,7 @@ static void client_welcome(const unsigned char *p)
         }
 
         // introduce my model; the server stores it and relays it to everyone
-        static unsigned char pm[1 + sizeof(struct pmodel)];
-        pm[0] = my_player;
-        memcpy(pm + 1, &pm_models[my_player], sizeof(struct pmodel));
-        conn_send(&server_conn, MSG_PMODEL, pm, sizeof pm);
+        pmodel_send_mine();
 
         world_seed = get_u32(p + 1);
         sun_pitch = get_f32(p + 5);
