@@ -162,6 +162,14 @@ void do_shadows()
                 float sfar = dist2sun * 2;
                 float mag = 40000.f;
 
+                // snap the light-space translation to whole shadow-map texels:
+                // the sun never rotates, so this pins the texel grid to the
+                // world exactly and shadow edges never crawl as the window
+                // follows the player
+                float texel = 2.f * mag / shadow_sz[SHADOW_NEAR];
+                view_mtrx[12] = roundf(view_mtrx[12] / texel) * texel;
+                view_mtrx[13] = roundf(view_mtrx[13] / texel) * texel;
+
                 float ortho_mtrx[] = {
                         1.f/mag, 0,       0,                        0,
                         0,       1.f/mag, 0,                        0,
