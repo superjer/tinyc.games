@@ -15,3 +15,6 @@ x64
 Debug
 build
 tags
+
+# local world save (per-run artifact)
+blocko.saves
