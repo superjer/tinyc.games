@@ -10,13 +10,25 @@ static int sorter(const void * _a, const void * _b)
                (a->d <  b->d) ? -1 : 1;  // closest first
 }
 
-// face visibility - draw a face only against a see-through neighbor
-#define UP_VISIBLE(x, y, z)    (y == 0          || IS_SEE_THROUGH(T_(x, y-1, z)))
-#define DOWN_VISIBLE(x, y, z)  (y+1 >= TILESH   || IS_SEE_THROUGH(T_(x, y+1, z)))
-#define SOUTH_VISIBLE(x, y, z) (z == 0          || IS_SEE_THROUGH(T_(x, y, z-1)))
-#define NORTH_VISIBLE(x, y, z) (z+1 >= TILESD   || IS_SEE_THROUGH(T_(x, y, z+1)))
-#define WEST_VISIBLE(x, y, z)  (x == 0          || IS_SEE_THROUGH(T_(x-1, y, z)))
-#define EAST_VISIBLE(x, y, z)  (x+1 >= TILESW   || IS_SEE_THROUGH(T_(x+1, y, z)))
+// Does cell (x,y,z) fully cover its own face on side `dir`? A see-through cell
+// covers nothing; a slope is only a partial wedge, so it covers just its flat
+// bottom (DOWN) and its tall back/high side (which rotates with facing); every
+// other solid covers all six sides. A face is drawn unless the neighbor on that
+// side fully covers it, so a slope no longer culls (and lets you see through)
+// the still-exposed parts of the blocks beside it.
+static const int slope_back[4] = { NORTH, EAST, SOUTH, WEST }; // high side by facing S/W/N/E
+#define COVERS(x, y, z, dir) ( \
+        IS_SEE_THROUGH(T_(x, y, z)) ? 0 : \
+        T_(x, y, z) == GSLP ? ((dir) == DOWN || (dir) == slope_back[TO_(x, y, z) & 3]) : \
+        1 )
+
+// face visibility - draw a face unless the neighbor on that side fully covers it
+#define UP_VISIBLE(x, y, z)    (y == 0          || !COVERS(x, y-1, z, DOWN))
+#define DOWN_VISIBLE(x, y, z)  (y+1 >= TILESH   || !COVERS(x, y+1, z, UP))
+#define SOUTH_VISIBLE(x, y, z) (z == 0          || !COVERS(x, y, z-1, NORTH))
+#define NORTH_VISIBLE(x, y, z) (z+1 >= TILESD   || !COVERS(x, y, z+1, SOUTH))
+#define WEST_VISIBLE(x, y, z)  (x == 0          || !COVERS(x-1, y, z, EAST))
+#define EAST_VISIBLE(x, y, z)  (x+1 >= TILESW   || !COVERS(x+1, y, z, WEST))
 
 // water face visibility - draw a side/bottom face wherever water meets air (or
 // any see-through non-water neighbor), but never against solid or more water, so
