@@ -375,17 +375,41 @@ static void pm_expand(struct pmodel *mo, unsigned char *rgba)
 // number) loads at startup; a fresh install starts from the default asset.
 // Every file is the exact MSG_PMODEL packet the model travels the net as:
 // [u8 owner id][raw struct pmodel] - the id byte is ignored on load
-// absolute (TINYC_DIR-rooted, like the textures and shaders) so the game finds
-// them no matter what directory it's launched from
-#define PM_HIST_DIR TINYC_DIR "/save-data/blocko/player-models"
-#define PM_HIST_FMT PM_HIST_DIR "/%05d.model"
+// the read-only default asset stays TINYC_DIR-rooted, like the textures and
+// shaders, so it's found from any working directory
 #define PM_DEFAULT_FILE TINYC_DIR "/blocko-game/assets/models/player-default.model"
+
+// snapshots are per-user save data, so they live in the platform's proper spot
+// (SDL_GetPrefPath: ~/.local/share/blocko, %APPDATA%\..., ~/Library/...),
+// resolved once at startup. Fallback to the source tree if the pref dir can't
+// be created (never on a normal desktop).
+static char pm_hist_dir[512];
+
+static void pm_hist_init(void)
+{
+        char *pref = SDL_GetPrefPath("tinycgames", "blocko");
+        if (pref)
+        {
+                snprintf(pm_hist_dir, sizeof pm_hist_dir, "%splayer-models", pref);
+                SDL_free(pref);
+        }
+        else
+                snprintf(pm_hist_dir, sizeof pm_hist_dir, "%s",
+                        TINYC_DIR "/save-data/blocko/player-models");
+        SDL_CreateDirectory(pm_hist_dir); // GetPrefPath makes its dir, not this subdir
+}
+
+// snapshot n's absolute path
+static void pm_hist_path(char *out, size_t sz, int n)
+{
+        snprintf(out, sz, "%s/%05d.model", pm_hist_dir, n);
+}
 
 // the highest snapshot number on disk, 0 if none
 static int pm_hist_newest()
 {
         int newest = 0, count = 0;
-        char **names = SDL_GlobDirectory(PM_HIST_DIR, "*.model", 0, &count);
+        char **names = SDL_GlobDirectory(pm_hist_dir, "*.model", 0, &count);
         for (int i = 0; names && i < count; i++)
         {
                 char *end;
@@ -398,9 +422,8 @@ static int pm_hist_newest()
 
 static void pm_hist_write(int n)
 {
-        SDL_CreateDirectory(PM_HIST_DIR); // missing parents too
-        char path[256];
-        sprintf(path, PM_HIST_FMT, n);
+        char path[512];
+        pm_hist_path(path, sizeof path, n);
         FILE *f = fopen(path, "wb");
         if (!f) { fprintf(stderr, "pmodel: can't write %s\n", path); return; }
         unsigned char id = my_player;
@@ -433,14 +456,15 @@ static int pmodel_load(struct pmodel *mo, const char *path)
 // randomized) by the time WELCOME triggers the MSG_PMODEL exchange
 void pmodel_init()
 {
+        pm_hist_init(); // resolve the per-user snapshot dir before we read it
         pm_paint(&pm_default, 12345); // a fixed, recognizable default coat
         for (int i = 0; i < NR_PLAYERS; i++)
                 pm_models[i] = pm_default;
-        char path[256] = PM_DEFAULT_FILE;
+        char path[512] = PM_DEFAULT_FILE;
         int n = pm_hist_newest(), ok = 0;
         if (n)
         {
-                sprintf(path, PM_HIST_FMT, n);
+                pm_hist_path(path, sizeof path, n);
                 ok = pmodel_load(&pm_models[my_player], path);
         }
         if (!ok)
