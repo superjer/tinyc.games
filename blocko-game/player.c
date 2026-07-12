@@ -109,11 +109,12 @@ static int slope_facing(float yaw)
 }
 
 // world-Y of the slope surface under the player's horizontal center, or a big
-// sentinel if the player isn't standing over any slope cell. Y grows downward,
-// so a smaller value is a higher surface; when the footprint covers more than
-// one slope the highest wins. This is the only floor slopes provide - they are
-// invisible to the box collider (see block_collide), so the player never bumps
-// into a slope, only rides its surface.
+// sentinel if the player isn't standing over any slope cell (and the winning
+// facing, for the uphill-speed check). Y grows downward, so a smaller value is
+// a higher surface; when the footprint covers more than one slope the highest
+// wins. Slopes are their own solid floor now (they collide as a staircase, see
+// block_collide); this only reports which slope/facing you're on so the walk
+// speed can ease off going uphill.
 #define NO_RAMP 1e30f
 float ramp_surface(struct box box, int *facing)
 {
@@ -354,10 +355,8 @@ void update_player(struct player *p, int real)
 
         // auto-step: if a wall stopped the horizontal move short while we were on
         // the ground, try to climb it (raise up to STEP_HEIGHT, redo the move,
-        // then settle back down onto the step). Makes ramps, stairs, and single
-        // blocks walkable without jumping. Slopes are non-solid to world_collide
-        // so this only ever climbs real blocks - the ramp itself is handled by
-        // ramp_surface below.
+        // then settle back down onto the step). Makes single blocks, stairs, and
+        // the slope's staircase (collision.c) walkable without jumping.
         float want = fabsf(p->vel.x) + fabsf(p->vel.z);
         float got  = fabsf(p->pos.x - pre.x) + fabsf(p->pos.z - pre.z);
         if (p->ground && p->vel.y == 0 && got + 1.f < want)
@@ -426,16 +425,9 @@ void update_player(struct player *p, int real)
         if (p->ground)
                 p->grav = GRAV_ZERO;
 
-        // ride slopes: rest the feet on the sloped surface beneath the player.
-        // only ever lifts (never shoves down), so jumping/hopping off the top
-        // still works; the small tolerance keeps the player attached walking up
-        float ramp = ramp_surface(p->pos, NULL);
-        if (ramp < NO_RAMP && p->pos.y + PLYR_H > ramp - BS/16)
-        {
-                p->pos.y = ramp - PLYR_H;
-                p->ground = 1;
-                p->grav = GRAV_ZERO;
-        }
+        // slopes need no special floor handling: they collide as a solid
+        // staircase (collision.c), so gravity settles the feet on a step and
+        // the auto-step above walks up them like any other stairs.
 
         //zooming
         if (real)
