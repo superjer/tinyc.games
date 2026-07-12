@@ -42,9 +42,12 @@ void key_move(int down)
                         jump(down);
                         break;
 
-                // place a light
+                // switch held block (the mouse wheel does this too)
+                case SDLK_Q:
+                        if (down) held_cycle(-1);
+                        break;
                 case SDLK_E:
-                        player[my_player].lighting = down;
+                        if (down) held_cycle(+1);
                         break;
 
                 // spawn a slime where the crosshair points
@@ -60,17 +63,6 @@ void key_move(int down)
                         break;
 
                 // debug stuff
-                case SDLK_Q: // go up alot
-                        if (!down)
-                        {
-                                player[my_player].pos.y -= 16000;
-                                player[my_player].grav = GRAV_ZERO - 5;
-                        }
-                        break;
-                case SDLK_F: // go fast
-                        if (down)
-                                fast = (fast == 1.f) ? 8.f : 1.f;
-                        break;
                 case SDLK_H: // show help
                         if (down)
                                 help_layer = (help_layer == 1) ? 0 : 1;
@@ -86,7 +78,10 @@ void key_move(int down)
                                 fprintf(stderr, "%s\n", regulated ? "regulated" : "unregulated");
                         }
                         break;
-                case SDLK_N: // night mode on/off
+                case SDLK_N: // noclip: fly through solids, no gravity
+                        if (down) player[my_player].noclip = !player[my_player].noclip;
+                        break;
+                case SDLK_O: // reverse the sun (night mode)
                         if (down) reverse_sun = !reverse_sun;
                         break;
                 case SDLK_P: // speed of the sun

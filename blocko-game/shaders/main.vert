@@ -74,7 +74,12 @@ void main(void) {
     // tall grass (orient 20/21): two crossed billboard planes centered in the
     // cell, rotated by a per-cell random angle and jittered - handled below
     // after the corner offsets are chosen.
-    bool grass = o >= 20;
+    bool grass = o >= 20 && o < 30;
+
+    // grass slope (orient 30..45): a wedge piece selected by kind = (o-30)/4
+    // (0 sloped top, 1 west tri, 2 east tri, 3 back wall) with facing = (o-30)%4;
+    // built as the descend-south base then rotated 90*facing below.
+    bool slope = o >= 30;
 
     switch (o) {
         case 1: // UP (Y-)
@@ -168,6 +173,65 @@ void main(void) {
         a = g[0]; b = g[1]; c = g[2]; d = g[3];
     }
 
+    // grass slope: build the descend-south base piece, then rotate it 90*facing
+    // about the cell's vertical center. base = high side north (z=bs, y=0), low
+    // side south (z=0, y=bs). the two side walls are triangles emitted as
+    // degenerate quads (one vertex doubled). winding matches the cube faces so
+    // back-face culling keeps them visible.
+    if (slope) {
+        int kind = (o - 30) / 4;
+        int facing = (o - 30) - kind * 4;
+        switch (kind) {
+        case 0: // sloped grass top (mirrors UP's XZ, low edge lifted to y=bs)
+            a = vec4(0,  bs, 0,  0);
+            b = vec4(bs, bs, 0,  0);
+            c = vec4(0,  0,  bs, 0);
+            d = vec4(bs, 0,  bs, 0);
+            sidel = 1.0f;
+            face_normal = normalize(vec3(0, -1, -1));
+            break;
+        case 1: // west triangle wall (x=0)
+            a = vec4(0, bs, 0,  0);
+            b = vec4(0, 0,  bs, 0);
+            c = vec4(0, bs, 0,  0);
+            d = vec4(0, bs, bs, 0);
+            sidel = 0.9f;
+            face_normal = vec3(-1, 0, 0);
+            break;
+        case 2: // east triangle wall (x=bs)
+            a = vec4(bs, 0,  bs, 0);
+            b = vec4(bs, bs, 0,  0);
+            c = vec4(bs, bs, bs, 0);
+            d = vec4(bs, bs, 0,  0);
+            sidel = 0.9f;
+            face_normal = vec3(1, 0, 0);
+            break;
+        default: // back wall = full north face (z=bs)
+            a = vec4(0,  0,  bs, 0);
+            b = vec4(bs, 0,  bs, 0);
+            c = vec4(0,  bs, bs, 0);
+            d = vec4(bs, bs, bs, 0);
+            sidel = 0.8f;
+            face_normal = vec3(0, 0, 1);
+            break;
+        }
+        // rotate 90*facing: (x,z) -> (z, bs-x) turns the high side
+        // north->east->south->west (SLOPE_S/W/N/E), matching player.c collision
+        float co = bs * 0.5;
+        vec4 g[4] = vec4[4](a, b, c, d);
+        for (int r = 0; r < facing; r++) {
+            for (int k = 0; k < 4; k++) {
+                float nx = g[k].z;
+                float nz = bs - g[k].x;
+                g[k].x = nx; g[k].z = nz;
+            }
+            float fnx = face_normal.z;
+            float fnz = -face_normal.x;
+            face_normal.x = fnx; face_normal.z = fnz;
+        }
+        a = g[0]; b = g[1]; c = g[2]; d = g[3];
+    }
+
     // pull the top edge (the verts at local y == 0) down to the water line. top
     // faces have all four verts there (whole face drops); side faces only the top
     // two (wall shortens); bottom faces none (untouched).
@@ -216,6 +280,19 @@ void main(void) {
     illum = (0.1 + illum_in[i]) * sidel;
     glow = (0.1 + glow_in[i]) * sidel;
     uv = uvs[i];
+    if (slope) {
+        if ((o - 30) / 4 == 0)
+            // sloped top: the surface is sqrt(2) longer up-slope than across, so
+            // a 0..1 uv stretches its texels tall. Run the up-slope uv to 23/16
+            // so it shows 23 texels to the 16 across - square again (the sampler
+            // repeats, so past 1 tiles instead of smearing).
+            uv.y *= 23.0 / 16.0;
+        else
+            // side walls and back wall: keep the fixed horizontal uv, drive the
+            // vertical from world height so the grass strip stays a horizontal
+            // band at the top instead of skewing on the sloped/triangle verts.
+            uv.y = offsets[i].y / bs;
+    }
     world_pos_out = world_pos;
 
     // Calculate shadow space position for near cascade only

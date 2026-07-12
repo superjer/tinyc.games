@@ -61,7 +61,8 @@ void main(void) {
     // matching its visible shape, so replicate main.vert's per-cell rotation
     // and jitter exactly. everything else in the transparent buffer (water,
     // alpha < 1) is collapsed so only grass casts here.
-    bool grass = o >= 20;
+    bool grass = o >= 20 && o < 30;
+    bool slope = o >= 30; // grass slope wedge (orient 30..45); see main.vert
     // in the transparent buffer only grass casts: collapse water (alpha < 1)
     // and the mushroom light (tex 18, which never cast a shadow). terrain draws
     // never carry either, so this is a no-op there.
@@ -139,6 +140,49 @@ void main(void) {
             g[k].x = rel.x * ca - rel.y * sa + bs * 0.5 + jx;
             g[k].z = rel.x * sa + rel.y * ca + bs * 0.5 + jz;
         }
+        a = g[0]; b = g[1]; c = g[2]; d = g[3];
+    }
+
+    // grass slope wedge: same geometry as main.vert (positions only) so the
+    // cast shadow matches the visible shape. base = descend-south, rotated
+    // 90*facing about the cell center.
+    if (slope) {
+        int kind = (o - 30) / 4;
+        int facing = (o - 30) - kind * 4;
+        switch (kind) {
+        case 0: // sloped top
+            a = vec4(0,  bs, 0,  0);
+            b = vec4(bs, bs, 0,  0);
+            c = vec4(0,  0,  bs, 0);
+            d = vec4(bs, 0,  bs, 0);
+            break;
+        case 1: // west triangle wall
+            a = vec4(0, bs, 0,  0);
+            b = vec4(0, 0,  bs, 0);
+            c = vec4(0, bs, 0,  0);
+            d = vec4(0, bs, bs, 0);
+            break;
+        case 2: // east triangle wall
+            a = vec4(bs, 0,  bs, 0);
+            b = vec4(bs, bs, 0,  0);
+            c = vec4(bs, bs, bs, 0);
+            d = vec4(bs, bs, 0,  0);
+            break;
+        default: // back wall = full north face
+            a = vec4(0,  0,  bs, 0);
+            b = vec4(bs, 0,  bs, 0);
+            c = vec4(0,  bs, bs, 0);
+            d = vec4(bs, bs, bs, 0);
+            break;
+        }
+        float co = bs * 0.5;
+        vec4 g[4] = vec4[4](a, b, c, d);
+        for (int r = 0; r < facing; r++)
+            for (int k = 0; k < 4; k++) {
+                float nx = g[k].z;
+                float nz = bs - g[k].x;
+                g[k].x = nx; g[k].z = nz;
+            }
         a = g[0]; b = g[1]; c = g[2]; d = g[3];
     }
 

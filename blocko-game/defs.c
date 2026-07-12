@@ -16,6 +16,13 @@
 #define GRG2 46
 #define GRAS 47
 #define MTGR 48            // mountain grass
+#define GSLP 49            // grass slope (a walkable wedge; facing in tileo)
+// slope facing = compass direction the surface descends toward (walk it downhill).
+// stored in tileo bits 0-4; base geometry is SLOPE_S, rotated 90*facing in-shader
+#define SLOPE_S 0
+#define SLOPE_W 1
+#define SLOPE_N 2
+#define SLOPE_E 3
 
 #define RLEF 60
 #define YLEF 61
@@ -148,6 +155,7 @@ const int shadow_sz[SHADOW_COUNT] = { 1024, 2048, 4096, 4096, 4096, 4096 };
 #define DUSK_B 0.4f
 // tile pos-to-mem-location macros
 #define T_(x,y,z)    tiles[    ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
+#define TO_(x,y,z)   tileo[    ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
 #define SUN_(x,y,z)  sunlight[ ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
 #define GLO_(x,y,z)  glolight[ ((z - scootz) & (TILESD-1)) * (TILESH+0) * (TILESW+0) + ((x - scootx) & (TILESW-1)) * (TILESH+0) + (y)]
 #define CORN_(x,y,z) cornlight[((z - scootz) & (TILESD-1)) * (TILESH+1) * (TILESW+1) + ((x - scootx) & (TILESW-1)) * (TILESH+1) + (y)]
@@ -374,6 +382,8 @@ size_t mesh_leaf_start; // solid face count of the last mesh_region build
 float night_amt;
 
 unsigned char *tiles;
+unsigned char *tileo;   // per-cell orientation (bits 0-4: 24 possible facings,
+                        // bits 5-7 reserved); only slope tiles (GSLP) read it
 unsigned char *sunlight;
 unsigned char *glolight;
 unsigned char gndheight[TILESW * TILESD];
@@ -570,7 +580,6 @@ float cull_x, cull_z; // camera position for range culling, frozen with it
 float draw_dist = 640.f;
 int zooming = false;
 float zoom_amt = 1.f;
-float fast = 1.f;
 int regulated = true;
 int headless; // dedicated server: no window, no vulkan, no input
 int shadow_mapping = true;
@@ -743,12 +752,12 @@ void patch_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 void patch_render_water(VkCommandBuffer cmdbuf, int pipe, float *pv);
 
 // edit.c protos
-void set_tile(int x, int y, int z, int t);
-void edit_record(int x, int y, int z, int tile);
+void set_tile(int x, int y, int z, int t, int orient);
+void edit_record(int x, int y, int z, int tile, int orient);
 void edit_apply_chunk(int acx, int acz);
-void edit_apply_remote(int ax, int ay, int az, int tile);
+void edit_apply_remote(int ax, int ay, int az, int tile, int orient);
 void edit_clear();
-int edit_next(int *it, int *x, int *y, int *z, int *tile);
+int edit_next(int *it, int *x, int *y, int *z, int *tile, int *orient);
 extern int edit_len;
 
 // net.c protos
@@ -756,7 +765,7 @@ extern int edit_len;
 enum { NET_OFF, NET_SERVER, NET_CLIENT };
 extern int net_mode;
 void net_poll();
-void net_send_edit(int x, int y, int z, int tile);
+void net_send_edit(int x, int y, int z, int tile, int orient);
 int net_serve(int port);
 int net_connect(const char *host, int port);
 int net_describe(char *out, int outsz);

@@ -323,6 +323,7 @@ void startup()
         }
 
         tiles = calloc(TILESD * TILESH * TILESW, sizeof *tiles);
+        tileo = calloc(TILESD * TILESH * TILESW, sizeof *tileo);
         sunlight = calloc(TILESD * TILESH * TILESW, sizeof *sunlight);
         glolight = calloc(TILESD * TILESH * TILESW, sizeof *glolight);
         main_area = (struct warea){ .tiles = tiles, .sun = sunlight, .gndh = gndheight,

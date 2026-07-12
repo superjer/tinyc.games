@@ -78,11 +78,10 @@ void debrief()
         {
                 char xyzbuf[100];
                 snprintf(xyzbuf, 100,
-                                "X=%0.0f Y=%0.0f Z=%0.0f drawdist=%.0f %sreg %sfast %slock",
+                                "X=%0.0f Y=%0.0f Z=%0.0f drawdist=%.0f %sreg %slock",
                                 player[my_player].pos.x / BS, player[my_player].pos.y / BS, player[my_player].pos.z / BS,
                                 draw_dist,
                                 regulated       ? "" : "no",
-                                fast > 1        ? "" : "no",
                                 lock_culling    ? "" : "no");
 
                 font_begin(screenw, screenh);
@@ -104,8 +103,8 @@ void debrief()
 
         if (help_layer == 1)
         {
-                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nWheel\nE          \nT   \n/   \nZ   \nC            \nH                  \nPress G for more";
-                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nChange held block\nPlace Light\nChat\nCommand\nZoom\nDraw Distance\nHide this help text";
+                char *h1 = "WASD\nShift\nCtrl/WW\nSpc/MB4\nLMB  \nRMB  \nWheel/QE\nN   \nT   \n/   \nZ   \nC            \nH                  \nPress G for more";
+                char *h2 = "Move\nSneak\nRun    \nJump   \nBreak\nBuild\nChange held block\nNoclip\nChat\nCommand\nZoom\nDraw Distance\nHide this help text";
                 font_begin(screenw, screenh);
                 font_add_text(h1, screenw/100.f, screenh/4.f, 0);
                 font_end(1, 0.5, 1);
@@ -116,8 +115,8 @@ void debrief()
 
         if (help_layer == 2)
         {
-                char *g1 = "~\nQ\nF\nB\nK\nN\nP\nM\nR\nF2\nF3\nF5\nF6\nF7";
-                char *g2 = "Command console\nGo up!\nFast\nSpawn slime\nTerrain tweaker\nRev. sun\nFast sun\nShadow mapping\nFixed interval\nLock culling\nFPS, timings, position\nReload shaders\nFreeze shadows + sun\nTall grass shadows";
+                char *g1 = "~\nB\nK\nO\nP\nM\nR\nF2\nF3\nF5\nF6\nF7";
+                char *g2 = "Command console\nSpawn slime\nTerrain tweaker\nReverse sun (night)\nFast sun\nShadow mapping\nFixed interval\nLock culling\nFPS, timings, position\nReload shaders\nFreeze shadows + sun\nTall grass shadows";
                 font_begin(screenw, screenh);
                 font_add_text(g1, screenw/100.f, screenh/4.f, 0);
                 font_end(0.5, 1, 1);

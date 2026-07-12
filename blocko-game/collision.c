@@ -28,7 +28,10 @@ int block_collide(int bx, int by, int bz, struct box box, int wet)
         if (wet && t == WATR)
                 return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS, BS});
 
-        if (!wet && t <= LASTSOLID)
+        // slopes are walkable ramps, not full cubes: the box collider ignores
+        // them so the player never bumps into one, and ramp_surface (player.c)
+        // rests the feet on the sloped surface instead
+        if (!wet && t <= LASTSOLID && t != GSLP)
                 return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS, BS});
 
         return 0;

@@ -141,6 +141,27 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                                 if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 38,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
                                 if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){  2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                         }
+                        else if (t == GSLP)
+                        {
+                                // grass slope: a walkable wedge. a sloped grass top,
+                                // two triangle side walls, a full back wall (the high
+                                // side), and a dirt bottom; the low front is nothing.
+                                // orient 30/34/38/42 + facing select the piece -
+                                // main.vert & shadow.vert build the base (descend-
+                                // south) shape and rotate it 90*facing. tex 0 grass
+                                // top, 1 grass side, 2 dirt. The three vertical faces
+                                // always emit (they rotate, so per-neighbor culling
+                                // here would need the rotated direction; the overdraw
+                                // when a slope abuts a block is hidden inside it).
+                                int f = TO_(x, y, z) & 3;
+                                if ((face_mask & FACE_UP) && UP_VISIBLE(x, y, z))
+                                        *tv++ = (struct vbufv){ 0, 30 + f, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                *tv++ = (struct vbufv){ 1, 34 + f, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                *tv++ = (struct vbufv){ 1, 38 + f, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                *tv++ = (struct vbufv){ 1, 42 + f, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };
+                                if ((face_mask & FACE_DOWN) && DOWN_VISIBLE(x, y, z))
+                                        *tv++ = (struct vbufv){ 2, DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                        }
                         else if (t == DIRT)
                         {
                                 if ((face_mask & FACE_UP)    && UP_VISIBLE(x, y, z))    *tv++ = (struct vbufv){ 2,    UP, m, y, n, usw, use, unw, une, USW, USE, UNW, UNE, 1 };

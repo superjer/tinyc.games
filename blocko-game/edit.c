@@ -17,7 +17,7 @@
 // draw, both on the main thread. Builder threads never touch the overlay, so
 // no locking.
 
-static struct edit { int x, y, z, used; unsigned char tile; } *edit_tab;
+static struct edit { int x, y, z, used; unsigned char tile, orient; } *edit_tab;
 static int edit_cap; // power of 2; 0 until the first edit
 int edit_len;
 
@@ -55,7 +55,7 @@ static void edit_grow()
 
 // remember an edit at ABSOLUTE tile coords; a newer edit to the same cell
 // replaces the older one, so the overlay holds only each cell's final value
-void edit_record(int x, int y, int z, int tile)
+void edit_record(int x, int y, int z, int tile, int orient)
 {
         if (edit_len * 3 >= edit_cap * 2)
                 edit_grow();
@@ -67,6 +67,7 @@ void edit_record(int x, int y, int z, int tile)
                 edit_len++;
         }
         e->tile = tile;
+        e->orient = orient;
 }
 
 void edit_clear()
@@ -79,13 +80,13 @@ void edit_clear()
 
 // walk the overlay: start with *it = 0; returns 1 and fills the entry while
 // entries remain. Used to stream the whole overlay to a joining client.
-int edit_next(int *it, int *x, int *y, int *z, int *tile)
+int edit_next(int *it, int *x, int *y, int *z, int *tile, int *orient)
 {
         while (edit_tab && *it < edit_cap)
         {
                 struct edit *e = &edit_tab[(*it)++];
                 if (!e->used) continue;
-                *x = e->x; *y = e->y; *z = e->z; *tile = e->tile;
+                *x = e->x; *y = e->y; *z = e->z; *tile = e->tile; *orient = e->orient;
                 return 1;
         }
         return 0;
@@ -158,27 +159,28 @@ static void tile_light_update(int x, int y, int z, int old, int t)
 // overlay, update ground height + lighting, and show the edit instantly via
 // the reject+patch (patch.c). Gameplay effects (item drops, cooldowns, hand
 // swings) stay with the callers.
-void set_tile(int x, int y, int z, int t)
+void set_tile(int x, int y, int z, int t, int orient)
 {
         int old = T_(x, y, z);
-        if (old == t)
+        if (old == t && TO_(x, y, z) == orient)
                 return;
 
         T_(x, y, z) = t;
-        edit_record(x - scootx, y, z - scootz, t);
+        TO_(x, y, z) = orient;
+        edit_record(x - scootx, y, z - scootz, t, orient);
         sim_area_write(x - scootx, y, z - scootz, t);
         tile_light_update(x, y, z, old, t);
         patch_edit(x, y, z);
-        net_send_edit(x - scootx, y, z - scootz, t);
+        net_send_edit(x - scootx, y, z - scootz, t, orient);
 }
 
 // land an edit that arrived from the network: record it, and if its chunk is
 // already generated, apply it in place like a local edit (minus re-sending -
 // the server relays for us). An ungenerated chunk needs only the record; the
 // replay at generation time picks it up.
-void edit_apply_remote(int ax, int ay, int az, int tile)
+void edit_apply_remote(int ax, int ay, int az, int tile, int orient)
 {
-        edit_record(ax, ay, az, tile);
+        edit_record(ax, ay, az, tile, orient);
         sim_area_write(ax, ay, az, tile);
 
         int x = ax + scootx, z = az + scootz;
@@ -186,8 +188,9 @@ void edit_apply_remote(int ax, int ay, int az, int tile)
         if (!AGEN_(B2C(x), B2C(z))) return;
 
         int old = T_(x, ay, z);
-        if (old == tile) return;
+        if (old == tile && TO_(x, ay, z) == orient) return;
         T_(x, ay, z) = tile;
+        TO_(x, ay, z) = orient;
         tile_light_update(x, ay, z, old, tile);
         patch_edit(x, ay, z);
 }
@@ -211,8 +214,9 @@ void edit_apply_chunk(int acx, int acz)
                 if (x < 0 || x >= TILESW || z < 0 || z >= TILESD) continue;
 
                 int old = T_(x, e->y, z);
-                if (old == e->tile) continue;
+                if (old == e->tile && TO_(x, e->y, z) == e->orient) continue;
                 T_(x, e->y, z) = e->tile;
+                TO_(x, e->y, z) = e->orient;
                 tile_light_update(x, e->y, z, old, e->tile);
         }
 }
