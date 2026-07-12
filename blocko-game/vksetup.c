@@ -188,9 +188,11 @@ void vksetup()
         };
         pmodel_pipe = vulkan_make_pipeline("pmodel.vert", NULL, "main.frag",
                 1, &pmodelBindingDesc, 6, pmodelAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP);
-        // the editor's see-through preview piece (tint < 0) blends for real
+        // the editor's see-through preview piece and faint reference geometry
+        // (tint < 0) blend for real; no depth write so they never occlude the
+        // opaque model drawn before them - they layer over it, honestly clear
         pmodel_ghost_pipe = vulkan_make_pipeline("pmodel.vert", NULL, "main.frag",
-                1, &pmodelBindingDesc, 6, pmodelAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP | PIPE_BLEND);
+                1, &pmodelBindingDesc, 6, pmodelAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP | PIPE_BLEND | PIPE_NO_DEPTH_WRITE);
 
         // the editor's 2D palette panel: pixel-space quads with per-vertex
         // color, so the swatches and picker gradient land in one draw

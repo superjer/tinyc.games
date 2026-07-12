@@ -382,6 +382,20 @@ static int pmedit_cycle(int j)
         return 0;
 }
 
+// piece i plays no part in the active gizmo mode: shown 90% see-through as a
+// spatial reference rather than vanishing. PLACE ATTACHMENT POINT (joint)
+// isolates the selected piece; MOVE PART (socket) keeps its parent solid too;
+// SELECT PARENT (parent) keeps the eligible parents solid. The selected piece
+// and mode-off views are never faint (return 0)
+static int pmedit_mode_faint(struct pmodel *mo, int i)
+{
+        if (pmedit_sel < 0 || i == pmedit_sel) return 0;
+        if (pmedit_joint)  return 1;
+        if (pmedit_socket) return i != mo->piece[pmedit_sel].parent;
+        if (pmedit_parent) return pmedit_cycle(i);
+        return 0;
+}
+
 // face orient code (1..6) -> its normal's axis and sign
 static const signed char pmedit_axis_of[7] = { 0, 1, 0, 2, 0, 2, 1 };
 static const signed char pmedit_side_of[7] = { 0, -1, 1, 1, -1, -1, 1 };
@@ -1126,21 +1140,14 @@ struct pmvert *pmedit_emit(struct pmvert *b)
         for (int i = 0; i < pmedit_nr; i++)
         {
                 if (i == pmedit_sel) continue;
-                if (pmedit_hidden >> i & 1) continue; // ghosted below instead
-                // JOINT shows only the piece whose joint is being moved
-                if (pmedit_joint && pmedit_sel >= 0) continue;
-                // MOVE PART shows only the parent being attached to
-                if (pmedit_socket && pmedit_sel >= 0
-                                && i != mo->piece[pmedit_sel].parent)
-                        continue;
-                // PARENT shows only the eligible parents
-                if (pmedit_parent && pmedit_sel >= 0 && pmedit_cycle(i))
-                        continue;
                 // the ANIMATE preview blinks its EYES pieces like the game
                 // does (the selected piece stays visible - you're editing it)
                 if (pmedit_animate && mo->piece[i].type == PM_T_EYES
                                 && pm_blinking(my_player, anim_t))
                         continue;
+                // HIDDEN pieces and pieces the active gizmo mode ignores draw
+                // faint in the ghost group below instead of solid here
+                if (pmedit_hidden >> i & 1 || pmedit_mode_faint(mo, i)) continue;
                 for (int fc = 0; fc < PM_FACES; fc++)
                         *b++ = PM_EDIT_FACE(pmedit_mats[i],
                                 mo->piece[i].dims[0], mo->piece[i].dims[1], mo->piece[i].dims[2],
@@ -1149,20 +1156,17 @@ struct pmvert *pmedit_emit(struct pmvert *b)
         }
         pm_edit_rest_count = (int)(b - pmbuf) - pm_edit_rest_start;
 
-        // HIDDEN pieces: still there, 90% see-through on the same depth as
-        // the rest of the model, but dead to every click until UNHIDE
+        // faint pieces, 90% see-through on the same depth as the rest of the
+        // model: the HIDDEN set (dead to clicks until UNHIDE) plus whatever the
+        // active gizmo mode sets aside - kept as spatial reference, not gone
         pm_edit_hide_start = pm_edit_rest_start + pm_edit_rest_count;
         for (int i = 0; i < pmedit_nr; i++)
         {
-                if (!(pmedit_hidden >> i & 1) || i == pmedit_sel) continue;
-                if (pmedit_joint && pmedit_sel >= 0) continue;
-                if (pmedit_socket && pmedit_sel >= 0
-                                && i != mo->piece[pmedit_sel].parent)
-                        continue;
-                if (pmedit_parent && pmedit_sel >= 0 && pmedit_cycle(i))
-                        continue;
+                if (i == pmedit_sel) continue;
                 if (pmedit_animate && mo->piece[i].type == PM_T_EYES
                                 && pm_blinking(my_player, anim_t))
+                        continue;
+                if (!(pmedit_hidden >> i & 1 || pmedit_mode_faint(mo, i)))
                         continue;
                 for (int fc = 0; fc < PM_FACES; fc++)
                 {
@@ -1380,12 +1384,17 @@ struct pmvert *pmedit_emit(struct pmvert *b)
         // or sunken model reads at a glance. Drawn after the model, blended
         // on its depth: a sunken model shows the floor slicing through it.
         // Only in the views that show the whole model, and only near level -
-        // steep pitches would turn it into a big screen-covering sheet
+        // steep pitches would turn it into a big screen-covering sheet. MOVE
+        // PART on a root-parented piece has no parent surface to reference, so
+        // it borrows the hitbox wireframe (below) as a nudging frame
         pm_edit_floor_start = pm_edit_joint_start + pm_edit_joint_count;
         pm_edit_floor_count = 0;
-        if (!pmedit_joint && !pmedit_socket && !pmedit_parent)
+        int floor_view = !pmedit_joint && !pmedit_socket && !pmedit_parent;
+        int nudge_ref = pmedit_socket && pmedit_sel >= 0
+                        && mo->piece[pmedit_sel].parent < 0;
+        if (floor_view || nudge_ref)
         {
-                if (fabsf(pmedit_mpitch) <= TAU / 12)
+                if (floor_view && fabsf(pmedit_mpitch) <= TAU / 12)
                 {
                         float ft[16], FG[16];
                         pm_mat_translate(ft, -BS / 2.f, PLYR_H / 2.f, -BS / 2.f);
@@ -1440,6 +1449,28 @@ struct pmvert *pmedit_emit(struct pmvert *b)
         return b;
 }
 
+// bind the blend pipe and draw the faint reference geometry - hidden and
+// mode-set-aside pieces plus the ground quad and hitbox frame - then hand the
+// solid pipe back. The ghost pipe writes no depth, so this reads see-through
+// and never occludes the opaque model already laid down under it
+static void pmedit_draw_faint(VkCommandBuffer cmdbuf, const void *push, unsigned pushsz)
+{
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        vk.pipelines[pmodel_ghost_pipe].pipeline);
+        vkCmdPushConstants(cmdbuf, vk.pipelines[pmodel_ghost_pipe].layout,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                        0, pushsz, push);
+        if (pm_edit_hide_count)
+                vkCmdDraw(cmdbuf, 4, pm_edit_hide_count, 0, pm_edit_hide_start);
+        if (pm_edit_floor_count)
+                vkCmdDraw(cmdbuf, 4, pm_edit_floor_count, 0, pm_edit_floor_start);
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        vk.pipelines[pmodel_pipe].pipeline);
+        vkCmdPushConstants(cmdbuf, vk.pipelines[pmodel_pipe].layout,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                        0, pushsz, push);
+}
+
 // draw the preview over the finished world: clear depth so it always wins,
 // the unselected pieces first, then (on cleared depth each) the white outline
 // hull and the selected piece over it, so the selection always reads in full
@@ -1484,32 +1515,21 @@ void pmedit_render(VkCommandBuffer cmdbuf)
         int cleared = 0;
         for (int i = 0; i < 3; i++)
         {
-                // the hidden ghosts, ground quad and hitbox frame ride the
-                // unselected group's depth, right after it, so occlusion
-                // reads true through the see-through: the floor slices
-                // through a sunken model, the frame is hidden where the
-                // model is in front of it
-                if (i == 1 && (pm_edit_hide_count || pm_edit_floor_count))
+                // paint/TYPE clears depth per group, so the faint geometry
+                // (hidden pieces, ground quad, hitbox frame) has to ride the
+                // unselected group's depth right here to occlude true: the
+                // floor slices a sunken model, the frame hides behind pieces
+                // in front. Shared gizmo modes clear once and draw it LAST
+                // (below) so a faint piece layers over the active one rather
+                // than hiding it
+                if (!shared && i == 1 && (pm_edit_hide_count || pm_edit_floor_count))
                 {
                         if (!cleared)
                         {
                                 vkCmdClearAttachments(cmdbuf, 1, &ca, 1, &cr);
                                 cleared = 1;
                         }
-                        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                        vk.pipelines[pmodel_ghost_pipe].pipeline);
-                        vkCmdPushConstants(cmdbuf, vk.pipelines[pmodel_ghost_pipe].layout,
-                                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                                        0, sizeof push, &push);
-                        if (pm_edit_hide_count)
-                                vkCmdDraw(cmdbuf, 4, pm_edit_hide_count, 0, pm_edit_hide_start);
-                        if (pm_edit_floor_count)
-                                vkCmdDraw(cmdbuf, 4, pm_edit_floor_count, 0, pm_edit_floor_start);
-                        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                        vk.pipelines[pmodel_pipe].pipeline);
-                        vkCmdPushConstants(cmdbuf, vk.pipelines[pmodel_pipe].layout,
-                                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                                        0, sizeof push, &push);
+                        pmedit_draw_faint(cmdbuf, &push, sizeof push);
                 }
                 if (!layers[i][1]) continue;
                 if (!shared || !cleared)
@@ -1518,6 +1538,18 @@ void pmedit_render(VkCommandBuffer cmdbuf)
                         cleared = 1;
                 }
                 vkCmdDraw(cmdbuf, 4, layers[i][1], 0, layers[i][0]);
+        }
+        // shared gizmo modes: the faint reference geometry draws last, after
+        // the whole opaque model, so it never occludes the active piece - it
+        // blends over it, honestly see-through (the ghost pipe writes no depth)
+        if (shared && (pm_edit_hide_count || pm_edit_floor_count))
+        {
+                if (!cleared)
+                {
+                        vkCmdClearAttachments(cmdbuf, 1, &ca, 1, &cr);
+                        cleared = 1;
+                }
+                pmedit_draw_faint(cmdbuf, &push, sizeof push);
         }
         // the gizmo shares the last layer's depth: where the cube and axis
         // lines pierce the piece's surface shows exactly, no x-ray. MOVE
