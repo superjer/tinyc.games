@@ -52,11 +52,13 @@
 // when the arrow reads near-perpendicular to it (rotate a bit). The paint
 // follows (the lateral faces gain a copy of their edge row, or lose one)
 // and the joint stays put; with no face picked the arrows are idle.
-// RESTING ANGLE (a test rig for now - the angles live outside the model
-// struct and don't save) poses the piece's standing-still pitch/yaw/roll,
-// +-25 deg a degree at a time: arrows pitch/yaw, Q/E roll, still relative
-// to the parent. The pose shows ONLY in this mode and in ANIMATE, where the
-// animations swing on top of it; clicking another piece switches to it.
+// RESTING ANGLE poses the piece's standing-still pitch/yaw/roll, +-25 deg a
+// degree at a time: arrows pitch/yaw, Q/E roll, still relative to the
+// parent. The angles live in the model (saved and sent like everything
+// else) and the world always shows them, animations swinging on top; in the
+// editor the pose shows ONLY in this mode and in ANIMATE - the geometry
+// modes keep the plain standing pose their math needs; clicking another
+// piece switches to it.
 // DELETE (or the Del/Backspace keys) removes the piece and its whole
 // subtree (no undo yet). NEW PART spawns a fresh 4x4x4 piece in a gray
 // checkerboard coat and drops straight into the PARENT one-click flow to
@@ -84,11 +86,6 @@
 // in every view that shows the whole model (near-level pitches only), so a
 // floating or sunken model reads at a glance; a wireframe box in the same
 // green traces the player's collision box so the model can be sized to it.
-
-#define PMEDIT_RED    254 // reserved palette slots for the two paint colors
-#define PMEDIT_BLUE   255
-#define PMEDIT_GRAY_A 252 // and for the NEW PART starter checkerboard
-#define PMEDIT_GRAY_B 253
 
 static int pmedit_sel = -1;              // selected piece, -1 = whole model
 static int pmedit_joint;                 // JOINT mode: edit the rotation origin
@@ -300,7 +297,6 @@ static void pmedit_copy()
         mo->piece[i] = mo->piece[pmedit_sel];
         mo->piece[i].parent = -1;
         memcpy(mo->texel[i], mo->texel[pmedit_sel], sizeof mo->texel[i]);
-        memcpy(pm_rest_deg[i], pm_rest_deg[pmedit_sel], sizeof pm_rest_deg[i]);
         pmodel_upload(my_player);
         pmedit_sel = i;
         pmedit_parent = 1;
@@ -321,7 +317,6 @@ static void pmedit_delete()
         pmedit_joint = pmedit_socket = pmedit_parent = 0;
         pmedit_resize = pmedit_face = pmedit_newpart = pmedit_restang = 0;
         pmedit_hidden = 0; // survivors' indices shifted
-        memset(pm_rest_deg, 0, sizeof pm_rest_deg); // ^ (test angles too)
         pmodel_upload(my_player);
 }
 
@@ -341,12 +336,9 @@ void pmedit_toggle()
                 pmedit_kw = pmedit_ka = pmedit_ks = pmedit_kd = 0;
                 pmedit_paint_btn = 0;
                 pmedit_snap = 1;
-                // the paint colors live in reserved palette slots
-                pm_models[my_player].palette[PMEDIT_RED]  = PM_RGB(220, 40, 40);
-                pm_models[my_player].palette[PMEDIT_BLUE] = PM_RGB(45, 80, 230);
-                // and NEW PART's starter checkerboard grays
-                pm_models[my_player].palette[PMEDIT_GRAY_A] = PM_RGB(105, 105, 105);
-                pm_models[my_player].palette[PMEDIT_GRAY_B] = PM_RGB(165, 165, 165);
+                // the paint colors and NEW PART's checkerboard grays live in
+                // reserved palette slots (pmodel.c owns the layout)
+                pm_reserved_colors(&pm_models[my_player]);
                 // free the cursor; stop any in-flight movement and mining
                 pl->goingf = pl->goingb = pl->goingl = pl->goingr = 0;
                 pl->breaking = pl->building = pl->running = pl->sneaking = 0;
@@ -439,7 +431,7 @@ static void pmedit_joint_move(int k)
 // (up/down pitch, left/right yaw), Q/E roll it; the pose clamps at +-25 deg
 static void pmedit_rest_adjust(int k)
 {
-        signed char *r = pm_rest_deg[pmedit_sel];
+        signed char *r = pm_models[my_player].piece[pmedit_sel].rest;
         int a, d;
         switch (k)
         {
@@ -1338,10 +1330,11 @@ static int pmedit_paint(int btn)
         if (pmedit_pick(pmedit_mx, pmedit_my, pmedit_sel, 0.f, &face, &tu, &tv, NULL) < 0)
                 return 0;
         unsigned char c = btn == SDL_BUTTON_LEFT ? PMEDIT_RED : PMEDIT_BLUE;
-        unsigned char *t = &pm_models[my_player].texel[pmedit_sel][face - 1][tv * PM_TILE + tu];
-        if (*t != c)
+        unsigned char *t = pm_models[my_player].texel[pmedit_sel][face - 1];
+        int at = tv * PM_TILE + tu;
+        if (PM_TEXGET(t, at) != c)
         {
-                *t = c;
+                PM_TEXSET(t, at, c);
                 pmodel_upload(my_player);
         }
         return 1;
@@ -1501,9 +1494,9 @@ void pmedit_click(int down)
                 for (int f = 0; f < PM_FACES; f++)
                         for (int v = 0; v < PM_TILE; v++)
                         for (int u = 0; u < PM_TILE; u++)
-                                mo->texel[i][f][v * PM_TILE + u] =
+                                PM_TEXSET(mo->texel[i][f], v * PM_TILE + u,
                                         (u + v) & 1 ? PMEDIT_GRAY_A
-                                                    : PMEDIT_GRAY_B;
+                                                    : PMEDIT_GRAY_B);
                 pmodel_upload(my_player);
                 pmedit_sel = i;
                 pmedit_parent = 1;
@@ -1861,9 +1854,9 @@ void pmedit_draw_ui()
         if (pmedit_restang && pmedit_sel >= 0)
                 sprintf(restbuf, "PITCH %+d   YAW %+d   ROLL %+d"
                         "   arrows pitch/yaw   Q/E roll",
-                        pm_rest_deg[pmedit_sel][0],
-                        pm_rest_deg[pmedit_sel][1],
-                        pm_rest_deg[pmedit_sel][2]);
+                        pm_models[my_player].piece[pmedit_sel].rest[0],
+                        pm_models[my_player].piece[pmedit_sel].rest[1],
+                        pm_models[my_player].piece[pmedit_sel].rest[2]);
 
         char *hint = pmedit_animate ?
                 "WASD rotate   click anywhere to stop" :

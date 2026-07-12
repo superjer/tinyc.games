@@ -53,7 +53,7 @@ static int net_intr() { return errno == EINTR; }
 static void net_startup() {}
 #endif
 
-#define NET_PROTO 2
+#define NET_PROTO 3
 #define NET_MAX_CLIENTS (NR_PLAYERS - 1)
 #define NET_BUF_MAX (32 << 20) // a peer this far behind is gone: drop it
 
@@ -68,7 +68,7 @@ enum {
         MSG_BONK,      // s->c: f32 knock x, f32 knock z - a slime hit YOU
         MSG_TIME,      // s->c: f32 sun_pitch, so sunsets stay shared
         MSG_CHAT,      // both: u8 sender id, then the text (not NUL-terminated)
-        MSG_PMODEL,    // both: u8 owner id, then a raw struct pmodel (~19.6KB)
+        MSG_PMODEL,    // both: u8 owner id, then a raw struct pmodel (~15.8KB)
 };
 
 #define MOB_ENTRY 20 // bytes per mob in a MSG_MOB snapshot

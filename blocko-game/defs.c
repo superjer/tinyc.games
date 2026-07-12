@@ -366,12 +366,19 @@ struct pmvert {
     float tint;                // < 0: editor ghost, drawn at alpha -tint
 };
 
-// player models: up to 12 rectangular prisms in 16^3 px local spaces, plus a
-// 256-color palette and 16x16 face tiles in a fixed box unwrap. One flat
-// integer struct so a model travels the net as raw bytes (MSG_PMODEL)
-#define PM_MAX_PIECES 12
+// player models: up to 20 rectangular prisms in 16^3 px local spaces, plus a
+// 16-color palette and 16x16 face tiles in a fixed box unwrap. One flat
+// integer struct so a model travels the net as raw bytes (MSG_PMODEL).
+// Texels are 4-bit palette indices packed two per byte, low nibble first -
+// go through PM_TEXGET/PM_TEXSET with a texel index (v * PM_TILE + u)
+#define PM_MAX_PIECES 20
 #define PM_FACES 6         // tile order matches the vbufv orient codes 1..6
 #define PM_TILE 16
+#define PM_NR_COLORS 16
+#define PM_TEXGET(t, i)    ((t)[(i) >> 1] >> (((i) & 1) * 4) & 15)
+#define PM_TEXSET(t, i, c) ((t)[(i) >> 1] = (i) & 1 \
+                ? ((t)[(i) >> 1] & 0x0f) | (c) << 4 \
+                : ((t)[(i) >> 1] & 0xf0) | (c))
 
 // piece TYPE: tells the animation what a piece IS; motion dispatches on it.
 // FIXED = 0 so zeroed memory is inert
@@ -386,6 +393,8 @@ struct pm_piece {
     unsigned char attach[3]; // where origin lands, in the parent's 16^3 space
     signed char parent;      // earlier piece index, or -1 = player center box
     unsigned char type;      // enum pm_type
+    signed char rest[3];     // resting pitch/yaw/roll, degrees, +-25: the
+                             // standing pose - animations swing on top of it
 };
 
 #define PM_STYLE_WALK  0   // per-type motion driven by what the player does
@@ -395,8 +404,8 @@ struct pmodel {
     unsigned char nr_pieces;
     unsigned char style;     // PM_STYLE_*
     struct pm_piece piece[PM_MAX_PIECES];
-    unsigned palette[256];   // RGBA8, R in the low byte; index 0 = transparent
-    unsigned char texel[PM_MAX_PIECES][PM_FACES][PM_TILE * PM_TILE];
+    unsigned palette[PM_NR_COLORS]; // RGBA8, R in the low byte; 0 = transparent
+    unsigned char texel[PM_MAX_PIECES][PM_FACES][PM_TILE * PM_TILE / 2]; // 4bpp
 };
 
 // everything the animation needs to know about a player this frame;

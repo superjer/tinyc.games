@@ -2,17 +2,18 @@
 #define BLOCKO_PMODEL_C_INCLUDED
 #include "blocko.c"
 
-// Player models: up to 12 rectangular prisms, each 1-16 px per axis, living in
+// Player models: up to 20 rectangular prisms, each 1-16 px per axis, living in
 // a 16x16x16 px local space. A piece parents to another piece or to the player
 // center box (a 16^3 space centered on the physical hitbox); its origin point
 // is pinned to the attach point in the parent's space and it rotates there.
-// The whole definition - geometry, 256-color palette, and 16x16 face tiles in
-// a fixed box unwrap - is one flat integer struct (defs.c) that travels the
-// net as raw bytes: each instance randomizes its own model at startup and
-// peers exchange them via MSG_PMODEL (net.c).
+// The whole definition - geometry, 16-color palette, and 16x16 face tiles in
+// a fixed box unwrap (4-bit indices, two texels per byte) - is one flat
+// integer struct (defs.c) that travels the net as raw bytes: each instance
+// randomizes its own model at startup and peers exchange them via MSG_PMODEL
+// (net.c).
 //
 // Face tiles ride as extra layers of the terrain texture array (16x16 RGBA,
-// expanded from the palette), one 72-layer range per player slot, so
+// expanded from the palette), one 120-layer range per player slot, so
 // pmodel.vert can share main.frag: lighting, fog, near-shadow sampling and
 // the a<0.5 discard all come free. A model arriving at runtime re-uploads
 // just its slot's layer range (update_texture_layers).
@@ -77,20 +78,25 @@ static void pm_texel_resize(unsigned char *t, int along_u, int at_zero,
         int deep = e >= 3;
         for (int w = 0; w < PM_TILE; w++)
         {
-                unsigned char *r = t + (along_u ? w * PM_TILE : w);
+                int r = along_u ? w * PM_TILE : w;
                 if (grow && at_zero)
                         for (int i = e; i >= 1 + deep; i--)
-                                r[i * stride] = r[(i - 1) * stride];
+                                PM_TEXSET(t, r + i * stride,
+                                        PM_TEXGET(t, r + (i - 1) * stride));
                 else if (grow)
                 {
-                        r[e * stride] = r[(e - 1) * stride];
-                        if (deep) r[(e - 1) * stride] = r[(e - 2) * stride];
+                        PM_TEXSET(t, r + e * stride,
+                                PM_TEXGET(t, r + (e - 1) * stride));
+                        if (deep) PM_TEXSET(t, r + (e - 1) * stride,
+                                PM_TEXGET(t, r + (e - 2) * stride));
                 }
                 else if (at_zero)
                         for (int i = deep; i < e - 1; i++)
-                                r[i * stride] = r[(i + 1) * stride];
+                                PM_TEXSET(t, r + i * stride,
+                                        PM_TEXGET(t, r + (i + 1) * stride));
                 else if (deep)
-                        r[(e - 2) * stride] = r[(e - 1) * stride];
+                        PM_TEXSET(t, r + (e - 2) * stride,
+                                PM_TEXGET(t, r + (e - 1) * stride));
         }
 }
 
@@ -200,24 +206,48 @@ static int pm_piece_delete(struct pmodel *mo, int pi)
 
 #define PM_RGB(r, g, b) (0xff000000u | ((b) << 16) | ((g) << 8) | (r))
 
-// paint a model's tiles: per-piece base/dark/accent colors and a random
-// pattern per piece, with a darker border around the used region of each face
-// so articulation and UV extents stay visible. Deterministic in the seed;
-// the painted texels are what travels the net, not the seed.
+// the 16 palette slots: 0 transparent, three random base/dark/accent trios
+// at 1..9 the pieces share round-robin, white/black starters at 10..11, and
+// 12..15 reserved for the editor - the NEW PART checkerboard grays and the
+// two paint colors, re-stamped every time the editor opens
+#define PMEDIT_GRAY_A 12
+#define PMEDIT_GRAY_B 13
+#define PMEDIT_RED    14
+#define PMEDIT_BLUE   15
+
+static void pm_reserved_colors(struct pmodel *mo)
+{
+        mo->palette[PMEDIT_GRAY_A] = PM_RGB(105, 105, 105);
+        mo->palette[PMEDIT_GRAY_B] = PM_RGB(165, 165, 165);
+        mo->palette[PMEDIT_RED]    = PM_RGB(220, 40, 40);
+        mo->palette[PMEDIT_BLUE]   = PM_RGB(45, 80, 230);
+}
+
+// paint a model's tiles: fill the whole palette, then a random pattern per
+// piece in its trio's colors, with a darker border around the used region of
+// each face so articulation and UV extents stay visible. Deterministic in
+// the seed; the painted texels are what travels the net, not the seed.
 static void pm_paint(struct pmodel *mo, unsigned seed)
 {
         mo->palette[0] = 0; // transparent
-        for (int i = 0; i < mo->nr_pieces; i++)
+        mo->palette[10] = PM_RGB(230, 230, 230);
+        mo->palette[11] = PM_RGB(25, 25, 25);
+        pm_reserved_colors(mo);
+        for (int t = 0; t < 3; t++)
         {
-                int base = 1 + i * 3, dark = base + 1, accent = base + 2;
+                int base = 1 + t * 3;
                 int r = 64 + dumb_rand(&seed) % 192;
                 int g = 64 + dumb_rand(&seed) % 192;
                 int b = 64 + dumb_rand(&seed) % 192;
-                mo->palette[base]   = PM_RGB(r, g, b);
-                mo->palette[dark]   = PM_RGB(r * 2 / 3, g * 2 / 3, b * 2 / 3);
-                mo->palette[accent] = PM_RGB(64 + dumb_rand(&seed) % 192,
-                                             64 + dumb_rand(&seed) % 192,
-                                             64 + dumb_rand(&seed) % 192);
+                mo->palette[base]     = PM_RGB(r, g, b);
+                mo->palette[base + 1] = PM_RGB(r * 2 / 3, g * 2 / 3, b * 2 / 3);
+                mo->palette[base + 2] = PM_RGB(64 + dumb_rand(&seed) % 192,
+                                               64 + dumb_rand(&seed) % 192,
+                                               64 + dumb_rand(&seed) % 192);
+        }
+        for (int i = 0; i < mo->nr_pieces; i++)
+        {
+                int base = 1 + i % 3 * 3, dark = base + 1, accent = base + 2;
                 int pattern = dumb_rand(&seed) % 4;
 
                 for (int f = 0; f < PM_FACES; f++)
@@ -236,7 +266,7 @@ static void pm_paint(struct pmodel *mo, unsigned seed)
                                 if (u < eu && v < ev &&
                                     (u == 0 || v == 0 || u == eu - 1 || v == ev - 1))
                                         c = dark;
-                                mo->texel[i][f][v * PM_TILE + u] = c;
+                                PM_TEXSET(mo->texel[i][f], v * PM_TILE + u, c);
                         }
                 }
         }
@@ -298,6 +328,7 @@ static void pm_sanitize(struct pmodel *mo)
                         p->corner[a] = ICLAMP(p->corner[a], 0, PM_TILE - p->dims[a]);
                         p->origin[a] = ICLAMP(p->origin[a], 0, PM_TILE);
                         p->attach[a] = ICLAMP(p->attach[a], 0, PM_TILE);
+                        p->rest[a] = ICLAMP(p->rest[a], -25, 25);
                 }
                 if (p->parent < 0 || p->parent >= mo->nr_pieces || p->parent == i)
                         p->parent = -1;
@@ -324,7 +355,7 @@ static unsigned pm_checksum(struct pmodel *mo) // debug: FNV-1a over the struct
         return h;
 }
 
-// ---- texture array layers: one 72-layer range per player slot --------------
+// ---- texture array layers: one 120-layer range per player slot -------------
 
 static int pm_slot_layers() { return PM_MAX_PIECES * PM_FACES; }
 
@@ -334,7 +365,7 @@ static void pm_expand(struct pmodel *mo, unsigned char *rgba)
         for (int i = 0; i < PM_MAX_PIECES; i++)
                 for (int f = 0; f < PM_FACES; f++)
                         for (int t = 0; t < PM_TILE * PM_TILE; t++)
-                                *out++ = mo->palette[mo->texel[i][f][t]];
+                                *out++ = mo->palette[PM_TEXGET(mo->texel[i][f], t)];
 }
 
 // my model persists on disk as the exact MSG_PMODEL packet it travels the
@@ -353,16 +384,102 @@ void pmodel_save()
                 pm_checksum(&pm_models[my_player]));
 }
 
+// the format before rest angles / 20 pieces / packed texels: 12 pieces of 14
+// bytes, a 256-color palette (u32-aligned after the pieces), one byte per texel
+enum {
+        PM_V1_PIECES = 12, PM_V1_PSZ = 14,
+        PM_V1_PAL = 2 + PM_V1_PIECES * PM_V1_PSZ + 2,
+        PM_V1_TEX = PM_V1_PAL + 256 * 4,
+        PM_V1_SZ  = PM_V1_TEX + PM_V1_PIECES * PM_FACES * PM_TILE * PM_TILE,
+};
+
+// one-time converter for a v1 model.dat: unpack the pieces (rest angles
+// zeroed) and squeeze the 256-color 8-bit texels down to 16 - old colors
+// matching the fixed editor colors keep their slots, the 11 most-painted
+// others keep their exact colors, and the rest snap to whichever kept color
+// is nearest
+static void pm_convert_v1(struct pmodel *mo, const unsigned char *old)
+{
+        memset(mo, 0, sizeof *mo);
+        mo->nr_pieces = old[0] < PM_V1_PIECES ? old[0] : PM_V1_PIECES;
+        mo->style = old[1];
+        for (int i = 0; i < PM_V1_PIECES; i++)
+                memcpy(&mo->piece[i], old + 2 + i * PM_V1_PSZ, PM_V1_PSZ);
+        unsigned pal[256];
+        memcpy(pal, old + PM_V1_PAL, sizeof pal);
+        const unsigned char *tex = old + PM_V1_TEX;
+
+        int count[256] = {0};
+        for (int i = 0; i < mo->nr_pieces * PM_FACES * PM_TILE * PM_TILE; i++)
+                count[tex[i]]++;
+
+        mo->palette[0] = 0;
+        pm_reserved_colors(mo);
+        signed char map[256];
+        map[0] = 0;
+        for (int i = 1; i < 256; i++)
+        {
+                map[i] = -1;
+                if (!(pal[i] >> 24)) map[i] = 0; // transparent
+                else for (int s = PMEDIT_GRAY_A; s < PM_NR_COLORS; s++)
+                        if (pal[i] == mo->palette[s]) { map[i] = s; break; }
+        }
+        for (int slot = 1; slot <= 11; slot++)
+        {
+                int best = 0;
+                for (int i = 1; i < 256; i++)
+                        if (map[i] < 0 && count[i]
+                                        && (!best || count[i] > count[best]))
+                                best = i;
+                if (!best) break;
+                mo->palette[slot] = pal[best];
+                map[best] = slot;
+        }
+        for (int i = 1; i < 256; i++)
+        {
+                if (map[i] >= 0) continue;
+                int best = 1, bd = 1 << 30;
+                for (int s = 1; s < PM_NR_COLORS; s++)
+                {
+                        int dr = (pal[i]       & 255) - (mo->palette[s]       & 255);
+                        int dg = (pal[i] >>  8 & 255) - (mo->palette[s] >>  8 & 255);
+                        int db = (pal[i] >> 16 & 255) - (mo->palette[s] >> 16 & 255);
+                        int d = dr * dr + dg * dg + db * db;
+                        if (d < bd) { bd = d; best = s; }
+                }
+                map[i] = best;
+        }
+        for (int i = 0; i < PM_V1_PIECES; i++)
+                for (int f = 0; f < PM_FACES; f++)
+                        for (int t = 0; t < PM_TILE * PM_TILE; t++)
+                                PM_TEXSET(mo->texel[i][f], t, map[
+                                        tex[(i * PM_FACES + f) * PM_TILE * PM_TILE + t]]);
+}
+
 static int pmodel_load(struct pmodel *mo)
 {
         FILE *f = fopen(PM_FILE, "rb");
         if (!f) return 0;
-        unsigned char id;
-        int ok = fread(&id, 1, 1, f) == 1 && fread(mo, sizeof *mo, 1, f) == 1;
+        // v1 is the bigger format; the +2 makes an overlong file read as
+        // "too big" instead of exactly matching a known size
+        static unsigned char buf[(sizeof(struct pmodel) > PM_V1_SZ
+                        ? sizeof(struct pmodel) : PM_V1_SZ) + 2];
+        size_t n = fread(buf, 1, sizeof buf, f);
         fclose(f);
-        if (!ok) fprintf(stderr, "pmodel: " PM_FILE " truncated, ignoring\n");
-        else pm_sanitize(mo);
-        return ok;
+        if (n == 1 + sizeof *mo)
+                memcpy(mo, buf + 1, sizeof *mo);
+        else if (n == 1 + PM_V1_SZ)
+        {
+                pm_convert_v1(mo, buf + 1);
+                fprintf(stderr, "pmodel: converted old-format " PM_FILE "\n");
+        }
+        else
+        {
+                fprintf(stderr, "pmodel: " PM_FILE " wrong size, ignoring\n");
+                return 0;
+        }
+        pm_sanitize(mo);
+        return 1;
 }
 
 // roll this instance's model. Runs from main BEFORE any networking: the join
@@ -490,12 +607,11 @@ static void pm_mat_pitch(float *m, float a)
         m[5] = c; m[6] = s; m[9] = -s; m[10] = c;
 }
 
-// editor test rig: per-piece resting angles in degrees (pitch, yaw, roll) -
-// the pose a piece defaults to standing still, with the animations swinging
-// on top. Not part of the model struct (yet): pmedit flips pm_rest_apply
-// around its own pm_resolve calls, so only the editor preview (RESTING ANGLE
-// mode and ANIMATE) poses with them - the in-world models never see it set
-static signed char pm_rest_deg[PM_MAX_PIECES][3];
+// whether pm_resolve applies the pieces' resting angles. The world emit
+// (pm_emit) always poses; the editor poses only in RESTING ANGLE mode and
+// ANIMATE - its geometry modes (DETACH's offset folding, flush placement,
+// RESIZE face picking, the JOINT gizmo) assume the standing pose is pure
+// translation and must resolve unposed
 static int pm_rest_apply;
 
 // resolve the model's piece transforms (px in each piece's 16^3 space -> world)
@@ -652,12 +768,12 @@ static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
                         pitch += (fp - pitch) * an->flail;
                         pyaw  += (fy - pyaw)  * an->flail;
                 }
-                // the test resting pose: the anim's angles swing on top
+                // the resting pose: the anim's angles swing on top
                 if (pm_rest_apply)
                 {
-                        pitch += pm_rest_deg[i][0] * (PI / 180);
-                        pyaw  += pm_rest_deg[i][1] * (PI / 180);
-                        roll  += pm_rest_deg[i][2] * (PI / 180);
+                        pitch += p->rest[0] * (PI / 180);
+                        pyaw  += p->rest[1] * (PI / 180);
+                        roll  += p->rest[2] * (PI / 180);
                 }
                 pm_mat_yaw(tmp, pyaw);
                 pm_mat_pitch(tmp2, pitch);
@@ -821,7 +937,9 @@ static struct pmvert *pm_emit(struct pmvert *b, int slot,
 {
         struct pmodel *mo = &pm_models[slot];
         float space[PM_MAX_PIECES][16], geom[PM_MAX_PIECES][16];
+        pm_rest_apply = 1; // the world always shows the resting pose
         pm_resolve(mo, x, y, z, yaw, an, space, geom, NULL);
+        pm_rest_apply = 0;
 
         // light the whole body from the block the hitbox center is in
         float il = 0.4f, gl = 0.f;
