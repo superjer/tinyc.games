@@ -16,3 +16,6 @@ Debug
 build
 tags
 model.dat
+model.dat.*
+save-data
+blocko.saves
