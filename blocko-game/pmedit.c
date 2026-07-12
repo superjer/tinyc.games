@@ -94,7 +94,7 @@
 // piece or ESC goes back to the whole model; U closes the editor and
 // announces the new look over the net. Saving is automatic: a session that
 // changes anything writes its own numbered snapshot (00001.model, ...)
-// under save-data/blocko/player-models/, at most once a second, final
+// under the per-user save dir (SDL_GetPrefPath), at most once a second, final
 // write at close - the newest snapshot is what the game loads next run. A half-transparent
 // dark green quad, one block's top face, floats at the in-game ground level
 // in every view that shows the whole model (near-level pitches only), so a
@@ -538,8 +538,8 @@ static void pmedit_hist_save(int final)
         if (!pmedit_hist_n)
         {
                 pmedit_hist_n = pm_hist_newest() + 1;
-                fprintf(stderr, "pmodel: session snapshot " PM_HIST_FMT "\n",
-                        pmedit_hist_n);
+                fprintf(stderr, "pmodel: session snapshot %s/%05d.model\n",
+                        pm_hist_dir, pmedit_hist_n);
         }
         pm_hist_write(pmedit_hist_n);
         pmedit_hist_sum = sum;
@@ -675,7 +675,7 @@ static void pmedit_fill_rects(VkCommandBuffer cmdbuf, struct allocation *alloc,
         vkCmdDraw(cmdbuf, n * 6, 1, 0, 0);
 }
 
-struct pm_pick_ent { char label[24]; char path[96]; };
+struct pm_pick_ent { char label[24]; char path[256]; };
 #define PM_PICK_MAX 256
 #define PM_PICK_COLS 3
 #define PM_PICK_ROWS 2 // PM_PICK_COLS * PM_PICK_ROWS == PM_NR_PREVIEW
@@ -698,8 +698,8 @@ static void pmedit_pick_scan(void)
 {
         pmedit_pick_nr = 0;
         static const struct { const char *label, *path; } named[] = {
-                { "BLOC CROC", "blocko-game/assets/models/player-bloc-croc.model" },
-                { "BUSTER BO", "blocko-game/assets/models/player-buster-bo.model" },
+                { "BLOC CROC", TINYC_DIR "/blocko-game/assets/models/player-bloc-croc.model" },
+                { "BUSTER BO", TINYC_DIR "/blocko-game/assets/models/player-buster-bo.model" },
                 { "DEFAULT",   PM_DEFAULT_FILE },
         };
         struct pmodel probe;
@@ -712,7 +712,7 @@ static void pmedit_pick_scan(void)
         }
         // snapshots: glob the numbers, sort descending, list newest first
         int nums[PM_PICK_MAX], nn = 0, count = 0;
-        char **names = SDL_GlobDirectory(PM_HIST_DIR, "*.model", 0, &count);
+        char **names = SDL_GlobDirectory(pm_hist_dir, "*.model", 0, &count);
         for (int i = 0; names && i < count && nn < PM_PICK_MAX; i++)
         {
                 char *end;
@@ -731,7 +731,7 @@ static void pmedit_pick_scan(void)
         {
                 struct pm_pick_ent *e = &pmedit_pick_ent[pmedit_pick_nr++];
                 snprintf(e->label, sizeof e->label, "SAVE %d", nums[i]);
-                snprintf(e->path, sizeof e->path, PM_HIST_FMT, nums[i]);
+                pm_hist_path(e->path, sizeof e->path, nums[i]);
         }
 }
 
