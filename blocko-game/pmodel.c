@@ -375,9 +375,11 @@ static void pm_expand(struct pmodel *mo, unsigned char *rgba)
 // number) loads at startup; a fresh install starts from the default asset.
 // Every file is the exact MSG_PMODEL packet the model travels the net as:
 // [u8 owner id][raw struct pmodel] - the id byte is ignored on load
-#define PM_HIST_DIR "save-data/blocko/player-models"
+// absolute (TINYC_DIR-rooted, like the textures and shaders) so the game finds
+// them no matter what directory it's launched from
+#define PM_HIST_DIR TINYC_DIR "/save-data/blocko/player-models"
 #define PM_HIST_FMT PM_HIST_DIR "/%05d.model"
-#define PM_DEFAULT_FILE "blocko-game/assets/models/player-default.model"
+#define PM_DEFAULT_FILE TINYC_DIR "/blocko-game/assets/models/player-default.model"
 
 // the highest snapshot number on disk, 0 if none
 static int pm_hist_newest()
@@ -397,7 +399,7 @@ static int pm_hist_newest()
 static void pm_hist_write(int n)
 {
         SDL_CreateDirectory(PM_HIST_DIR); // missing parents too
-        char path[64];
+        char path[256];
         sprintf(path, PM_HIST_FMT, n);
         FILE *f = fopen(path, "wb");
         if (!f) { fprintf(stderr, "pmodel: can't write %s\n", path); return; }
@@ -434,7 +436,7 @@ void pmodel_init()
         pm_paint(&pm_default, 12345); // a fixed, recognizable default coat
         for (int i = 0; i < NR_PLAYERS; i++)
                 pm_models[i] = pm_default;
-        char path[64] = PM_DEFAULT_FILE;
+        char path[256] = PM_DEFAULT_FILE;
         int n = pm_hist_newest(), ok = 0;
         if (n)
         {

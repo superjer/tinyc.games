@@ -650,7 +650,7 @@ static int pmedit_in_changemodel_btn(float x, float y)
                 && x >= 16 && x <= 236 && y >= 16 && y <= 60;
 }
 
-struct pm_pick_ent { char label[24]; char path[96]; };
+struct pm_pick_ent { char label[24]; char path[256]; };
 #define PM_PICK_MAX 256
 #define PM_PICK_COLS 3
 #define PM_PICK_ROWS 2 // PM_PICK_COLS * PM_PICK_ROWS == PM_NR_PREVIEW
@@ -673,8 +673,8 @@ static void pmedit_pick_scan(void)
 {
         pmedit_pick_nr = 0;
         static const struct { const char *label, *path; } named[] = {
-                { "BLOC CROC", "blocko-game/assets/models/player-bloc-croc.model" },
-                { "BUSTER BO", "blocko-game/assets/models/player-buster-bo.model" },
+                { "BLOC CROC", TINYC_DIR "/blocko-game/assets/models/player-bloc-croc.model" },
+                { "BUSTER BO", TINYC_DIR "/blocko-game/assets/models/player-buster-bo.model" },
                 { "DEFAULT",   PM_DEFAULT_FILE },
         };
         struct pmodel probe;
