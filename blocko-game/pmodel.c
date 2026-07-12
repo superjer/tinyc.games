@@ -468,13 +468,21 @@ void pmodel_init()
 #define PM_LAYER_DKGREEN (PM_LAYER_HUES + PM_NR_HUES)
 #define PM_LAYER_PINK (PM_LAYER_DKGREEN + 1)
 
+// model-picker thumbnails: PM_NR_PREVIEW more slots (each a full model's worth
+// of face-tile layers) after the editor solids, filled on demand from disk when
+// the picker opens or pages. One 3x2 grid page - the layer budget (2048 min)
+// only stretches to a handful past the 8 player slots
+#define PM_NR_PREVIEW 6
+#define PM_LAYER_PREVIEW (PM_LAYER_PINK + 1)
+
 // all slots' face tiles for the texture array, plus the editor's solid-color
 // layers at the end. By vksetup time the join handshake may already have
 // filled pm_models with remote players' real models (their pre-texture
 // uploads were skipped), so expand, don't reset
 unsigned char *pmodel_make_tiles(int *nr_layers)
 {
-        static unsigned char rgba[(NR_PLAYERS * PM_MAX_PIECES * PM_FACES + 3 + PM_NR_HUES)
+        static unsigned char rgba[(NR_PLAYERS * PM_MAX_PIECES * PM_FACES + 3 + PM_NR_HUES
+                        + PM_NR_PREVIEW * PM_MAX_PIECES * PM_FACES)
                 * PM_TILE * PM_TILE * 4];
         for (int i = 0; i < NR_PLAYERS; i++)
                 pm_expand(&pm_models[i], rgba + i * pm_slot_layers() * PM_TILE * PM_TILE * 4);
@@ -489,7 +497,8 @@ unsigned char *pmodel_make_tiles(int *nr_layers)
                 for (int t = 0; t < PM_TILE * PM_TILE; t++)
                         *solid++ = colors[i];
 
-        *nr_layers = NR_PLAYERS * pm_slot_layers() + 3 + PM_NR_HUES;
+        *nr_layers = NR_PLAYERS * pm_slot_layers() + 3 + PM_NR_HUES
+                        + PM_NR_PREVIEW * pm_slot_layers();
         return rgba;
 }
 
@@ -499,6 +508,21 @@ static void pmodel_upload(int slot)
         static unsigned char rgba[PM_MAX_PIECES * PM_FACES * PM_TILE * PM_TILE * 4];
         pm_expand(&pm_models[slot], rgba);
         update_texture_layers(pmodel_tex_base + slot * pm_slot_layers(), pm_slot_layers(), rgba);
+}
+
+// the model picker's whole page, in one shot: the preview slots are contiguous
+// and update_texture_layers idles the device, so batch all PM_NR_PREVIEW rather
+// than uploading per cell. loaded[c] == 0 leaves that slot transparent (an empty
+// cell on the last page), so the previous page never bleeds through
+static void pmodel_upload_previews(struct pmodel *models, int *loaded)
+{
+        static unsigned char rgba[PM_NR_PREVIEW * PM_MAX_PIECES * PM_FACES
+                        * PM_TILE * PM_TILE * 4];
+        int span = pm_slot_layers() * PM_TILE * PM_TILE * 4;
+        memset(rgba, 0, sizeof rgba);
+        for (int c = 0; c < PM_NR_PREVIEW; c++)
+                if (loaded[c]) pm_expand(&models[c], rgba + c * span);
+        update_texture_layers(PM_LAYER_PREVIEW, PM_NR_PREVIEW * pm_slot_layers(), rgba);
 }
 
 // a model arrived over the net: sanitize it (remote bytes!), store, upload

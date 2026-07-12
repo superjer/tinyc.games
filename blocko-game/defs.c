@@ -851,6 +851,7 @@ void pmedit_motion();
 void pmedit_update();
 void pmedit_render(VkCommandBuffer cmdbuf);
 void pmedit_draw_ui();
+int pmedit_remote_pick(const char *arg); // remote.c driving hook
 
 // texture.c protos
 void create_texture_array(char **files, int file_count, unsigned char *extra_rgba, int extra_count);

@@ -759,6 +759,21 @@ void remote_dispatch(const char *cmd, char *out, size_t outsz)
                         p += snprintf(p, end-p, "pmedit %d\n", pmedit_on);
                 }
         }
+        else if (!strncmp(cmd, "pmpick", 6))
+        {
+                // drive the model picker (needs the editor open): "pmpick"
+                // opens it, "pmpick N" chooses cell N, "pmpick next|prev"
+                // pages, "pmpick close" closes it
+                if (headless)
+                        p += snprintf(p, end-p, "headless: no editor\n");
+                else
+                {
+                        const char *a = cmd + 6;
+                        while (*a == ' ') a++;
+                        int on = pmedit_remote_pick(a);
+                        p += snprintf(p, end-p, "pmpick picker=%d\n", on);
+                }
+        }
         else if (!strncmp(cmd, "noclip", 6))
         {
                 // fly through solids with no gravity; jump rises, sneak sinks
