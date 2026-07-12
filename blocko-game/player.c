@@ -96,6 +96,45 @@ int move_player(struct player *p, int velx, int vely, int velz)
         return move_box(&p->pos, velx, vely, velz);
 }
 
+// horizontal move with auto-step: slide (velx,velz) along the ground, and if a
+// low rise stops it short - the slope staircase (collision.c), a half-block
+// ledge - climb over by raising up to STEP_HEIGHT, redoing the move, and
+// settling back onto the step. Full blocks (taller than STEP_HEIGHT) still
+// block. The caller vouches the box is on the ground. Returns whether it moved.
+// The player runs its own inline version (below) because its move is one
+// combined x/y/z sweep; this is the standalone form skating mobs use.
+int move_box_step(struct box *pos, int velx, int velz)
+{
+        struct box pre = *pos;
+        move_box(pos, velx, 0, velz);
+
+        float want = fabsf((float)velx) + fabsf((float)velz);
+        float got  = fabsf(pos->x - pre.x) + fabsf(pos->z - pre.z);
+        if (got + 1.f >= want)
+                return 1;                         // moved freely, nothing to climb
+
+        struct box low = *pos;                    // the blocked result
+        struct box lifted = pre;
+        lifted.y -= STEP_HEIGHT;                   // y grows downward
+        if (world_collide(lifted, 0))              // no headroom to rise
+                return got >= 1.f;
+
+        *pos = lifted;
+        move_box(pos, velx, 0, velz);
+        for (int s = 0; s < STEP_HEIGHT; s++)      // drop back onto the step
+        {
+                struct box down = *pos;
+                down.y += 1;
+                if (world_collide(down, 0)) break;
+                *pos = down;
+        }
+        // no better than the blocked spot? keep the low result
+        float climbed = fabsf(pos->x - pre.x) + fabsf(pos->z - pre.z);
+        if (climbed <= got + 1.f)
+                *pos = low;
+        return fabsf(pos->x - pre.x) + fabsf(pos->z - pre.z) >= 1.f;
+}
+
 // which way a freshly placed slope should descend: away from the camera, so it
 // rises the direction you're looking and you walk up it (facing = compass dir
 // the surface heads downhill)

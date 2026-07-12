@@ -564,9 +564,13 @@ void update_mobs()
                         }
                 }
 
-                // hops travel only mid-air; skaters glide along the ground/water
-                if (!m->ground || m->skating)
+                // hops travel only mid-air; skaters glide along the ground/water.
+                // a grounded skater auto-steps low rises (the slope staircase, a
+                // half-block ledge) so it no longer stalls at a slope's low lip.
+                if (!m->ground)
                         move_box(&m->pos, m->vel.x, 0, m->vel.z);
+                else if (m->skating)
+                        move_box_step(&m->pos, m->vel.x, m->vel.z);
 
                 // vertical motion: bob in open water, else plain gravity.
                 float surf;
