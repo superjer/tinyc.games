@@ -368,116 +368,58 @@ static void pm_expand(struct pmodel *mo, unsigned char *rgba)
                                 *out++ = mo->palette[PM_TEXGET(mo->texel[i][f], t)];
 }
 
-// my model persists on disk as the exact MSG_PMODEL packet it travels the
-// net as: [u8 owner id][raw struct pmodel]. The id byte is ignored on load.
-#define PM_FILE "model.dat"
+// my model persists as numbered snapshots, one per editor session that
+// changed something: 00001.model, 00002.model, ... The newest (highest
+// number) loads at startup; a fresh install starts from the default asset.
+// Every file is the exact MSG_PMODEL packet the model travels the net as:
+// [u8 owner id][raw struct pmodel] - the id byte is ignored on load
+#define PM_HIST_DIR "save-data/blocko/player-models"
+#define PM_HIST_FMT PM_HIST_DIR "/%05d.model"
+#define PM_DEFAULT_FILE "blocko-game/assets/models/player-default.model"
 
-void pmodel_save()
+// the highest snapshot number on disk, 0 if none
+static int pm_hist_newest()
 {
-        FILE *f = fopen(PM_FILE, "wb");
-        if (!f) { fprintf(stderr, "pmodel: can't write " PM_FILE "\n"); return; }
+        int newest = 0, count = 0;
+        char **names = SDL_GlobDirectory(PM_HIST_DIR, "*.model", 0, &count);
+        for (int i = 0; names && i < count; i++)
+        {
+                char *end;
+                long n = strtol(names[i], &end, 10);
+                if (n > newest && !strcmp(end, ".model")) newest = n;
+        }
+        SDL_free(names);
+        return newest;
+}
+
+static void pm_hist_write(int n)
+{
+        SDL_CreateDirectory(PM_HIST_DIR); // missing parents too
+        char path[64];
+        sprintf(path, PM_HIST_FMT, n);
+        FILE *f = fopen(path, "wb");
+        if (!f) { fprintf(stderr, "pmodel: can't write %s\n", path); return; }
         unsigned char id = my_player;
         fwrite(&id, 1, 1, f);
         fwrite(&pm_models[my_player], sizeof(struct pmodel), 1, f);
         fclose(f);
-        fprintf(stderr, "pmodel: saved " PM_FILE ", checksum %08x\n",
-                pm_checksum(&pm_models[my_player]));
 }
 
-// the format before rest angles / 20 pieces / packed texels: 12 pieces of 14
-// bytes, a 256-color palette (u32-aligned after the pieces), one byte per texel
-enum {
-        PM_V1_PIECES = 12, PM_V1_PSZ = 14,
-        PM_V1_PAL = 2 + PM_V1_PIECES * PM_V1_PSZ + 2,
-        PM_V1_TEX = PM_V1_PAL + 256 * 4,
-        PM_V1_SZ  = PM_V1_TEX + PM_V1_PIECES * PM_FACES * PM_TILE * PM_TILE,
-};
-
-// one-time converter for a v1 model.dat: unpack the pieces (rest angles
-// zeroed) and squeeze the 256-color 8-bit texels down to 16 - old colors
-// matching the fixed editor colors keep their slots, the 11 most-painted
-// others keep their exact colors, and the rest snap to whichever kept color
-// is nearest
-static void pm_convert_v1(struct pmodel *mo, const unsigned char *old)
+static int pmodel_load(struct pmodel *mo, const char *path)
 {
-        memset(mo, 0, sizeof *mo);
-        mo->nr_pieces = old[0] < PM_V1_PIECES ? old[0] : PM_V1_PIECES;
-        mo->style = old[1];
-        for (int i = 0; i < PM_V1_PIECES; i++)
-                memcpy(&mo->piece[i], old + 2 + i * PM_V1_PSZ, PM_V1_PSZ);
-        unsigned pal[256];
-        memcpy(pal, old + PM_V1_PAL, sizeof pal);
-        const unsigned char *tex = old + PM_V1_TEX;
-
-        int count[256] = {0};
-        for (int i = 0; i < mo->nr_pieces * PM_FACES * PM_TILE * PM_TILE; i++)
-                count[tex[i]]++;
-
-        mo->palette[0] = 0;
-        pm_reserved_colors(mo);
-        signed char map[256];
-        map[0] = 0;
-        for (int i = 1; i < 256; i++)
-        {
-                map[i] = -1;
-                if (!(pal[i] >> 24)) map[i] = 0; // transparent
-                else for (int s = PMEDIT_GRAY_A; s < PM_NR_COLORS; s++)
-                        if (pal[i] == mo->palette[s]) { map[i] = s; break; }
-        }
-        for (int slot = 1; slot <= 11; slot++)
-        {
-                int best = 0;
-                for (int i = 1; i < 256; i++)
-                        if (map[i] < 0 && count[i]
-                                        && (!best || count[i] > count[best]))
-                                best = i;
-                if (!best) break;
-                mo->palette[slot] = pal[best];
-                map[best] = slot;
-        }
-        for (int i = 1; i < 256; i++)
-        {
-                if (map[i] >= 0) continue;
-                int best = 1, bd = 1 << 30;
-                for (int s = 1; s < PM_NR_COLORS; s++)
-                {
-                        int dr = (pal[i]       & 255) - (mo->palette[s]       & 255);
-                        int dg = (pal[i] >>  8 & 255) - (mo->palette[s] >>  8 & 255);
-                        int db = (pal[i] >> 16 & 255) - (mo->palette[s] >> 16 & 255);
-                        int d = dr * dr + dg * dg + db * db;
-                        if (d < bd) { bd = d; best = s; }
-                }
-                map[i] = best;
-        }
-        for (int i = 0; i < PM_V1_PIECES; i++)
-                for (int f = 0; f < PM_FACES; f++)
-                        for (int t = 0; t < PM_TILE * PM_TILE; t++)
-                                PM_TEXSET(mo->texel[i][f], t, map[
-                                        tex[(i * PM_FACES + f) * PM_TILE * PM_TILE + t]]);
-}
-
-static int pmodel_load(struct pmodel *mo)
-{
-        FILE *f = fopen(PM_FILE, "rb");
+        FILE *f = fopen(path, "rb");
         if (!f) return 0;
-        // v1 is the bigger format; the +2 makes an overlong file read as
-        // "too big" instead of exactly matching a known size
-        static unsigned char buf[(sizeof(struct pmodel) > PM_V1_SZ
-                        ? sizeof(struct pmodel) : PM_V1_SZ) + 2];
+        // the +2 makes an overlong file read as "too big" instead of
+        // exactly matching the expected size
+        static unsigned char buf[sizeof(struct pmodel) + 3];
         size_t n = fread(buf, 1, sizeof buf, f);
         fclose(f);
-        if (n == 1 + sizeof *mo)
-                memcpy(mo, buf + 1, sizeof *mo);
-        else if (n == 1 + PM_V1_SZ)
+        if (n != 1 + sizeof *mo)
         {
-                pm_convert_v1(mo, buf + 1);
-                fprintf(stderr, "pmodel: converted old-format " PM_FILE "\n");
-        }
-        else
-        {
-                fprintf(stderr, "pmodel: " PM_FILE " wrong size, ignoring\n");
+                fprintf(stderr, "pmodel: %s wrong size, ignoring\n", path);
                 return 0;
         }
+        memcpy(mo, buf + 1, sizeof *mo);
         pm_sanitize(mo);
         return 1;
 }
@@ -490,8 +432,20 @@ void pmodel_init()
         pm_paint(&pm_default, 12345); // a fixed, recognizable default coat
         for (int i = 0; i < NR_PLAYERS; i++)
                 pm_models[i] = pm_default;
-        if (pmodel_load(&pm_models[my_player]))
-                fprintf(stderr, "pmodel: loaded " PM_FILE ", checksum %08x\n",
+        char path[64] = PM_DEFAULT_FILE;
+        int n = pm_hist_newest(), ok = 0;
+        if (n)
+        {
+                sprintf(path, PM_HIST_FMT, n);
+                ok = pmodel_load(&pm_models[my_player], path);
+        }
+        if (!ok)
+        {
+                strcpy(path, PM_DEFAULT_FILE);
+                ok = pmodel_load(&pm_models[my_player], path);
+        }
+        if (ok)
+                fprintf(stderr, "pmodel: loaded %s, checksum %08x\n", path,
                         pm_checksum(&pm_models[my_player]));
         else
         {

@@ -830,7 +830,6 @@ void pmodel_render(VkCommandBuffer cmdbuf, int pipe, float *pv);
 unsigned char *pmodel_make_tiles(int *nr_layers);
 void pmodel_net_recv(int slot, const unsigned char *data, int len);
 void pmodel_local_moved(int old_slot);
-void pmodel_save();
 
 // pmedit.c protos
 struct pmvert *pmedit_emit(struct pmvert *b);

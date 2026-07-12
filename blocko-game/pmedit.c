@@ -80,8 +80,11 @@
 // mode. Clicking on
 // another piece switches straight to it (in paint and RESIZE
 // modes - wherever a click on it means nothing else); clicking off every
-// piece or ESC goes back to the whole model; U closes the editor, saves
-// model.dat and announces the new look over the net. A half-transparent
+// piece or ESC goes back to the whole model; U closes the editor and
+// announces the new look over the net. Saving is automatic: a session that
+// changes anything writes its own numbered snapshot (00001.model, ...)
+// under save-data/blocko/player-models/, at most once a second, final
+// write at close - the newest snapshot is what the game loads next run. A half-transparent
 // dark green quad, one block's top face, floats at the in-game ground level
 // in every view that shows the whole model (near-level pitches only), so a
 // floating or sunken model reads at a glance; a wireframe box in the same
@@ -100,6 +103,9 @@ static unsigned pmedit_hidden;           // bitmask of hidden (ghosted, unclicka
 static int pmedit_animate;               // ANIMATE mode: play the placeholder anim
 static int pmedit_restang;               // RESTING ANGLE mode: arrows/QE pose the piece
 static float pmedit_bob_t;               // parent-mode hover bob clock, wraps at 1s
+static unsigned pmedit_hist_sum;         // model checksum as last snapshotted
+static int pmedit_hist_n;                // session's snapshot number, 0 = none yet
+static float pmedit_hist_cool;           // snapshot debounce: one write a second
 static float pmedit_gizmo_mat[16];       // the active gizmo's px -> world frame
 static float pmedit_myaw, pmedit_mpitch; // turntable angles
 static float pmedit_yramp, pmedit_pramp; // seconds each axis key is held, <= 1
@@ -320,6 +326,28 @@ static void pmedit_delete()
         pmodel_upload(my_player);
 }
 
+// history autosave: while the editor is open, any change to the model
+// (checksummed, so paint, geometry, TYPE, STYLE, rest angles all count)
+// lands in this session's numbered snapshot, debounced to one write a
+// second; closing writes the tail regardless of the clock. The first
+// change claims the next free number, later writes overwrite it, and the
+// number is dropped at close - a closed session's file is never touched
+static void pmedit_hist_save(int final)
+{
+        if (!final && pmedit_hist_cool > 0) return;
+        unsigned sum = pm_checksum(&pm_models[my_player]);
+        if (sum == pmedit_hist_sum) return;
+        if (!pmedit_hist_n)
+        {
+                pmedit_hist_n = pm_hist_newest() + 1;
+                fprintf(stderr, "pmodel: session snapshot " PM_HIST_FMT "\n",
+                        pmedit_hist_n);
+        }
+        pm_hist_write(pmedit_hist_n);
+        pmedit_hist_sum = sum;
+        pmedit_hist_cool = 1;
+}
+
 void pmedit_toggle()
 {
         pmedit_on = !pmedit_on;
@@ -336,6 +364,9 @@ void pmedit_toggle()
                 pmedit_kw = pmedit_ka = pmedit_ks = pmedit_kd = 0;
                 pmedit_paint_btn = 0;
                 pmedit_snap = 1;
+                pmedit_hist_sum = pm_checksum(&pm_models[my_player]);
+                pmedit_hist_n = 0;
+                pmedit_hist_cool = 0;
                 // the paint colors and NEW PART's checkerboard grays live in
                 // reserved palette slots (pmodel.c owns the layout)
                 pm_reserved_colors(&pm_models[my_player]);
@@ -355,7 +386,7 @@ void pmedit_toggle()
         else
         {
                 pmedit_newpart_cancel(); // an unplaced NEW PART doesn't survive
-                pmodel_save();
+                pmedit_hist_save(1);
                 pmodel_send_mine();
                 SDL_SetWindowRelativeMouseMode(vk.window, true);
                 mouselook = true;
@@ -525,6 +556,8 @@ void pmedit_update()
         float dt = 1 / 60.f;
         pmedit_bob_t += dt; // the parent-mode hover bob's 1Hz clock
         if (pmedit_bob_t >= 1) pmedit_bob_t -= 1;
+        if (pmedit_hist_cool > 0) pmedit_hist_cool -= dt;
+        pmedit_hist_save(0);
         int ydir = pmedit_ka - pmedit_kd;
         int pdir = pmedit_kw - pmedit_ks;
         pmedit_yramp = ydir ? MIN(pmedit_yramp + dt, 0.5f) : 0.f;
