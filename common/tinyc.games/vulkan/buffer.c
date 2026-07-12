@@ -79,7 +79,7 @@ void vulkan_populate_vertex_buffer(void *buf, size_t sz, struct allocation *allo
 {
         void *data;
         vkMapMemory(vk.device, alloc->mem, 0, alloc->buf_info.size, 0, &data);
-        memcpy(data, buf, sz);
+        memcpy(data, buf, sz < alloc->buf_info.size ? sz : alloc->buf_info.size);
         vkUnmapMemory(vk.device, alloc->mem);
 }
 
