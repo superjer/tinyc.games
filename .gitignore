@@ -18,4 +18,6 @@ tags
 model.dat
 model.dat.*
 save-data
+
+# local world save (per-run artifact)
 blocko.saves

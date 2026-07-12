@@ -15,12 +15,12 @@
 
 // every block you can hold
 static int placeable[] = {
-        GRAS, MTGR, DIRT, SAND, STON, GRAN, WOOD,
-        ORE, OREH, HARD, RLEF, YLEF, SLEF, WATR
+        GRAS, GSLP, MTGR, DIRT, SAND, STON, GRAN, WOOD,
+        ORE, OREH, HARD, RLEF, YLEF, SLEF, WATR, LITE
 };
 #define NR_PLACEABLE ((int)(sizeof placeable / sizeof *placeable))
 
-static int held_index = 9; // HARD, matching the old hard-coded place block
+static int held_index = 10; // HARD, matching the old hard-coded place block
 
 // spin the wheel: dir = +1 next block, -1 previous, wrapping around the list
 void held_cycle(int dir)
@@ -33,7 +33,8 @@ void held_cycle(int dir)
 // fresh each frame from the camera basis so it stays glued to the lower-right
 // of the view.
 static struct allocation hand_alloc[MAX_FRAMES_IN_FLIGHT];
-static struct vbufv hbuf[6];
+static struct vbufv hbuf[8];   // up to a block's face count (cube 6, wedge 5)
+static int hand_faces;         // faces block_model wrote this frame
 static int hand_draw_on;
 static float hand_px, hand_py, hand_pz, hand_bs;
 
@@ -129,21 +130,17 @@ void hand_build()
 
         // lit flat and bright so the held block always reads clearly; main.vert
         // still darkens the side/bottom faces by its per-orient factor, which
-        // gives the cube a little shape.
+        // gives the block a little shape. block_model picks the shape (a slope is
+        // shown as a wedge, descend-south, so you can see it is not a cube).
         float il = 0.9f, gl = 0.f;
-        hbuf[0] = (struct vbufv){ tile_face_tex(t,UP),    UP,    0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-        hbuf[1] = (struct vbufv){ tile_face_tex(t,SOUTH), SOUTH, 0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-        hbuf[2] = (struct vbufv){ tile_face_tex(t,NORTH), NORTH, 0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-        hbuf[3] = (struct vbufv){ tile_face_tex(t,WEST),  WEST,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-        hbuf[4] = (struct vbufv){ tile_face_tex(t,EAST),  EAST,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-        hbuf[5] = (struct vbufv){ tile_face_tex(t,DOWN),  DOWN,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
+        hand_faces = block_model(hbuf, t, SLOPE_S, il, gl);
 
         int fr = vk.currentFrame;
         if (!hand_alloc[fr].buf)
                 vulkan_allocate_vertex_buffer(sizeof hbuf, &hand_alloc[fr]);
-        vulkan_populate_vertex_buffer(hbuf, sizeof hbuf, &hand_alloc[fr]);
+        vulkan_populate_vertex_buffer(hbuf, hand_faces * sizeof *hbuf, &hand_alloc[fr]);
         hand_draw_on = 1;
-        polys += 6;
+        polys += hand_faces;
 }
 
 // draw the held cube on the (already bound) main pipeline. A squashed viewport
@@ -174,7 +171,7 @@ void hand_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
         VkDeviceSize off = 0;
         vkCmdBindVertexBuffers(cmdbuf, 0, 1, &hand_alloc[fr].buf, &off);
-        vkCmdDraw(cmdbuf, 4, 6, 0, 0);
+        vkCmdDraw(cmdbuf, 4, hand_faces, 0, 0);
 
         // restore the full-depth viewport for anything drawn after us
         VkViewport full_vp = { 0, 0,

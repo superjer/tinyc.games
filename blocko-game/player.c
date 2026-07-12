@@ -16,6 +16,11 @@ void lerp_camera(float t, struct player *a, struct player *b)
         lerped_pos.z = lerp(t, a->pos.z, b->pos.z);
 }
 
+// how high a horizontal move will auto-climb (raise-move-lower, see
+// update_player). A bit over half a block: smooths ramp tops and low ledges
+// while keeping full blocks as obstacles you still have to jump.
+#define STEP_HEIGHT (BS * 9 / 16)
+
 //return 0 iff we couldn't actually move
 //swept collision against the world, one unit at a time
 int move_box(struct box *pos, int velx, int vely, int velz)
@@ -89,6 +94,94 @@ int move_box(struct box *pos, int velx, int vely, int velz)
 int move_player(struct player *p, int velx, int vely, int velz)
 {
         return move_box(&p->pos, velx, vely, velz);
+}
+
+// horizontal move with auto-step: slide (velx,velz) along the ground, and if a
+// low rise stops it short - the slope staircase (collision.c), a half-block
+// ledge - climb over by raising up to STEP_HEIGHT, redoing the move, and
+// settling back onto the step. Full blocks (taller than STEP_HEIGHT) still
+// block. The caller vouches the box is on the ground. Returns whether it moved.
+// The player runs its own inline version (below) because its move is one
+// combined x/y/z sweep; this is the standalone form skating mobs use.
+int move_box_step(struct box *pos, int velx, int velz)
+{
+        struct box pre = *pos;
+        move_box(pos, velx, 0, velz);
+
+        float want = fabsf((float)velx) + fabsf((float)velz);
+        float got  = fabsf(pos->x - pre.x) + fabsf(pos->z - pre.z);
+        if (got + 1.f >= want)
+                return 1;                         // moved freely, nothing to climb
+
+        struct box low = *pos;                    // the blocked result
+        struct box lifted = pre;
+        lifted.y -= STEP_HEIGHT;                   // y grows downward
+        if (world_collide(lifted, 0))              // no headroom to rise
+                return got >= 1.f;
+
+        *pos = lifted;
+        move_box(pos, velx, 0, velz);
+        for (int s = 0; s < STEP_HEIGHT; s++)      // drop back onto the step
+        {
+                struct box down = *pos;
+                down.y += 1;
+                if (world_collide(down, 0)) break;
+                *pos = down;
+        }
+        // no better than the blocked spot? keep the low result
+        float climbed = fabsf(pos->x - pre.x) + fabsf(pos->z - pre.z);
+        if (climbed <= got + 1.f)
+                *pos = low;
+        return fabsf(pos->x - pre.x) + fabsf(pos->z - pre.z) >= 1.f;
+}
+
+// which way a freshly placed slope should descend: away from the camera, so it
+// rises the direction you're looking and you walk up it (facing = compass dir
+// the surface heads downhill)
+static int slope_facing(float yaw)
+{
+        float fx = sinf(yaw), fz = cosf(yaw);
+        if (fabsf(fz) >= fabsf(fx))
+                return fz >= 0 ? SLOPE_S : SLOPE_N; // looking north -> descend south
+        else
+                return fx >= 0 ? SLOPE_W : SLOPE_E; // looking east  -> descend west
+}
+
+// world-Y of the slope surface under the player's horizontal center, or a big
+// sentinel if the player isn't standing over any slope cell (and the winning
+// facing, for the uphill-speed check). Y grows downward, so a smaller value is
+// a higher surface; when the footprint covers more than one slope the highest
+// wins. Slopes are their own solid floor now (they collide as a staircase, see
+// block_collide); this only reports which slope/facing you're on so the walk
+// speed can ease off going uphill.
+#define NO_RAMP 1e30f
+float ramp_surface(struct box box, int *facing)
+{
+        float best = NO_RAMP;
+        int bestf = 0;
+        float cx = box.x + box.w * 0.5f;
+        float cz = box.z + box.d * 0.5f;
+        int bx = (int)floorf(cx / BS);
+        int bz = (int)floorf(cz / BS);
+        int ylo = (int)floorf(box.y / BS) - 1;
+        int yhi = (int)floorf((box.y + box.h) / BS) + 1;
+
+        for (int by = ylo; by <= yhi; by++)
+        {
+                if (!legit_tile(bx, by, bz) || T_(bx, by, bz) != GSLP)
+                        continue;
+                int f = TO_(bx, by, bz) & 3;
+                float top = BS * by, bot = BS * (by + 1);
+                float fz = (CLAMP(cz, BS*bz, BS*(bz+1)) - BS*bz) / BS; // 0 south..1 north
+                float fx = (CLAMP(cx, BS*bx, BS*(bx+1)) - BS*bx) / BS; // 0 west ..1 east
+                float surf = f == SLOPE_S ? bot - fz*BS :  // high side north
+                             f == SLOPE_N ? top + fz*BS :  // high side south
+                             f == SLOPE_W ? bot - fx*BS :  // high side east
+                                            top + fx*BS ;  // high side west (SLOPE_E)
+                if (surf < best) { best = surf; bestf = f; }
+        }
+        if (facing) *facing = bestf;
+        return best;
 }
 
 
@@ -172,11 +265,11 @@ void update_player(struct player *p, int real)
                 // footing gone it has nothing to root in, so clear it too - first,
                 // so the main break's gndheight recalc doesn't stop at the grass
                 if (y > 0 && (T_(x, y-1, z) == TLGR || T_(x, y-1, z) == TMGR))
-                        set_tile(x, y-1, z, OPEN);
+                        set_tile(x, y-1, z, OPEN, 0);
 
                 // set_tile (edit.c) records the edit and handles gndheight,
                 // lighting, and the instant reject+patch - no chunk rebuild here
-                set_tile(x, y, z, OPEN);
+                set_tile(x, y, z, OPEN, 0);
 
                 // pop a little half-size copy of the block loose to tumble to the
                 // ground (cosmetic; catches every break path, lights included)
@@ -195,14 +288,12 @@ void update_player(struct player *p, int real)
         if (real && p->building && !p->cooldown && place_x >= 0) {
                 if (!collide(p->pos, (struct box){ place_x * BS, place_y * BS, place_z * BS, BS, BS, BS }))
                 {
-                        set_tile(place_x, place_y, place_z, held_tile);
+                        // a slope faces so its surface descends the way you look, so
+                        // you place it at your feet and walk up it
+                        int orient = (held_tile == GSLP) ? slope_facing(p->yaw) : 0;
+                        set_tile(place_x, place_y, place_z, held_tile, orient);
                         hand_swing_kick = 1; // swing the held block
                 }
-                p->cooldown = 10;
-        }
-
-        if (real && p->lighting && !p->cooldown && place_x >= 0) {
-                set_tile(place_x, place_y, place_z, LITE);
                 p->cooldown = 10;
         }
 
@@ -228,7 +319,6 @@ void update_player(struct player *p, int real)
         float limit = (p->running || p->runningf)  ? PLYR_SPD_R :
                       p->sneaking                  ? PLYR_SPD_S :
                                                      PLYR_SPD;
-        limit *= fast;
         if (p->wet) limit /= 2; // water drag
         if (totalvel > limit)
         {
@@ -245,14 +335,17 @@ void update_player(struct player *p, int real)
 
         if (p->noclip)
         {
-                // fly freely: move straight through the world with no collision
-                // and no gravity. jump rises, sneak sinks (y grows downward).
-                float vspeed = (p->running || p->runningf) ? PLYR_SPD_R :
-                               p->sneaking                 ? PLYR_SPD_S :
-                                                             PLYR_SPD;
-                vspeed *= fast;
-                p->pos.x += p->vel.x;
-                p->pos.z += p->vel.z;
+                // fly freely and fast: move straight through the world with no
+                // collision and no gravity, 8x speed. forward/backward follow
+                // the look direction exactly (pitch included); strafing stays
+                // level. jump rises, sneak sinks (y grows downward).
+                float c = cosf(p->pitch);
+                float vspeed = 8.f * ((p->running || p->runningf) ? PLYR_SPD_R :
+                                      p->sneaking                 ? PLYR_SPD_S :
+                                                                    PLYR_SPD);
+                p->pos.x += (fwdx * c * p->fvel + fwdz * p->rvel) * 8.f;
+                p->pos.z += (fwdz * c * p->fvel - fwdx * p->rvel) * 8.f;
+                p->pos.y += sinf(p->pitch) * p->fvel * 8.f;
                 if (p->jump_held) p->pos.y -= vspeed;
                 if (p->sneaking)  p->pos.y += vspeed;
                 p->vel.y = 0;
@@ -268,7 +361,69 @@ void update_player(struct player *p, int real)
                 return;
         }
 
-        if (!move_player(p, p->vel.x, p->vel.y, p->vel.z))
+        // slower going up a slope: full speed across or downhill, 70% straight
+        // up, blended by how aligned the move is with the uphill direction
+        if (p->ground)
+        {
+                int sf;
+                if (ramp_surface(p->pos, &sf) < NO_RAMP)
+                {
+                        float ux = 0, uz = 0;
+                        switch (sf) {
+                        case SLOPE_S: uz =  1; break; // descends south -> uphill north (+z)
+                        case SLOPE_N: uz = -1; break;
+                        case SLOPE_W: ux =  1; break; // descends west -> uphill east (+x)
+                        case SLOPE_E: ux = -1; break;
+                        }
+                        float vl = sqrtf(p->vel.x*p->vel.x + p->vel.z*p->vel.z);
+                        if (vl > 0.001f)
+                        {
+                                float a = (p->vel.x*ux + p->vel.z*uz) / vl; // cos to uphill
+                                if (a > 0) // has an uphill component: ease off, down to 70%
+                                {
+                                        float f = 1.0f - 0.3f * a;
+                                        p->vel.x *= f;
+                                        p->vel.z *= f;
+                                }
+                        }
+                }
+        }
+
+        struct box pre = p->pos;
+        move_player(p, p->vel.x, p->vel.y, p->vel.z);
+
+        // auto-step: if a wall stopped the horizontal move short while we were on
+        // the ground, try to climb it (raise up to STEP_HEIGHT, redo the move,
+        // then settle back down onto the step). Makes single blocks, stairs, and
+        // the slope's staircase (collision.c) walkable without jumping.
+        float want = fabsf(p->vel.x) + fabsf(p->vel.z);
+        float got  = fabsf(p->pos.x - pre.x) + fabsf(p->pos.z - pre.z);
+        if (p->ground && p->vel.y == 0 && got + 1.f < want)
+        {
+                struct box low = p->pos;                 // the blocked result
+                struct box lifted = pre;
+                lifted.y -= STEP_HEIGHT;                  // y grows downward
+                if (!world_collide(lifted, 0))           // headroom to rise?
+                {
+                        p->pos = lifted;
+                        move_player(p, p->vel.x, 0, p->vel.z);
+                        // drop back onto the step surface (never below the start)
+                        for (int s = 0; s < STEP_HEIGHT; s++)
+                        {
+                                struct box down = p->pos;
+                                down.y += 1;
+                                if (world_collide(down, 0)) break;
+                                p->pos = down;
+                        }
+                        // no better than the blocked spot? keep the low result
+                        float climbed = fabsf(p->pos.x - pre.x) + fabsf(p->pos.z - pre.z);
+                        if (climbed <= got + 1.f)
+                                p->pos = low;
+                }
+        }
+
+        got = fabsf(p->pos.x - pre.x) + fabsf(p->pos.z - pre.z);
+        if (got < 1.f) // truly stuck: bleed off the speed we couldn't spend
         {
                 p->fvel = 0;
                 p->rvel = 0;
@@ -308,6 +463,10 @@ void update_player(struct player *p, int real)
 
         if (p->ground)
                 p->grav = GRAV_ZERO;
+
+        // slopes need no special floor handling: they collide as a solid
+        // staircase (collision.c), so gravity settles the feet on a step and
+        // the auto-step above walks up them like any other stairs.
 
         //zooming
         if (real)

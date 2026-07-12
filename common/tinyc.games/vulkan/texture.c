@@ -164,8 +164,12 @@ void vulkan_create_texture_array(char **files, int file_count,
         .magFilter = VK_FILTER_NEAREST,
         .minFilter = VK_FILTER_LINEAR,
         .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-        .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-        .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        // U/V repeat so a uv past 1 tiles the layer (blocko's grass slope
+        // stretches its top uv to keep texels square). Every other face stays
+        // in 0..1, where repeat and clamp are identical. W is the array layer -
+        // keep it clamped so filtering never bleeds into an adjacent tile.
+        .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
         .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
         .minLod = 0.0f,
         .maxLod = (float)mip_levels,

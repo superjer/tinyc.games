@@ -67,6 +67,7 @@
 #include "mob.c"
 #include "pmodel.c"
 #include "pmedit.c"
+#include "blockmodel.c"
 #include "mine.c"
 #include "hand.c"
 #include "item.c"
@@ -334,9 +335,10 @@ void startup()
         }
 
         tiles = calloc(TILESD * TILESH * TILESW, sizeof *tiles);
+        tileo = calloc(TILESD * TILESH * TILESW, sizeof *tileo);
         sunlight = calloc(TILESD * TILESH * TILESW, sizeof *sunlight);
         glolight = calloc(TILESD * TILESH * TILESW, sizeof *glolight);
-        main_area = (struct warea){ .tiles = tiles, .sun = sunlight, .gndh = gndheight,
+        main_area = (struct warea){ .tiles = tiles, .tileo = tileo, .sun = sunlight, .gndh = gndheight,
                 .maskw = TILESW-1, .maskd = TILESD-1, .pitchx = TILESH, .pitchz = TILESW * TILESH };
         cornlight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *cornlight);
         kornlight = calloc((TILESD+1) * (TILESH+1) * (TILESW+1), sizeof *kornlight);
@@ -460,7 +462,23 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
                 // grass (both kinds) is likewise non-mineable and lets the ray
                 // through to the block it grows on.
                 int tt = T_(x, y, z);
-                if (tt != OPEN && tt != WATR && tt != TLGR && tt != TMGR)
+                int solid = tt != OPEN && tt != WATR && tt != TLGR && tt != TMGR;
+
+                // a slope only fills part of its cell: hit it just where the ray
+                // crosses the wedge (the same 10-step shape you walk on), and pass
+                // through the empty low front like air so you target the block
+                // behind it instead of a phantom cube.
+                if (solid && tt == GSLP && legit_tile(x, y, z))
+                {
+                        struct box steps[SLOPE_STEPS];
+                        slope_boxes(x, y, z, TO_(x, y, z), steps);
+                        solid = 0;
+                        for (int s = 0; s < SLOPE_STEPS; s++)
+                                if (ray_hits_box(eye0, eye1, eye2, f0, f1, f2, steps[s]))
+                                        { solid = 1; break; }
+                }
+
+                if (solid)
                         break;
 
                 if (i == 6)

@@ -123,7 +123,7 @@ void item_scoot(int dx, int dz)
 // passes as needed (item_render): the main scene plus the near shadow cascade
 static struct allocation item_alloc[MAX_FRAMES_IN_FLIGHT];
 static struct vbufv ibuf[NR_ITEMS * 6];   // 6 cube faces each
-static struct { float x, y, z, bs, yaw, cx, cz; int start; } item_inst[NR_ITEMS];
+static struct { float x, y, z, bs, yaw, cx, cz; int start, faces; } item_inst[NR_ITEMS];
 static int item_count;
 
 void item_build()
@@ -166,14 +166,12 @@ void item_build()
                         gl = KORN_(bx, by, bz);
                 }
 
-                int t = it->tile;
-                *b++ = (struct vbufv){ tile_face_tex(t,UP),    UP,    0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ tile_face_tex(t,SOUTH), SOUTH, 0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ tile_face_tex(t,NORTH), NORTH, 0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ tile_face_tex(t,WEST),  WEST,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ tile_face_tex(t,EAST),  EAST,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-                *b++ = (struct vbufv){ tile_face_tex(t,DOWN),  DOWN,  0,0,0, il,il,il,il, gl,gl,gl,gl, 1 };
-                polys += 6;
+                // block_model picks the shape: a dropped slope tumbles as a
+                // wedge (it spins about the vertical axis, so any facing reads).
+                int n = block_model(b, it->tile, SLOPE_S, il, gl);
+                item_inst[item_count].faces = n;
+                b += n;
+                polys += n;
                 item_count++;
         }
 
@@ -213,7 +211,7 @@ void item_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
                 VkDeviceSize off = item_inst[i].start * sizeof(struct vbufv);
                 vkCmdBindVertexBuffers(cmdbuf, 0, 1, &item_alloc[fr].buf, &off);
-                vkCmdDraw(cmdbuf, 4, 6, 0, 0);
+                vkCmdDraw(cmdbuf, 4, item_inst[i].faces, 0, 0);
         }
 }
 

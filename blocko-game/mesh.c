@@ -10,13 +10,25 @@ static int sorter(const void * _a, const void * _b)
                (a->d <  b->d) ? -1 : 1;  // closest first
 }
 
-// face visibility - draw a face only against a see-through neighbor
-#define UP_VISIBLE(x, y, z)    (y == 0          || IS_SEE_THROUGH(T_(x, y-1, z)))
-#define DOWN_VISIBLE(x, y, z)  (y+1 >= TILESH   || IS_SEE_THROUGH(T_(x, y+1, z)))
-#define SOUTH_VISIBLE(x, y, z) (z == 0          || IS_SEE_THROUGH(T_(x, y, z-1)))
-#define NORTH_VISIBLE(x, y, z) (z+1 >= TILESD   || IS_SEE_THROUGH(T_(x, y, z+1)))
-#define WEST_VISIBLE(x, y, z)  (x == 0          || IS_SEE_THROUGH(T_(x-1, y, z)))
-#define EAST_VISIBLE(x, y, z)  (x+1 >= TILESW   || IS_SEE_THROUGH(T_(x+1, y, z)))
+// Does cell (x,y,z) fully cover its own face on side `dir`? A see-through cell
+// covers nothing; a slope is only a partial wedge, so it covers just its flat
+// bottom (DOWN) and its tall back/high side (which rotates with facing); every
+// other solid covers all six sides. A face is drawn unless the neighbor on that
+// side fully covers it, so a slope no longer culls (and lets you see through)
+// the still-exposed parts of the blocks beside it.
+static const int slope_back[4] = { NORTH, EAST, SOUTH, WEST }; // high side by facing S/W/N/E
+#define COVERS(x, y, z, dir) ( \
+        IS_SEE_THROUGH(T_(x, y, z)) ? 0 : \
+        T_(x, y, z) == GSLP ? ((dir) == DOWN || (dir) == slope_back[TO_(x, y, z) & 3]) : \
+        1 )
+
+// face visibility - draw a face unless the neighbor on that side fully covers it
+#define UP_VISIBLE(x, y, z)    (y == 0          || !COVERS(x, y-1, z, DOWN))
+#define DOWN_VISIBLE(x, y, z)  (y+1 >= TILESH   || !COVERS(x, y+1, z, UP))
+#define SOUTH_VISIBLE(x, y, z) (z == 0          || !COVERS(x, y, z-1, NORTH))
+#define NORTH_VISIBLE(x, y, z) (z+1 >= TILESD   || !COVERS(x, y, z+1, SOUTH))
+#define WEST_VISIBLE(x, y, z)  (x == 0          || !COVERS(x-1, y, z, EAST))
+#define EAST_VISIBLE(x, y, z)  (x+1 >= TILESW   || !COVERS(x+1, y, z, WEST))
 
 // water face visibility - draw a side/bottom face wherever water meets air (or
 // any see-through non-water neighbor), but never against solid or more water, so
@@ -140,6 +152,63 @@ void mesh_region(int xlo, int xhi, int ylo, int yhi, int zlo, int zhi, unsigned 
                                 if ((face_mask & FACE_WEST)  && WEST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 38,  WEST, m, y, n, usw, unw, dsw, dnw, USW, UNW, DSW, DNW, 1 };
                                 if ((face_mask & FACE_EAST)  && EAST_VISIBLE(x, y, z))  *tv++ = (struct vbufv){ 38,  EAST, m, y, n, une, use, dne, dse, UNE, USE, DNE, DSE, 1 };
                                 if ((face_mask & FACE_DOWN)  && DOWN_VISIBLE(x, y, z))  *tv++ = (struct vbufv){  2,  DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
+                        }
+                        else if (t == GSLP)
+                        {
+                                // grass slope: a walkable wedge. a sloped grass top,
+                                // two triangle side walls, a full back wall (the high
+                                // side), and a dirt bottom; the low front is nothing.
+                                // orient 30/34/38/42 + facing select the piece -
+                                // main.vert & shadow.vert build the base (descend-
+                                // south) shape and rotate it 90*facing. tex 0 grass
+                                // top, 44 diagonal grass side (the two triangle walls,
+                                // whose grass strip follows the slope's hypotenuse), 1
+                                // grass side (the vertical back wall), 2 dirt. The three
+                                // vertical faces always emit (they rotate, so per-neighbor
+                                // culling here would need the rotated direction; the
+                                // overdraw when a slope abuts a block is hidden inside it).
+                                //
+                                // Corner lighting: each vertex takes the light of the cell
+                                // corner it actually lands on so shared corners match
+                                // neighboring blocks. A face's four base verts (a,b,c,d)
+                                // sit at known corners (base_lev = upper/lower y, base_hor =
+                                // sw/se/nw/ne); the 90*facing rotation permutes the
+                                // horizontal corner sw->nw->ne->se->sw (slope_rot) while
+                                // leaving y alone, so rotate base_hor `f` times and look up.
+                                int f = TO_(x, y, z) & 3;
+                                static const int slope_rot[4] = { 2, 0, 3, 1 }; // [sw,se,nw,ne]
+                                static const int base_lev[4][4] = {
+                                        { 1, 1, 0, 0 }, // top:  d d u u
+                                        { 1, 0, 1, 1 }, // west: d u d d
+                                        { 0, 1, 1, 1 }, // east: u d d d
+                                        { 0, 0, 1, 1 }, // back: u u d d
+                                };
+                                static const int base_hor[4][4] = {
+                                        { 0, 1, 2, 3 }, // top:  sw se nw ne
+                                        { 0, 2, 0, 2 }, // west: sw nw sw nw
+                                        { 3, 1, 3, 1 }, // east: ne se ne se
+                                        { 2, 3, 2, 3 }, // back: nw ne nw ne
+                                };
+                                static const int tex_for[4] = { 0, 44, 44, 1 };
+                                float Lsun[2][4] = { { usw, use, unw, une }, { dsw, dse, dnw, dne } };
+                                float Lglo[2][4] = { { USW, USE, UNW, UNE }, { DSW, DSE, DNW, DNE } };
+                                for (int k = 0; k < 4; k++)
+                                {
+                                        if (k == 0 && !((face_mask & FACE_UP) && UP_VISIBLE(x, y, z)))
+                                                continue;
+                                        float s[4], g[4];
+                                        for (int q = 0; q < 4; q++)
+                                        {
+                                                int h = base_hor[k][q];
+                                                for (int r = 0; r < f; r++) h = slope_rot[h];
+                                                s[q] = Lsun[base_lev[k][q]][h];
+                                                g[q] = Lglo[base_lev[k][q]][h];
+                                        }
+                                        *tv++ = (struct vbufv){ tex_for[k], 30 + k*4 + f, m, y, n,
+                                                s[0], s[1], s[2], s[3], g[0], g[1], g[2], g[3], 1 };
+                                }
+                                if ((face_mask & FACE_DOWN) && DOWN_VISIBLE(x, y, z))
+                                        *tv++ = (struct vbufv){ 2, DOWN, m, y, n, dse, dsw, dne, dnw, DSE, DSW, DNE, DNW, 1 };
                         }
                         else if (t == DIRT)
                         {

@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "block_geom.glsl"
 
 // Instanced quads: one instance per face, 4 vertices via triangle strip.
 // All inputs are instance-rate attributes (one struct vbufv per face).
@@ -53,6 +55,8 @@ layout(std140, set = 0, binding = 0) uniform UBO {
 
 void main(void) {
     vec4 a, b, c, d;
+    vec3 face_normal;    // received from block_geom; unused in the depth pass
+    float sidel;         // received from block_geom; unused in the depth pass
     float bs = push.bs;
 
     int o = int(orient_in);
@@ -61,7 +65,7 @@ void main(void) {
     // matching its visible shape, so replicate main.vert's per-cell rotation
     // and jitter exactly. everything else in the transparent buffer (water,
     // alpha < 1) is collapsed so only grass casts here.
-    bool grass = o >= 20;
+    bool grass = o >= 20 && o < 30;
     // in the transparent buffer only grass casts: collapse water (alpha < 1)
     // and the mushroom light (tex 18, which never cast a shadow). terrain draws
     // never carry either, so this is a no-op there.
@@ -70,61 +74,27 @@ void main(void) {
         return;
     }
 
-    switch (o) {
-        case 20: // grass plane A: full-height quad spanning X, centered in Z
+    // solid cube faces (1-6) and the grass-slope wedge (30-45); see
+    // block_geom.glsl. positions match main.vert exactly so the cast shadow
+    // lines up with the visible shape.
+    block_geom(o, bs, a, b, c, d, face_normal, sidel);
+
+    // tall grass billboards (orient 20/21): base quad + per-cell rotation and
+    // jitter, identical to main.vert so the cast shadow lines up with the
+    // rendered blades. hashed on the absolute cell (window coords minus scoot)
+    // so it stays put across chunk boundaries.
+    if (grass) {
+        if (o == 20) { // plane A: full-height quad spanning X, centered in Z
             a = vec4(bs, 0, bs * 0.5, 0);
             b = vec4(0,  0, bs * 0.5, 0);
             c = vec4(bs, bs, bs * 0.5, 0);
             d = vec4(0,  bs, bs * 0.5, 0);
-            break;
-        case 21: // grass plane B: full-height quad spanning Z, centered in X
+        } else {       // plane B: full-height quad spanning Z, centered in X
             a = vec4(bs * 0.5, 0, 0, 0);
             b = vec4(bs * 0.5, 0, bs, 0);
             c = vec4(bs * 0.5, bs, 0, 0);
             d = vec4(bs * 0.5, bs, bs, 0);
-            break;
-        case 1: // UP
-            a = vec4(0, 0, 0, 0);
-            b = vec4(bs, 0, 0, 0);
-            c = vec4(0, 0, bs, 0);
-            d = vec4(bs, 0, bs, 0);
-            break;
-        case 2: // EAST
-            a = vec4(bs, 0, bs, 0);
-            b = vec4(bs, 0, 0, 0);
-            c = vec4(bs, bs, bs, 0);
-            d = vec4(bs, bs, 0, 0);
-            break;
-        case 3: // NORTH
-            a = vec4(0, 0, bs, 0);
-            b = vec4(bs, 0, bs, 0);
-            c = vec4(0, bs, bs, 0);
-            d = vec4(bs, bs, bs, 0);
-            break;
-        case 4: // WEST
-            a = vec4(0, 0, 0, 0);
-            b = vec4(0, 0, bs, 0);
-            c = vec4(0, bs, 0, 0);
-            d = vec4(0, bs, bs, 0);
-            break;
-        case 5: // SOUTH
-            a = vec4(bs, 0, 0, 0);
-            b = vec4(0, 0, 0, 0);
-            c = vec4(bs, bs, 0, 0);
-            d = vec4(0, bs, 0, 0);
-            break;
-        case 6: // DOWN
-            a = vec4(bs, bs, 0, 0);
-            b = vec4(0, bs, 0, 0);
-            c = vec4(bs, bs, bs, 0);
-            d = vec4(0, bs, bs, 0);
-            break;
-    }
-
-    // tall grass rotation + jitter, identical to main.vert so the cast shadow
-    // lines up with the rendered blades. hashed on the absolute cell (window
-    // coords minus scoot) so it stays put across chunk boundaries.
-    if (grass) {
+        }
         vec3 gcell = vec3(push.chunk_x, push.chunk_y, push.chunk_z) / bs + pos_in;
         gcell.x -= ubo.scootx;
         gcell.z -= ubo.scootz;

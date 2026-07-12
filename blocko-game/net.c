@@ -53,14 +53,14 @@ static int net_intr() { return errno == EINTR; }
 static void net_startup() {}
 #endif
 
-#define NET_PROTO 3
+#define NET_PROTO 4
 #define NET_MAX_CLIENTS (NR_PLAYERS - 1)
 #define NET_BUF_MAX (32 << 20) // a peer this far behind is gone: drop it
 
 enum {
         MSG_HELLO = 1, // c->s: u32 protocol version
         MSG_WELCOME,   // s->c: u8 your player id, i32 seed, f32 sun_pitch, u32 nr edits
-        MSG_EDIT,      // both: i32 ax, i32 ay, i32 az, u8 tile
+        MSG_EDIT,      // both: i32 ax, i32 ay, i32 az, u8 tile, u8 orient
         MSG_PLAYER,    // both: u8 id, f32 abs pos xyz (units), f32 vel xyz, f32 yaw,
                        //       pitch, u8 flags (NET_PF_*), u8 held tile
         MSG_MOB,       // s->c: u32 total kills, then per mob u8 slot, size, hurt, dying, f32 abs xyz, yaw
@@ -211,12 +211,13 @@ static void server_welcome(struct conn *c)
 
         // stream the whole edit overlay; the client records the entries and
         // replays them as its chunks generate, same as a local regen
-        int it = 0, x, y, z, tile;
-        unsigned char e[13];
-        while (edit_next(&it, &x, &y, &z, &tile))
+        int it = 0, x, y, z, tile, orient;
+        unsigned char e[14];
+        while (edit_next(&it, &x, &y, &z, &tile, &orient))
         {
                 put_u32(e, x); put_u32(e + 4, y); put_u32(e + 8, z);
                 e[12] = tile;
+                e[13] = orient;
                 conn_send(c, MSG_EDIT, e, sizeof e);
         }
         // every model this server knows (its own included), so the joiner
@@ -307,13 +308,13 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                 server_welcome(c);
                 break;
         case MSG_EDIT:
-                if (len < 13 || !c->helloed) return;
+                if (len < 14 || !c->helloed) return;
                 int y = get_u32(p + 4);
                 if (y < 0 || y >= TILESH) return;
-                edit_apply_remote(get_u32(p), y, get_u32(p + 8), p[12]);
+                edit_apply_remote(get_u32(p), y, get_u32(p + 8), p[12], p[13]);
                 for (int i = 0; i < NET_MAX_CLIENTS; i++) // relay to the others
                         if (conns[i].helloed && &conns[i] != c)
-                                conn_send(&conns[i], MSG_EDIT, p, 13);
+                                conn_send(&conns[i], MSG_EDIT, p, 14);
                 break;
         case MSG_PLAYER:
                 if (len < 35 || !c->helloed) return;
@@ -365,10 +366,10 @@ static void net_handle(struct conn *c, int type, const unsigned char *p, int len
                 client_welcome(p);
                 break;
         case MSG_EDIT:
-                if (len < 13) return;
+                if (len < 14) return;
                 int y = get_u32(p + 4);
                 if (y < 0 || y >= TILESH) return;
-                edit_apply_remote(get_u32(p), y, get_u32(p + 8), p[12]);
+                edit_apply_remote(get_u32(p), y, get_u32(p + 8), p[12], p[13]);
                 break;
         case MSG_PLAYER:
                 if (len < 35) return;
@@ -496,12 +497,13 @@ static void net_nonblock(int fd)
 
 // called from set_tile with the edit in ABSOLUTE coords: clients tell the
 // server, the server tells everyone (the server relays client edits itself)
-void net_send_edit(int x, int y, int z, int tile)
+void net_send_edit(int x, int y, int z, int tile, int orient)
 {
         if (net_mode == NET_OFF) return;
-        unsigned char m[13];
+        unsigned char m[14];
         put_u32(m, x); put_u32(m + 4, y); put_u32(m + 8, z);
         m[12] = tile;
+        m[13] = orient;
         if (net_mode == NET_CLIENT)
                 conn_send(&server_conn, MSG_EDIT, m, sizeof m);
         else for (int i = 0; i < NET_MAX_CLIENTS; i++)
