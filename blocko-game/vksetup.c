@@ -222,6 +222,7 @@ void vksetup()
                 TINYC_DIR "/blocko-game/assets/tall_mtn_grass.png",  // 41
                 TINYC_DIR "/blocko-game/assets/open.png",            // 42 (debug)
                 TINYC_DIR "/blocko-game/assets/barrier.png",         // 43 (debug)
+                TINYC_DIR "/blocko-game/assets/grass_side_45.png",   // 44 (slope triangle sides)
         };
         int texture_count = sizeof(texture_files) / sizeof(texture_files[0]);
         vulkan_create_texture_array(texture_files, texture_count,

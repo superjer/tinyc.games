@@ -281,17 +281,21 @@ void main(void) {
     glow = (0.1 + glow_in[i]) * sidel;
     uv = uvs[i];
     if (slope) {
-        if ((o - 30) / 4 == 0)
+        int k = (o - 30) / 4;
+        if (k == 0)
             // sloped top: the surface is sqrt(2) longer up-slope than across, so
             // a 0..1 uv stretches its texels tall. Run the up-slope uv to 23/16
             // so it shows 23 texels to the 16 across - square again (the sampler
             // repeats, so past 1 tiles instead of smearing).
             uv.y *= 23.0 / 16.0;
-        else
-            // side walls and back wall: keep the fixed horizontal uv, drive the
-            // vertical from world height so the grass strip stays a horizontal
-            // band at the top instead of skewing on the sloped/triangle verts.
+        else {
+            // side/back walls: drive the vertical from height (rotation leaves y
+            // alone) so the grass strip lands at the top. The triangle sides use
+            // the 45 texture whose grass runs the diagonal; the east tri already
+            // lines up, the west tri (k==1) is the mirror image, so flip its u.
             uv.y = offsets[i].y / bs;
+            if (k == 1) uv.x = 1.0 - uv.x;
+        }
     }
     world_pos_out = world_pos;
 
