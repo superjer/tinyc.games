@@ -208,14 +208,16 @@ static int pm_piece_delete(struct pmodel *mo, int pi)
 
 // the 16 palette slots: 0 transparent, three random base/dark/accent trios
 // at 1..9 the pieces share round-robin, white/black starters at 10..11, and
-// 12..15 reserved for the editor - the NEW PART checkerboard grays and the
-// two paint colors, re-stamped every time the editor opens
+// editor starters at 12..15 - the NEW PART checkerboard grays and the
+// classic paint red/blue. Only slot 0 is special: every other slot is the
+// user's to recolor in the editor's palette panel, so the starters are
+// stamped only on a fresh random coat, never on an existing model
 #define PMEDIT_GRAY_A 12
 #define PMEDIT_GRAY_B 13
 #define PMEDIT_RED    14
 #define PMEDIT_BLUE   15
 
-static void pm_reserved_colors(struct pmodel *mo)
+static void pm_starter_colors(struct pmodel *mo)
 {
         mo->palette[PMEDIT_GRAY_A] = PM_RGB(105, 105, 105);
         mo->palette[PMEDIT_GRAY_B] = PM_RGB(165, 165, 165);
@@ -232,7 +234,7 @@ static void pm_paint(struct pmodel *mo, unsigned seed)
         mo->palette[0] = 0; // transparent
         mo->palette[10] = PM_RGB(230, 230, 230);
         mo->palette[11] = PM_RGB(25, 25, 25);
-        pm_reserved_colors(mo);
+        pm_starter_colors(mo);
         for (int t = 0; t < 3; t++)
         {
                 int base = 1 + t * 3;

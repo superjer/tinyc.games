@@ -118,6 +118,8 @@ set(SHADER_FILES
   blocko-game/shaders/shadow_solid.frag
   blocko-game/shaders/cursor.vert
   blocko-game/shaders/cursor.frag
+  blocko-game/shaders/pmui.vert
+  blocko-game/shaders/pmui.frag
   common/tinyc.games/shaders/font.vert
   common/tinyc.games/shaders/font.frag
   tet-game/shaders/tet.vert

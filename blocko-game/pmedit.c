@@ -7,8 +7,18 @@
 // (easing to 360 deg/s over half a second). Clicking a prism selects it: the
 // view eases to center on that prism (zoomed to fit), it gets a white outline
 // while the rest of the model draws full-color behind it (Z-tested, so colors
-// stay matchable), and clicks paint the targeted pixel - left red, right
-// blue, from two reserved palette slots. The PLACE ATTACHMENT POINT button
+// stay matchable), and left-clicks paint the targeted pixel with the palette
+// panel's selected swatch (right-click, or shift/ctrl/alt/cmd + click,
+// eyedrops instead: the pointed-at texel's color becomes the swatch). The
+// panel, top-left in this view, holds all 16 palette slots - transparent
+// first (painting with it erases: the shader discards sub-half alpha), then
+// the 15 colors - over a hue-lightness picker that recolors the selected
+// swatch's slot live, every texel wearing it following, since paint is
+// palette-indexed. Under the picker, FLOOD FILL swaps the brush for a
+// bucket (a click repaints the connected same-color region on that face)
+// and SUPER FLOOD for a firehose (a click recoats the piece's every texel,
+// all six sides); clicking the lit button, or leaving the piece view,
+// hands the brush back. The PLACE ATTACHMENT POINT button
 // switches the piece view to placing the rotation origin instead, and MOVE
 // PART to editing the attach point in the parent's space. PLACE ATTACHMENT
 // POINT shows only the active piece (rest of the model hidden) and its
@@ -46,12 +56,13 @@
 // piece's animation type (HEAD,
 // LEFT ARM, ...) - left-click cycles forward, right-click back. RESIZE
 // reshapes the prism: left-click a face to pick it (it wears a see-through
-// cycling-hue slab), then any arrow pushes it out / pulls it in a px at a
-// time, by relative angle: the face grows when the arrow leans toward its
-// outward normal on screen, shrinks when it leans away, and does nothing
-// when the arrow reads near-perpendicular to it (rotate a bit). The paint
-// follows (the lateral faces gain a copy of their edge row, or lose one)
-// and the joint stays put; with no face picked the arrows are idle.
+// cycling-hue slab), then drag it - the face pushes out and pulls in to
+// follow the cursor - or nudge with the arrow keys a px at a time, by
+// relative angle: the face grows when the arrow leans toward its outward
+// normal on screen, shrinks when it leans away, and does nothing when the
+// arrow reads near-perpendicular to it (rotate a bit). The paint follows
+// (the lateral faces gain a copy of their edge row, or lose one) and the
+// joint stays put; with no face picked the arrows are idle.
 // RESTING ANGLE poses the piece's standing-still pitch/yaw/roll, +-25 deg a
 // degree at a time: arrows pitch/yaw, Q/E roll, still relative to the
 // parent. The angles live in the model (saved and sent like everything
@@ -106,6 +117,13 @@ static float pmedit_bob_t;               // parent-mode hover bob clock, wraps a
 static unsigned pmedit_hist_sum;         // model checksum as last snapshotted
 static int pmedit_hist_n;                // session's snapshot number, 0 = none yet
 static float pmedit_hist_cool;           // snapshot debounce: one write a second
+static int pmedit_color = PMEDIT_RED;    // the palette slot paint clicks lay down
+static int pmedit_pal_drag;              // LMB is down in the color picker
+static int pmedit_flood;                 // 0 = plain paint, 1 = FLOOD FILL the
+                                         // clicked region, 2 = SUPER FLOOD the piece
+static int pmedit_resize_drag;           // RESIZE: LMB held after picking a face
+static float pmedit_resize_ax, pmedit_resize_ay; // the drag's anchor cursor
+static int pmedit_resize_applied;        // px pushed/pulled since the anchor
 static float pmedit_gizmo_mat[16];       // the active gizmo's px -> world frame
 static float pmedit_myaw, pmedit_mpitch; // turntable angles
 static float pmedit_yramp, pmedit_pramp; // seconds each axis key is held, <= 1
@@ -114,7 +132,21 @@ static float pmedit_cen[3];              // eased center of interest (model fram
 static float pmedit_dist;                // eased eye-to-center distance
 static int pmedit_snap;                  // skip easing on the first frame
 static float pmedit_mats[PM_MAX_PIECES][16]; // px->world per piece, for picking
+static float pmedit_proj[16];            // the editor's own projection (see below)
+static float pmedit_pv[16];              // proj * leveled view, for world->screen
 static int pmedit_nr;                    // pieces in pmedit_mats
+
+// the editor views the model through a much narrower FOV than the world's
+// 90 degrees, so it reads nearly orthographic: the camera sits far back and
+// perspective foreshortening goes flat, so a big nose no longer looms over
+// and hides the rest of the face. Smaller = flatter. Zoom-to-fit and the
+// pick rays share the same matrix, so clicks land where they look.
+#define PMEDIT_FOV 34.f
+// and a hard zoom cap: never frame tighter than a piece this many px in
+// radius would need, so a tiny piece sits small and centered instead of
+// blown up crazy-close (the framing still uses the real box - only the
+// fit distance is floored)
+#define PMEDIT_MIN_RADIUS_PX 6.f
 static int pmedit_paint_btn;             // mouse button held down painting, or 0
 static float pmedit_mx, pmedit_my;       // latest cursor position
 static int pmedit_prev_view;             // cam_view to restore when closing
@@ -209,6 +241,109 @@ static int pmedit_in_style_btn(float x, float y)
 static int pmedit_in_hide_btn(float x, float y)
 {
         return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 720 && y <= 780;
+}
+
+// the palette panel, top-left, up whenever paint clicks are: 16 swatches in
+// two rows of 8 (transparent's checker first, then the 15 colors - clicking
+// one makes it the paint color), and the color picker below - the classic
+// hue-lightness plane, white across the top, black across the bottom, the
+// full-saturation rainbow through the middle. Clicking (or dragging) the
+// picker recolors the SELECTED swatch's palette slot, and every texel
+// wearing that slot follows live. Slot 0 stays transparent forever;
+// painting with it erases (the shader discards texels under half alpha)
+#define PMEDIT_SW_X0     16
+#define PMEDIT_SW_Y0     16
+#define PMEDIT_SW_SZ     36
+#define PMEDIT_SW_STRIDE 40
+#define PMEDIT_HSL_X0    16
+#define PMEDIT_HSL_Y0    100
+#define PMEDIT_HSL_X1    336
+#define PMEDIT_HSL_Y1    340
+#define PMEDIT_FF_Y0     348 // the FLOOD FILL button, full panel width
+#define PMEDIT_FF_Y1     392
+#define PMEDIT_SF_Y0     400 // SUPER FLOOD below it
+#define PMEDIT_SF_Y1     444
+#define PMEDIT_PAL_PAD   8 // the backdrop, and the panel's whole click-eating rect
+
+static int pmedit_panel_on()
+{
+        return pmedit_sel >= 0 && !pmedit_joint && !pmedit_socket
+                && !pmedit_parent && !pmedit_resize && !pmedit_restang
+                && !pmedit_animate;
+}
+
+static int pmedit_in_panel(float x, float y)
+{
+        return x >= PMEDIT_SW_X0 - PMEDIT_PAL_PAD
+                && x <= PMEDIT_HSL_X1 + PMEDIT_PAL_PAD
+                && y >= PMEDIT_SW_Y0 - PMEDIT_PAL_PAD
+                && y <= PMEDIT_SF_Y1 + PMEDIT_PAL_PAD;
+}
+
+static int pmedit_in_flood_btn(float x, float y)
+{
+        return x >= PMEDIT_HSL_X0 && x <= PMEDIT_HSL_X1
+                && y >= PMEDIT_FF_Y0 && y <= PMEDIT_FF_Y1;
+}
+
+static int pmedit_in_sflood_btn(float x, float y)
+{
+        return x >= PMEDIT_HSL_X0 && x <= PMEDIT_HSL_X1
+                && y >= PMEDIT_SF_Y0 && y <= PMEDIT_SF_Y1;
+}
+
+static int pmedit_in_swatch(float x, float y)
+{
+        for (int i = 0; i < PM_NR_COLORS; i++)
+        {
+                float x0 = PMEDIT_SW_X0 + i % 8 * PMEDIT_SW_STRIDE;
+                float y0 = PMEDIT_SW_Y0 + i / 8 * PMEDIT_SW_STRIDE;
+                if (x >= x0 && x <= x0 + PMEDIT_SW_SZ &&
+                    y >= y0 && y <= y0 + PMEDIT_SW_SZ)
+                        return i;
+        }
+        return -1;
+}
+
+// the picker's hue corners: linear RGB interpolation between adjacent
+// primaries/secondaries traces the full-saturation hue wheel exactly, so
+// six vertex-colored segments render the true gradient
+static const float pmedit_hue6[7][3] = {
+        {1, 0, 0}, {1, 1, 0}, {0, 1, 0}, {0, 1, 1},
+        {0, 0, 1}, {1, 0, 1}, {1, 0, 0},
+};
+
+// picker coords (u hue, v lightness, both 0..1) -> packed palette color,
+// matching the rendered gradient exactly
+static unsigned pmedit_hsl(float u, float v)
+{
+        float t = u * 6;
+        int k = ICLAMP((int)t, 0, 5);
+        t -= k;
+        float c[3];
+        for (int a = 0; a < 3; a++)
+        {
+                c[a] = pmedit_hue6[k][a]
+                        + (pmedit_hue6[k + 1][a] - pmedit_hue6[k][a]) * t;
+                if (v < 0.5f) c[a] += (1 - c[a]) * (1 - v * 2);
+                else          c[a] *= 1 - (v - 0.5f) * 2;
+        }
+        return PM_RGB((int)(c[0] * 255 + 0.5f), (int)(c[1] * 255 + 0.5f),
+                      (int)(c[2] * 255 + 0.5f));
+}
+
+// a click or drag in the picker: recolor the selected swatch's slot. The
+// coords clamp, so a drag that wanders out keeps tracking - the edges hold
+// pure white, black and the corner hues
+static void pmedit_pal_pick(float x, float y)
+{
+        if (!pmedit_color) return; // transparent isn't a color to edit
+        float u = (x - PMEDIT_HSL_X0) / (PMEDIT_HSL_X1 - PMEDIT_HSL_X0);
+        float v = (y - PMEDIT_HSL_Y0) / (PMEDIT_HSL_Y1 - PMEDIT_HSL_Y0);
+        unsigned c = pmedit_hsl(CLAMP(u, 0, 1), CLAMP(v, 0, 1));
+        if (pm_models[my_player].palette[pmedit_color] == c) return;
+        pm_models[my_player].palette[pmedit_color] = c;
+        pmodel_upload(my_player);
 }
 
 static const char *pmedit_type_name[PM_T_COUNT] = {
@@ -363,13 +498,11 @@ void pmedit_toggle()
                 pmedit_yramp = pmedit_pramp = 0;
                 pmedit_kw = pmedit_ka = pmedit_ks = pmedit_kd = 0;
                 pmedit_paint_btn = 0;
+                pmedit_pal_drag = pmedit_flood = pmedit_resize_drag = 0;
                 pmedit_snap = 1;
                 pmedit_hist_sum = pm_checksum(&pm_models[my_player]);
                 pmedit_hist_n = 0;
                 pmedit_hist_cool = 0;
-                // the paint colors and NEW PART's checkerboard grays live in
-                // reserved palette slots (pmodel.c owns the layout)
-                pm_reserved_colors(&pm_models[my_player]);
                 // free the cursor; stop any in-flight movement and mining
                 pl->goingf = pl->goingb = pl->goingl = pl->goingr = 0;
                 pl->breaking = pl->building = pl->running = pl->sneaking = 0;
@@ -741,12 +874,44 @@ struct pmvert *pmedit_emit(struct pmvert *b)
                                   + (hi[1]-lo[1]) * (hi[1]-lo[1])
                                   + (hi[2]-lo[2]) * (hi[2]-lo[2]));
 
-        // zoom to fit: recover tan(half-fov) from the projection last drawn
-        float tanw = main_ubo.proj[0] ? 1.f / main_ubo.proj[0] : 1.f;
-        float tanh_ = main_ubo.proj[5] ? -1.f / main_ubo.proj[5] : 1.f;
+        // the editor's own projection: a narrow FOV so the model reads
+        // nearly orthographic (built here, before the render and the pick
+        // rays both use it, so everything stays consistent)
+        float ed_near = 100.f, ed_far = 1000.f * BS;
+        float ed_frustw = ed_near * tanf(PMEDIT_FOV * PI / 360.f);
+        float ed_frusth = ed_frustw * screenh / screenw;
+        float pj[16] = {
+                ed_near / ed_frustw,  0, 0, 0,
+                0, -ed_near / ed_frusth,  0, 0,
+                0, 0,        -ed_far / (ed_far - ed_near), -1,
+                0, 0, -(ed_far * ed_near) / (ed_far - ed_near),  0,
+        };
+        memcpy(pmedit_proj, pj, sizeof pj);
+
+        // proj * the leveled view (what pmedit_render draws with), kept for
+        // projecting world points to the screen - the resize drag needs it
+        {
+                float fv[3], view[16];
+                lookit(view, fv, peye0, peye1, peye2, 0, camplayer.yaw);
+                translate(view, -peye0, -peye1, -peye2);
+                mat4_multiply(pmedit_pv, pmedit_proj, view);
+        }
+
+        // zoom to fit: tan(half-fov) straight from the editor frustum
+        float tanw = ed_frustw / ed_near;
+        float tanh_ = ed_frusth / ed_near;
         float fill = pmedit_sel < 0 || pmedit_parent || pmedit_animate
                         ? 0.9f : 0.6f; // radius / half-extent
-        float dist = radius / (fill * MIN(tanw, tanh_));
+        // small pieces don't zoom in crazy far: floor the radius the fit
+        // distance is computed from, so a tiny piece just sits smaller and
+        // centered (the bbox framing above still uses the true size)
+        float fit_radius = radius;
+        if (pmedit_sel >= 0 && !pmedit_parent && !pmedit_animate)
+        {
+                float floor_r = PMEDIT_MIN_RADIUS_PX * PM_SCALE;
+                if (fit_radius < floor_r) fit_radius = floor_r;
+        }
+        float dist = fit_radius / (fill * MIN(tanw, tanh_));
         if (dist < radius + 0.3f * BS) dist = radius + 0.3f * BS; // keep off the near plane
 
         if (pmedit_snap)
@@ -1170,7 +1335,7 @@ void pmedit_render(VkCommandBuffer cmdbuf)
         float f[3], pv[16], view[16];
         lookit(view, f, peye0, peye1, peye2, 0, camplayer.yaw);
         translate(view, -peye0, -peye1, -peye2);
-        mat4_multiply(pv, main_ubo.proj, view);
+        mat4_multiply(pv, pmedit_proj, view); // the editor's flat projection
 
         VkClearAttachment ca = { .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
                 .clearValue.depthStencil = {1.f, 0} };
@@ -1267,14 +1432,15 @@ void pmedit_render(VkCommandBuffer cmdbuf)
 static int pmedit_pick(float mx, float my, int only, float pad,
                 int *face, int *tu, int *tv, float *hitp)
 {
-        if (!main_ubo.proj[0] || !main_ubo.proj[5]) return -1;
+        if (!pmedit_proj[0] || !pmedit_proj[5]) return -1;
         struct pmodel *mo = &pm_models[my_player];
 
-        // cursor -> world ray, through the editor's leveled frustum
+        // cursor -> world ray, through the editor's own leveled frustum
+        // (the same narrow-FOV projection the model is drawn with)
         float f[3], vm[16];
         lookit(vm, f, 0, 0, 0, 0, camplayer.yaw);
-        float kx = (2.f * mx / screenw - 1.f) / main_ubo.proj[0];
-        float ky = (2.f * my / screenh - 1.f) / main_ubo.proj[5];
+        float kx = (2.f * mx / screenw - 1.f) / pmedit_proj[0];
+        float ky = (2.f * my / screenh - 1.f) / pmedit_proj[5];
         float D[3] = { f[0] + vm[0] * kx + vm[1] * ky,
                        f[1] + vm[4] * kx + vm[5] * ky,
                        f[2] + vm[8] * kx + vm[9] * ky };
@@ -1354,15 +1520,15 @@ static int pmedit_pick(float mx, float my, int only, float pad,
         return best;
 }
 
-// paint the texel under the cursor; only exact hits on the piece's real
-// surface paint. Returns whether the ray hit.
-static int pmedit_paint(int btn)
+// paint the texel under the cursor with the selected swatch's slot; only
+// exact hits on the piece's real surface paint. Returns whether the ray hit.
+static int pmedit_paint()
 {
         int face, tu, tv;
         if (pmedit_sel < 0) return 0;
         if (pmedit_pick(pmedit_mx, pmedit_my, pmedit_sel, 0.f, &face, &tu, &tv, NULL) < 0)
                 return 0;
-        unsigned char c = btn == SDL_BUTTON_LEFT ? PMEDIT_RED : PMEDIT_BLUE;
+        unsigned char c = pmedit_color;
         unsigned char *t = pm_models[my_player].texel[pmedit_sel][face - 1];
         int at = tv * PM_TILE + tu;
         if (PM_TEXGET(t, at) != c)
@@ -1370,6 +1536,56 @@ static int pmedit_paint(int btn)
                 PM_TEXSET(t, at, c);
                 pmodel_upload(my_player);
         }
+        return 1;
+}
+
+// the flood modes' click: FLOOD FILL repaints the clicked texel's connected
+// same-color region on that face (4-way, walled by the face's visible
+// extent); SUPER FLOOD recoats every texel on all six faces - the full
+// 16x16 tiles, not just the visible extents, so a later RESIZE grows into
+// the same color. Returns whether the ray hit the piece.
+static int pmedit_flood_do()
+{
+        int face, tu, tv;
+        if (pmedit_sel < 0) return 0;
+        if (pmedit_pick(pmedit_mx, pmedit_my, pmedit_sel, 0.f, &face, &tu, &tv, NULL) < 0)
+                return 0;
+        struct pmodel *mo = &pm_models[my_player];
+        unsigned char c = pmedit_color;
+        if (pmedit_flood == 2)
+        {
+                memset(mo->texel[pmedit_sel], c | c << 4,
+                                sizeof mo->texel[pmedit_sel]);
+                pmodel_upload(my_player);
+                return 1;
+        }
+        unsigned char *t = mo->texel[pmedit_sel][face - 1];
+        int from = PM_TEXGET(t, tv * PM_TILE + tu);
+        if (from == c) return 1;
+        int eu, ev;
+        pm_face_extent(&mo->piece[pmedit_sel], face, &eu, &ev);
+        // cells recolor as they're pushed, so each enters the stack once
+        short stack[PM_TILE * PM_TILE];
+        int top = 0;
+        stack[top++] = tv * PM_TILE + tu;
+        PM_TEXSET(t, tv * PM_TILE + tu, c);
+        while (top)
+        {
+                int at2 = stack[--top], u = at2 % PM_TILE, v = at2 / PM_TILE;
+                static const signed char du[4] = { 1, -1, 0, 0 },
+                                         dv[4] = { 0, 0, 1, -1 };
+                for (int k = 0; k < 4; k++)
+                {
+                        int nu = u + du[k], nv = v + dv[k];
+                        if (nu < 0 || nv < 0 || nu >= eu || nv >= ev)
+                                continue;
+                        int nat = nv * PM_TILE + nu;
+                        if (PM_TEXGET(t, nat) != from) continue;
+                        PM_TEXSET(t, nat, c);
+                        stack[top++] = nat;
+                }
+        }
+        pmodel_upload(my_player);
         return 1;
 }
 
@@ -1381,6 +1597,7 @@ void pmedit_click(int down)
         if (!down)
         {
                 if (btn == pmedit_paint_btn) pmedit_paint_btn = 0;
+                if (btn == SDL_BUTTON_LEFT) pmedit_pal_drag = pmedit_resize_drag = 0;
                 return;
         }
         if (btn != SDL_BUTTON_LEFT && btn != SDL_BUTTON_RIGHT) return;
@@ -1682,7 +1899,13 @@ void pmedit_click(int down)
                 if (btn == SDL_BUTTON_LEFT && pmedit_pick(pmedit_mx, pmedit_my,
                                 pmedit_sel, 0.f, &face, &tu, &tv, NULL) >= 0)
                 {
+                        // pick the face AND arm a drag from here: dragging
+                        // pushes/pulls it, the arrow keys still work too
                         pmedit_face = face;
+                        pmedit_resize_drag = 1;
+                        pmedit_resize_ax = pmedit_mx;
+                        pmedit_resize_ay = pmedit_my;
+                        pmedit_resize_applied = 0;
                         return;
                 }
                 int hit = pmedit_pick(pmedit_mx, pmedit_my, -1, 0.f,
@@ -1714,21 +1937,154 @@ void pmedit_click(int down)
                 return;
         }
 
+        // the palette panel eats every click on it: a swatch becomes the
+        // paint color, the picker below recolors that swatch's slot (and
+        // keeps tracking the drag), and the backdrop between them is dead -
+        // no backing out of the piece view by a missed swatch
+        if (pmedit_in_panel(pmedit_mx, pmedit_my))
+        {
+                int sw = pmedit_in_swatch(pmedit_mx, pmedit_my);
+                if (sw >= 0) { pmedit_color = sw; return; }
+                if (pmedit_in_flood_btn(pmedit_mx, pmedit_my))
+                {
+                        if (btn == SDL_BUTTON_LEFT)
+                                pmedit_flood = pmedit_flood == 1 ? 0 : 1;
+                        return;
+                }
+                if (pmedit_in_sflood_btn(pmedit_mx, pmedit_my))
+                {
+                        if (btn == SDL_BUTTON_LEFT)
+                                pmedit_flood = pmedit_flood == 2 ? 0 : 2;
+                        return;
+                }
+                if (btn == SDL_BUTTON_LEFT
+                                && pmedit_mx >= PMEDIT_HSL_X0
+                                && pmedit_mx <= PMEDIT_HSL_X1
+                                && pmedit_my >= PMEDIT_HSL_Y0
+                                && pmedit_my <= PMEDIT_HSL_Y1)
+                {
+                        pmedit_pal_drag = 1;
+                        pmedit_pal_pick(pmedit_mx, pmedit_my);
+                }
+                return;
+        }
+
+        // right-click - or shift, ctrl, alt or cmd with any click: whatever
+        // a pixel-editor reflex expects - copies the pointed-at texel's color
+        // to the paint swatch instead of painting; a missed eyedrop does
+        // nothing at all, so a fumbled copy can't back out of the view
+        if (btn == SDL_BUTTON_RIGHT || SDL_GetModState()
+                        & (SDL_KMOD_SHIFT | SDL_KMOD_CTRL | SDL_KMOD_ALT
+                                | SDL_KMOD_GUI))
+        {
+                // eyedrop what the eye sees: this view draws the selection
+                // over everything (on cleared depth), so it wins wherever
+                // the ray touches it, even with another piece physically in
+                // front - the honest-depth rest only count where it misses
+                int hit = pmedit_pick(pmedit_mx, pmedit_my, pmedit_sel, 0.f,
+                                &face, &tu, &tv, NULL);
+                if (hit < 0)
+                        hit = pmedit_pick(pmedit_mx, pmedit_my, -1, 0.f,
+                                        &face, &tu, &tv, NULL);
+                if (hit >= 0)
+                        pmedit_color = PM_TEXGET(
+                                pm_models[my_player].texel[hit][face - 1],
+                                tv * PM_TILE + tu);
+                return;
+        }
+
         // piece view: paint on a true hit; a click that lands on ANOTHER
         // piece switches to it; a near-miss (within a texel) does nothing,
-        // and anything farther backs out to the whole model
-        if (pmedit_paint(btn)) { pmedit_paint_btn = btn; return; }
+        // and anything farther backs out to the whole model. The flood
+        // modes swap in for the brush - one shot per click, no drag
+        if (pmedit_flood)
+        {
+                if (pmedit_flood_do())
+                {
+                        // SUPER FLOOD is a one-shot: hand the brush back after
+                        // the single coat (FLOOD FILL stays on for more fills)
+                        if (pmedit_flood == 2) pmedit_flood = 0;
+                        return;
+                }
+        }
+        else if (pmedit_paint()) { pmedit_paint_btn = btn; return; }
         int hit = pmedit_pick(pmedit_mx, pmedit_my, -1, 0.f, &face, &tu, &tv, NULL);
         if (hit >= 0) { pmedit_sel = hit; return; }
         if (pmedit_pick(pmedit_mx, pmedit_my, pmedit_sel, 1.f, &face, &tu, &tv, NULL) < 0)
                 pmedit_sel = -1;
 }
 
+// a world point through the editor's view-projection to screen pixels
+// (top-left origin, matching the cursor). Returns 0 behind the eye.
+static int pmedit_to_screen(const float *w, float *sx, float *sy)
+{
+        float c[4];
+        for (int r = 0; r < 4; r++)
+                c[r] = pmedit_pv[r] * w[0] + pmedit_pv[r + 4] * w[1]
+                     + pmedit_pv[r + 8] * w[2] + pmedit_pv[r + 12];
+        if (c[3] <= 1e-4f) return 0;
+        *sx = (c[0] / c[3] * 0.5f + 0.5f) * screenw;
+        *sy = (c[1] / c[3] * 0.5f + 0.5f) * screenh;
+        return 1;
+}
+
+// RESIZE drag: push/pull the picked face to follow the cursor. One model px
+// of face travel projects to a known screen vector (the face center vs a
+// point one px out through it); the drag from the anchor, divided by that
+// vector, is exactly how many px to grow (positive) or shrink. Applied
+// relative to the anchor each move, so it self-corrects and never runs away.
+static void pmedit_resize_drag_to(void)
+{
+        struct pmodel *mo = &pm_models[my_player];
+        struct pm_piece *pc = &mo->piece[pmedit_sel];
+        int a = pmedit_axis_of[pmedit_face], side = pmedit_side_of[pmedit_face];
+        float ctr[3] = { pc->corner[0] + pc->dims[0] / 2.f,
+                         pc->corner[1] + pc->dims[1] / 2.f,
+                         pc->corner[2] + pc->dims[2] / 2.f };
+        ctr[a] = side > 0 ? pc->corner[a] + pc->dims[a] : pc->corner[a];
+        float out[3] = { ctr[0], ctr[1], ctr[2] };
+        out[a] += side; // one px in the growing direction
+
+        float w0[4], w1[4], s0x, s0y, s1x, s1y;
+        mat4_f3_multiply(w0, pmedit_mats[pmedit_sel], ctr[0], ctr[1], ctr[2]);
+        mat4_f3_multiply(w1, pmedit_mats[pmedit_sel], out[0], out[1], out[2]);
+        if (!pmedit_to_screen(w0, &s0x, &s0y)
+                        || !pmedit_to_screen(w1, &s1x, &s1y))
+                return;
+        float sn[2] = { s1x - s0x, s1y - s0y };
+        float len2 = sn[0] * sn[0] + sn[1] * sn[1];
+        if (len2 < 1e-3f) return; // face edge-on: nothing to grab
+
+        float drag[2] = { pmedit_mx - pmedit_resize_ax,
+                          pmedit_my - pmedit_resize_ay };
+        int target = (int)roundf((drag[0] * sn[0] + drag[1] * sn[1]) / len2);
+        int changed = 0;
+        while (pmedit_resize_applied < target)
+        {
+                if (!pm_piece_resize(mo, pmedit_sel, pmedit_face, 1)) break;
+                pmedit_resize_applied++;
+                changed = 1;
+        }
+        while (pmedit_resize_applied > target)
+        {
+                if (!pm_piece_resize(mo, pmedit_sel, pmedit_face, 0)) break;
+                pmedit_resize_applied--;
+                changed = 1;
+        }
+        if (changed) pmodel_upload(my_player);
+}
+
 void pmedit_motion()
 {
         pmedit_mx = event.motion.x;
         pmedit_my = event.motion.y;
-        if (pmedit_paint_btn) pmedit_paint(pmedit_paint_btn); // drag to paint
+        if (pmedit_pal_drag) { pmedit_pal_pick(pmedit_mx, pmedit_my); return; }
+        if (pmedit_resize_drag && pmedit_resize && pmedit_face && pmedit_sel >= 0)
+        {
+                pmedit_resize_drag_to();
+                return;
+        }
+        if (pmedit_paint_btn) pmedit_paint(); // drag to paint
 }
 
 // grey backdrops behind the button labels so they read as buttons - solid 2D
@@ -1798,11 +2154,150 @@ static void pmedit_boxes()
         vkCmdDraw(cmdbuf, 24, 1, (nr - 4) * 6, 0); // the always-live buttons
 }
 
+// one quad into the palette panel's vertex stream, a color per corner -
+// same corners, one color = a solid rect; the picker's gradient segments
+// use all four
+static float *pmedit_quad4(float *p, float x0, float y0, float x1, float y1,
+                const float *c00, const float *c10,
+                const float *c01, const float *c11)
+{
+        const struct { float x, y; const float *c; } v[6] = {
+                {x0, y0, c00}, {x1, y1, c11}, {x1, y0, c10},
+                {x1, y1, c11}, {x0, y0, c00}, {x0, y1, c01},
+        };
+        for (int i = 0; i < 6; i++)
+        {
+                *p++ = v[i].x;    *p++ = v[i].y;
+                *p++ = v[i].c[0]; *p++ = v[i].c[1];
+                *p++ = v[i].c[2]; *p++ = v[i].c[3];
+        }
+        return p;
+}
+
+static float *pmedit_quad(float *p, float x0, float y0, float x1, float y1,
+                const float *c)
+{
+        return pmedit_quad4(p, x0, y0, x1, y1, c, c, c, c);
+}
+
+// build and draw the palette panel: backdrop, the 16 swatches (a white ring
+// on the selected one, a checker on transparent), and the hue-lightness
+// picker as six vertex-colored segments - between adjacent primary and
+// secondary corners linear interpolation IS the hue wheel, so the gradient
+// is exact, and pmedit_pal_pick computes the same colors the pixels show
+static void pmedit_palette_ui()
+{
+        struct pmodel *mo = &pm_models[my_player];
+        static float buf[34 * 6 * 6]; // 34 quads is the panel's worst case
+        float *p = buf;
+
+        p = pmedit_quad(p, PMEDIT_SW_X0 - PMEDIT_PAL_PAD,
+                        PMEDIT_SW_Y0 - PMEDIT_PAL_PAD,
+                        PMEDIT_HSL_X1 + PMEDIT_PAL_PAD,
+                        PMEDIT_SF_Y1 + PMEDIT_PAL_PAD,
+                        (float[4]){ 0.08f, 0.08f, 0.10f, 1 });
+
+        // the flood buttons' boxes; their labels ride the font pass and
+        // read yellow while the mode is on, like the right-hand column
+        p = pmedit_quad(p, PMEDIT_HSL_X0, PMEDIT_FF_Y0,
+                        PMEDIT_HSL_X1, PMEDIT_FF_Y1,
+                        (float[4]){ 0.13f, 0.13f, 0.16f, 1 });
+        p = pmedit_quad(p, PMEDIT_HSL_X0, PMEDIT_SF_Y0,
+                        PMEDIT_HSL_X1, PMEDIT_SF_Y1,
+                        (float[4]){ 0.13f, 0.13f, 0.16f, 1 });
+
+        for (int i = 0; i < PM_NR_COLORS; i++)
+        {
+                float x0 = PMEDIT_SW_X0 + i % 8 * PMEDIT_SW_STRIDE;
+                float y0 = PMEDIT_SW_Y0 + i / 8 * PMEDIT_SW_STRIDE;
+                float x1 = x0 + PMEDIT_SW_SZ, y1 = y0 + PMEDIT_SW_SZ;
+                if (i == pmedit_color) // the ring: a bigger white rect under
+                        p = pmedit_quad(p, x0 - 3, y0 - 3, x1 + 3, y1 + 3,
+                                        (float[4]){ 1, 1, 1, 1 });
+                if (!i) // transparent wears the classic light/dark checker
+                {
+                        float xm = x0 + PMEDIT_SW_SZ / 2.f;
+                        float ym = y0 + PMEDIT_SW_SZ / 2.f;
+                        p = pmedit_quad(p, x0, y0, x1, y1,
+                                        (float[4]){ 0.75f, 0.75f, 0.75f, 1 });
+                        p = pmedit_quad(p, x0, y0, xm, ym,
+                                        (float[4]){ 0.4f, 0.4f, 0.4f, 1 });
+                        p = pmedit_quad(p, xm, ym, x1, y1,
+                                        (float[4]){ 0.4f, 0.4f, 0.4f, 1 });
+                        continue;
+                }
+                unsigned c = mo->palette[i];
+                p = pmedit_quad(p, x0, y0, x1, y1, (float[4]){
+                                (c       & 255) / 255.f,
+                                (c >>  8 & 255) / 255.f,
+                                (c >> 16 & 255) / 255.f, 1 });
+        }
+
+        float ym = (PMEDIT_HSL_Y0 + PMEDIT_HSL_Y1) / 2.f;
+        const float wht[4] = { 1, 1, 1, 1 }, blk[4] = { 0, 0, 0, 1 };
+        for (int k = 0; k < 6; k++)
+        {
+                float x0 = PMEDIT_HSL_X0
+                        + (PMEDIT_HSL_X1 - PMEDIT_HSL_X0) * k / 6.f;
+                float x1 = PMEDIT_HSL_X0
+                        + (PMEDIT_HSL_X1 - PMEDIT_HSL_X0) * (k + 1) / 6.f;
+                float h0[4] = { pmedit_hue6[k][0], pmedit_hue6[k][1],
+                                pmedit_hue6[k][2], 1 };
+                float h1[4] = { pmedit_hue6[k + 1][0], pmedit_hue6[k + 1][1],
+                                pmedit_hue6[k + 1][2], 1 };
+                p = pmedit_quad4(p, x0, PMEDIT_HSL_Y0, x1, ym,
+                                wht, wht, h0, h1);
+                p = pmedit_quad4(p, x0, ym, x1, PMEDIT_HSL_Y1,
+                                h0, h1, blk, blk);
+        }
+
+        static struct allocation alloc[MAX_FRAMES_IN_FLIGHT];
+        if (!alloc[vk.currentFrame].buf)
+                vulkan_allocate_vertex_buffer(sizeof buf, &alloc[vk.currentFrame]);
+        vulkan_populate_vertex_buffer(buf, (p - buf) * sizeof *buf,
+                        &alloc[vk.currentFrame]);
+
+        VkCommandBuffer cmdbuf = vk.commandBuffers[vk.imageIndex];
+        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                        vk.pipelines[pmui_pipe].pipeline);
+        VkViewport viewport = { 0, 0, screenw, screenh, 0, 1 };
+        VkRect2D scissor = { {0, 0}, {screenw, screenh} };
+        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
+        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+
+        struct { float proj[16]; } push = {
+                .proj = { 2.f / screenw, 0, 0, 0,
+                          0, 2.f / screenh, 0, 0,
+                          0, 0, 1, 0,
+                         -1, -1, 0, 1 }, // pixel space, y 0 at the top
+        };
+        vkCmdPushConstants(cmdbuf, vk.pipelines[pmui_pipe].layout,
+                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                        0, sizeof push, &push);
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(cmdbuf, 0, 1, &alloc[vk.currentFrame].buf, &offset);
+        vkCmdDraw(cmdbuf, (int)(p - buf) / 6, 1, 0, 0);
+}
+
 void pmedit_draw_ui()
 {
         if (!pmedit_on) return;
 
         pmedit_boxes();
+        if (pmedit_panel_on())
+        {
+                pmedit_palette_ui();
+
+                font_begin(screenw, screenh);
+                font_add_text("FLOOD FILL", PMEDIT_HSL_X0 + 10, PMEDIT_FF_Y0 + 10.f, 3);
+                if (pmedit_flood == 1) font_end(1, 1, 0.25f);
+                else font_end(0.55f, 0.7f, 0.55f);
+
+                font_begin(screenw, screenh);
+                font_add_text("SUPER FLOOD", PMEDIT_HSL_X0 + 10, PMEDIT_SF_Y0 + 10.f, 3);
+                if (pmedit_flood == 2) font_end(1, 1, 0.25f);
+                else font_end(0.55f, 0.7f, 0.55f);
+        }
 
         // piece buttons always show; they grey down to "disabled" when no
         // piece is selected or ANIMATE is playing
@@ -1907,10 +2402,14 @@ void pmedit_draw_ui()
                 "LMB place the part on its new parent   WASD rotate") :
                 pmedit_resize ?
                 (pmedit_face ?
-                "arrows push/pull the face 1px   LMB pick another face   WASD rotate" :
-                "LMB pick a face to resize   WASD rotate") :
+                "drag the face to resize   arrows push/pull 1px   LMB pick another face" :
+                "LMB pick a face, then drag it to resize   WASD rotate") :
                 pmedit_restang ? restbuf :
-                "LMB paint red   RMB paint blue   ctrl-C copy   Del delete   click away to go back";
+                pmedit_flood == 2 ?
+                "LMB recoat the whole piece   RMB copy a color   click away to go back" :
+                pmedit_flood ?
+                "LMB fill the same-color region   RMB copy a color   click away to go back" :
+                "LMB paint   RMB copy a color   ctrl-C copy piece   Del delete   click away to go back";
         float scale = MIN(roundf(screenw / 600.f), roundf(screenh / 400.f));
         if (scale < 1) scale = 1;
         font_begin(screenw, screenh);

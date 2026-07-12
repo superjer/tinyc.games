@@ -708,6 +708,7 @@ int pmodel_pipe;        // player model pipeline (pmodel.vert + shared main.frag
 int pmodel_ghost_pipe;  // same but alpha-blended (editor's see-through preview)
 int pmodel_shadow_pipe; // player model shadow caster (pmodel_shadow.vert + shadow.frag)
 int pmodel_tex_base;    // first texture array layer of the player model face tiles
+int pmui_pipe;          // the editor's 2D palette panel (per-vertex colored quads)
 
 // GPU timestamp queries
 #define GPU_TIMESTAMP_COUNT 8

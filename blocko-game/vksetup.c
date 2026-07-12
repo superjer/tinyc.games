@@ -192,6 +192,21 @@ void vksetup()
         pmodel_ghost_pipe = vulkan_make_pipeline("pmodel.vert", NULL, "main.frag",
                 1, &pmodelBindingDesc, 6, pmodelAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP | PIPE_BLEND);
 
+        // the editor's 2D palette panel: pixel-space quads with per-vertex
+        // color, so the swatches and picker gradient land in one draw
+        VkVertexInputBindingDescription pmuiBindingDesc = {
+                .binding = 0,
+                .stride = sizeof(float) * 6,
+                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+        };
+        VkVertexInputAttributeDescription pmuiAttrDescs[] = {
+                {.location = 0, .binding = 0, .format = VK_FORMAT_R32G32_SFLOAT, .offset = 0},
+                {.location = 1, .binding = 0, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = sizeof(float) * 2},
+        };
+        pmui_pipe = vulkan_make_pipeline("pmui.vert", NULL, "pmui.frag",
+                1, &pmuiBindingDesc, 2, pmuiAttrDescs, NULL, VK_NULL_HANDLE,
+                PIPE_NO_DEPTH_TEST | PIPE_NO_CULL | PIPE_BLEND);
+
         allocate_world();
 
         // Create per-frame UBOs to avoid race conditions
