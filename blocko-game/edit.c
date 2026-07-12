@@ -168,7 +168,7 @@ void set_tile(int x, int y, int z, int t, int orient)
         T_(x, y, z) = t;
         TO_(x, y, z) = orient;
         edit_record(x - scootx, y, z - scootz, t, orient);
-        sim_area_write(x - scootx, y, z - scootz, t);
+        sim_area_write(x - scootx, y, z - scootz, t, orient);
         tile_light_update(x, y, z, old, t);
         patch_edit(x, y, z);
         net_send_edit(x - scootx, y, z - scootz, t, orient);
@@ -181,7 +181,7 @@ void set_tile(int x, int y, int z, int t, int orient)
 void edit_apply_remote(int ax, int ay, int az, int tile, int orient)
 {
         edit_record(ax, ay, az, tile, orient);
-        sim_area_write(ax, ay, az, tile);
+        sim_area_write(ax, ay, az, tile, orient);
 
         int x = ax + scootx, z = az + scootz;
         if (x < 0 || x >= TILESW || z < 0 || z >= TILESD) return;
@@ -234,7 +234,7 @@ void edit_apply_area_chunk(struct warea *a, int acx, int acz)
                 if (!e->used) continue;
                 if ((e->x & ~(CHUNKW-1)) != acx * CHUNKW) continue;
                 if ((e->z & ~(CHUNKD-1)) != acz * CHUNKD) continue;
-                sim_area_set(a, e->x, e->y, e->z, e->tile);
+                sim_area_set(a, e->x, e->y, e->z, e->tile, e->orient);
         }
 }
 

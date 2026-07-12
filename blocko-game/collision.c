@@ -86,16 +86,13 @@ int block_collide(int bx, int by, int bz, struct box box, int wet)
         // a slope collides as a staircase of solid steps rising toward its high
         // side: the sloped top walks like a smooth ramp (each step clears the
         // auto-step in player.c) while the sides and tall back stay solid, so you
-        // no longer slip through the wedge. Facing (tileo) picks the climb axis.
-        // Only the window has orient; a slope in a far sim area (no tileo) falls
-        // back to a full cube, matching "mobs treat slopes as cubes".
+        // no longer slip through the wedge. sim_tileo picks the climb axis from
+        // whichever copy answered (main window or a sim area), so mobs far from
+        // the host walk the same staircase their owner does.
         if (t == GSLP)
         {
-                if (!legit_tile(bx, by, bz))
-                        return collide(box, (struct box){BS*bx, BS*by, BS*bz, BS, BS, BS});
-
                 struct box steps[SLOPE_STEPS];
-                slope_boxes(bx, by, bz, TO_(bx, by, bz), steps);
+                slope_boxes(bx, by, bz, sim_tileo(bx, by, bz), steps);
                 for (int i = 0; i < SLOPE_STEPS; i++)
                         if (collide(box, steps[i]))
                                 return 1;

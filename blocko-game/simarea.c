@@ -23,6 +23,7 @@ void edit_apply_area_chunk(struct warea *a, int acx, int acz);
 
 // area tile addressing by ABSOLUTE coords: slot = absolute masked, no scoot
 #define AREA_T(a, ax, y, az)  (a)->tiles[((az) & (a)->maskd) * (a)->pitchz + ((ax) & (a)->maskw) * (a)->pitchx + (y)]
+#define AREA_TO_(a, ax, y, az) (a)->tileo[((az) & (a)->maskd) * (a)->pitchz + ((ax) & (a)->maskw) * (a)->pitchx + (y)]
 #define AREA_GNDH(a, ax, az)  (a)->gndh[ ((az) & (a)->maskd) * ((a)->maskw + 1) + ((ax) & (a)->maskw)]
 
 // floored block-to-chunk for coords of any sign (B2C truncates toward zero)
@@ -54,6 +55,21 @@ int sim_tile(int wx, int y, int wz)
         if (a)
                 return AREA_T(a, wx - scootx, y, wz - scootz);
         return BARR;
+}
+
+// the orientation (slope facing) of the tile at window coords (wx,y,wz),
+// mirroring sim_tile's source selection: main ring if resident, else the area
+// copy, else 0. Only meaningful for slopes; other tiles ignore it.
+int sim_tileo(int wx, int y, int wz)
+{
+        if (y < 0 || y >= TILESH) return 0;
+        int cx = B2CFLOOR(wx), cz = B2CFLOOR(wz);
+        if (AGEN_(cx, cz))
+                return TO_(wx, y, wz);
+        struct warea *a = sim_area_with_chunk(cx - chunk_scootx, cz - chunk_scootz);
+        if (a)
+                return AREA_TO_(a, wx - scootx, y, wz - scootz);
+        return 0;
 }
 
 int sim_gndh(int wx, int wz)
@@ -94,9 +110,10 @@ static void area_recalc_gndh(struct warea *a, int ax, int az)
 // write one tile into area a's copy (ABSOLUTE coords) and keep the area's
 // gndheight consistent - the same ground rules as tile_light_update, minus
 // the light (areas have none). Also the overlay-replay primitive (edit.c)
-void sim_area_set(struct warea *a, int ax, int ay, int az, int t)
+void sim_area_set(struct warea *a, int ax, int ay, int az, int t, int orient)
 {
         int old = AREA_T(a, ax, ay, az);
+        AREA_TO_(a, ax, ay, az) = orient; // cheap; only slopes ever read it back
         if (old == t) return;
         AREA_T(a, ax, ay, az) = t;
         if (t < LASTSOLID)
@@ -112,7 +129,7 @@ void sim_area_set(struct warea *a, int ax, int ay, int az, int t)
 // Ungenerated copies are skipped: the overlay replays into them when their
 // chunk comes out of the builder. Called wherever the main ring gets edits
 // (set_tile, edit_apply_remote); a no-op unless areas are active (server)
-void sim_area_write(int ax, int ay, int az, int t)
+void sim_area_write(int ax, int ay, int az, int t, int orient)
 {
         int acx = B2CFLOOR(ax), acz = B2CFLOOR(az);
         for (int i = 0; i < NR_PLAYERS; i++)
@@ -124,7 +141,7 @@ void sim_area_write(int ax, int ay, int az, int t)
                         volatile struct chunk_stamp *st =
                                 &a->stamp[acz & SIM_AREA_CMASK][acx & SIM_AREA_CMASK];
                         if (st->ax == acx && st->az == acz)
-                                sim_area_set(a, ax, ay, az, t);
+                                sim_area_set(a, ax, ay, az, t, orient);
                 }
         }
 }
@@ -134,6 +151,7 @@ static void sim_area_alloc(struct warea *a)
         if (!area_sun_scratch)
                 area_sun_scratch = malloc(SIM_AREA_W * SIM_AREA_W * TILESH);
         a->tiles = malloc(SIM_AREA_W * SIM_AREA_W * TILESH);
+        a->tileo = calloc(SIM_AREA_W * SIM_AREA_W * TILESH, 1); // 0 = SLOPE_S default
         a->sun = area_sun_scratch;
         a->gndh = malloc(SIM_AREA_W * SIM_AREA_W);
         a->maskw = SIM_AREA_W - 1;

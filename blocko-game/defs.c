@@ -399,6 +399,7 @@ struct chunk_stamp { int ax, az; };                  // absolute chunk coords a 
 #define SIM_AREA_CMASK (SIM_AREA_CHUNKS - 1)
 struct warea {
         unsigned char *tiles;
+        unsigned char *tileo; // per-tile orientation, parallel to tiles (slope facing)
         unsigned char *sun;   // sim areas: gen scratch only (light = render)
         unsigned char *gndh;
         int maskw, maskd;     // block coord masks (TILESW-1 etc for main)
