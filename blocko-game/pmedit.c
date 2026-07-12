@@ -189,75 +189,105 @@ static void pm_mat_axis(float *m, float x, float y, float z, float a)
         m[2] = z*x*ic - y*s; m[6] = z*y*ic + x*s; m[10] = c + z*z*ic;
 }
 
-// the button column: labels left-align at PMEDIT_BTN_X, hit boxes span it
-#define PMEDIT_BTN_X (screenw - 330)
+// ---------------------------------------------------------------------------
+// button layout: one source of truth
+//
+// The editor shows a different set of buttons depending on what's selected.
+// pmedit_ui_state() names the four cases; pmedit_btn_rect() hands every
+// consumer - the hit-tests, the grey backdrops (pmedit_boxes) and the labels
+// (pmedit_draw_ui) - the SAME pixel rect for a button, so what's drawn is
+// always exactly what's clickable. A button a state doesn't use reports
+// "not present" and simply vanishes.
+//
+//   NONE   nothing selected, the whole model. Top-left X closes the editor; a
+//          MODEL group (LOAD / NEW PART / ANIMATE) rides the top-right.
+//   PIECE  a piece is selected, no tool running. Three right-hand groups -
+//          PART TYPE (the type list + RESTING ANGLE), EDIT GEOMETRY (the four
+//          modal tools) and THIS PART (MAKE COPY / HIDE / DELETE); the paint
+//          palette sits on the left. Top-left BACK deselects.
+//   MODAL  a per-piece tool is running (attach point, move, parent, resize,
+//          resting angle, hide). Every panel clears out: only BACK and a
+//          top-centre title + control line remain.
+//   ANIM   the walk/flail preview plays: BACK stops it, a WALK/FLAIL toggle
+//          sits under the title.
+enum { PMEDIT_S_NONE, PMEDIT_S_PIECE, PMEDIT_S_MODAL, PMEDIT_S_ANIM };
 
-static int pmedit_in_joint_btn(float x, float y)
+static int pmedit_ui_state(void)
 {
-        return pmedit_sel >= 0 &&
-                x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 16 && y <= 76;
+        if (pmedit_animate) return PMEDIT_S_ANIM;
+        if (pmedit_joint || pmedit_socket || pmedit_parent
+                        || pmedit_resize || pmedit_restang || pmedit_hide)
+                return PMEDIT_S_MODAL;
+        if (pmedit_sel >= 0) return PMEDIT_S_PIECE;
+        return PMEDIT_S_NONE;
 }
 
-static int pmedit_in_socket_btn(float x, float y)
+// the button column: labels left-align at PMEDIT_BTN_X, chips span the column
+#define PMEDIT_BTN_X  (screenw - 330)
+#define PMEDIT_COL_X0 (PMEDIT_BTN_X - 10)
+#define PMEDIT_COL_X1 (screenw - 8)
+
+// the PART TYPE list: PM_T_COUNT rows, one per type, inside the top group box
+#define PMEDIT_TYPE_Y0 44
+#define PMEDIT_TYPE_RH 20
+
+enum {
+        PB_BACK, PB_LOAD, PB_NEWPART, PB_ANIMATE,      // NONE + the model group
+        PB_RESTANG,                                    // PART TYPE box
+        PB_JOINT, PB_SOCKET, PB_PARENT, PB_RESIZE,     // EDIT GEOMETRY box
+        PB_COPY, PB_HIDE, PB_DELETE,                   // THIS PART box
+        PB_STYLE,                                       // ANIM
+};
+
+// fill r={x0,y0,x1,y1} with a button's pixel rect; return 1 if the button is
+// present (and clickable) in the current UI state, else 0
+static int pmedit_btn_rect(int b, float r[4])
 {
-        return pmedit_sel >= 0 &&
-                x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 80 && y <= 140;
+        int st = pmedit_ui_state();
+        float x0 = PMEDIT_COL_X0, x1 = PMEDIT_COL_X1;
+        #define PMR(a,bb,c,d) do { r[0]=(a); r[1]=(bb); r[2]=(c); r[3]=(d); return 1; } while (0)
+        switch (b)
+        {
+        case PB_BACK: // X when nothing's selected, BACK otherwise; always up
+                PMR(16, 16, st == PMEDIT_S_NONE ? 60 : 148, 60);
+        case PB_LOAD:    if (st != PMEDIT_S_NONE)  return 0; PMR(x0, 56,  x1, 100);
+        case PB_NEWPART: if (st != PMEDIT_S_NONE)  return 0; PMR(x0, 108, x1, 152);
+        case PB_ANIMATE: if (st != PMEDIT_S_NONE)  return 0; PMR(x0, 160, x1, 204);
+        case PB_RESTANG: if (st != PMEDIT_S_PIECE) return 0; PMR(x0, 252, x1, 292);
+        case PB_JOINT:   if (st != PMEDIT_S_PIECE) return 0; PMR(x0, 340, x1, 384);
+        case PB_SOCKET:  if (st != PMEDIT_S_PIECE) return 0; PMR(x0, 390, x1, 434);
+        case PB_PARENT:  if (st != PMEDIT_S_PIECE) return 0; PMR(x0, 440, x1, 484);
+        case PB_RESIZE:  if (st != PMEDIT_S_PIECE) return 0; PMR(x0, 490, x1, 534);
+        case PB_COPY:    if (st != PMEDIT_S_PIECE) return 0; PMR(x0, 580, x1, 624);
+        case PB_HIDE:    if (st != PMEDIT_S_PIECE) return 0; PMR(x0, 630, x1, 674);
+        case PB_DELETE:  if (st != PMEDIT_S_PIECE) return 0; PMR(x0, 680, x1, 724);
+        case PB_STYLE:   if (st != PMEDIT_S_ANIM)  return 0;
+                PMR(screenw / 2.f - 90, 96, screenw / 2.f + 90, 140);
+        }
+        #undef PMR
+        return 0;
 }
 
-static int pmedit_in_parent_btn(float x, float y)
+static int pmedit_hit(float x, float y, const float r[4])
 {
-        return pmedit_sel >= 0 &&
-                x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 144 && y <= 204;
+        return x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3];
 }
 
-static int pmedit_in_type_btn(float x, float y)
+static int pmedit_in_btn(int b, float x, float y)
 {
-        return pmedit_sel >= 0 &&
-                x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 208 && y <= 268;
+        float r[4];
+        return pmedit_btn_rect(b, r) && pmedit_hit(x, y, r);
 }
 
-static int pmedit_in_resize_btn(float x, float y)
+// which PART TYPE list row is under the cursor (a type index), or -1
+static int pmedit_type_row(float x, float y)
 {
-        return pmedit_sel >= 0 &&
-                x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 272 && y <= 332;
-}
-
-static int pmedit_in_restang_btn(float x, float y)
-{
-        return pmedit_sel >= 0 &&
-                x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 336 && y <= 396;
-}
-
-static int pmedit_in_copy_btn(float x, float y)
-{
-        return pmedit_sel >= 0 &&
-                x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 400 && y <= 460;
-}
-
-static int pmedit_in_delete_btn(float x, float y)
-{
-        return pmedit_sel >= 0 &&
-                x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 464 && y <= 524;
-}
-
-static int pmedit_in_newpart_btn(float x, float y)
-{
-        return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 528 && y <= 588;
-}
-
-static int pmedit_in_animate_btn(float x, float y)
-{
-        return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 592 && y <= 652;
-}
-
-static int pmedit_in_style_btn(float x, float y)
-{
-        return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 656 && y <= 716;
-}
-
-static int pmedit_in_hide_btn(float x, float y)
-{
-        return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 720 && y <= 780;
+        if (pmedit_ui_state() != PMEDIT_S_PIECE) return -1;
+        if (x < PMEDIT_COL_X0 || x > PMEDIT_COL_X1) return -1;
+        if (y < PMEDIT_TYPE_Y0
+                        || y >= PMEDIT_TYPE_Y0 + PM_T_COUNT * PMEDIT_TYPE_RH)
+                return -1;
+        return (int)((y - PMEDIT_TYPE_Y0) / PMEDIT_TYPE_RH);
 }
 
 // the palette panel, top-left, up whenever paint clicks are: 16 swatches in
@@ -268,18 +298,20 @@ static int pmedit_in_hide_btn(float x, float y)
 // picker recolors the SELECTED swatch's palette slot, and every texel
 // wearing that slot follows live. Slot 0 stays transparent forever;
 // painting with it erases (the shader discards texels under half alpha)
+// the panel sits below the top-left BACK button (which owns y 16..60), so
+// every row is pushed down to clear it
 #define PMEDIT_SW_X0     16
-#define PMEDIT_SW_Y0     16
+#define PMEDIT_SW_Y0     72
 #define PMEDIT_SW_SZ     36
 #define PMEDIT_SW_STRIDE 40
 #define PMEDIT_HSL_X0    16
-#define PMEDIT_HSL_Y0    100
+#define PMEDIT_HSL_Y0    156
 #define PMEDIT_HSL_X1    336
-#define PMEDIT_HSL_Y1    340
-#define PMEDIT_FF_Y0     348 // the FLOOD FILL button, full panel width
-#define PMEDIT_FF_Y1     392
-#define PMEDIT_SF_Y0     400 // SUPER FLOOD below it
-#define PMEDIT_SF_Y1     444
+#define PMEDIT_HSL_Y1    396
+#define PMEDIT_FF_Y0     404 // the FLOOD FILL button, full panel width
+#define PMEDIT_FF_Y1     448
+#define PMEDIT_SF_Y0     456 // SUPER FLOOD below it
+#define PMEDIT_SF_Y1     500
 #define PMEDIT_PAL_PAD   8 // the backdrop, and the panel's whole click-eating rect
 
 static int pmedit_panel_on()
@@ -641,13 +673,6 @@ static void pmedit_fill_rects(VkCommandBuffer cmdbuf, struct allocation *alloc,
         VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers(cmdbuf, 0, 1, &alloc[vk.currentFrame].buf, &offset);
         vkCmdDraw(cmdbuf, n * 6, 1, 0, 0);
-}
-
-// the LOAD button, top-left, only in the plain whole-model view
-static int pmedit_in_changemodel_btn(float x, float y)
-{
-        return pmedit_sel < 0 && !pmedit_animate && !pmedit_hide
-                && x >= 16 && x <= 236 && y >= 16 && y <= 60;
 }
 
 struct pm_pick_ent { char label[24]; char path[96]; };
@@ -2173,8 +2198,30 @@ void pmedit_click(int down)
         // the picker overlay eats every click while it's up
         if (pmedit_picker) { pmedit_pick_click(btn); return; }
 
+        int st = pmedit_ui_state();
+
+        // BACK / X, top-left. X (nothing selected) closes the editor; BACK
+        // steps out one level - a running tool or the anim back to the piece
+        // view, the plain piece view back to the whole model
+        if (pmedit_in_btn(PB_BACK, pmedit_mx, pmedit_my))
+        {
+                if (btn != SDL_BUTTON_LEFT) return;
+                if (st == PMEDIT_S_NONE) { pmedit_toggle(); return; }
+                pmedit_newpart_cancel(); // an unplaced NEW PART/copy doesn't survive
+                pmedit_animate = 0;
+                if (st == PMEDIT_S_MODAL)
+                {
+                        pmedit_joint = pmedit_socket = pmedit_parent = 0;
+                        pmedit_resize = pmedit_face = pmedit_restang = 0;
+                        pmedit_hide = 0;
+                        return;
+                }
+                pmedit_sel = -1; // piece view -> whole model
+                return;
+        }
+
         // LOAD opens the picker (whole-model view only)
-        if (pmedit_in_changemodel_btn(pmedit_mx, pmedit_my))
+        if (pmedit_in_btn(PB_LOAD, pmedit_mx, pmedit_my))
         {
                 if (btn == SDL_BUTTON_LEFT) pmedit_picker_open();
                 return;
@@ -2182,7 +2229,7 @@ void pmedit_click(int down)
 
         // STYLE toggles the model's animation style; it sits above the "any
         // click stops ANIMATE" rule so you can A/B styles while it plays
-        if (pmedit_in_style_btn(pmedit_mx, pmedit_my))
+        if (pmedit_in_btn(PB_STYLE, pmedit_mx, pmedit_my))
         {
                 struct pmodel *mo = &pm_models[my_player];
                 mo->style = mo->style == PM_STYLE_WALK ? PM_STYLE_FLAIL
@@ -2192,22 +2239,19 @@ void pmedit_click(int down)
 
         if (pmedit_animate) { pmedit_animate = 0; return; } // any click stops it
 
-        if (pmedit_in_hide_btn(pmedit_mx, pmedit_my))
+        // HIDE (THIS PART group, a piece must be selected): with pieces
+        // already hidden it's the one-click bring-them-all-back; otherwise it
+        // drops into hide mode, keeping the selection, and every piece clicked
+        // ghosts away until the click lands somewhere else
+        if (pmedit_in_btn(PB_HIDE, pmedit_mx, pmedit_my))
         {
                 if (btn != SDL_BUTTON_LEFT) return;
-                if (pmedit_hide) { pmedit_hide = 0; return; } // done hiding
                 if (pmedit_hidden) { pmedit_hidden = 0; return; } // UNHIDE (n)
-                // HIDE mode: back out to the whole model, then every piece
-                // clicked ghosts away until the click lands somewhere else
-                pmedit_newpart_cancel();
                 pmedit_hide = 1;
-                pmedit_sel = -1;
-                pmedit_joint = pmedit_socket = pmedit_parent = 0;
-                pmedit_resize = pmedit_face = pmedit_restang = 0;
                 return;
         }
 
-        if (pmedit_in_joint_btn(pmedit_mx, pmedit_my))
+        if (pmedit_in_btn(PB_JOINT, pmedit_mx, pmedit_my))
         {
                 if (btn == SDL_BUTTON_LEFT)
                 {
@@ -2217,7 +2261,7 @@ void pmedit_click(int down)
                 }
                 return;
         }
-        if (pmedit_in_socket_btn(pmedit_mx, pmedit_my))
+        if (pmedit_in_btn(PB_SOCKET, pmedit_mx, pmedit_my))
         {
                 if (btn == SDL_BUTTON_LEFT)
                 {
@@ -2227,7 +2271,7 @@ void pmedit_click(int down)
                 }
                 return;
         }
-        if (pmedit_in_parent_btn(pmedit_mx, pmedit_my))
+        if (pmedit_in_btn(PB_PARENT, pmedit_mx, pmedit_my))
         {
                 if (btn != SDL_BUTTON_LEFT) return;
                 struct pmodel *mo = &pm_models[my_player];
@@ -2265,15 +2309,17 @@ void pmedit_click(int down)
                 pmedit_resize = pmedit_face = pmedit_restang = 0;
                 return;
         }
-        if (pmedit_in_type_btn(pmedit_mx, pmedit_my))
+        // PART TYPE list: click a row to set the piece's type outright
         {
-                // left cycles forward, right cycles back
-                unsigned char *ty = &pm_models[my_player].piece[pmedit_sel].type;
-                *ty = (*ty + (btn == SDL_BUTTON_LEFT ? 1 : PM_T_COUNT - 1))
-                                % PM_T_COUNT;
-                return;
+                int trow = pmedit_type_row(pmedit_mx, pmedit_my);
+                if (trow >= 0)
+                {
+                        if (btn == SDL_BUTTON_LEFT)
+                                pm_models[my_player].piece[pmedit_sel].type = trow;
+                        return;
+                }
         }
-        if (pmedit_in_resize_btn(pmedit_mx, pmedit_my))
+        if (pmedit_in_btn(PB_RESIZE, pmedit_mx, pmedit_my))
         {
                 if (btn == SDL_BUTTON_LEFT)
                 {
@@ -2284,7 +2330,7 @@ void pmedit_click(int down)
                 }
                 return;
         }
-        if (pmedit_in_restang_btn(pmedit_mx, pmedit_my))
+        if (pmedit_in_btn(PB_RESTANG, pmedit_mx, pmedit_my))
         {
                 if (btn == SDL_BUTTON_LEFT)
                 {
@@ -2295,17 +2341,17 @@ void pmedit_click(int down)
                 }
                 return;
         }
-        if (pmedit_in_copy_btn(pmedit_mx, pmedit_my))
+        if (pmedit_in_btn(PB_COPY, pmedit_mx, pmedit_my))
         {
                 if (btn == SDL_BUTTON_LEFT) pmedit_copy();
                 return;
         }
-        if (pmedit_in_delete_btn(pmedit_mx, pmedit_my))
+        if (pmedit_in_btn(PB_DELETE, pmedit_mx, pmedit_my))
         {
                 if (btn == SDL_BUTTON_LEFT) pmedit_delete();
                 return;
         }
-        if (pmedit_in_newpart_btn(pmedit_mx, pmedit_my))
+        if (pmedit_in_btn(PB_NEWPART, pmedit_mx, pmedit_my))
         {
                 struct pmodel *mo = &pm_models[my_player];
                 if (btn != SDL_BUTTON_LEFT || mo->nr_pieces >= PM_MAX_PIECES)
@@ -2334,10 +2380,8 @@ void pmedit_click(int down)
                 pmedit_hide = 0;
                 return;
         }
-        if (pmedit_in_animate_btn(pmedit_mx, pmedit_my))
+        if (pmedit_in_btn(PB_ANIMATE, pmedit_mx, pmedit_my))
         {
-                // keeps the selection and modes: stopping puts you right
-                // back where you were
                 if (btn == SDL_BUTTON_LEFT)
                 {
                         pmedit_animate = 1;
@@ -2665,71 +2709,68 @@ void pmedit_motion()
         if (pmedit_paint_btn) pmedit_paint(); // drag to paint
 }
 
-// grey backdrops behind the button labels so they read as buttons - solid 2D
-// rects on the cursor pipeline, recorded before the text batches so the
-// labels land on top. The boxes ARE the hit rects.
+// the editor's flat 2D furniture: the group-container panels, then the button
+// chips on top, then the lit row behind the selected type. All solid rects on
+// the cursor pipeline, recorded before the text so the labels land on top.
+// Geometry comes straight from pmedit_btn_rect, so the chips ARE the hit rects.
 static void pmedit_boxes()
 {
-        float r[12][4];
-        int nr = 0;
-        for (int i = 0; i < 8; i++) // the piece buttons, DELETE last
-        {
-                r[nr][0] = PMEDIT_BTN_X - 10; r[nr][1] = 16 + 64 * i;
-                r[nr][2] = screenw - 8;       r[nr][3] = 76 + 64 * i;
-                nr++;
-        }
-        for (int i = 0; i < 4; i++) // NEW PART, ANIMATE, STYLE, HIDE: always live
-        {
-                r[nr][0] = PMEDIT_BTN_X - 10; r[nr][1] = 528 + 64 * i;
-                r[nr][2] = screenw - 8;       r[nr][3] = 588 + 64 * i;
-                nr++;
-        }
-
-        float buf[12 * 12], *p = buf;
-        for (int i = 0; i < nr; i++)
-        {
-                float x0 = r[i][0], y0 = r[i][1], x1 = r[i][2], y1 = r[i][3];
-                *p++ = x0; *p++ = y0; *p++ = x1; *p++ = y1; *p++ = x1; *p++ = y0;
-                *p++ = x1; *p++ = y1; *p++ = x0; *p++ = y0; *p++ = x0; *p++ = y1;
-        }
-
-        static struct allocation alloc[MAX_FRAMES_IN_FLIGHT];
-        if (!alloc[vk.currentFrame].buf)
-                vulkan_allocate_vertex_buffer(sizeof buf, &alloc[vk.currentFrame]);
-        vulkan_populate_vertex_buffer(buf, (p - buf) * sizeof *buf,
-                        &alloc[vk.currentFrame]);
-
         VkCommandBuffer cmdbuf = vk.commandBuffers[vk.imageIndex];
-        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                        vk.pipelines[cursor_pipe].pipeline);
-        VkViewport viewport = { 0, 0, screenw, screenh, 0, 1 };
-        VkRect2D scissor = { {0, 0}, {screenw, screenh} };
-        vkCmdSetViewport(cmdbuf, 0, 1, &viewport);
-        vkCmdSetScissor(cmdbuf, 0, 1, &scissor);
+        int st = pmedit_ui_state();
 
-        // the piece buttons grey down further when they don't apply
-        int enabled = pmedit_sel >= 0 && !pmedit_animate;
-        struct { float proj[16]; float color[3]; float pad; } push = {
-                .proj = { 2.f / screenw, 0, 0, 0,
-                          0, 2.f / screenh, 0, 0,
-                          0, 0, 1, 0,
-                         -1, -1, 0, 1 }, // pixel space, y 0 at the top
-        };
-        memcpy(push.color, enabled ? (float[3]){ 0.13f, 0.13f, 0.16f }
-                                   : (float[3]){ 0.08f, 0.08f, 0.10f },
-                        sizeof push.color);
-        vkCmdPushConstants(cmdbuf, vk.pipelines[cursor_pipe].layout,
-                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                        0, sizeof push, &push);
-        VkDeviceSize offset = 0;
-        vkCmdBindVertexBuffers(cmdbuf, 0, 1, &alloc[vk.currentFrame].buf, &offset);
-        vkCmdDraw(cmdbuf, (nr - 4) * 6, 1, 0, 0); // piece buttons
+        float grp[4][4]; int ng = 0;   // group-container panels
+        float chip[16][4]; int nc = 0; // button chips
+        struct pmodel *mo = &pm_models[my_player];
 
-        memcpy(push.color, (float[3]){ 0.13f, 0.13f, 0.16f }, sizeof push.color);
-        vkCmdPushConstants(cmdbuf, vk.pipelines[cursor_pipe].layout,
-                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                        0, sizeof push, &push);
-        vkCmdDraw(cmdbuf, 24, 1, (nr - 4) * 6, 0); // the always-live buttons
+        // BACK / X rides every non-picker state
+        if (pmedit_btn_rect(PB_BACK, chip[nc])) nc++;
+
+        static const int piece_btns[] = {
+                PB_RESTANG, PB_JOINT, PB_SOCKET, PB_PARENT,
+                PB_RESIZE, PB_COPY, PB_HIDE, PB_DELETE };
+        static const int model_btns[] = { PB_LOAD, PB_NEWPART, PB_ANIMATE };
+
+        if (st == PMEDIT_S_NONE)
+        {
+                grp[ng][0] = PMEDIT_COL_X0; grp[ng][1] = 24;
+                grp[ng][2] = PMEDIT_COL_X1; grp[ng][3] = 212; ng++;
+                for (int i = 0; i < 3; i++)
+                        if (pmedit_btn_rect(model_btns[i], chip[nc])) nc++;
+        }
+        else if (st == PMEDIT_S_PIECE)
+        {
+                static const float box[3][2] = {
+                        { 16, 300 }, { 312, 540 }, { 552, 728 } };
+                for (int i = 0; i < 3; i++)
+                {
+                        grp[ng][0] = PMEDIT_COL_X0; grp[ng][1] = box[i][0];
+                        grp[ng][2] = PMEDIT_COL_X1; grp[ng][3] = box[i][1]; ng++;
+                }
+                for (int i = 0; i < 8; i++)
+                        if (pmedit_btn_rect(piece_btns[i], chip[nc])) nc++;
+        }
+        else if (st == PMEDIT_S_ANIM)
+        {
+                if (pmedit_btn_rect(PB_STYLE, chip[nc])) nc++;
+        }
+        // MODAL: nothing but the BACK chip already queued
+
+        static struct allocation ga[MAX_FRAMES_IN_FLIGHT];
+        static struct allocation ca[MAX_FRAMES_IN_FLIGHT];
+        pmedit_fill_rects(cmdbuf, ga, grp, ng, (float[3]){ 0.05f, 0.05f, 0.07f });
+
+        // the lit bar behind the selected type row, under its chip layer
+        if (st == PMEDIT_S_PIECE && pmedit_sel >= 0)
+        {
+                int ty = mo->piece[pmedit_sel].type;
+                float hr[1][4] = {{ PMEDIT_COL_X0 + 4,
+                        PMEDIT_TYPE_Y0 + ty * PMEDIT_TYPE_RH, PMEDIT_COL_X1 - 4,
+                        PMEDIT_TYPE_Y0 + ty * PMEDIT_TYPE_RH + PMEDIT_TYPE_RH }};
+                static struct allocation ha[MAX_FRAMES_IN_FLIGHT];
+                pmedit_fill_rects(cmdbuf, ha, hr, 1, (float[3]){ 0.16f, 0.26f, 0.16f });
+        }
+
+        pmedit_fill_rects(cmdbuf, ca, chip, nc, (float[3]){ 0.13f, 0.13f, 0.16f });
 }
 
 // one quad into the palette panel's vertex stream, a color per corner -
@@ -3232,7 +3273,14 @@ static void pmedit_cursor_ui()
         const char **g = pmg_pointer;
         int hx = 0, hy = 0;
         float gs = 2.f;
-        int over_ui = pmedit_mx >= PMEDIT_BTN_X - 10
+        // the right column only counts as UI where it actually holds buttons
+        // (NONE and PIECE); modal/anim states leave it empty, so the tool glyph
+        // should show over there. BACK and the anim STYLE chip are always UI.
+        int st = pmedit_ui_state();
+        int over_ui = pmedit_in_btn(PB_BACK, pmedit_mx, pmedit_my)
+                || pmedit_in_btn(PB_STYLE, pmedit_mx, pmedit_my)
+                || ((st == PMEDIT_S_NONE || st == PMEDIT_S_PIECE)
+                        && pmedit_mx >= PMEDIT_BTN_X - 10)
                 || (pmedit_panel_on() && pmedit_in_panel(pmedit_mx, pmedit_my));
         if (over_ui)
                 ; // pointer
@@ -3352,156 +3400,183 @@ static void pmedit_pick_ui(void)
         pmedit_cursor_ui();
 }
 
+// a button's label, vertically centred in its chip and left-padded; drawn
+// yellow when its mode is active, else in (cr,cg,cb). No-op if the button
+// isn't present in this state.
+static void pmedit_label(int b, const char *s, float scale, int active,
+                float cr, float cg, float cb)
+{
+        float r[4];
+        if (!pmedit_btn_rect(b, r)) return;
+        float y = r[1] + ((r[3] - r[1]) - 12 * scale) / 2.f;
+        font_begin(screenw, screenh);
+        font_add_text((char *)s, r[0] + 12, y, scale);
+        if (active) font_end(1, 1, 0.25f);
+        else font_end(cr, cg, cb);
+}
+
+// horizontally centred text at a given baseline
+static void pmedit_center(const char *s, float y, float scale,
+                float cr, float cg, float cb)
+{
+        font_begin(screenw, screenh);
+        font_add_text((char *)s, screenw / 2.f - strlen(s) * 4.f * scale, y, scale);
+        font_end(cr, cg, cb);
+}
+
+// a small heading at the top of a right-column group box
+static void pmedit_group_head(const char *s, float y)
+{
+        font_begin(screenw, screenh);
+        font_add_text((char *)s, PMEDIT_COL_X0 + 8, y, 2);
+        font_end(0.5f, 0.55f, 0.62f);
+}
+
 void pmedit_draw_ui()
 {
         if (!pmedit_on) return;
         if (pmedit_picker) { pmedit_pick_ui(); return; }
 
         pmedit_boxes();
+        int st = pmedit_ui_state();
+        struct pmodel *mo = &pm_models[my_player];
 
-        // LOAD button, top-left in the plain whole-model view
-        if (pmedit_sel < 0 && !pmedit_animate && !pmedit_hide)
+        float hs = MIN(roundf(screenw / 600.f), roundf(screenh / 400.f));
+        if (hs < 1) hs = 1;
+        float hy = screenh - 30.f * hs; // bottom hint baseline
+
+        // BACK / X, top-left in every editing state
         {
-                static struct allocation cmbg[MAX_FRAMES_IN_FLIGHT];
-                float r[1][4] = {{ 16, 16, 236, 60 }};
-                pmedit_fill_rects(vk.commandBuffers[vk.imageIndex], cmbg, r, 1,
-                                (float[3]){ 0.13f, 0.14f, 0.20f });
+                float r[4]; pmedit_btn_rect(PB_BACK, r);
                 font_begin(screenw, screenh);
-                font_add_text("LOAD", 30.f, 30.f, 3);
-                font_end(0.7f, 0.85f, 1.f);
+                if (st == PMEDIT_S_NONE) font_add_text("X", r[0] + 16, r[1] + 8, 3);
+                else font_add_text("< BACK", r[0] + 12, r[1] + 12, 2);
+                font_end(0.85f, 0.85f, 0.92f);
         }
-        if (pmedit_panel_on())
-        {
-                pmedit_palette_ui();
 
+        if (st == PMEDIT_S_NONE)
+        {
+                pmedit_center("EDIT MODEL", 22.f, 2, 0.6f, 0.65f, 0.72f);
+                pmedit_group_head("MODEL", 30.f);
+                pmedit_label(PB_LOAD,    "LOAD",     3, 0, 0.7f, 0.85f, 1.f);
+                pmedit_label(PB_NEWPART, "NEW PART", 3, 0, 0.55f, 0.7f, 0.55f);
+                pmedit_label(PB_ANIMATE, "ANIMATE",  3, 0, 0.55f, 0.7f, 0.55f);
+                pmedit_center("click a piece to edit   WASD rotate   X or U close",
+                                hy, hs, 1, 1, 1);
+                pmedit_cursor_ui();
+                return;
+        }
+
+        if (st == PMEDIT_S_PIECE)
+        {
+                // the paint palette + its flood labels, down the left side
+                pmedit_palette_ui();
                 font_begin(screenw, screenh);
                 font_add_text("FLOOD FILL", PMEDIT_HSL_X0 + 10, PMEDIT_FF_Y0 + 10.f, 3);
                 if (pmedit_flood == 1) font_end(1, 1, 0.25f);
                 else font_end(0.55f, 0.7f, 0.55f);
-
                 font_begin(screenw, screenh);
                 font_add_text("SUPER FLOOD", PMEDIT_HSL_X0 + 10, PMEDIT_SF_Y0 + 10.f, 3);
                 if (pmedit_flood == 2) font_end(1, 1, 0.25f);
                 else font_end(0.55f, 0.7f, 0.55f);
+
+                // group 1 - PART TYPE: the type as a list, lit row selected,
+                // RESTING ANGLE bundled beneath it
+                pmedit_group_head("PART TYPE", 20.f);
+                int ty = mo->piece[pmedit_sel].type;
+                for (int i = 0; i < PM_T_COUNT; i++)
+                {
+                        font_begin(screenw, screenh);
+                        font_add_text((char *)pmedit_type_name[i],
+                                PMEDIT_COL_X0 + 12,
+                                PMEDIT_TYPE_Y0 + i * PMEDIT_TYPE_RH + 3, 2);
+                        if (i == ty) font_end(0.85f, 1.f, 0.85f);
+                        else font_end(0.45f, 0.5f, 0.45f);
+                }
+                pmedit_label(PB_RESTANG, "RESTING ANGLE", 2, pmedit_restang,
+                                0.55f, 0.7f, 0.55f);
+
+                // group 2 - EDIT GEOMETRY: the four modal tools
+                pmedit_group_head("EDIT GEOMETRY", 316.f);
+                pmedit_label(PB_JOINT, "ATTACHMENT POINT", 2, pmedit_joint,
+                                0.55f, 0.7f, 0.55f);
+                pmedit_label(PB_SOCKET, "MOVE PART", 2, pmedit_socket,
+                                0.55f, 0.7f, 0.55f);
+                pmedit_label(PB_PARENT,
+                                mo->piece[pmedit_sel].parent >= 0
+                                        ? "DETACH" : "SELECT PARENT",
+                                2, 0, 1.f, 0.35f, 0.66f); // pink like the rims
+                pmedit_label(PB_RESIZE, "RESIZE", 2, pmedit_resize,
+                                0.55f, 0.7f, 0.55f);
+
+                // group 3 - THIS PART: copy / hide / delete, one contained box
+                pmedit_group_head("THIS PART", 556.f);
+                int can_new = mo->nr_pieces < PM_MAX_PIECES;
+                pmedit_label(PB_COPY, "MAKE COPY", 2, 0,
+                                can_new ? 0.55f : 0.3f, can_new ? 0.7f : 0.3f,
+                                can_new ? 0.55f : 0.3f);
+                int nhid = 0;
+                for (unsigned m = pmedit_hidden; m; m >>= 1) nhid += m & 1;
+                char hidebuf[24] = "HIDE";
+                if (nhid) sprintf(hidebuf, "UNHIDE (%d)", nhid);
+                pmedit_label(PB_HIDE, hidebuf, 2, 0, 0.55f, 0.7f, 0.55f);
+                pmedit_label(PB_DELETE, "DELETE", 2, 0, 0.8f, 0.35f, 0.35f);
+
+                char *hint = pmedit_flood == 2 ?
+                        "LMB recoat the whole piece   RMB copy a color" :
+                        pmedit_flood ?
+                        "LMB fill the same-color region   RMB copy a color" :
+                        "LMB paint   RMB copy a color   ctrl-C copy piece   Del delete";
+                pmedit_center(hint, hy, hs, 1, 1, 1);
+                pmedit_cursor_ui();
+                return;
         }
 
-        // piece buttons always show; they grey down to "disabled" when no
-        // piece is selected or ANIMATE is playing
-        int enabled = pmedit_sel >= 0 && !pmedit_animate;
-        float dim = enabled ? 0.55f : 0.28f;
-
-        font_begin(screenw, screenh);
-        font_add_text("PLACE ATTACHMENT POINT", PMEDIT_BTN_X, 34.f, 2);
-        if (enabled && pmedit_joint) font_end(1, 1, 0.25f);
-        else font_end(dim, dim, dim);
-
-        font_begin(screenw, screenh);
-        font_add_text("MOVE PART", PMEDIT_BTN_X, 92.f, 3);
-        if (enabled && pmedit_socket) font_end(1, 1, 0.25f);
-        else font_end(dim, dim, dim);
-
-        font_begin(screenw, screenh);
-        font_add_text(pmedit_sel >= 0
-                        && pm_models[my_player].piece[pmedit_sel].parent >= 0
-                        ? "DETACH" : "SELECT PARENT", PMEDIT_BTN_X, 156.f, 3);
-        if (enabled && pmedit_parent) font_end(1, 0.55f, 0.8f);
-        else if (enabled) font_end(1, 0.27f, 0.63f); // pink like the rims
-        else font_end(dim, dim, dim);
-
-        font_begin(screenw, screenh);
-        font_add_text(pmedit_sel >= 0 ? (char *)pmedit_type_name[
-                        pm_models[my_player].piece[pmedit_sel].type] : "TYPE",
-                        PMEDIT_BTN_X, 220.f, 3);
-        if (enabled) font_end(0.55f, 0.7f, 0.55f);
-        else font_end(dim, dim, dim);
-
-        font_begin(screenw, screenh);
-        font_add_text("RESIZE", PMEDIT_BTN_X, 284.f, 3);
-        if (enabled && pmedit_resize) font_end(1, 1, 0.25f);
-        else font_end(dim, dim, dim);
-
-        font_begin(screenw, screenh);
-        font_add_text("RESTING ANGLE", PMEDIT_BTN_X, 348.f, 3);
-        if (enabled && pmedit_restang) font_end(1, 1, 0.25f);
-        else font_end(dim, dim, dim);
-
-        int can_new = pm_models[my_player].nr_pieces < PM_MAX_PIECES
-                        && !pmedit_animate;
-        font_begin(screenw, screenh);
-        font_add_text("MAKE COPY", PMEDIT_BTN_X, 412.f, 3);
-        if (enabled && can_new) font_end(0.55f, 0.7f, 0.55f);
-        else font_end(0.28f, 0.28f, 0.28f);
-
-        font_begin(screenw, screenh);
-        font_add_text("DELETE", PMEDIT_BTN_X, 476.f, 3);
-        if (enabled) font_end(0.8f, 0.35f, 0.35f);
-        else font_end(dim, dim, dim);
-
-        font_begin(screenw, screenh);
-        font_add_text("NEW PART", PMEDIT_BTN_X, 540.f, 3);
-        if (can_new) font_end(0.55f, 0.7f, 0.55f);
-        else font_end(0.28f, 0.28f, 0.28f);
-
-        font_begin(screenw, screenh);
-        font_add_text("ANIMATE", PMEDIT_BTN_X, 604.f, 3);
-        if (pmedit_animate) font_end(1, 1, 0.25f);
-        else font_end(0.55f, 0.55f, 0.55f);
-
-        font_begin(screenw, screenh);
-        font_add_text(pm_models[my_player].style == PM_STYLE_FLAIL ?
-                        "FLAIL" : "WALK", PMEDIT_BTN_X, 668.f, 3);
-        font_end(0.55f, 0.7f, 0.55f);
-
-        // with pieces hidden and the mode off, the button turns into the
-        // one-click bring-them-all-back
-        int nhid = 0;
-        for (unsigned m = pmedit_hidden; m; m >>= 1) nhid += m & 1;
-        char hidebuf[24] = "HIDE";
-        if (nhid && !pmedit_hide) sprintf(hidebuf, "UNHIDE (%d)", nhid);
-        font_begin(screenw, screenh);
-        font_add_text(hidebuf, PMEDIT_BTN_X, 732.f, 3);
-        if (pmedit_hide) font_end(1, 1, 0.25f);
-        else font_end(0.55f, 0.7f, 0.55f);
-
-        // RESTING ANGLE reads its live numbers off the hint line
+        // MODAL or ANIM: a top-centre title + a control line, panels cleared
         static char restbuf[80];
         if (pmedit_restang && pmedit_sel >= 0)
                 sprintf(restbuf, "PITCH %+d   YAW %+d   ROLL %+d"
                         "   arrows pitch/yaw   Q/E roll",
-                        pm_models[my_player].piece[pmedit_sel].rest[0],
-                        pm_models[my_player].piece[pmedit_sel].rest[1],
-                        pm_models[my_player].piece[pmedit_sel].rest[2]);
+                        mo->piece[pmedit_sel].rest[0],
+                        mo->piece[pmedit_sel].rest[1],
+                        mo->piece[pmedit_sel].rest[2]);
 
-        char *hint = pmedit_animate ?
-                "WASD rotate   click anywhere to stop" :
-                pmedit_hide ?
-                "click a piece to hide it   click away when done   WASD rotate" :
-                pmedit_sel < 0 ?
-                "click a piece to paint it   WASD rotate   U done" :
-                pmedit_joint ?
+        char *title = pmedit_joint  ? "PLACE ATTACHMENT POINT" :
+                      pmedit_socket ? "MOVE PART" :
+                      pmedit_parent ? (pmedit_newpart ? "PLACE NEW PART"
+                                                      : "SELECT PARENT") :
+                      pmedit_resize  ? "RESIZE" :
+                      pmedit_restang ? "RESTING ANGLE" :
+                      pmedit_hide    ? "HIDE PARTS" : "ANIMATE";
+        char *sub = pmedit_joint ?
                 "point to preview   LMB place the point   arrows nudge   WASD rotate" :
                 pmedit_socket ?
                 "point to preview   LMB place the part   arrows nudge   WASD rotate" :
                 pmedit_parent ?
                 (pmedit_newpart ?
-                "LMB place the new piece on a parent   WASD rotate" :
-                "LMB place the part on its new parent   WASD rotate") :
+                "LMB place the new piece on a parent   BACK cancels" :
+                "LMB place the part on its new parent   BACK cancels") :
                 pmedit_resize ?
                 (pmedit_face ?
                 "drag the face to resize   arrows push/pull 1px   LMB pick another face" :
                 "LMB pick a face, then drag it to resize   WASD rotate") :
                 pmedit_restang ? restbuf :
-                pmedit_flood == 2 ?
-                "LMB recoat the whole piece   RMB copy a color   click away to go back" :
-                pmedit_flood ?
-                "LMB fill the same-color region   RMB copy a color   click away to go back" :
-                "LMB paint   RMB copy a color   ctrl-C copy piece   Del delete   click away to go back";
-        float scale = MIN(roundf(screenw / 600.f), roundf(screenh / 400.f));
-        if (scale < 1) scale = 1;
-        font_begin(screenw, screenh);
-        font_add_text(hint, screenw / 2.f - strlen(hint) * 4.f * scale,
-                        screenh - 30.f * scale, 0);
-        font_end(1, 1, 1);
+                pmedit_hide ?
+                "click parts to hide them   click away or BACK when done   WASD rotate" :
+                "WASD rotate   click anywhere or BACK to stop";
+
+        // pink title in the parent flow to match its rims, yellow otherwise
+        if (pmedit_parent) pmedit_center(title, 20.f, 3, 1, 0.55f, 0.8f);
+        else               pmedit_center(title, 20.f, 3, 1, 1, 0.25f);
+        pmedit_center(sub, 62.f, 1, 0.85f, 0.85f, 0.9f);
+
+        // the WALK/FLAIL toggle rides under the title, ANIMATE only
+        if (st == PMEDIT_S_ANIM)
+        {
+                float r[4]; pmedit_btn_rect(PB_STYLE, r);
+                pmedit_center(mo->style == PM_STYLE_FLAIL ? "FLAIL" : "WALK",
+                                r[1] + 10, 2, 0.7f, 0.85f, 0.7f);
+        }
 
         pmedit_cursor_ui(); // the tool cursor, on top of everything
 }
