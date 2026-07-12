@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "block_geom.glsl"
 
 // Mob shadow pass: same instanced quads as mob.vert, spun about the vertical
 // axis so a mob's shadow matches its facing. Depth-only; pairs with shadow.frag.
@@ -30,46 +32,13 @@ layout(push_constant) uniform Push {
 
 void main(void) {
     vec4 a, b, c, d;
+    vec3 face_normal;    // received from block_geom; unused in the depth pass
+    float sidel;         // received from block_geom; unused in the depth pass
     float bs = push.bs;
 
-    switch (int(orient_in)) {
-        case 1: // UP
-            a = vec4(0, 0, 0, 0);
-            b = vec4(bs, 0, 0, 0);
-            c = vec4(0, 0, bs, 0);
-            d = vec4(bs, 0, bs, 0);
-            break;
-        case 2: // EAST
-            a = vec4(bs, 0, bs, 0);
-            b = vec4(bs, 0, 0, 0);
-            c = vec4(bs, bs, bs, 0);
-            d = vec4(bs, bs, 0, 0);
-            break;
-        case 3: // NORTH
-            a = vec4(0, 0, bs, 0);
-            b = vec4(bs, 0, bs, 0);
-            c = vec4(0, bs, bs, 0);
-            d = vec4(bs, bs, bs, 0);
-            break;
-        case 4: // WEST
-            a = vec4(0, 0, 0, 0);
-            b = vec4(0, 0, bs, 0);
-            c = vec4(0, bs, 0, 0);
-            d = vec4(0, bs, bs, 0);
-            break;
-        case 5: // SOUTH
-            a = vec4(bs, 0, 0, 0);
-            b = vec4(0, 0, 0, 0);
-            c = vec4(bs, bs, 0, 0);
-            d = vec4(0, bs, 0, 0);
-            break;
-        case 6: // DOWN
-            a = vec4(bs, bs, 0, 0);
-            b = vec4(0, bs, 0, 0);
-            c = vec4(bs, bs, bs, 0);
-            d = vec4(0, bs, bs, 0);
-            break;
-    }
+    // solid cube faces (1-6) and the grass-slope wedge (30-45); see
+    // block_geom.glsl. a dropped slope item casts a wedge shadow for free.
+    block_geom(int(orient_in), bs, a, b, c, d, face_normal, sidel);
 
     vec3 world = push.bs * pos_in + vec3(push.chunk_x, push.chunk_y, push.chunk_z);
     vec4 vertex_pos = vec4(world, 1.0);

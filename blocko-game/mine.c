@@ -11,43 +11,16 @@
 // passes as needed (mine_overlay_render): the main scene plus the near shadow
 // cascade - the same build/render split as mob.c.
 
-// the terrain texture index for one face of a block, matching mesh.c so the
-// mining stand-in looks exactly like the block it replaces
-static int tile_face_tex(int t, int orient)
-{
-        switch (t)
-        {
-                case GRAS: return orient == UP ? 0 : orient == DOWN ? 2 : 1;
-                case GSLP: return orient == UP ? 0 : orient == DOWN ? 2 : 1;
-                case MTGR: return orient == UP ? 37 : orient == DOWN ? 2 : 38;
-                case DIRT: return 2;
-                case STON: return 5;
-                case SAND: return 6;
-                case WATR: return 7;
-                case ORE:  return 11;
-                case OREH: return 12;
-                case HARD: return 13;
-                case WOOD: return 14;
-                case GRAN: return 15;
-                case RLEF: return 16;
-                case YLEF: return 17;
-                case SLEF: return 39;
-                case LITE: return 18;
-                // BARR has no mesh.c case, so it stays invisible in the world grid,
-                // but a stand-in / dropped item / hand copy is labelled so you can
-                // tell what it is off the grid
-                case BARR: return 43;
-                default:   return 42; // debug: the labelled "open" tile, so a stray
-                                      // OPEN (or any stray tile) is obvious instead
-                                      // of masquerading as STON
-        }
-}
+// tile_face_tex (the per-face texture layer) now lives in blockmodel.c, the
+// shared home for off-grid block appearance; the mining stand-in still builds
+// its own per-corner-lit cube below so it matches the block's world lighting.
 
 // the block being mined, drawn as a shaking stand-in in the hole mesh.c
 // carved for it - same texture and corner lighting as the real block, so it
 // reads as the block itself jostling loose. Built once, drawn per pass.
 static struct allocation mine_alloc[MAX_FRAMES_IN_FLIGHT];
-static struct vbufv obuf[6];
+static struct vbufv obuf[BLOCK_MODEL_MAX_FACES];
+static int mine_faces;         // faces block_model_lit wrote this frame
 static int mine_draw_on;
 static float mine_px, mine_py, mine_pz, mine_bs;
 
@@ -58,27 +31,24 @@ void mine_overlay_build()
 
         int x = mine_x, y = mine_y, z = mine_z, t = mine_tile;
 
-        // the block's eight corner lights, exactly as mesh.c samples them
-        float usw = CORN_(x  , y  , z  ), use = CORN_(x+1, y  , z  );
-        float unw = CORN_(x  , y  , z+1), une = CORN_(x+1, y  , z+1);
-        float dsw = CORN_(x  , y+1, z  ), dse = CORN_(x+1, y+1, z  );
-        float dnw = CORN_(x  , y+1, z+1), dne = CORN_(x+1, y+1, z+1);
-        float USW = KORN_(x  , y  , z  ), USE = KORN_(x+1, y  , z  );
-        float UNW = KORN_(x  , y  , z+1), UNE = KORN_(x+1, y  , z+1);
-        float DSW = KORN_(x  , y+1, z  ), DSE = KORN_(x+1, y+1, z  );
-        float DNW = KORN_(x  , y+1, z+1), DNE = KORN_(x+1, y+1, z+1);
-
-        obuf[0] = (struct vbufv){ tile_face_tex(t,UP),    UP,    0,0,0, usw,use,unw,une, USW,USE,UNW,UNE, 1 };
-        obuf[1] = (struct vbufv){ tile_face_tex(t,SOUTH), SOUTH, 0,0,0, use,usw,dse,dsw, USE,USW,DSE,DSW, 1 };
-        obuf[2] = (struct vbufv){ tile_face_tex(t,NORTH), NORTH, 0,0,0, unw,une,dnw,dne, UNW,UNE,DNW,DNE, 1 };
-        obuf[3] = (struct vbufv){ tile_face_tex(t,WEST),  WEST,  0,0,0, usw,unw,dsw,dnw, USW,UNW,DSW,DNW, 1 };
-        obuf[4] = (struct vbufv){ tile_face_tex(t,EAST),  EAST,  0,0,0, une,use,dne,dse, UNE,USE,DNE,DSE, 1 };
-        obuf[5] = (struct vbufv){ tile_face_tex(t,DOWN),  DOWN,  0,0,0, dse,dsw,dne,dnw, DSE,DSW,DNE,DNW, 1 };
+        // the block's eight corner lights in block_model's canonical order
+        // (upper sw,se,nw,ne then lower sw,se,nw,ne), exactly as mesh.c samples
+        float sun[8] = {
+                CORN_(x, y, z  ), CORN_(x+1, y, z  ), CORN_(x, y, z+1), CORN_(x+1, y, z+1),
+                CORN_(x, y+1, z), CORN_(x+1, y+1, z), CORN_(x, y+1, z+1), CORN_(x+1, y+1, z+1),
+        };
+        float glo[8] = {
+                KORN_(x, y, z  ), KORN_(x+1, y, z  ), KORN_(x, y, z+1), KORN_(x+1, y, z+1),
+                KORN_(x, y+1, z), KORN_(x+1, y+1, z), KORN_(x, y+1, z+1), KORN_(x+1, y+1, z+1),
+        };
+        // a mined slope shakes loose as a wedge, keeping its facing; block_model
+        // ignores facing for other blocks
+        mine_faces = block_model_lit(obuf, t, TO_(x, y, z) & 3, sun, glo);
 
         int fr = vk.currentFrame;
         if (!mine_alloc[fr].buf)
                 vulkan_allocate_vertex_buffer(sizeof obuf, &mine_alloc[fr]);
-        vulkan_populate_vertex_buffer(obuf, sizeof obuf, &mine_alloc[fr]);
+        vulkan_populate_vertex_buffer(obuf, mine_faces * sizeof *obuf, &mine_alloc[fr]);
 
         // rattle harder as it works loose; sit a touch inside the socket so
         // it never z-fights the walls of the hole
@@ -93,7 +63,7 @@ void mine_overlay_build()
         mine_pz = z * (float)BS + inset + jz;
         mine_bs = BS - 2 * inset;
         mine_draw_on = 1;
-        polys += 6;
+        polys += mine_faces;
 }
 
 // draw the built mining stand-in with the given pipeline (already bound)
@@ -118,7 +88,7 @@ void mine_overlay_render(VkCommandBuffer cmdbuf, int pipe, float *pv)
                 VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
         VkDeviceSize off = 0;
         vkCmdBindVertexBuffers(cmdbuf, 0, 1, &mine_alloc[fr].buf, &off);
-        vkCmdDraw(cmdbuf, 4, 6, 0, 0);
+        vkCmdDraw(cmdbuf, 4, mine_faces, 0, 0);
 }
 
 #endif // BLOCKO_MINE_C_INCLUDED

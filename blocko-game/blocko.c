@@ -64,6 +64,7 @@
 #include "net.c"
 #include "player.c"
 #include "mob.c"
+#include "blockmodel.c"
 #include "mine.c"
 #include "hand.c"
 #include "item.c"

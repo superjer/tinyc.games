@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "block_geom.glsl"
 
 // Instanced quads: one instance per face, 4 vertices via triangle strip.
 // All inputs are instance-rate attributes (one struct vbufv per face).
@@ -81,79 +83,32 @@ void main(void) {
     // built as the descend-south base then rotated 90*facing below.
     bool slope = o >= 30;
 
-    switch (o) {
-        case 1: // UP (Y-)
-            a = vec4(0, 0, 0, 0);
-            b = vec4(bs, 0, 0, 0);
-            c = vec4(0, 0, bs, 0);
-            d = vec4(bs, 0, bs, 0);
-            sidel = 1.0f;
-            face_normal = vec3(0, -1, 0);
-            break;
-        case 2: // EAST (X+)
-            a = vec4(bs, 0, bs, 0);
-            b = vec4(bs, 0, 0, 0);
-            c = vec4(bs, bs, bs, 0);
-            d = vec4(bs, bs, 0, 0);
-            sidel = 0.9f;
-            face_normal = vec3(1, 0, 0);
-            break;
-        case 3: // NORTH (Z+)
-            a = vec4(0, 0, bs, 0);
-            b = vec4(bs, 0, bs, 0);
-            c = vec4(0, bs, bs, 0);
-            d = vec4(bs, bs, bs, 0);
-            sidel = 0.8f;
-            face_normal = vec3(0, 0, 1);
-            break;
-        case 4: // WEST (X-)
-            a = vec4(0, 0, 0, 0);
-            b = vec4(0, 0, bs, 0);
-            c = vec4(0, bs, 0, 0);
-            d = vec4(0, bs, bs, 0);
-            sidel = 0.9f;
-            face_normal = vec3(-1, 0, 0);
-            break;
-        case 5: // SOUTH (Z-)
-            a = vec4(bs, 0, 0, 0);
-            b = vec4(0, 0, 0, 0);
-            c = vec4(bs, bs, 0, 0);
-            d = vec4(0, bs, 0, 0);
-            sidel = 0.8f;
-            face_normal = vec3(0, 0, -1);
-            break;
-        case 6: // DOWN (Y+)
-            a = vec4(bs, bs, 0, 0);
-            b = vec4(0, bs, 0, 0);
-            c = vec4(bs, bs, bs, 0);
-            d = vec4(0, bs, bs, 0);
-            sidel = 0.6f;
-            face_normal = vec3(0, 1, 0);
-            break;
-        case 20: // grass plane A: full-height quad spanning X, centered in Z
+    // solid cube faces (1-6) and the grass-slope wedge (30-45) are shared with
+    // every block pipeline; see block_geom.glsl.
+    block_geom(o, bs, a, b, c, d, face_normal, sidel);
+
+    // tall grass (orient 20/21): crossed billboard planes centered in the cell,
+    // then rotated about the vertical center axis by a per-cell random angle and
+    // jittered within the cell. both planes of a cell share the same angle/jitter
+    // so they stay crossed. all deterministic from the absolute cell coords
+    // (reconstructed like `cell` below), so the shaggy patch pattern is stable in
+    // the world grid. this shape needs ubo scoot + push chunk, so it stays here
+    // rather than in the shared geometry.
+    if (grass) {
+        if (o == 20) { // plane A: full-height quad spanning X, centered in Z
             a = vec4(bs, 0, bs * 0.5, 0);
             b = vec4(0,  0, bs * 0.5, 0);
             c = vec4(bs, bs, bs * 0.5, 0);
             d = vec4(0,  bs, bs * 0.5, 0);
-            sidel = 1.0f;
-            face_normal = vec3(0, -1, 0);  // sky-facing (Y is down here), lit like a block top
-            break;
-        case 21: // grass plane B: full-height quad spanning Z, centered in X
+        } else {       // plane B: full-height quad spanning Z, centered in X
             a = vec4(bs * 0.5, 0, 0, 0);
             b = vec4(bs * 0.5, 0, bs, 0);
             c = vec4(bs * 0.5, bs, 0, 0);
             d = vec4(bs * 0.5, bs, bs, 0);
-            sidel = 1.0f;
-            face_normal = vec3(0, -1, 0);  // sky-facing (Y is down here), lit like a block top
-            break;
-    }
+        }
+        sidel = 1.0f;
+        face_normal = vec3(0, -1, 0);  // sky-facing (Y is down here), lit like a block top
 
-    // tall grass: rotate the crossed planes about the cell's vertical center
-    // axis by a per-cell random angle, and jitter them within the cell. both
-    // planes of a cell share the same angle/jitter so they stay crossed. all
-    // deterministic from the absolute cell coords (reconstructed like `cell`
-    // below), so the shaggy patch pattern is stable in the world grid.
-    if (grass) {
         vec3 gcell = vec3(push.chunk_x, push.chunk_y, push.chunk_z) / bs + pos_in;
         // window->world: the mesh is built in window coords that slide with
         // scoot, so hash the absolute cell or the pattern shifts at boundaries
@@ -169,65 +124,6 @@ void main(void) {
             vec2 rel = vec2(g[k].x, g[k].z) - bs * 0.5;
             g[k].x = rel.x * ca - rel.y * sa + bs * 0.5 + jx;
             g[k].z = rel.x * sa + rel.y * ca + bs * 0.5 + jz;
-        }
-        a = g[0]; b = g[1]; c = g[2]; d = g[3];
-    }
-
-    // grass slope: build the descend-south base piece, then rotate it 90*facing
-    // about the cell's vertical center. base = high side north (z=bs, y=0), low
-    // side south (z=0, y=bs). the two side walls are triangles emitted as
-    // degenerate quads (one vertex doubled). winding matches the cube faces so
-    // back-face culling keeps them visible.
-    if (slope) {
-        int kind = (o - 30) / 4;
-        int facing = (o - 30) - kind * 4;
-        switch (kind) {
-        case 0: // sloped grass top (mirrors UP's XZ, low edge lifted to y=bs)
-            a = vec4(0,  bs, 0,  0);
-            b = vec4(bs, bs, 0,  0);
-            c = vec4(0,  0,  bs, 0);
-            d = vec4(bs, 0,  bs, 0);
-            sidel = 1.0f;
-            face_normal = normalize(vec3(0, -1, -1));
-            break;
-        case 1: // west triangle wall (x=0)
-            a = vec4(0, bs, 0,  0);
-            b = vec4(0, 0,  bs, 0);
-            c = vec4(0, bs, 0,  0);
-            d = vec4(0, bs, bs, 0);
-            sidel = 0.9f;
-            face_normal = vec3(-1, 0, 0);
-            break;
-        case 2: // east triangle wall (x=bs)
-            a = vec4(bs, 0,  bs, 0);
-            b = vec4(bs, bs, 0,  0);
-            c = vec4(bs, bs, bs, 0);
-            d = vec4(bs, bs, 0,  0);
-            sidel = 0.9f;
-            face_normal = vec3(1, 0, 0);
-            break;
-        default: // back wall = full north face (z=bs)
-            a = vec4(0,  0,  bs, 0);
-            b = vec4(bs, 0,  bs, 0);
-            c = vec4(0,  bs, bs, 0);
-            d = vec4(bs, bs, bs, 0);
-            sidel = 0.8f;
-            face_normal = vec3(0, 0, 1);
-            break;
-        }
-        // rotate 90*facing: (x,z) -> (z, bs-x) turns the high side
-        // north->east->south->west (SLOPE_S/W/N/E), matching player.c collision
-        float co = bs * 0.5;
-        vec4 g[4] = vec4[4](a, b, c, d);
-        for (int r = 0; r < facing; r++) {
-            for (int k = 0; k < 4; k++) {
-                float nx = g[k].z;
-                float nz = bs - g[k].x;
-                g[k].x = nx; g[k].z = nz;
-            }
-            float fnx = face_normal.z;
-            float fnz = -face_normal.x;
-            face_normal.x = fnx; face_normal.z = fnz;
         }
         a = g[0]; b = g[1]; c = g[2]; d = g[3];
     }
@@ -280,23 +176,7 @@ void main(void) {
     illum = (0.1 + illum_in[i]) * sidel;
     glow = (0.1 + glow_in[i]) * sidel;
     uv = uvs[i];
-    if (slope) {
-        int k = (o - 30) / 4;
-        if (k == 0)
-            // sloped top: the surface is sqrt(2) longer up-slope than across, so
-            // a 0..1 uv stretches its texels tall. Run the up-slope uv to 23/16
-            // so it shows 23 texels to the 16 across - square again (the sampler
-            // repeats, so past 1 tiles instead of smearing).
-            uv.y *= 23.0 / 16.0;
-        else {
-            // side/back walls: drive the vertical from height (rotation leaves y
-            // alone) so the grass strip lands at the top. The triangle sides use
-            // the 45 texture whose grass runs the diagonal; the east tri already
-            // lines up, the west tri (k==1) is the mirror image, so flip its u.
-            uv.y = offsets[i].y / bs;
-            if (k == 1) uv.x = 1.0 - uv.x;
-        }
-    }
+    if (slope) uv = slope_uv(o, uv, offsets[i], bs);
     world_pos_out = world_pos;
 
     // Calculate shadow space position for near cascade only

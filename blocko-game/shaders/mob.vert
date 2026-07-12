@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "block_geom.glsl"
 
 // Mob geometry: instanced quads (one instance per face) like the terrain, but
 // each piece spins about a vertical axis so the mob faces its heading. Shares
@@ -59,57 +61,12 @@ void main(void) {
     vec4 a, b, c, d;
     vec3 face_normal;
     float bs = push.bs;
+    int o = int(orient_in);
 
-    switch (int(orient_in)) {
-        case 1: // UP (Y-)
-            a = vec4(0, 0, 0, 0);
-            b = vec4(bs, 0, 0, 0);
-            c = vec4(0, 0, bs, 0);
-            d = vec4(bs, 0, bs, 0);
-            sidel = 1.0f;
-            face_normal = vec3(0, -1, 0);
-            break;
-        case 2: // EAST (X+)
-            a = vec4(bs, 0, bs, 0);
-            b = vec4(bs, 0, 0, 0);
-            c = vec4(bs, bs, bs, 0);
-            d = vec4(bs, bs, 0, 0);
-            sidel = 0.9f;
-            face_normal = vec3(1, 0, 0);
-            break;
-        case 3: // NORTH (Z+)
-            a = vec4(0, 0, bs, 0);
-            b = vec4(bs, 0, bs, 0);
-            c = vec4(0, bs, bs, 0);
-            d = vec4(bs, bs, bs, 0);
-            sidel = 0.8f;
-            face_normal = vec3(0, 0, 1);
-            break;
-        case 4: // WEST (X-)
-            a = vec4(0, 0, 0, 0);
-            b = vec4(0, 0, bs, 0);
-            c = vec4(0, bs, 0, 0);
-            d = vec4(0, bs, bs, 0);
-            sidel = 0.9f;
-            face_normal = vec3(-1, 0, 0);
-            break;
-        case 5: // SOUTH (Z-)
-            a = vec4(bs, 0, 0, 0);
-            b = vec4(0, 0, 0, 0);
-            c = vec4(bs, bs, 0, 0);
-            d = vec4(0, bs, 0, 0);
-            sidel = 0.8f;
-            face_normal = vec3(0, 0, -1);
-            break;
-        case 6: // DOWN (Y+)
-            a = vec4(bs, bs, 0, 0);
-            b = vec4(0, bs, 0, 0);
-            c = vec4(bs, bs, bs, 0);
-            d = vec4(0, bs, bs, 0);
-            sidel = 0.6f;
-            face_normal = vec3(0, 1, 0);
-            break;
-    }
+    // solid cube faces (1-6) and the grass-slope wedge (30-45), shared with the
+    // terrain pipelines; see block_geom.glsl. a dropped slope item is thus a
+    // spinning wedge for free, with no geometry duplicated here.
+    block_geom(o, bs, a, b, c, d, face_normal, sidel);
 
     vec3 world = push.bs * pos_in + vec3(push.chunk_x, push.chunk_y, push.chunk_z);
     vec4 vertex_pos = vec4(world, 1.0);
@@ -140,6 +97,7 @@ void main(void) {
     illum = (0.1 + illum_in[i]) * sidel;
     glow = (0.1 + glow_in[i]) * sidel;
     uv = uvs[i];
+    if (o >= 30) uv = slope_uv(o, uv, offsets[i], bs);
     world_pos_out = world_pos;
 
     // Near-cascade shadow position (mid/far computed in the fragment shader).
