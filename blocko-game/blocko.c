@@ -436,7 +436,23 @@ void rayshot(float eye0, float eye1, float eye2, float f0, float f1, float f2)
                 // grass (both kinds) is likewise non-mineable and lets the ray
                 // through to the block it grows on.
                 int tt = T_(x, y, z);
-                if (tt != OPEN && tt != WATR && tt != TLGR && tt != TMGR)
+                int solid = tt != OPEN && tt != WATR && tt != TLGR && tt != TMGR;
+
+                // a slope only fills part of its cell: hit it just where the ray
+                // crosses the wedge (the same 10-step shape you walk on), and pass
+                // through the empty low front like air so you target the block
+                // behind it instead of a phantom cube.
+                if (solid && tt == GSLP && legit_tile(x, y, z))
+                {
+                        struct box steps[SLOPE_STEPS];
+                        slope_boxes(x, y, z, TO_(x, y, z), steps);
+                        solid = 0;
+                        for (int s = 0; s < SLOPE_STEPS; s++)
+                                if (ray_hits_box(eye0, eye1, eye2, f0, f1, f2, steps[s]))
+                                        { solid = 1; break; }
+                }
+
+                if (solid)
                         break;
 
                 if (i == 6)
