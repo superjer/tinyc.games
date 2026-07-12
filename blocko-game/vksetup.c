@@ -184,9 +184,13 @@ void vksetup()
                 {.location = 2, .binding = 0, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(struct pmvert, r2)},
                 {.location = 3, .binding = 0, .format = VK_FORMAT_R32G32B32_SFLOAT, .offset = offsetof(struct pmvert, dims)},
                 {.location = 4, .binding = 0, .format = VK_FORMAT_R32G32B32A32_SFLOAT, .offset = offsetof(struct pmvert, orient)},
+                {.location = 5, .binding = 0, .format = VK_FORMAT_R32_SFLOAT, .offset = offsetof(struct pmvert, tint)},
         };
         pmodel_pipe = vulkan_make_pipeline("pmodel.vert", NULL, "main.frag",
-                1, &pmodelBindingDesc, 5, pmodelAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP);
+                1, &pmodelBindingDesc, 6, pmodelAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP);
+        // the editor's see-through preview piece (tint < 0) blends for real
+        pmodel_ghost_pipe = vulkan_make_pipeline("pmodel.vert", NULL, "main.frag",
+                1, &pmodelBindingDesc, 6, pmodelAttrDescs, &main_descriptor_set_layout, VK_NULL_HANDLE, PIPE_TRIANGLE_STRIP | PIPE_BLEND);
 
         allocate_world();
 

@@ -8,38 +8,101 @@
 // view eases to center on that prism (zoomed to fit), it gets a white outline
 // while the rest of the model draws full-color behind it (Z-tested, so colors
 // stay matchable), and clicks paint the targeted pixel - left red, right
-// blue, from two reserved palette slots. The JOINT button switches the piece
-// view to editing the rotation origin instead, and SOCKET to editing the
-// attach point in the parent's space (the parent joins the top depth layer
-// there): the point shows as a color-cycling cube with axis lines through it
-// (depth-tested, so the surface intersections read exactly), left-click
-// plants it on the clicked texel (JOINT: on the piece; SOCKET: on the
-// parent), and the arrow keys/Space/LShift nudge it a px at a time
-// (camera-relative; repeats work; WASD still rotates the turntable). JOINT
-// never touches the parent or its attach point, SOCKET never touches the
-// origin. PARENT mode re-wires the hierarchy: the selection drops BEHIND
-// everything, and clicking any other piece makes it the parent with the
-// click as the new attach point (clicks that would loop the chain are
-// ignored). The TYPE button shows the selected piece's animation type (HEAD,
-// LEFT ARM, ...) - left-click cycles forward, right-click back. The ANIMATE
+// blue, from two reserved palette slots. The PLACE ATTACHMENT POINT button
+// switches the piece view to placing the rotation origin instead, and MOVE
+// PART to editing the attach point in the parent's space. PLACE ATTACHMENT
+// POINT shows only the active piece (rest of the model hidden) and its
+// origin as a small color-cycling cube with ruled axes through it (1-texel
+// bright/dim segments, depth-tested so the surface intersections read
+// exactly); the gizmo rides the cursor while it's on the piece, a click
+// plants the point there and leaves the mode, and the zoom keeps both the
+// piece and a nudged-away gizmo in frame.
+// MOVE PART shows the piece and its pink-rimmed parent; pointing anywhere
+// on the parent replaces the piece with a half-transparent preview of it
+// laid flush against that face at the cursor (the attach point shifts
+// along the face normal so the piece's near side kisses the surface - the
+// joint never moves), and a click commits that spot and leaves the mode.
+// Off the parent the piece sits where it is and the
+// arrow keys nudge the point a px at a time (camera-relative; repeats work;
+// WASD still rotates the turntable). PLACE ATTACHMENT POINT moves only the
+// pivot - the attach point shifts by the same delta so the piece itself
+// stays put. MOVE PART never touches the origin. The parent button is two
+// buttons in one: with a parented piece selected it reads DETACH - one
+// click re-hangs the piece on the invisible player box, folding the old
+// parent chain's offsets into the attach point so the piece stays visually
+// put (the attach range walls permitting) - and with a root-hung piece
+// it's SELECT PARENT. PARENT mode
+// re-wires the hierarchy in one click: the selection moves to its own
+// little view on the left (same turntable spin, wearing the white outline,
+// hovering with a gentle 1Hz half-texel bob - it's unattached)
+// while the main view keeps only the eligible parents (pieces that would
+// loop the chain are hidden). Hovering one previews it with a pink rim; the
+// click makes it the parent AND lays the piece flush against the clicked
+// spot, MOVE PART-style, then it's back to the whole model, nothing
+// selected. ESC or a far miss backs out. In the plain selected view the
+// arrow keys nudge the piece around just like MOVE PART (mouse placement
+// stays that mode's). The TYPE button shows the
+// selected
+// piece's animation type (HEAD,
+// LEFT ARM, ...) - left-click cycles forward, right-click back. RESIZE
+// reshapes the prism: left-click a face to pick it (it wears a see-through
+// cycling-hue slab), then any arrow pushes it out / pulls it in a px at a
+// time, by relative angle: the face grows when the arrow leans toward its
+// outward normal on screen, shrinks when it leans away, and does nothing
+// when the arrow reads near-perpendicular to it (rotate a bit). The paint
+// follows (the lateral faces gain a copy of their edge row, or lose one)
+// and the joint stays put; with no face picked the arrows are idle.
+// RESTING ANGLE (a test rig for now - the angles live outside the model
+// struct and don't save) poses the piece's standing-still pitch/yaw/roll,
+// +-25 deg a degree at a time: arrows pitch/yaw, Q/E roll, still relative
+// to the parent. The pose shows ONLY in this mode and in ANIMATE, where the
+// animations swing on top of it; clicking another piece switches to it.
+// DELETE (or the Del/Backspace keys) removes the piece and its whole
+// subtree (no undo yet). NEW PART spawns a fresh 4x4x4 piece in a gray
+// checkerboard coat and drops straight into the PARENT one-click flow to
+// hang it somewhere; on the click its joint snaps to the middle of the side
+// facing the parent, so the piece hangs outward
+// (backing all the way out cancels the piece). MAKE COPY (or ctrl-C) clones
+// the selected piece - prism, joint, paint, type - into the same flow, except
+// the clone keeps the original's joint so it swings the same. The ANIMATE
 // button plays the model's animation (walking in place)
 // on the whole model - WASD still spins it, the piece buttons grey out, any
 // click (or ESC) stops it right back where you were, and the zoom stays fit
 // to the standing pose so it doesn't pump. The STYLE button below it flips
 // the model between WALK and FLAIL animation styles (a model property that
 // travels with it over the net) and is click-exempt so you can A/B styles
-// while ANIMATE plays. Clicking off
-// the piece or ESC goes back to the whole model; U closes the editor, saves
-// model.dat and announces the new look over the net.
+// while ANIMATE plays. HIDE gets overlapping pieces out of the way: click
+// it, then every piece clicked goes 90% see-through and dead to clicks
+// (unpickable everywhere) until a click lands somewhere else. With pieces
+// hidden the button reads UNHIDE (n); one click brings them all back, no
+// mode. Clicking on
+// another piece switches straight to it (in paint and RESIZE
+// modes - wherever a click on it means nothing else); clicking off every
+// piece or ESC goes back to the whole model; U closes the editor, saves
+// model.dat and announces the new look over the net. A half-transparent
+// dark green quad, one block's top face, floats at the in-game ground level
+// in every view that shows the whole model (near-level pitches only), so a
+// floating or sunken model reads at a glance; a wireframe box in the same
+// green traces the player's collision box so the model can be sized to it.
 
-#define PMEDIT_RED  254 // reserved palette slots for the two paint colors
-#define PMEDIT_BLUE 255
+#define PMEDIT_RED    254 // reserved palette slots for the two paint colors
+#define PMEDIT_BLUE   255
+#define PMEDIT_GRAY_A 252 // and for the NEW PART starter checkerboard
+#define PMEDIT_GRAY_B 253
 
 static int pmedit_sel = -1;              // selected piece, -1 = whole model
 static int pmedit_joint;                 // JOINT mode: edit the rotation origin
 static int pmedit_socket;                // SOCKET mode: edit the parent attach point
 static int pmedit_parent;                // PARENT mode: click a piece to re-parent to
+static int pmedit_newpart;               // this PARENT flow is placing a piece that
+                                         // cancels away: 1 = brand-new, 2 = a copy
+static int pmedit_resize;                // RESIZE mode: click a face, arrows push/pull
+static int pmedit_face;                  // RESIZE's picked face (orient 1..6), 0 = none
+static int pmedit_hide;                  // HIDE mode: click pieces to ghost them away
+static unsigned pmedit_hidden;           // bitmask of hidden (ghosted, unclickable) pieces
 static int pmedit_animate;               // ANIMATE mode: play the placeholder anim
+static int pmedit_restang;               // RESTING ANGLE mode: arrows/QE pose the piece
+static float pmedit_bob_t;               // parent-mode hover bob clock, wraps at 1s
 static float pmedit_gizmo_mat[16];       // the active gizmo's px -> world frame
 static float pmedit_myaw, pmedit_mpitch; // turntable angles
 static float pmedit_yramp, pmedit_pramp; // seconds each axis key is held, <= 1
@@ -51,10 +114,15 @@ static float pmedit_mats[PM_MAX_PIECES][16]; // px->world per piece, for picking
 static int pmedit_nr;                    // pieces in pmedit_mats
 static int pmedit_paint_btn;             // mouse button held down painting, or 0
 static float pmedit_mx, pmedit_my;       // latest cursor position
+static int pmedit_prev_view;             // cam_view to restore when closing
 static int pm_edit_rest_start, pm_edit_rest_count;   // instance ranges in
 static int pm_edit_hull_start, pm_edit_hull_count;   // pmbuf: unselected
 static int pm_edit_sel_start, pm_edit_sel_count;     // pieces, outline hull,
 static int pm_edit_joint_start, pm_edit_joint_count; // selection, joint gizmo
+static int pm_edit_floor_start, pm_edit_floor_count; // ground + hitbox frame
+static int pm_edit_hide_start, pm_edit_hide_count;   // and the hidden ghosts
+
+#define PMEDIT_PICK_ELIG (-100) // pick only pieces eligible to be the parent
 
 static int pmedit_pick(float mx, float my, int only, float pad,
                 int *face, int *tu, int *tv, float *hitp);
@@ -96,14 +164,48 @@ static int pmedit_in_type_btn(float x, float y)
                 x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 208 && y <= 268;
 }
 
+static int pmedit_in_resize_btn(float x, float y)
+{
+        return pmedit_sel >= 0 &&
+                x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 272 && y <= 332;
+}
+
+static int pmedit_in_restang_btn(float x, float y)
+{
+        return pmedit_sel >= 0 &&
+                x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 336 && y <= 396;
+}
+
+static int pmedit_in_copy_btn(float x, float y)
+{
+        return pmedit_sel >= 0 &&
+                x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 400 && y <= 460;
+}
+
+static int pmedit_in_delete_btn(float x, float y)
+{
+        return pmedit_sel >= 0 &&
+                x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 464 && y <= 524;
+}
+
+static int pmedit_in_newpart_btn(float x, float y)
+{
+        return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 528 && y <= 588;
+}
+
 static int pmedit_in_animate_btn(float x, float y)
 {
-        return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 272 && y <= 332;
+        return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 592 && y <= 652;
 }
 
 static int pmedit_in_style_btn(float x, float y)
 {
-        return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 336 && y <= 396;
+        return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 656 && y <= 716;
+}
+
+static int pmedit_in_hide_btn(float x, float y)
+{
+        return x >= PMEDIT_BTN_X - 10 && x <= screenw - 8 && y >= 720 && y <= 780;
 }
 
 static const char *pmedit_type_name[PM_T_COUNT] = {
@@ -126,6 +228,103 @@ static int pmedit_cycle(int j)
         return 0;
 }
 
+// face orient code (1..6) -> its normal's axis and sign
+static const signed char pmedit_axis_of[7] = { 0, 1, 0, 2, 0, 2, 1 };
+static const signed char pmedit_side_of[7] = { 0, -1, 1, 1, -1, -1, 1 };
+
+// NEW PART: snap the joint to the middle of the piece's side FACING the
+// parent (the opposite side from the parent face the socket is going on),
+// so the new piece hangs outward from wherever it gets attached
+static void pmedit_newpart_snap(struct pm_piece *pc, int face)
+{
+        int a = pmedit_axis_of[face], s = pmedit_side_of[face];
+        for (int q = 0; q < 3; q++)
+                pc->origin[q] = pc->corner[q] + pc->dims[q] / 2;
+        pc->origin[a] = s > 0 ? pc->corner[a]
+                              : pc->corner[a] + pc->dims[a];
+}
+
+// the attach point that puts pc flush against piece P's hovered face at the
+// picked point h (P-local px, corner-relative) - the attach moves, the joint
+// never does. The flush shift can push the attach past the parent's 16^3
+// tile; that's fine, it's just a translation.
+static void pmedit_flush_att(struct pm_piece *pc, int P, int face,
+                float *h, int att[3])
+{
+        unsigned char *corner = pm_models[my_player].piece[P].corner;
+        for (int q = 0; q < 3; q++)
+                att[q] = ICLAMP((int)roundf(corner[q] + h[q]), 0, PM_TILE);
+        int a = pmedit_axis_of[face];
+        att[a] += pc->origin[a] - pc->corner[a]
+                - (pmedit_side_of[face] < 0 ? pc->dims[a] : 0);
+        att[a] = ICLAMP(att[a], 0, 2 * PM_TILE);
+}
+
+// MOVE PART: where would a click lay the piece? Picks the parent surface
+// under the cursor and, on a hit, computes the flush attach point there.
+// Returns whether the cursor is on the parent at all.
+static int pmedit_sock_aim(struct pm_piece *pc, int att[3])
+{
+        int face, tu, tv;
+        float h[3];
+        if (pc->parent < 0 || pmedit_pick(pmedit_mx, pmedit_my,
+                        (int)pc->parent, 0.f, &face, &tu, &tv, h) < 0)
+                return 0;
+        pmedit_flush_att(pc, (int)pc->parent, face, h, att);
+        return 1;
+}
+
+// backing out of a NEW PART placement cancels it: the unplaced piece goes
+// away with the mode (it was never attached to anything)
+static void pmedit_newpart_cancel()
+{
+        if (!pmedit_newpart) return;
+        pmedit_newpart = 0;
+        if (pmedit_sel >= 0 &&
+                        pm_piece_delete(&pm_models[my_player], pmedit_sel))
+                pmodel_upload(my_player);
+}
+
+// MAKE COPY (the button, or ctrl-C): a full clone of the selection - prism,
+// joint, paint, type - then straight into the parent-picking flow to hang it
+// somewhere, exactly like NEW PART (backing out cancels the copy). Unlike
+// NEW PART the joint stays the original's, so it swings the same
+static void pmedit_copy()
+{
+        struct pmodel *mo = &pm_models[my_player];
+        // no copying a piece that isn't placed yet
+        if (pmedit_sel < 0 || pmedit_newpart
+                        || mo->nr_pieces >= PM_MAX_PIECES)
+                return;
+        int i = mo->nr_pieces++;
+        mo->piece[i] = mo->piece[pmedit_sel];
+        mo->piece[i].parent = -1;
+        memcpy(mo->texel[i], mo->texel[pmedit_sel], sizeof mo->texel[i]);
+        memcpy(pm_rest_deg[i], pm_rest_deg[pmedit_sel], sizeof pm_rest_deg[i]);
+        pmodel_upload(my_player);
+        pmedit_sel = i;
+        pmedit_parent = 1;
+        pmedit_newpart = 2;
+        pmedit_joint = pmedit_socket = 0;
+        pmedit_resize = pmedit_face = pmedit_restang = 0;
+        pmedit_hide = 0;
+}
+
+// DELETE (the button, or the Del/Backspace keys): the piece and its whole
+// subtree go away (no undo yet); the survivors' indices compact down
+static void pmedit_delete()
+{
+        if (pmedit_sel < 0
+                        || !pm_piece_delete(&pm_models[my_player], pmedit_sel))
+                return;
+        pmedit_sel = -1;
+        pmedit_joint = pmedit_socket = pmedit_parent = 0;
+        pmedit_resize = pmedit_face = pmedit_newpart = pmedit_restang = 0;
+        pmedit_hidden = 0; // survivors' indices shifted
+        memset(pm_rest_deg, 0, sizeof pm_rest_deg); // ^ (test angles too)
+        pmodel_upload(my_player);
+}
+
 void pmedit_toggle()
 {
         pmedit_on = !pmedit_on;
@@ -134,6 +333,9 @@ void pmedit_toggle()
         {
                 pmedit_sel = -1;
                 pmedit_joint = pmedit_socket = pmedit_parent = pmedit_animate = 0;
+                pmedit_resize = pmedit_face = pmedit_newpart = pmedit_restang = 0;
+                pmedit_hide = 0;
+                pmedit_hidden = 0;
                 pmedit_myaw = pmedit_mpitch = 0;
                 pmedit_yramp = pmedit_pramp = 0;
                 pmedit_kw = pmedit_ka = pmedit_ks = pmedit_kd = 0;
@@ -142,19 +344,30 @@ void pmedit_toggle()
                 // the paint colors live in reserved palette slots
                 pm_models[my_player].palette[PMEDIT_RED]  = PM_RGB(220, 40, 40);
                 pm_models[my_player].palette[PMEDIT_BLUE] = PM_RGB(45, 80, 230);
+                // and NEW PART's starter checkerboard grays
+                pm_models[my_player].palette[PMEDIT_GRAY_A] = PM_RGB(105, 105, 105);
+                pm_models[my_player].palette[PMEDIT_GRAY_B] = PM_RGB(165, 165, 165);
                 // free the cursor; stop any in-flight movement and mining
                 pl->goingf = pl->goingb = pl->goingl = pl->goingr = 0;
                 pl->breaking = pl->building = pl->running = pl->sneaking = 0;
                 zooming = 0;
                 SDL_SetWindowRelativeMouseMode(vk.window, false);
                 mouselook = false;
+                // the world camera swings out front (the in-world model
+                // hides too): like zooming out and grabbing the player.
+                // Already in 2nd person: keep the pitch they chose
+                pmedit_prev_view = cam_view;
+                pmedit_level_cam = cam_view != CAM_SECOND;
+                cam_view = CAM_SECOND;
         }
         else
         {
+                pmedit_newpart_cancel(); // an unplaced NEW PART doesn't survive
                 pmodel_save();
                 pmodel_send_mine();
                 SDL_SetWindowRelativeMouseMode(vk.window, true);
                 mouselook = true;
+                cam_view = pmedit_prev_view;
         }
 }
 
@@ -162,9 +375,9 @@ void pmedit_toggle()
 // axis that best matches a camera-relative direction - Up/Down arrows
 // vertically, Left/Right arrows sideways; rotate the turntable (WASD still
 // works) to reach the other horizontal axis. Directions are what the arrows
-// do to the PIECE on screen: the origin is a pivot pinned to the parent, so
-// JOINT steps it the opposite way; the attach point carries the piece with
-// it, so SOCKET steps it straight.
+// do to the POINT being placed: the attachment point walks the piece's
+// space, the attach point walks the parent's (carrying the piece with it) -
+// both step straight with the arrows.
 static void pmedit_joint_move(int k)
 {
         float f[3], vm[16];
@@ -179,20 +392,67 @@ static void pmedit_joint_move(int k)
         }
 
         // into the gizmo's local frame: transpose of the rotation columns
-        // (uniform scale doesn't matter for picking the dominant axis)
-        float *M = pmedit_gizmo_mat;
+        // (uniform scale doesn't matter for picking the dominant axis).
+        // RESIZE has no gizmo; the piece's own frame serves.
+        float *M = pmedit_resize ? pmedit_mats[pmedit_sel] : pmedit_gizmo_mat;
         float dl[3];
         for (int a = 0; a < 3; a++)
                 dl[a] = M[4*a] * d[0] + M[4*a+1] * d[1] + M[4*a+2] * d[2];
+
+        struct pm_piece *pc = &pm_models[my_player].piece[pmedit_sel];
+        if (pmedit_resize)
+        {
+                // any arrow pushes/pulls the picked face along its own axis,
+                // by relative angle: dl[fax] is the arrow's world direction
+                // dotted with the face's axis, so the face grows when the
+                // arrow leans toward its outward normal on screen, shrinks
+                // when it leans away, and near-perpendicular arrows do
+                // nothing (rotate a bit). No face picked: arrows are idle
+                if (!pmedit_face) return;
+                int fax = pmedit_axis_of[pmedit_face];
+                if (fabsf(dl[fax]) < 0.3f) return;
+                int out = dl[fax] * pmedit_side_of[pmedit_face] > 0;
+                if (pm_piece_resize(&pm_models[my_player], pmedit_sel,
+                                pmedit_face, out))
+                        pmodel_upload(my_player);
+                return;
+        }
+
         int ax = 0;
         if (fabsf(dl[1]) > fabsf(dl[ax])) ax = 1;
         if (fabsf(dl[2]) > fabsf(dl[ax])) ax = 2;
-
-        struct pm_piece *pc = &pm_models[my_player].piece[pmedit_sel];
         int step = dl[ax] > 0 ? 1 : -1;
-        if (pmedit_joint) step = -step; // the piece follows the arrows
         unsigned char *pt = pmedit_joint ? pc->origin : pc->attach;
-        pt[ax] = ICLAMP(pt[ax] + step, 0, PM_TILE);
+        // a flush attach can sit past the parent's tile - let nudges roam there
+        int hi = pmedit_joint ? PM_TILE : 2 * PM_TILE;
+        int was = pt[ax];
+        pt[ax] = ICLAMP(pt[ax] + step, 0, hi);
+        if (pmedit_joint)
+        {
+                // carry the attach point along so the piece doesn't budge
+                int at = pc->attach[ax] + pt[ax] - was;
+                pc->attach[ax] = ICLAMP(at, 0, 2 * PM_TILE);
+        }
+}
+
+// RESTING ANGLE mode: arrows tilt the selected piece a degree at a time
+// (up/down pitch, left/right yaw), Q/E roll it; the pose clamps at +-25 deg
+static void pmedit_rest_adjust(int k)
+{
+        signed char *r = pm_rest_deg[pmedit_sel];
+        int a, d;
+        switch (k)
+        {
+        case SDLK_UP:    a = 0; d = -1; break;
+        case SDLK_DOWN:  a = 0; d =  1; break;
+        case SDLK_LEFT:  a = 1; d = -1; break;
+        case SDLK_RIGHT: a = 1; d =  1; break;
+        case SDLK_Q:     a = 2; d = -1; break;
+        case SDLK_E:     a = 2; d =  1; break;
+        default: return;
+        }
+        int v = r[a] + d;
+        r[a] = ICLAMP(v, -25, 25);
 }
 
 // keyboard while the editor owns it. Returns 1 when the key was consumed.
@@ -202,11 +462,18 @@ int pmedit_key(int down)
         int k = event.key.key;
         int joint_move_key = k == SDLK_UP || k == SDLK_DOWN ||
                 k == SDLK_LEFT || k == SDLK_RIGHT;
+        int rest_key = joint_move_key || k == SDLK_Q || k == SDLK_E;
+        int rest_ok = pmedit_restang && pmedit_sel >= 0 && !pmedit_animate;
 
-        int gizmo_mode = pmedit_joint || pmedit_socket;
+        // arrows nudge in the gizmo modes AND in the plain selected view,
+        // where they move the piece around just like MOVE PART (mouse-less)
+        int nudge_ok = pmedit_sel >= 0 && !pmedit_parent && !pmedit_animate
+                && !pmedit_restang;
         if (event.key.repeat)
         {
-                if (pmedit_on && gizmo_mode && pmedit_sel >= 0 && down && joint_move_key)
+                if (pmedit_on && rest_ok && down && rest_key)
+                        pmedit_rest_adjust(k);
+                else if (pmedit_on && nudge_ok && down && joint_move_key)
                         pmedit_joint_move(k);
                 return pmedit_on; // repeats do nothing else while editing
         }
@@ -214,7 +481,12 @@ int pmedit_key(int down)
         if (!pmedit_on) return 0;
         if (k >= SDLK_F1 && k <= SDLK_F12) return 0; // debug keys still work
 
-        if (gizmo_mode && pmedit_sel >= 0 && joint_move_key)
+        if (rest_ok && rest_key)
+        {
+                if (down) pmedit_rest_adjust(k);
+                return 1;
+        }
+        if (nudge_ok && joint_move_key)
         {
                 if (down) pmedit_joint_move(k);
                 return 1;
@@ -226,14 +498,25 @@ int pmedit_key(int down)
         case SDLK_A: pmedit_ka = down; break;
         case SDLK_S: pmedit_ks = down; break;
         case SDLK_D: pmedit_kd = down; break;
+        case SDLK_C: // ctrl-C copies, same as the MAKE COPY button
+                if (down && event.key.mod & SDL_KMOD_CTRL && !pmedit_animate)
+                        pmedit_copy();
+                break;
+        case SDLK_DELETE:
+        case SDLK_BACKSPACE: // both delete, same as the button
+                if (down && !pmedit_animate) pmedit_delete();
+                break;
         case SDLK_ESCAPE:
                 if (down)
                 {
                         if (pmedit_animate) pmedit_animate = 0;
+                        else if (pmedit_hide) pmedit_hide = 0;
                         else if (pmedit_sel >= 0)
                         {
+                                pmedit_newpart_cancel();
                                 pmedit_sel = -1;
                                 pmedit_joint = pmedit_socket = pmedit_parent = 0;
+                                pmedit_resize = pmedit_face = pmedit_restang = 0;
                         }
                         else pmedit_toggle();
                 }
@@ -248,6 +531,8 @@ void pmedit_update()
 {
         if (!pmedit_on) return;
         float dt = 1 / 60.f;
+        pmedit_bob_t += dt; // the parent-mode hover bob's 1Hz clock
+        if (pmedit_bob_t >= 1) pmedit_bob_t -= 1;
         int ydir = pmedit_ka - pmedit_kd;
         int pdir = pmedit_kw - pmedit_ks;
         pmedit_yramp = ydir ? MIN(pmedit_yramp + dt, 0.5f) : 0.f;
@@ -260,9 +545,60 @@ void pmedit_update()
         pmedit_mpitch = CLAMP(pmedit_mpitch, -limit, limit);
 }
 
+// emit piece pc's highlight shell: the prism inflated by a thin membrane in
+// a solid color, CAMERA-BACK faces only (an inverted hull) - the piece draws
+// in front of all of it except a thin rim at its silhouette, and depth stays
+// honest against every other piece (unlike the cleared-depth silhouette
+// trick paint mode uses). M = the piece's px->world matrix. Returns the
+// number of face instances emitted.
+static int pmedit_shell(struct pmvert **bp, float *M, struct pm_piece *pc,
+                int layer, float glow)
+{
+        float e = 0.15f;
+        float t1[16], H[16];
+        pm_mat_translate(t1, -e, -e, -e);
+        mat4_multiply(H, M, t1);
+        float d[3] = { pc->dims[0] + 2*e, pc->dims[1] + 2*e, pc->dims[2] + 2*e };
+        // orient code order UP,EAST,NORTH,WEST,SOUTH,DOWN -> normal axis+sign
+        static const signed char ax[PM_FACES] = {  1, 0, 2,  0,  2, 1 };
+        static const signed char sn[PM_FACES] = { -1, 1, 1, -1, -1, 1 };
+        // the pipeline back-face culls, so each back wall is emitted as the
+        // OPPOSITE orient code translated onto it: the same quad, wound
+        // facing the camera (the UVs differ, but the layer is solid color)
+        static const signed char opp[PM_FACES] =
+                        { DOWN, WEST, SOUTH, EAST, NORTH, UP };
+        int n = 0;
+        for (int fc = 0; fc < PM_FACES; fc++)
+        {
+                int a = ax[fc], s = sn[fc];
+                float N[3] = { s * H[4*a], s * H[4*a+1], s * H[4*a+2] };
+                float c[3] = { d[0]/2, d[1]/2, d[2]/2 };
+                c[a] += s * d[a]/2;
+                float P[4];
+                mat4_f3_multiply(P, H, c[0], c[1], c[2]);
+                if (N[0] * (P[0] - peye0) + N[1] * (P[1] - peye1)
+                  + N[2] * (P[2] - peye2) <= 0) continue; // faces the camera
+                float off[3] = { 0, 0, 0 }, t2[16], Hf[16];
+                off[a] = s * d[a];
+                pm_mat_translate(t2, off[0], off[1], off[2]);
+                mat4_multiply(Hf, H, t2);
+                *(*bp)++ = (struct pmvert){
+                        .r0 = { Hf[0], Hf[4], Hf[8],  Hf[12] },
+                        .r1 = { Hf[1], Hf[5], Hf[9],  Hf[13] },
+                        .r2 = { Hf[2], Hf[6], Hf[10], Hf[14] },
+                        .dims = { d[0], d[1], d[2] }, .orient = opp[fc],
+                        .tex = layer, .illum = 0.f, .glow = glow,
+                };
+                n++;
+        }
+        return n;
+}
+
 // build the preview's instances into pmbuf: unselected pieces, then the white
-// outline hull, then the selected piece (each group drawn onto freshly
-// cleared depth, so the selection always reads in full, in front). Also
+// outline hull, then the selected piece. In paint/TYPE modes each group draws
+// onto freshly cleared depth, so the selection always reads in full, in
+// front; JOINT/SOCKET/PARENT share one honest depth buffer instead (piece
+// overlaps read true and the gizmo pierces every surface exactly). Also
 // refreshes the pick matrices and eases the center/zoom toward the selection.
 struct pmvert *pmedit_emit(struct pmvert *b)
 {
@@ -291,6 +627,10 @@ struct pmvert *pmedit_emit(struct pmvert *b)
                         .style = mo->style,
                 };
         }
+        // the test resting pose shows ONLY here (RESTING ANGLE mode and the
+        // ANIMATE preview) - the flag drops right back so the in-world
+        // resolves never pose with it
+        pm_rest_apply = pmedit_restang || pmedit_animate;
         pm_resolve(mo, -PLYR_W / 2.f, -PLYR_H / 2.f, -PLYR_W / 2.f,
                         -camplayer.yaw, pmedit_animate ? &an : NULL,
                         space, geom, root);
@@ -307,6 +647,7 @@ struct pmvert *pmedit_emit(struct pmvert *b)
                                 -camplayer.yaw, NULL, sspace, sgeom, NULL);
                 bgeom = sgeom;
         }
+        pm_rest_apply = 0;
 
         // center of interest + radius: the selected prism's bounding box
         // (center = its corner average), plus its parent's in SOCKET mode,
@@ -315,11 +656,19 @@ struct pmvert *pmedit_emit(struct pmvert *b)
         int spar = pmedit_socket && pmedit_sel >= 0 ? mo->piece[pmedit_sel].parent : -1;
         for (int i = 0; i < pmedit_nr; i++)
         {
-                // PARENT mode frames the whole model (any piece is
-                // clickable); so does ANIMATE (the whole model moves)
-                if (pmedit_sel >= 0 && !pmedit_parent && !pmedit_animate
-                                && i != pmedit_sel && i != spar)
-                        continue;
+                // frame what the main view shows: ANIMATE the whole moving
+                // model; PARENT the eligible parents; otherwise the
+                // selection (plus its parent in SOCKET)
+                if (pmedit_sel >= 0 && !pmedit_animate)
+                {
+                        if (pmedit_parent)
+                        {
+                                if (pmedit_cycle(i))
+                                        continue;
+                        }
+                        else if (i != pmedit_sel && i != spar)
+                                continue;
+                }
                 for (int k = 0; k < 8; k++)
                 {
                         float p[4];
@@ -334,6 +683,34 @@ struct pmvert *pmedit_emit(struct pmvert *b)
                         }
                 }
         }
+        // PLACE ATTACHMENT POINT: the resting gizmo sits at the point, which
+        // nudges can push outside the prism - keep it in frame too
+        if (pmedit_joint && pmedit_sel >= 0 && !pmedit_animate)
+        {
+                unsigned char *o = mo->piece[pmedit_sel].origin;
+                float p[4];
+                mat4_f3_multiply(p, space[pmedit_sel], o[0], o[1], o[2]);
+                for (int a = 0; a < 3; a++)
+                {
+                        if (p[a] < lo[a]) lo[a] = p[a];
+                        if (p[a] > hi[a]) hi[a] = p[a];
+                }
+        }
+        // nothing framable (PARENT with no eligible parents): the whole model
+        if (lo[0] > hi[0]) for (int i = 0; i < pmedit_nr; i++)
+                for (int k = 0; k < 8; k++)
+                {
+                        float p[4];
+                        mat4_f3_multiply(p, bgeom[i],
+                                (k      & 1) * mo->piece[i].dims[0],
+                                (k >> 1 & 1) * mo->piece[i].dims[1],
+                                (k >> 2 & 1) * mo->piece[i].dims[2]);
+                        for (int a = 0; a < 3; a++)
+                        {
+                                if (p[a] < lo[a]) lo[a] = p[a];
+                                if (p[a] > hi[a]) hi[a] = p[a];
+                        }
+                }
         float cen[3] = { (lo[0]+hi[0])/2, (lo[1]+hi[1])/2, (lo[2]+hi[2])/2 };
         float radius = 0.5f * sqrtf((hi[0]-lo[0]) * (hi[0]-lo[0])
                                   + (hi[1]-lo[1]) * (hi[1]-lo[1])
@@ -343,7 +720,7 @@ struct pmvert *pmedit_emit(struct pmvert *b)
         float tanw = main_ubo.proj[0] ? 1.f / main_ubo.proj[0] : 1.f;
         float tanh_ = main_ubo.proj[5] ? -1.f / main_ubo.proj[5] : 1.f;
         float fill = pmedit_sel < 0 || pmedit_parent || pmedit_animate
-                        ? 0.65f : 0.6f; // radius / half-extent
+                        ? 0.9f : 0.6f; // radius / half-extent
         float dist = radius / (fill * MIN(tanw, tanh_));
         if (dist < radius + 0.3f * BS) dist = radius + 0.3f * BS; // keep off the near plane
 
@@ -384,6 +761,48 @@ struct pmvert *pmedit_emit(struct pmvert *b)
         for (int i = 0; i < pmedit_nr; i++)
                 mat4_multiply(pmedit_mats[i], E, geom[i]);
 
+        // SELECT PARENT: the active piece moves to its own little view on
+        // the left - same turntable spin, zoomed to the lonely piece - while
+        // the main view keeps only the pieces that could become its parent.
+        // Overwriting its pick matrix means clicks find it where it appears.
+        float E2[16];
+        if (pmedit_parent && pmedit_sel >= 0)
+        {
+                float lo2[3] = {1e9f, 1e9f, 1e9f}, hi2[3] = {-1e9f, -1e9f, -1e9f};
+                for (int k = 0; k < 8; k++)
+                {
+                        float p[4];
+                        mat4_f3_multiply(p, geom[pmedit_sel],
+                                (k      & 1) * mo->piece[pmedit_sel].dims[0],
+                                (k >> 1 & 1) * mo->piece[pmedit_sel].dims[1],
+                                (k >> 2 & 1) * mo->piece[pmedit_sel].dims[2]);
+                        for (int a = 0; a < 3; a++)
+                        {
+                                if (p[a] < lo2[a]) lo2[a] = p[a];
+                                if (p[a] > hi2[a]) hi2[a] = p[a];
+                        }
+                }
+                float cen2[3] = { (lo2[0]+hi2[0])/2, (lo2[1]+hi2[1])/2,
+                                  (lo2[2]+hi2[2])/2 };
+                float rad2 = 0.5f * sqrtf((hi2[0]-lo2[0]) * (hi2[0]-lo2[0])
+                                        + (hi2[1]-lo2[1]) * (hi2[1]-lo2[1])
+                                        + (hi2[2]-lo2[2]) * (hi2[2]-lo2[2]));
+                float dist2 = rad2 / (0.28f * MIN(tanw, tanh_));
+                if (dist2 < rad2 + 0.3f * BS) dist2 = rad2 + 0.3f * BS;
+                float offx = -0.62f * tanw * dist2; // ~62% left of center
+                // waiting for a parent, the piece hovers: a gentle bob, half
+                // a texel of total travel at 1Hz, so it reads as unattached
+                float bob = 0.25f * PM_SCALE * sinf(TAU * pmedit_bob_t);
+                float q1[16], q2[16];
+                pm_mat_translate(q1, -cen2[0], -cen2[1], -cen2[2]);
+                mat4_multiply(q2, R, q1);
+                pm_mat_translate(q1, peye0 + f[0] * dist2 + vm[0] * offx,
+                                     peye1 + f[1] * dist2 + vm[4] * offx + bob,
+                                     peye2 + f[2] * dist2 + vm[8] * offx);
+                mat4_multiply(E2, q1, q2);
+                mat4_multiply(pmedit_mats[pmedit_sel], E2, geom[pmedit_sel]);
+        }
+
         // one prism face instance; every piece draws at full, glow-heavy
         // brightness so paint colors read the same day or night, and
         // unselected pieces stay color-matchable against the selection
@@ -399,6 +818,16 @@ struct pmvert *pmedit_emit(struct pmvert *b)
         for (int i = 0; i < pmedit_nr; i++)
         {
                 if (i == pmedit_sel) continue;
+                if (pmedit_hidden >> i & 1) continue; // ghosted below instead
+                // JOINT shows only the piece whose joint is being moved
+                if (pmedit_joint && pmedit_sel >= 0) continue;
+                // MOVE PART shows only the parent being attached to
+                if (pmedit_socket && pmedit_sel >= 0
+                                && i != mo->piece[pmedit_sel].parent)
+                        continue;
+                // PARENT shows only the eligible parents
+                if (pmedit_parent && pmedit_sel >= 0 && pmedit_cycle(i))
+                        continue;
                 // the ANIMATE preview blinks its EYES pieces like the game
                 // does (the selected piece stays visible - you're editing it)
                 if (pmedit_animate && mo->piece[i].type == PM_T_EYES
@@ -412,143 +841,290 @@ struct pmvert *pmedit_emit(struct pmvert *b)
         }
         pm_edit_rest_count = (int)(b - pmbuf) - pm_edit_rest_start;
 
+        // HIDDEN pieces: still there, 90% see-through on the same depth as
+        // the rest of the model, but dead to every click until UNHIDE
+        pm_edit_hide_start = pm_edit_rest_start + pm_edit_rest_count;
+        for (int i = 0; i < pmedit_nr; i++)
+        {
+                if (!(pmedit_hidden >> i & 1) || i == pmedit_sel) continue;
+                if (pmedit_joint && pmedit_sel >= 0) continue;
+                if (pmedit_socket && pmedit_sel >= 0
+                                && i != mo->piece[pmedit_sel].parent)
+                        continue;
+                if (pmedit_parent && pmedit_sel >= 0 && pmedit_cycle(i))
+                        continue;
+                if (pmedit_animate && mo->piece[i].type == PM_T_EYES
+                                && pm_blinking(my_player, anim_t))
+                        continue;
+                for (int fc = 0; fc < PM_FACES; fc++)
+                {
+                        *b = PM_EDIT_FACE(pmedit_mats[i],
+                                mo->piece[i].dims[0], mo->piece[i].dims[1], mo->piece[i].dims[2],
+                                pmodel_tex_base + my_player * pm_slot_layers() + i * PM_FACES + fc,
+                                0.9f, 0.8f);
+                        (b++)->tint = -0.1f; // ghost pipe reads alpha 0.1
+                }
+        }
+        pm_edit_hide_count = (int)(b - pmbuf) - pm_edit_hide_start;
+
         // selection outline: the selected prism again, inflated by a pixel
         // membrane, in solid white (the extra layer past every slot's tiles).
-        // It draws onto freshly cleared depth and the piece draws over it, so
-        // the fatter silhouette shows as a rim around the piece.
-        pm_edit_hull_start = pm_edit_rest_start + pm_edit_rest_count;
+        // Paint/TYPE modes draw it onto freshly cleared depth and the piece
+        // over it, so the fatter silhouette shows as a rim around the piece;
+        // JOINT/SOCKET use the depth-honest inverted hull instead, white on
+        // the selection plus pink on the parent in SOCKET mode.
+        pm_edit_hull_start = pm_edit_hide_start + pm_edit_hide_count;
         pm_edit_hull_count = 0;
         pm_edit_sel_count = 0;
+        // MOVE PART: while the cursor is on the parent, the piece (rim and
+        // all) leaves its current spot and shows as a see-through preview at
+        // the exact flush spot a click would lay it (emitted with the gizmo
+        // group below); off the parent it sits where it is, solid, and the
+        // arrow keys nudge it. A root-parented piece has no parent surface,
+        // so it always stays put.
+        int sock_att[3];
+        int sock_hot = pmedit_socket && pmedit_sel >= 0
+                && pmedit_sock_aim(&mo->piece[pmedit_sel], sock_att);
         if (pmedit_sel >= 0)
         {
                 struct pm_piece *pc = &mo->piece[pmedit_sel];
-                float e = 0.15f; // px of rim on every side - thin, so the shell
-                                 // doesn't cover neighbors where pieces touch
-                float t1[16], H[16];
-                pm_mat_translate(t1, -e, -e, -e);
-                mat4_multiply(H, pmedit_mats[pmedit_sel], t1);
-                for (int fc = 0; fc < PM_FACES; fc++)
-                        *b++ = PM_EDIT_FACE(H,
-                                pc->dims[0] + 2*e, pc->dims[1] + 2*e, pc->dims[2] + 2*e,
-                                PM_LAYER_WHITE, 0.f, 3.f); // saturates: reads white
-                pm_edit_hull_count = PM_FACES;
-
-                for (int fc = 0; fc < PM_FACES; fc++)
-                        *b++ = PM_EDIT_FACE(pmedit_mats[pmedit_sel],
-                                pc->dims[0], pc->dims[1], pc->dims[2],
-                                pmodel_tex_base + my_player * pm_slot_layers()
-                                        + pmedit_sel * PM_FACES + fc,
-                                0.9f, 0.8f);
-                pm_edit_sel_count = PM_FACES;
-
-                // SOCKET mode: the parent joins the top depth layer, so the
-                // gizmo below intersects ITS surface honestly too
-                int par = pc->parent;
-                if (pmedit_socket && par >= 0)
+                if (pmedit_joint || pmedit_socket)
                 {
-                        struct pm_piece *pp = &mo->piece[par];
+                        if (!sock_hot)
+                                pm_edit_hull_count = pmedit_shell(&b,
+                                        pmedit_mats[pmedit_sel], pc,
+                                        PM_LAYER_WHITE, 3.f); // reads white
+                        if (pmedit_socket && pc->parent >= 0)
+                                pm_edit_hull_count += pmedit_shell(&b,
+                                        pmedit_mats[(int)pc->parent],
+                                        &mo->piece[(int)pc->parent],
+                                        PM_LAYER_PINK, 1.2f);
+                }
+                else if (pmedit_parent)
+                {
+                        // the piece sits alone in the left view wearing the
+                        // white outline; pink candidate rims ride the gizmo
+                        // group
+                        pm_edit_hull_count = pmedit_shell(&b,
+                                pmedit_mats[pmedit_sel], pc,
+                                PM_LAYER_WHITE, 3.f); // reads white
+                }
+                else
+                {
+                        float e = 0.15f; // px of rim on every side - thin, so
+                                         // the shell doesn't cover neighbors
+                                         // where pieces touch
+                        float t1[16], H[16];
+                        pm_mat_translate(t1, -e, -e, -e);
+                        mat4_multiply(H, pmedit_mats[pmedit_sel], t1);
                         for (int fc = 0; fc < PM_FACES; fc++)
-                                *b++ = PM_EDIT_FACE(pmedit_mats[par],
-                                        pp->dims[0], pp->dims[1], pp->dims[2],
+                                *b++ = PM_EDIT_FACE(H,
+                                        pc->dims[0] + 2*e, pc->dims[1] + 2*e,
+                                        pc->dims[2] + 2*e,
+                                        PM_LAYER_WHITE, 0.f, 3.f); // reads white
+                        pm_edit_hull_count = PM_FACES;
+                }
+
+                if (!sock_hot)
+                {
+                        for (int fc = 0; fc < PM_FACES; fc++)
+                                *b++ = PM_EDIT_FACE(pmedit_mats[pmedit_sel],
+                                        pc->dims[0], pc->dims[1], pc->dims[2],
                                         pmodel_tex_base + my_player * pm_slot_layers()
-                                                + par * PM_FACES + fc,
+                                                + pmedit_sel * PM_FACES + fc,
                                         0.9f, 0.8f);
-                        pm_edit_sel_count += PM_FACES;
+                        pm_edit_sel_count = PM_FACES;
                 }
         }
         pm_edit_sel_start = pm_edit_hull_start + pm_edit_hull_count;
 
-        // JOINT/SOCKET gizmo: the rotation origin (in the piece's 16^3 SPACE
-        // - it isn't corner-relative like the prism geometry) or the attach
-        // point (in the PARENT's space; parent -1 = the center box) as a
-        // texel-and-a-bit cube in a cycling hue, with counter-cycling axis
-        // lines running out of its center in all 6 directions
+        // JOINT gizmo: the rotation origin (in the piece's 16^3 SPACE - it
+        // isn't corner-relative like the prism geometry) as a half-texel
+        // cube in a cycling hue, with counter-cycling ruled axes running out
+        // of its center in all 6 directions. MOVE PART draws no gizmo: the
+        // see-through preview piece rides the cursor on the parent instead
+        // (it lives in this group so the ghost pipeline can draw it last).
         pm_edit_joint_start = pm_edit_sel_start + pm_edit_sel_count;
         pm_edit_joint_count = 0;
-        if (pmedit_sel >= 0 && (pmedit_joint || pmedit_socket))
+        if (pmedit_sel >= 0)
         {
                 struct pm_piece *pc = &mo->piece[pmedit_sel];
                 float t1[16], G[16];
+                // the arrow-key nudge steers by this frame in every mode,
+                // including the plain selected view's MOVE PART-style nudge
                 if (pmedit_joint)
                         mat4_multiply(pmedit_gizmo_mat, E, space[pmedit_sel]);
                 else if (pc->parent >= 0)
                         mat4_multiply(pmedit_gizmo_mat, E, space[(int)pc->parent]);
                 else
                         mat4_multiply(pmedit_gizmo_mat, E, root);
-                unsigned char *pt = pmedit_joint ? pc->origin : pc->attach;
-                int hue = pframe / 10 % PM_NR_HUES;
 
-                float c = 1.3f;
-                pm_mat_translate(t1, pt[0] - c/2, pt[1] - c/2, pt[2] - c/2);
-                mat4_multiply(G, pmedit_gizmo_mat, t1);
-                for (int fc = 0; fc < PM_FACES; fc++)
-                        *b++ = PM_EDIT_FACE(G, c, c, c, PM_LAYER_HUES + hue, 0.f, 3.f);
-
-                for (int a = 0; a < 3; a++)
+                if (pmedit_joint)
                 {
-                        float dims[3] = { 0.2f, 0.2f, 0.2f };
-                        dims[a] = 40.f;
-                        pm_mat_translate(t1, pt[0] - dims[0]/2,
-                                        pt[1] - dims[1]/2,
-                                        pt[2] - dims[2]/2);
+                        // the gizmo (cube + ruled axes) rides the cursor
+                        // whenever it's on the piece - showing exactly where
+                        // a click would plant the point - and rests at the
+                        // point itself otherwise (arrow nudges move it there)
+                        int gface, gtu, gtv;
+                        float gh[3];
+                        int pt[3] = { pc->origin[0], pc->origin[1], pc->origin[2] };
+                        if (pmedit_pick(pmedit_mx, pmedit_my, pmedit_sel, 0.f,
+                                        &gface, &gtu, &gtv, gh) >= 0)
+                                for (int a = 0; a < 3; a++)
+                                        pt[a] = ICLAMP((int)roundf(pc->corner[a] + gh[a]),
+                                                        0, PM_TILE);
+                        int hue = pframe / 10 % PM_NR_HUES;
+
+                        float c = 0.65f;
+                        pm_mat_translate(t1, pt[0] - c/2, pt[1] - c/2, pt[2] - c/2);
                         mat4_multiply(G, pmedit_gizmo_mat, t1);
                         for (int fc = 0; fc < PM_FACES; fc++)
-                                *b++ = PM_EDIT_FACE(G, dims[0], dims[1], dims[2],
-                                        PM_LAYER_HUES + (hue + 3) % PM_NR_HUES, 0.f, 3.f);
-                }
-                pm_edit_joint_count = 4 * PM_FACES;
+                                *b++ = PM_EDIT_FACE(G, c, c, c, PM_LAYER_HUES + hue, 0.f, 3.f);
+                        pm_edit_joint_count = PM_FACES;
 
-                // ghost cube (no axis lines, dimmer) where pointing at the
-                // relevant piece would plant the point on click
-                int gface, gtu, gtv, tgt = pmedit_joint ? pmedit_sel : pc->parent;
-                float gh[3];
-                if (tgt >= 0 && pmedit_pick(pmedit_mx, pmedit_my, tgt, 0.f,
-                                &gface, &gtu, &gtv, gh) >= 0)
-                {
-                        unsigned char *corner = mo->piece[tgt].corner;
-                        int gp[3], same = 1;
+                        // the axes come as 1-texel segments alternating bright
+                        // and dim, pinned to the piece space's texel grid, so
+                        // distances read at a glance like a ruler
                         for (int a = 0; a < 3; a++)
+                                for (int s = -20; s < 20; s++)
+                                {
+                                        float dims[3] = { 0.1f, 0.1f, 0.1f };
+                                        dims[a] = 1.f;
+                                        float off[3] = { pt[0] - 0.05f,
+                                                pt[1] - 0.05f, pt[2] - 0.05f };
+                                        off[a] = pt[a] + s;
+                                        pm_mat_translate(t1, off[0], off[1], off[2]);
+                                        mat4_multiply(G, pmedit_gizmo_mat, t1);
+                                        for (int fc = 0; fc < PM_FACES; fc++)
+                                                *b++ = PM_EDIT_FACE(G,
+                                                        dims[0], dims[1], dims[2],
+                                                        PM_LAYER_HUES + (hue + 3) % PM_NR_HUES,
+                                                        0.f, (pt[a] + s) & 1 ? 3.f : 1.4f);
+                                        pm_edit_joint_count += PM_FACES;
+                                }
+                }
+                else if (sock_hot)
+                {
+                        // MOVE PART preview: the piece itself, half see-
+                        // through, laid flush against the hovered parent face
+                        // exactly where a click would put it (the transforms
+                        // are all translations, so they collapse into one)
+                        pm_mat_translate(t1,
+                                sock_att[0] - pc->origin[0] + pc->corner[0],
+                                sock_att[1] - pc->origin[1] + pc->corner[1],
+                                sock_att[2] - pc->origin[2] + pc->corner[2]);
+                        mat4_multiply(G, pmedit_gizmo_mat, t1);
+                        for (int fc = 0; fc < PM_FACES; fc++)
                         {
-                                gp[a] = ICLAMP((int)roundf(corner[a] + gh[a]), 0, PM_TILE);
-                                same &= gp[a] == pt[a];
+                                *b = PM_EDIT_FACE(G,
+                                        pc->dims[0], pc->dims[1], pc->dims[2],
+                                        pmodel_tex_base + my_player * pm_slot_layers()
+                                                + pmedit_sel * PM_FACES + fc,
+                                        0.9f, 0.8f);
+                                (b++)->tint = -0.5f; // ghost pipe reads alpha 0.5
                         }
-                        if (!same) // identical cubes would just z-fight
+                        pm_edit_joint_count += PM_FACES;
+                }
+                else if (pmedit_resize && pmedit_face)
+                {
+                        // RESIZE: the picked face wears a see-through slab in
+                        // a cycling hue - the paint reads through it - so you
+                        // can see what the arrows will push and pull
+                        int fax = pmedit_axis_of[pmedit_face];
+                        int hue = pframe / 10 % PM_NR_HUES;
+                        float e = 0.15f, th = 0.2f;
+                        float off[3] = { -e, -e, -e };
+                        float dims[3] = { pc->dims[0] + 2*e, pc->dims[1] + 2*e,
+                                          pc->dims[2] + 2*e };
+                        dims[fax] = th;
+                        off[fax] = pmedit_side_of[pmedit_face] > 0
+                                        ? pc->dims[fax] + 0.02f : -th - 0.02f;
+                        pm_mat_translate(t1, off[0], off[1], off[2]);
+                        mat4_multiply(G, pmedit_mats[pmedit_sel], t1);
+                        for (int fc = 0; fc < PM_FACES; fc++)
                         {
-                                pm_mat_translate(t1, gp[0] - c/2, gp[1] - c/2, gp[2] - c/2);
-                                mat4_multiply(G, pmedit_gizmo_mat, t1);
-                                for (int fc = 0; fc < PM_FACES; fc++)
-                                        *b++ = PM_EDIT_FACE(G, c, c, c,
-                                                PM_LAYER_HUES + hue, 0.f, 1.1f);
-                                pm_edit_joint_count += PM_FACES;
+                                *b = PM_EDIT_FACE(G, dims[0], dims[1], dims[2],
+                                        PM_LAYER_HUES + hue, 0.f, 3.f);
+                                (b++)->tint = -0.45f; // ghost pipe: alpha 0.45
                         }
+                        pm_edit_joint_count += PM_FACES;
                 }
         }
 
-        // PARENT mode: ghost gizmo where the attach point would land on the
-        // hovered candidate (rays pass through the selection - it draws
-        // behind everything here; loops-in-waiting get no ghost)
+        // PARENT mode: no gizmo, no ghost - just a pink rim on the eligible
+        // parent under the cursor; the click re-wires to it and lays the
+        // piece flush right there
         if (pmedit_sel >= 0 && pmedit_parent)
         {
                 int gface, gtu, gtv;
                 float gh[3];
-                int hit = pmedit_pick(pmedit_mx, pmedit_my, -2 - pmedit_sel,
-                                0.f, &gface, &gtu, &gtv, gh);
-                if (hit >= 0 && !pmedit_cycle(hit))
+                int hov = pmedit_pick(pmedit_mx, pmedit_my,
+                                PMEDIT_PICK_ELIG, 0.f,
+                                &gface, &gtu, &gtv, gh);
+                if (hov >= 0)
+                        pm_edit_joint_count += pmedit_shell(&b,
+                                pmedit_mats[hov], &mo->piece[hov],
+                                PM_LAYER_PINK, 1.2f);
+        }
+
+        // ground reference: one block's top face as a half-transparent dark
+        // green quad at the in-game ground level (the feet), so a floating
+        // or sunken model reads at a glance. Drawn after the model, blended
+        // on its depth: a sunken model shows the floor slicing through it.
+        // Only in the views that show the whole model, and only near level -
+        // steep pitches would turn it into a big screen-covering sheet
+        pm_edit_floor_start = pm_edit_joint_start + pm_edit_joint_count;
+        pm_edit_floor_count = 0;
+        if (!pmedit_joint && !pmedit_socket && !pmedit_parent)
+        {
+                if (fabsf(pmedit_mpitch) <= TAU / 12)
                 {
-                        unsigned char *corner = mo->piece[hit].corner;
-                        float t1[16], F[16], G[16], c = 1.3f;
-                        int gp[3];
-                        for (int a = 0; a < 3; a++)
-                                gp[a] = ICLAMP((int)roundf(corner[a] + gh[a]), 0, PM_TILE);
-                        mat4_multiply(F, E, space[hit]);
-                        pm_mat_translate(t1, gp[0] - c/2, gp[1] - c/2, gp[2] - c/2);
-                        mat4_multiply(G, F, t1);
-                        for (int fc = 0; fc < PM_FACES; fc++)
-                                *b++ = PM_EDIT_FACE(G, c, c, c,
-                                        PM_LAYER_HUES + pframe / 10 % PM_NR_HUES,
-                                        0.f, 1.1f);
-                        pm_edit_joint_count += PM_FACES;
+                        float ft[16], FG[16];
+                        pm_mat_translate(ft, -BS / 2.f, PLYR_H / 2.f, -BS / 2.f);
+                        mat4_multiply(FG, E, ft);
+                        int fc = 0; // the UP face only: a single quad
+                        *b = PM_EDIT_FACE(FG, BS, 0, BS, PM_LAYER_DKGREEN, 0.f, 3.f);
+                        (b++)->tint = -0.5f; // ghost pipe reads alpha 0.5
+                        pm_edit_floor_count = 1;
                 }
+
+                // hitbox wireframe: 12 thin bars tracing the player's
+                // PLYR_W x PLYR_H x PLYR_W collision box in the same
+                // see-through dark green as the floor. The box is square in
+                // plan, so z reuses the x numbers; the y and z bars are
+                // inset one thickness so no two bars share volume (which
+                // would double-blend)
+                const float T = 24.f;
+                const float cx = -PLYR_W / 2.f, cy = -PLYR_H / 2.f;
+                const float X = PLYR_W - T, Y = PLYR_H - T;
+                const struct { float p[3], d[3]; } bar[12] = {
+                        {{ cx,     cy,     cx     }, { PLYR_W, T, T }},
+                        {{ cx,     cy,     cx + X }, { PLYR_W, T, T }},
+                        {{ cx,     cy + Y, cx     }, { PLYR_W, T, T }},
+                        {{ cx,     cy + Y, cx + X }, { PLYR_W, T, T }},
+                        {{ cx,     cy + T, cx     }, { T, PLYR_H - 2 * T, T }},
+                        {{ cx,     cy + T, cx + X }, { T, PLYR_H - 2 * T, T }},
+                        {{ cx + X, cy + T, cx     }, { T, PLYR_H - 2 * T, T }},
+                        {{ cx + X, cy + T, cx + X }, { T, PLYR_H - 2 * T, T }},
+                        {{ cx,     cy,     cx + T }, { T, T, PLYR_W - 2 * T }},
+                        {{ cx,     cy + Y, cx + T }, { T, T, PLYR_W - 2 * T }},
+                        {{ cx + X, cy,     cx + T }, { T, T, PLYR_W - 2 * T }},
+                        {{ cx + X, cy + Y, cx + T }, { T, T, PLYR_W - 2 * T }},
+                };
+                for (int e = 0; e < 12; e++)
+                {
+                        float bt[16], BM[16];
+                        pm_mat_translate(bt, bar[e].p[0], bar[e].p[1], bar[e].p[2]);
+                        mat4_multiply(BM, E, bt);
+                        for (int fc = 0; fc < PM_FACES; fc++)
+                        {
+                                *b = PM_EDIT_FACE(BM,
+                                        bar[e].d[0], bar[e].d[1], bar[e].d[2],
+                                        PM_LAYER_DKGREEN, 0.f, 3.f);
+                                (b++)->tint = -0.5f; // matches the floor
+                        }
+                }
+                pm_edit_floor_count += 12 * PM_FACES;
         }
         #undef PM_EDIT_FACE
 
@@ -561,7 +1137,8 @@ struct pmvert *pmedit_emit(struct pmvert *b)
 // hull and the selected piece over it, so the selection always reads in full
 void pmedit_render(VkCommandBuffer cmdbuf)
 {
-        if (!pmedit_on || !(pm_edit_rest_count + pm_edit_sel_count)) return;
+        if (!pmedit_on || !(pm_edit_rest_count + pm_edit_sel_count
+                        + pm_edit_hide_count)) return;
 
         // the preview renders through the editor's leveled camera, not the
         // world's (which keeps whatever pitch the player froze it at)
@@ -586,28 +1163,70 @@ void pmedit_render(VkCommandBuffer cmdbuf)
         VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers(cmdbuf, 0, 1, &pm_alloc[vk.currentFrame].buf, &offset);
 
-        // PARENT mode draws the selection FIRST so every other piece (the
-        // parent candidates) reads in front of it; normally the selection
-        // draws last, on top
+        // JOINT/SOCKET/PARENT clear depth once and share it: pieces overlap
+        // honestly and the highlights are inverted hulls (PARENT's views
+        // don't overlap on screen anyway). Paint/TYPE modes clear per group
+        // so the selection always reads in full, in front.
         int layers[3][2] = {
                 { pm_edit_rest_start, pm_edit_rest_count },
                 { pm_edit_hull_start, pm_edit_hull_count },
                 { pm_edit_sel_start,  pm_edit_sel_count  },
         };
-        int order[3];
-        if (pmedit_parent) { order[0] = 1; order[1] = 2; order[2] = 0; }
-        else               { order[0] = 0; order[1] = 1; order[2] = 2; }
-
+        int shared = pmedit_joint || pmedit_socket || pmedit_parent;
+        int cleared = 0;
         for (int i = 0; i < 3; i++)
         {
-                if (!layers[order[i]][1]) continue;
-                vkCmdClearAttachments(cmdbuf, 1, &ca, 1, &cr);
-                vkCmdDraw(cmdbuf, 4, layers[order[i]][1], 0, layers[order[i]][0]);
+                // the hidden ghosts, ground quad and hitbox frame ride the
+                // unselected group's depth, right after it, so occlusion
+                // reads true through the see-through: the floor slices
+                // through a sunken model, the frame is hidden where the
+                // model is in front of it
+                if (i == 1 && (pm_edit_hide_count || pm_edit_floor_count))
+                {
+                        if (!cleared)
+                        {
+                                vkCmdClearAttachments(cmdbuf, 1, &ca, 1, &cr);
+                                cleared = 1;
+                        }
+                        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        vk.pipelines[pmodel_ghost_pipe].pipeline);
+                        vkCmdPushConstants(cmdbuf, vk.pipelines[pmodel_ghost_pipe].layout,
+                                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                        0, sizeof push, &push);
+                        if (pm_edit_hide_count)
+                                vkCmdDraw(cmdbuf, 4, pm_edit_hide_count, 0, pm_edit_hide_start);
+                        if (pm_edit_floor_count)
+                                vkCmdDraw(cmdbuf, 4, pm_edit_floor_count, 0, pm_edit_floor_start);
+                        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        vk.pipelines[pmodel_pipe].pipeline);
+                        vkCmdPushConstants(cmdbuf, vk.pipelines[pmodel_pipe].layout,
+                                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                        0, sizeof push, &push);
+                }
+                if (!layers[i][1]) continue;
+                if (!shared || !cleared)
+                {
+                        vkCmdClearAttachments(cmdbuf, 1, &ca, 1, &cr);
+                        cleared = 1;
+                }
+                vkCmdDraw(cmdbuf, 4, layers[i][1], 0, layers[i][0]);
         }
         // the gizmo shares the last layer's depth: where the cube and axis
-        // lines pierce the piece's surface shows exactly, no x-ray
+        // lines pierce the piece's surface shows exactly, no x-ray. MOVE
+        // PART's group is the see-through preview, and RESIZE's is the
+        // picked face's see-through slab - swap in the blend pipe
         if (pm_edit_joint_count)
+        {
+                if (pmedit_socket || pmedit_resize)
+                {
+                        vkCmdBindPipeline(cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        vk.pipelines[pmodel_ghost_pipe].pipeline);
+                        vkCmdPushConstants(cmdbuf, vk.pipelines[pmodel_ghost_pipe].layout,
+                                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                        0, sizeof push, &push);
+                }
                 vkCmdDraw(cmdbuf, 4, pm_edit_joint_count, 0, pm_edit_joint_start);
+        }
 }
 
 // cast the cursor's ray against the preview prisms. Returns the piece hit
@@ -640,10 +1259,13 @@ static int pmedit_pick(float mx, float my, int only, float pad,
         float best_t = 1e30f;
         int i0 = only < 0 ? 0 : only;
         int i1 = only < 0 ? pmedit_nr - 1 : only;
-        int skip = only < -1 ? -2 - only : -1; // only = -2-i: all EXCEPT i
+        int skip = only < -1 && only != PMEDIT_PICK_ELIG
+                        ? -2 - only : -1; // only = -2-i: all EXCEPT i
         for (int i = i0; i <= i1; i++)
         {
                 if (i == skip) continue;
+                if (pmedit_hidden >> i & 1) continue; // hidden: dead to rays
+                if (only == PMEDIT_PICK_ELIG && pmedit_cycle(i)) continue;
                 float *M = pmedit_mats[i];
                 // upper 3x3 is rotation * uniform scale: inverse = transpose/s^2
                 float s2 = M[0]*M[0] + M[1]*M[1] + M[2]*M[2];
@@ -749,12 +1371,28 @@ void pmedit_click(int down)
 
         if (pmedit_animate) { pmedit_animate = 0; return; } // any click stops it
 
+        if (pmedit_in_hide_btn(pmedit_mx, pmedit_my))
+        {
+                if (btn != SDL_BUTTON_LEFT) return;
+                if (pmedit_hide) { pmedit_hide = 0; return; } // done hiding
+                if (pmedit_hidden) { pmedit_hidden = 0; return; } // UNHIDE (n)
+                // HIDE mode: back out to the whole model, then every piece
+                // clicked ghosts away until the click lands somewhere else
+                pmedit_newpart_cancel();
+                pmedit_hide = 1;
+                pmedit_sel = -1;
+                pmedit_joint = pmedit_socket = pmedit_parent = 0;
+                pmedit_resize = pmedit_face = pmedit_restang = 0;
+                return;
+        }
+
         if (pmedit_in_joint_btn(pmedit_mx, pmedit_my))
         {
                 if (btn == SDL_BUTTON_LEFT)
                 {
                         pmedit_joint = !pmedit_joint;
-                        pmedit_socket = pmedit_parent = 0;
+                        pmedit_socket = pmedit_parent = pmedit_newpart = 0;
+                        pmedit_resize = pmedit_face = pmedit_restang = 0;
                 }
                 return;
         }
@@ -763,17 +1401,47 @@ void pmedit_click(int down)
                 if (btn == SDL_BUTTON_LEFT)
                 {
                         pmedit_socket = !pmedit_socket;
-                        pmedit_joint = pmedit_parent = 0;
+                        pmedit_joint = pmedit_parent = pmedit_newpart = 0;
+                        pmedit_resize = pmedit_face = pmedit_restang = 0;
                 }
                 return;
         }
         if (pmedit_in_parent_btn(pmedit_mx, pmedit_my))
         {
-                if (btn == SDL_BUTTON_LEFT)
+                if (btn != SDL_BUTTON_LEFT) return;
+                struct pmodel *mo = &pm_models[my_player];
+                struct pm_piece *pc = &mo->piece[pmedit_sel];
+                if (pc->parent >= 0)
                 {
-                        pmedit_parent = !pmedit_parent;
+                        // DETACH: re-hang the piece on the invisible player
+                        // box. In the standing pose every hop is the pure
+                        // translation (attach - origin), so folding the old
+                        // parent chain's offsets into the attach keeps the
+                        // piece visually put - unless the sum clamps at the
+                        // attach range walls, then it moves as little as
+                        // the range allows
+                        int off[3] = { 0, 0, 0 };
+                        int hops = 0;
+                        for (int j = pc->parent;
+                                        j >= 0 && hops++ <= PM_MAX_PIECES;
+                                        j = mo->piece[j].parent)
+                                for (int a = 0; a < 3; a++)
+                                        off[a] += mo->piece[j].attach[a]
+                                                - mo->piece[j].origin[a];
+                        for (int a = 0; a < 3; a++)
+                        {
+                                int at = pc->attach[a] + off[a];
+                                pc->attach[a] = ICLAMP(at, 0, 2 * PM_TILE);
+                        }
+                        pc->parent = -1;
                         pmedit_joint = pmedit_socket = 0;
+                        pmedit_resize = pmedit_face = pmedit_restang = 0;
+                        return;
                 }
+                pmedit_parent = !pmedit_parent;
+                pmedit_newpart = 0;
+                pmedit_joint = pmedit_socket = 0;
+                pmedit_resize = pmedit_face = pmedit_restang = 0;
                 return;
         }
         if (pmedit_in_type_btn(pmedit_mx, pmedit_my))
@@ -784,11 +1452,88 @@ void pmedit_click(int down)
                                 % PM_T_COUNT;
                 return;
         }
+        if (pmedit_in_resize_btn(pmedit_mx, pmedit_my))
+        {
+                if (btn == SDL_BUTTON_LEFT)
+                {
+                        pmedit_resize = !pmedit_resize;
+                        pmedit_face = pmedit_restang = 0;
+                        pmedit_joint = pmedit_socket = pmedit_parent = 0;
+                        pmedit_newpart = 0;
+                }
+                return;
+        }
+        if (pmedit_in_restang_btn(pmedit_mx, pmedit_my))
+        {
+                if (btn == SDL_BUTTON_LEFT)
+                {
+                        pmedit_restang = !pmedit_restang;
+                        pmedit_joint = pmedit_socket = pmedit_parent = 0;
+                        pmedit_resize = pmedit_face = 0;
+                        pmedit_newpart = 0;
+                }
+                return;
+        }
+        if (pmedit_in_copy_btn(pmedit_mx, pmedit_my))
+        {
+                if (btn == SDL_BUTTON_LEFT) pmedit_copy();
+                return;
+        }
+        if (pmedit_in_delete_btn(pmedit_mx, pmedit_my))
+        {
+                if (btn == SDL_BUTTON_LEFT) pmedit_delete();
+                return;
+        }
+        if (pmedit_in_newpart_btn(pmedit_mx, pmedit_my))
+        {
+                struct pmodel *mo = &pm_models[my_player];
+                if (btn != SDL_BUTTON_LEFT || mo->nr_pieces >= PM_MAX_PIECES)
+                        return;
+                pmedit_newpart_cancel(); // starting over abandons an unplaced one
+                // a fresh 4x4x4 in the middle of its space, gray
+                // checkerboard coat, joint dead center - then straight into
+                // the parent-picking flow to hang it somewhere
+                int i = mo->nr_pieces++;
+                mo->piece[i] = (struct pm_piece){
+                        .dims = {4, 4, 4}, .corner = {6, 6, 6},
+                        .origin = {8, 8, 8}, .attach = {8, 8, 8},
+                        .parent = -1, .type = PM_T_FIXED };
+                for (int f = 0; f < PM_FACES; f++)
+                        for (int v = 0; v < PM_TILE; v++)
+                        for (int u = 0; u < PM_TILE; u++)
+                                mo->texel[i][f][v * PM_TILE + u] =
+                                        (u + v) & 1 ? PMEDIT_GRAY_A
+                                                    : PMEDIT_GRAY_B;
+                pmodel_upload(my_player);
+                pmedit_sel = i;
+                pmedit_parent = 1;
+                pmedit_newpart = 1;
+                pmedit_joint = pmedit_socket = 0;
+                pmedit_resize = pmedit_face = pmedit_restang = 0;
+                pmedit_hide = 0;
+                return;
+        }
         if (pmedit_in_animate_btn(pmedit_mx, pmedit_my))
         {
                 // keeps the selection and modes: stopping puts you right
                 // back where you were
-                if (btn == SDL_BUTTON_LEFT) pmedit_animate = 1;
+                if (btn == SDL_BUTTON_LEFT)
+                {
+                        pmedit_animate = 1;
+                        pmedit_hide = 0;
+                }
+                return;
+        }
+
+        if (pmedit_hide)
+        {
+                // every piece clicked goes see-through and dead to clicks;
+                // a click on anything else is done hiding
+                int face, tu, tv;
+                int hit = pmedit_pick(pmedit_mx, pmedit_my, -1, 0.f,
+                                &face, &tu, &tv, NULL);
+                if (hit >= 0) pmedit_hidden |= 1u << hit;
+                else pmedit_hide = 0;
                 return;
         }
 
@@ -796,74 +1541,159 @@ void pmedit_click(int down)
         {
                 int face, tu, tv;
                 int hit = pmedit_pick(pmedit_mx, pmedit_my, -1, 0.f, &face, &tu, &tv, NULL);
-                if (hit >= 0) { pmedit_sel = hit; pmedit_joint = pmedit_socket = pmedit_parent = 0; }
+                if (hit >= 0)
+                {
+                        pmedit_sel = hit;
+                        pmedit_joint = pmedit_socket = pmedit_parent = 0;
+                        pmedit_resize = pmedit_face = pmedit_restang = 0;
+                }
                 return;
         }
 
         int face, tu, tv;
         if (pmedit_parent)
         {
-                // click any OTHER piece: it becomes the parent and the click
-                // lands as the attach point in its space, then SOCKET mode
-                // takes over for fine-tuning it. Re-parenting to a piece that
-                // hangs (transitively) off the selected one would loop the
-                // chain, so those clicks do nothing.
+                // one click: pick the new parent (only the eligible pieces
+                // show - loops-in-waiting are hidden) and the piece re-wires
+                // AND lays itself flush against the clicked spot, exactly
+                // like MOVE PART - then out to the whole model, nothing
+                // selected. A far miss also backs all the way out.
                 struct pm_piece *pc = &pm_models[my_player].piece[pmedit_sel];
                 float h[3];
-                int hit = pmedit_pick(pmedit_mx, pmedit_my, -2 - pmedit_sel,
-                                0.f, &face, &tu, &tv, h);
-                if (hit >= 0 && btn == SDL_BUTTON_LEFT)
+                int hit = pmedit_pick(pmedit_mx, pmedit_my,
+                                PMEDIT_PICK_ELIG, 0.f,
+                                &face, &tu, &tv, h);
+                if (hit >= 0)
                 {
-                        if (!pmedit_cycle(hit))
+                        if (btn == SDL_BUTTON_LEFT)
                         {
-                                unsigned char *corner = pm_models[my_player].piece[hit].corner;
+                                int att[3];
+                                // a copy keeps its own joint (== 2)
+                                if (pmedit_newpart == 1)
+                                        pmedit_newpart_snap(pc, face);
                                 pc->parent = hit;
+                                pmedit_flush_att(pc, hit, face, h, att);
                                 for (int a = 0; a < 3; a++)
-                                        pc->attach[a] = ICLAMP((int)roundf(corner[a] + h[a]),
-                                                        0, PM_TILE);
-                                pmedit_parent = 0;
-                                pmedit_socket = 1;
+                                        pc->attach[a] = att[a];
+                                pmedit_parent = pmedit_newpart = 0;
+                                pmedit_sel = -1;
                         }
                         return;
                 }
-                if (hit < 0 && pmedit_pick(pmedit_mx, pmedit_my, -1, 1.f,
-                                &face, &tu, &tv, NULL) < 0)
-                {
-                        pmedit_sel = -1;
-                        pmedit_joint = pmedit_socket = pmedit_parent = 0;
-                }
+                if (pmedit_pick(pmedit_mx, pmedit_my, PMEDIT_PICK_ELIG,
+                                1.f, &face, &tu, &tv, NULL) >= 0)
+                        return;
+                if (pmedit_pick(pmedit_mx, pmedit_my, pmedit_sel, 1.f,
+                                &face, &tu, &tv, NULL) >= 0)
+                        return;
+                pmedit_newpart_cancel();
+                pmedit_sel = -1;
+                pmedit_joint = pmedit_socket = pmedit_parent = 0;
+                pmedit_resize = pmedit_face = pmedit_restang = 0;
                 return;
         }
         if (pmedit_joint || pmedit_socket)
         {
-                // left plants the point at the clicked texel's spot - JOINT on
-                // the piece itself, SOCKET on the parent piece; right does
-                // nothing; a real miss (off piece AND parent) backs all the
-                // way out
+                // left commits what the preview shows and drops back to the
+                // plain piece view: PLACE ATTACHMENT POINT plants the origin
+                // at the clicked texel's spot, MOVE PART lays the piece flush
+                // against the parent right there. In PLACE ATTACHMENT POINT
+                // any click off the piece also just leaves the mode; in MOVE
+                // PART a real miss (off piece AND parent) backs all the way
+                // out - the rest of the model is hidden in both modes, so no
+                // click-to-switch here
                 struct pm_piece *pc = &pm_models[my_player].piece[pmedit_sel];
-                int tgt = pmedit_joint ? pmedit_sel : pc->parent;
                 float h[3];
-                if (btn == SDL_BUTTON_LEFT && tgt >= 0 && pmedit_pick(pmedit_mx,
-                                pmedit_my, tgt, 0.f, &face, &tu, &tv, h) >= 0)
+                int att[3];
+                if (pmedit_socket && btn == SDL_BUTTON_LEFT
+                                && pmedit_sock_aim(pc, att))
                 {
-                        unsigned char *corner = pm_models[my_player].piece[tgt].corner;
-                        unsigned char *pt = pmedit_joint ? pc->origin : pc->attach;
                         for (int a = 0; a < 3; a++)
-                                pt[a] = ICLAMP((int)roundf(corner[a] + h[a]), 0, PM_TILE);
+                                pc->attach[a] = att[a];
+                        pmedit_socket = 0;
+                        return;
+                }
+                if (pmedit_joint && btn == SDL_BUTTON_LEFT && pmedit_pick(pmedit_mx,
+                                pmedit_my, pmedit_sel, 0.f, &face, &tu, &tv, h) >= 0)
+                {
+                        unsigned char *corner = pc->corner;
+                        for (int a = 0; a < 3; a++)
+                        {
+                                // shift the attach point by the same delta so
+                                // the piece itself doesn't budge
+                                int o = ICLAMP((int)roundf(corner[a] + h[a]),
+                                                0, PM_TILE);
+                                int at = pc->attach[a] + o - pc->origin[a];
+                                pc->origin[a] = o;
+                                pc->attach[a] = ICLAMP(at, 0, 2 * PM_TILE);
+                        }
+                        pmedit_joint = 0;
+                        return;
+                }
+                if (pmedit_joint)
+                {
+                        if (pmedit_pick(pmedit_mx, pmedit_my, pmedit_sel, 0.f,
+                                        &face, &tu, &tv, NULL) < 0)
+                                pmedit_joint = 0;
                         return;
                 }
                 if (pmedit_pick(pmedit_mx, pmedit_my, pmedit_sel, 1.f,
                                 &face, &tu, &tv, NULL) >= 0) return;
-                if (pc->parent >= 0 && pmedit_pick(pmedit_mx, pmedit_my,
-                                pc->parent, 1.f, &face, &tu, &tv, NULL) >= 0) return;
+                if (pc->parent >= 0 && pmedit_pick(pmedit_mx,
+                                pmedit_my, pc->parent, 1.f, &face, &tu, &tv,
+                                NULL) >= 0) return;
                 pmedit_sel = -1;
-                pmedit_joint = pmedit_socket = pmedit_parent = 0;
+                pmedit_socket = 0;
+                return;
+        }
+        if (pmedit_resize)
+        {
+                // left-click a face of the selection to pick it - the arrow
+                // keys then push it out / pull it in 1px, paint following. A
+                // click on another piece switches to it (same mode, no face
+                // picked); a near-miss does nothing; farther backs out to
+                // the whole model.
+                if (btn == SDL_BUTTON_LEFT && pmedit_pick(pmedit_mx, pmedit_my,
+                                pmedit_sel, 0.f, &face, &tu, &tv, NULL) >= 0)
+                {
+                        pmedit_face = face;
+                        return;
+                }
+                int hit = pmedit_pick(pmedit_mx, pmedit_my, -1, 0.f,
+                                &face, &tu, &tv, NULL);
+                if (hit >= 0 && hit != pmedit_sel)
+                {
+                        pmedit_sel = hit;
+                        pmedit_face = 0;
+                        return;
+                }
+                if (pmedit_pick(pmedit_mx, pmedit_my, pmedit_sel, 1.f,
+                                &face, &tu, &tv, NULL) >= 0) return;
+                pmedit_sel = -1;
+                pmedit_resize = pmedit_face = pmedit_restang = 0;
+                return;
+        }
+        if (pmedit_restang)
+        {
+                // click another piece to pose it too (same mode); a
+                // near-miss does nothing; farther backs out to the whole
+                // model (the angles keep - they're per piece)
+                int hit = pmedit_pick(pmedit_mx, pmedit_my, -1, 0.f,
+                                &face, &tu, &tv, NULL);
+                if (hit >= 0) { pmedit_sel = hit; return; }
+                if (pmedit_pick(pmedit_mx, pmedit_my, pmedit_sel, 1.f,
+                                &face, &tu, &tv, NULL) >= 0) return;
+                pmedit_sel = -1;
+                pmedit_restang = 0;
                 return;
         }
 
-        // piece view: paint on a true hit; a near-miss (within a texel) does
-        // nothing, and anything farther backs out to the whole model
+        // piece view: paint on a true hit; a click that lands on ANOTHER
+        // piece switches to it; a near-miss (within a texel) does nothing,
+        // and anything farther backs out to the whole model
         if (pmedit_paint(btn)) { pmedit_paint_btn = btn; return; }
+        int hit = pmedit_pick(pmedit_mx, pmedit_my, -1, 0.f, &face, &tu, &tv, NULL);
+        if (hit >= 0) { pmedit_sel = hit; return; }
         if (pmedit_pick(pmedit_mx, pmedit_my, pmedit_sel, 1.f, &face, &tu, &tv, NULL) < 0)
                 pmedit_sel = -1;
 }
@@ -880,22 +1710,22 @@ void pmedit_motion()
 // labels land on top. The boxes ARE the hit rects.
 static void pmedit_boxes()
 {
-        float r[6][4];
+        float r[12][4];
         int nr = 0;
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 8; i++) // the piece buttons, DELETE last
         {
                 r[nr][0] = PMEDIT_BTN_X - 10; r[nr][1] = 16 + 64 * i;
                 r[nr][2] = screenw - 8;       r[nr][3] = 76 + 64 * i;
                 nr++;
         }
-        r[nr][0] = PMEDIT_BTN_X - 10; r[nr][1] = 272;
-        r[nr][2] = screenw - 8;       r[nr][3] = 332;
-        nr++;
-        r[nr][0] = PMEDIT_BTN_X - 10; r[nr][1] = 336;
-        r[nr][2] = screenw - 8;       r[nr][3] = 396;
-        nr++;
+        for (int i = 0; i < 4; i++) // NEW PART, ANIMATE, STYLE, HIDE: always live
+        {
+                r[nr][0] = PMEDIT_BTN_X - 10; r[nr][1] = 528 + 64 * i;
+                r[nr][2] = screenw - 8;       r[nr][3] = 588 + 64 * i;
+                nr++;
+        }
 
-        float buf[6 * 12], *p = buf;
+        float buf[12 * 12], *p = buf;
         for (int i = 0; i < nr; i++)
         {
                 float x0 = r[i][0], y0 = r[i][1], x1 = r[i][2], y1 = r[i][3];
@@ -933,13 +1763,13 @@ static void pmedit_boxes()
                         0, sizeof push, &push);
         VkDeviceSize offset = 0;
         vkCmdBindVertexBuffers(cmdbuf, 0, 1, &alloc[vk.currentFrame].buf, &offset);
-        vkCmdDraw(cmdbuf, (nr - 2) * 6, 1, 0, 0); // piece buttons
+        vkCmdDraw(cmdbuf, (nr - 4) * 6, 1, 0, 0); // piece buttons
 
         memcpy(push.color, (float[3]){ 0.13f, 0.13f, 0.16f }, sizeof push.color);
         vkCmdPushConstants(cmdbuf, vk.pipelines[cursor_pipe].layout,
                         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                         0, sizeof push, &push);
-        vkCmdDraw(cmdbuf, 12, 1, (nr - 2) * 6, 0); // ANIMATE + STYLE, always live
+        vkCmdDraw(cmdbuf, 24, 1, (nr - 4) * 6, 0); // the always-live buttons
 }
 
 void pmedit_draw_ui()
@@ -954,18 +1784,21 @@ void pmedit_draw_ui()
         float dim = enabled ? 0.55f : 0.28f;
 
         font_begin(screenw, screenh);
-        font_add_text("MOVE JOINT", PMEDIT_BTN_X, 28.f, 3);
+        font_add_text("PLACE ATTACHMENT POINT", PMEDIT_BTN_X, 34.f, 2);
         if (enabled && pmedit_joint) font_end(1, 1, 0.25f);
         else font_end(dim, dim, dim);
 
         font_begin(screenw, screenh);
-        font_add_text("MOVE SOCKET", PMEDIT_BTN_X, 92.f, 3);
+        font_add_text("MOVE PART", PMEDIT_BTN_X, 92.f, 3);
         if (enabled && pmedit_socket) font_end(1, 1, 0.25f);
         else font_end(dim, dim, dim);
 
         font_begin(screenw, screenh);
-        font_add_text("SELECT PARENT", PMEDIT_BTN_X, 156.f, 3);
-        if (enabled && pmedit_parent) font_end(1, 1, 0.25f);
+        font_add_text(pmedit_sel >= 0
+                        && pm_models[my_player].piece[pmedit_sel].parent >= 0
+                        ? "DETACH" : "SELECT PARENT", PMEDIT_BTN_X, 156.f, 3);
+        if (enabled && pmedit_parent) font_end(1, 0.55f, 0.8f);
+        else if (enabled) font_end(1, 0.27f, 0.63f); // pink like the rims
         else font_end(dim, dim, dim);
 
         font_begin(screenw, screenh);
@@ -976,26 +1809,82 @@ void pmedit_draw_ui()
         else font_end(dim, dim, dim);
 
         font_begin(screenw, screenh);
-        font_add_text("ANIMATE", PMEDIT_BTN_X, 284.f, 3);
+        font_add_text("RESIZE", PMEDIT_BTN_X, 284.f, 3);
+        if (enabled && pmedit_resize) font_end(1, 1, 0.25f);
+        else font_end(dim, dim, dim);
+
+        font_begin(screenw, screenh);
+        font_add_text("RESTING ANGLE", PMEDIT_BTN_X, 348.f, 3);
+        if (enabled && pmedit_restang) font_end(1, 1, 0.25f);
+        else font_end(dim, dim, dim);
+
+        int can_new = pm_models[my_player].nr_pieces < PM_MAX_PIECES
+                        && !pmedit_animate;
+        font_begin(screenw, screenh);
+        font_add_text("MAKE COPY", PMEDIT_BTN_X, 412.f, 3);
+        if (enabled && can_new) font_end(0.55f, 0.7f, 0.55f);
+        else font_end(0.28f, 0.28f, 0.28f);
+
+        font_begin(screenw, screenh);
+        font_add_text("DELETE", PMEDIT_BTN_X, 476.f, 3);
+        if (enabled) font_end(0.8f, 0.35f, 0.35f);
+        else font_end(dim, dim, dim);
+
+        font_begin(screenw, screenh);
+        font_add_text("NEW PART", PMEDIT_BTN_X, 540.f, 3);
+        if (can_new) font_end(0.55f, 0.7f, 0.55f);
+        else font_end(0.28f, 0.28f, 0.28f);
+
+        font_begin(screenw, screenh);
+        font_add_text("ANIMATE", PMEDIT_BTN_X, 604.f, 3);
         if (pmedit_animate) font_end(1, 1, 0.25f);
         else font_end(0.55f, 0.55f, 0.55f);
 
         font_begin(screenw, screenh);
         font_add_text(pm_models[my_player].style == PM_STYLE_FLAIL ?
-                        "FLAIL" : "WALK", PMEDIT_BTN_X, 348.f, 3);
+                        "FLAIL" : "WALK", PMEDIT_BTN_X, 668.f, 3);
         font_end(0.55f, 0.7f, 0.55f);
+
+        // with pieces hidden and the mode off, the button turns into the
+        // one-click bring-them-all-back
+        int nhid = 0;
+        for (unsigned m = pmedit_hidden; m; m >>= 1) nhid += m & 1;
+        char hidebuf[24] = "HIDE";
+        if (nhid && !pmedit_hide) sprintf(hidebuf, "UNHIDE (%d)", nhid);
+        font_begin(screenw, screenh);
+        font_add_text(hidebuf, PMEDIT_BTN_X, 732.f, 3);
+        if (pmedit_hide) font_end(1, 1, 0.25f);
+        else font_end(0.55f, 0.7f, 0.55f);
+
+        // RESTING ANGLE reads its live numbers off the hint line
+        static char restbuf[80];
+        if (pmedit_restang && pmedit_sel >= 0)
+                sprintf(restbuf, "PITCH %+d   YAW %+d   ROLL %+d"
+                        "   arrows pitch/yaw   Q/E roll",
+                        pm_rest_deg[pmedit_sel][0],
+                        pm_rest_deg[pmedit_sel][1],
+                        pm_rest_deg[pmedit_sel][2]);
 
         char *hint = pmedit_animate ?
                 "WASD rotate   click anywhere to stop" :
+                pmedit_hide ?
+                "click a piece to hide it   click away when done   WASD rotate" :
                 pmedit_sel < 0 ?
                 "click a piece to paint it   WASD rotate   U done" :
                 pmedit_joint ?
-                "LMB place joint   arrows nudge   WASD rotate   click away to go back" :
+                "point to preview   LMB place the point   arrows nudge   WASD rotate" :
                 pmedit_socket ?
-                "LMB place socket on parent   arrows nudge   WASD rotate" :
+                "point to preview   LMB place the part   arrows nudge   WASD rotate" :
                 pmedit_parent ?
-                "LMB click a piece to make it the parent   WASD rotate" :
-                "LMB paint red   RMB paint blue   WASD rotate   click away to go back";
+                (pmedit_newpart ?
+                "LMB place the new piece on a parent   WASD rotate" :
+                "LMB place the part on its new parent   WASD rotate") :
+                pmedit_resize ?
+                (pmedit_face ?
+                "arrows push/pull the face 1px   LMB pick another face   WASD rotate" :
+                "LMB pick a face to resize   WASD rotate") :
+                pmedit_restang ? restbuf :
+                "LMB paint red   RMB paint blue   ctrl-C copy   Del delete   click away to go back";
         float scale = MIN(roundf(screenw / 600.f), roundf(screenh / 400.f));
         if (scale < 1) scale = 1;
         font_begin(screenw, screenh);

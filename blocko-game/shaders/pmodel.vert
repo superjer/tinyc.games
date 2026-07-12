@@ -10,6 +10,7 @@ layout(location = 1) in vec4 r1_in;
 layout(location = 2) in vec4 r2_in;
 layout(location = 3) in vec3 dims_in; // prism size in px
 layout(location = 4) in vec4 misc_in; // orient, tex layer, illum, glow
+layout(location = 5) in float tint_in; // < 0: editor ghost, alpha = -tint
 
 layout(location = 0) flat out float tex;
 layout(location = 1) out float illum;
@@ -124,7 +125,7 @@ void main(void) {
     tex = misc_in.y;
     alpha = 1.0;
     shiny = 0.0;
-    tint = 0.0;
+    tint = tint_in;
 
     gl_Position = push.pv * world_pos;
 

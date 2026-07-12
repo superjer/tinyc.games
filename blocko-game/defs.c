@@ -363,6 +363,7 @@ struct pmvert {
     float orient;              // face 1..6, same codes as vbufv
     float tex;                 // texture array layer for this face
     float illum, glow;
+    float tint;                // < 0: editor ghost, drawn at alpha -tint
 };
 
 // player models: up to 12 rectangular prisms in 16^3 px local spaces, plus a
@@ -421,6 +422,8 @@ struct pm_anim {
 struct pmodel pm_models[NR_PLAYERS]; // slot's model; defaults until one arrives
 int pmodel_have[NR_PLAYERS];         // slot has a real (non-default) model
 int pmedit_on;                       // the in-game model editor is open (U key)
+int pmedit_level_cam;                // the editor swung the camera out itself,
+                                     // so it levels the pitch too
 
 // player state that rides MSG_PLAYER so everyone animates everyone right:
 // a flags byte mirroring the sim flags, and the held block (drawn in the
@@ -693,6 +696,7 @@ int water_solid_pipe;// opaque water pipeline (far chunks: no blend, back-face
 int mob_pipe;        // mob rendering pipeline (mob.vert + shared main.frag)
 int mob_shadow_pipe; // mob shadow-cast pipeline (mob_shadow.vert + shadow.frag)
 int pmodel_pipe;        // player model pipeline (pmodel.vert + shared main.frag)
+int pmodel_ghost_pipe;  // same but alpha-blended (editor's see-through preview)
 int pmodel_shadow_pipe; // player model shadow caster (pmodel_shadow.vert + shadow.frag)
 int pmodel_tex_base;    // first texture array layer of the player model face tiles
 

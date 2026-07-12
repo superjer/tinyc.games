@@ -189,11 +189,19 @@ void draw_stuff()
         float cpitch = camplayer.pitch, cyaw = camplayer.yaw;
         if (cam_view != CAM_FIRST)
         {
+                // the editor levels the world camera when it swung it out
+                // itself - dead horizontal, no matter what pitch the player
+                // froze at (their aim keeps it; a 2nd-person pitch they
+                // already chose keeps too)
+                float cp = pmedit_on && pmedit_level_cam ? 0.f : camplayer.pitch;
+                float fwd0 = cosf(cp) * sinf(camplayer.yaw);
+                float fwd1 = sinf(cp);
+                float fwd2 = cosf(cp) * cosf(camplayer.yaw);
                 float back = cam_view == CAM_THIRD ? -3200.f : 3200.f;
                 float shoulder = cam_view == CAM_THIRD ? 700.f : 0.f;
-                float off0 = pfwd[0] * back + cosf(camplayer.yaw) * shoulder;
-                float off1 = pfwd[1] * back;
-                float off2 = pfwd[2] * back - sinf(camplayer.yaw) * shoulder;
+                float off0 = fwd0 * back + cosf(camplayer.yaw) * shoulder;
+                float off1 = fwd1 * back;
+                float off2 = fwd2 * back - sinf(camplayer.yaw) * shoulder;
                 float len = sqrtf(off0*off0 + off1*off1 + off2*off2);
                 float t = 0;
                 for (; t < len; t += 50)
@@ -211,7 +219,7 @@ void draw_stuff()
                 if (cam_view == CAM_SECOND)
                 {
                         cyaw = camplayer.yaw + PI;
-                        cpitch = -camplayer.pitch;
+                        cpitch = -cp;
                 }
         }
 

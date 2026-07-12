@@ -348,4 +348,9 @@ void main(void) {
     // debug viz: tint the reject+patch mesh red (socket `tint`, via reject_lo.w)
     if (tint > 0.5)
         color.rgb = mix(color.rgb, vec3(1.0, 0.0, 0.0), 0.5);
+
+    // editor ghost: a see-through preview piece (blend-enabled pipeline).
+    // Negative so it can't collide with the alpha<1.0 water paths above.
+    if (tint < 0.0)
+        color.a = -tint;
 }

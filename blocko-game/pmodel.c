@@ -49,6 +49,155 @@ static void pm_face_extent(struct pm_piece *p, int orient, int *eu, int *ev)
         }
 }
 
+// which texel axis spans world axis a on each face, signed by direction
+// (pmodel.vert mirrors u on UP/NORTH/WEST so paint reads unflipped).
+// 0 = that's the face's normal axis; +-1 = u, +-2 = v.
+static const signed char pm_face_uvmap[PM_FACES][3] = {
+        [UP - 1]    = { -1,  0, +2 },
+        [EAST - 1]  = {  0, +2, +1 },
+        [NORTH - 1] = { -1, +2,  0 },
+        [WEST - 1]  = {  0, +2, -1 },
+        [SOUTH - 1] = { +1, +2,  0 },
+        [DOWN - 1]  = { +1,  0, +2 },
+};
+
+// insert or delete one row/column of texels at one end of a face's visible
+// window, so paint follows a resize. Faces sample texels [0..eu)x[0..ev)
+// anchored at (0,0), so an edit at the index-0 end shifts the window and an
+// edit at the far end appends/drops in place. t = the face's 16x16 tile;
+// along_u: the edit runs along u (else v); e = the extent along the edited
+// axis BEFORE the resize. The edge row rides along with the moving face: a
+// grow duplicates the row just behind it into the gap, a shrink destroys
+// that row and keeps the edge. Under 3 rows there is no "behind", so the
+// edge row itself gets duplicated (grow) or lost (shrink).
+static void pm_texel_resize(unsigned char *t, int along_u, int at_zero,
+                int grow, int e)
+{
+        int stride = along_u ? 1 : PM_TILE;
+        int deep = e >= 3;
+        for (int w = 0; w < PM_TILE; w++)
+        {
+                unsigned char *r = t + (along_u ? w * PM_TILE : w);
+                if (grow && at_zero)
+                        for (int i = e; i >= 1 + deep; i--)
+                                r[i * stride] = r[(i - 1) * stride];
+                else if (grow)
+                {
+                        r[e * stride] = r[(e - 1) * stride];
+                        if (deep) r[(e - 1) * stride] = r[(e - 2) * stride];
+                }
+                else if (at_zero)
+                        for (int i = deep; i < e - 1; i++)
+                                r[i * stride] = r[(i + 1) * stride];
+                else if (deep)
+                        r[(e - 2) * stride] = r[(e - 1) * stride];
+        }
+}
+
+// grow or shrink piece pi's prism 1px at the given face (orient code), so
+// the new layer looks purely added: every other face, the joint and the
+// children hanging elsewhere stay visually put, while children whose attach
+// sits on or past the moved face's plane RIDE it - the arm socketed off the
+// east side follows the east face out and back in. The four lateral faces'
+// texel windows gain or lose a row at the moved end (pm_texel_resize); when
+// the growing side is already at the 16^3 wall the content instead slides
+// within the space, and origin + the non-riding children's attach shift
+// along, each clamping at its own wall (a joint can't sit more than 16px
+// from any prism wall). Returns whether anything changed.
+static int pm_piece_resize(struct pmodel *mo, int pi, int face, int grow)
+{
+        // face orient code -> world axis, and which side of it moved
+        static const signed char axis_of[7] = { 0, 1, 0, 2, 0, 2, 1 };
+        static const signed char side_of[7] = { 0, -1, 1, 1, -1, -1, 1 };
+        struct pm_piece *p = &mo->piece[pi];
+        int a = axis_of[face], side = side_of[face];
+        int e = p->dims[a]; // extent along the axis before the change
+        // the moved face's plane before the change, for spotting the riders
+        int plane = side > 0 ? p->corner[a] + e : p->corner[a];
+        int at_wall = 0;
+
+        if (grow)
+        {
+                if (e >= PM_TILE) return 0;
+                at_wall = side > 0 ? p->corner[a] + e >= PM_TILE
+                                   : p->corner[a] <= 0;
+                p->dims[a]++;
+                if (side > 0 ? at_wall : !at_wall) p->corner[a]--;
+                if (at_wall) // content slides off the growing face
+                        p->origin[a] = ICLAMP(p->origin[a] - side, 0, PM_TILE);
+        }
+        else
+        {
+                if (e <= 1) return 0;
+                p->dims[a]--;
+                if (side < 0) p->corner[a]++;
+        }
+
+        // at the wall the plane stays put in the local space and the content
+        // slides -side under it, so NON-riders shift along to stay visually
+        // put (the riders' world spot moves with the origin, out with the
+        // face); everywhere else the plane itself moves and only the riders
+        // follow it
+        for (int j = 0; j < mo->nr_pieces; j++)
+        {
+                if (mo->piece[j].parent != pi) continue;
+                int rides = side > 0 ? mo->piece[j].attach[a] >= plane
+                                     : mo->piece[j].attach[a] <= plane;
+                int d = grow && at_wall ? (rides ? 0 : -side)
+                                        : (rides ? (grow ? side : -side) : 0);
+                if (!d) continue;
+                int at = mo->piece[j].attach[a] + d;
+                mo->piece[j].attach[a] = ICLAMP(at, 0, 2 * PM_TILE);
+        }
+
+        for (int f = 0; f < PM_FACES; f++)
+        {
+                int m = pm_face_uvmap[f][a];
+                if (!m) continue;
+                pm_texel_resize(mo->texel[pi][f], abs(m) == 1,
+                                (side > 0) != (m > 0), grow, e);
+        }
+        return 1;
+}
+
+// delete piece pi and its whole subtree, compacting the piece and texel
+// arrays and remapping the survivors' parent links (a survivor's parent is
+// always a survivor: a piece whose parent died would have died with it).
+// Refuses to empty the model. Returns the number of pieces removed.
+static int pm_piece_delete(struct pmodel *mo, int pi)
+{
+        int nr = mo->nr_pieces;
+        char kill[PM_MAX_PIECES] = {0};
+        kill[pi] = 1;
+        for (int pass = 0; pass < nr; pass++)
+                for (int i = 0; i < nr; i++)
+                        if (!kill[i] && mo->piece[i].parent >= 0
+                                        && kill[(int)mo->piece[i].parent])
+                                kill[i] = 1;
+        int left = 0;
+        for (int i = 0; i < nr; i++) left += !kill[i];
+        if (!left) return 0;
+
+        signed char map[PM_MAX_PIECES];
+        int n = 0;
+        for (int i = 0; i < nr; i++)
+        {
+                map[i] = kill[i] ? -1 : n;
+                if (kill[i]) continue;
+                if (n != i)
+                {
+                        mo->piece[n] = mo->piece[i];
+                        memcpy(mo->texel[n], mo->texel[i], sizeof mo->texel[n]);
+                }
+                n++;
+        }
+        mo->nr_pieces = n;
+        for (int i = 0; i < n; i++)
+                if (mo->piece[i].parent >= 0)
+                        mo->piece[i].parent = map[(int)mo->piece[i].parent];
+        return nr - n;
+}
+
 #define PM_RGB(r, g, b) (0xff000000u | ((b) << 16) | ((g) << 8) | (r))
 
 // paint a model's tiles: per-piece base/dark/accent colors and a random
@@ -238,10 +387,13 @@ void pmodel_init()
 }
 
 // solid-color layers appended after every slot's tiles, for the model editor:
-// white (the selection outline) then six cycling hues (the joint gizmo)
+// white (the selection outline), six cycling hues (the joint gizmo), then
+// dark green (the ground quad) and bright pink (the parent highlight)
 #define PM_LAYER_WHITE (pmodel_tex_base + NR_PLAYERS * pm_slot_layers())
 #define PM_LAYER_HUES  (PM_LAYER_WHITE + 1)
 #define PM_NR_HUES 6
+#define PM_LAYER_DKGREEN (PM_LAYER_HUES + PM_NR_HUES)
+#define PM_LAYER_PINK (PM_LAYER_DKGREEN + 1)
 
 // all slots' face tiles for the texture array, plus the editor's solid-color
 // layers at the end. By vksetup time the join handshake may already have
@@ -249,21 +401,22 @@ void pmodel_init()
 // uploads were skipped), so expand, don't reset
 unsigned char *pmodel_make_tiles(int *nr_layers)
 {
-        static unsigned char rgba[(NR_PLAYERS * PM_MAX_PIECES * PM_FACES + 1 + PM_NR_HUES)
+        static unsigned char rgba[(NR_PLAYERS * PM_MAX_PIECES * PM_FACES + 3 + PM_NR_HUES)
                 * PM_TILE * PM_TILE * 4];
         for (int i = 0; i < NR_PLAYERS; i++)
                 pm_expand(&pm_models[i], rgba + i * pm_slot_layers() * PM_TILE * PM_TILE * 4);
 
         unsigned *solid = (unsigned *)(rgba
                 + NR_PLAYERS * pm_slot_layers() * PM_TILE * PM_TILE * 4);
-        unsigned colors[1 + PM_NR_HUES] = { PM_RGB(255, 255, 255),
+        unsigned colors[3 + PM_NR_HUES] = { PM_RGB(255, 255, 255),
                 PM_RGB(255, 60, 60), PM_RGB(255, 230, 60), PM_RGB(60, 255, 60),
-                PM_RGB(60, 230, 255), PM_RGB(60, 60, 255), PM_RGB(255, 60, 255) };
-        for (int i = 0; i < 1 + PM_NR_HUES; i++)
+                PM_RGB(60, 230, 255), PM_RGB(60, 60, 255), PM_RGB(255, 60, 255),
+                PM_RGB(25, 95, 35), PM_RGB(255, 70, 160) };
+        for (int i = 0; i < 3 + PM_NR_HUES; i++)
                 for (int t = 0; t < PM_TILE * PM_TILE; t++)
                         *solid++ = colors[i];
 
-        *nr_layers = NR_PLAYERS * pm_slot_layers() + 1 + PM_NR_HUES;
+        *nr_layers = NR_PLAYERS * pm_slot_layers() + 3 + PM_NR_HUES;
         return rgba;
 }
 
@@ -337,11 +490,20 @@ static void pm_mat_pitch(float *m, float a)
         m[5] = c; m[6] = s; m[9] = -s; m[10] = c;
 }
 
+// editor test rig: per-piece resting angles in degrees (pitch, yaw, roll) -
+// the pose a piece defaults to standing still, with the animations swinging
+// on top. Not part of the model struct (yet): pmedit flips pm_rest_apply
+// around its own pm_resolve calls, so only the editor preview (RESTING ANGLE
+// mode and ANIMATE) poses with them - the in-world models never see it set
+static signed char pm_rest_deg[PM_MAX_PIECES][3];
+static int pm_rest_apply;
+
 // resolve the model's piece transforms (px in each piece's 16^3 space -> world)
 // for a player whose hitbox top corner is at (x,y,z), facing model-yaw `yaw`.
 // an drives the articulation; NULL means a plain standing pose (the model
-// editor's preview). Motion dispatches on each piece's TYPE, or flails
-// everything when the model's style says so.
+// editor's preview). Motion dispatches on each piece's TYPE; the FLAIL
+// style waves the limbs and head around instead, everything else still
+// animating as in WALK.
 // root_out, when non-NULL, gets the center box's own px -> world matrix
 // (the editor needs it: a parent of -1 attaches into that space).
 static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
@@ -393,14 +555,17 @@ static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
                 // bit more, so knees lead) and the head cancels it entirely
                 #define PM_CROUCH_TILT 0.3f
                 float pitch = 0, pyaw = 0, roll = 0, dy = 0;
-                if (an && an->style == PM_STYLE_FLAIL)
+                int leg = p->type == PM_T_LEG1 || p->type == PM_T_LEG2;
+                int limb_or_head = leg || p->type == PM_T_HEAD
+                                || p->type == PM_T_ARM_L
+                                || p->type == PM_T_ARM_R;
+                if (an && an->style == PM_STYLE_FLAIL && limb_or_head)
                 {
-                        // FLAIL: wave everything but the torso around, index-
-                        // seeded; legs keep to pitch only so they read as walking
-                        int leg = p->type == PM_T_LEG1 || p->type == PM_T_LEG2;
-                        if (p->type != PM_T_TORSO)
-                                pitch = sinf(an->t * (1.1f + 0.2f * i) + i) * 0.9f;
-                        if (p->type != PM_T_TORSO && !leg)
+                        // FLAIL: wave the limbs and head around, index-seeded;
+                        // legs keep to pitch only so they read as walking.
+                        // Every other type animates as in WALK
+                        pitch = sinf(an->t * (1.1f + 0.2f * i) + i) * 0.9f;
+                        if (!leg)
                                 pyaw = sinf(an->t * (0.7f + 0.3f * i) + 2 * i) * 0.9f;
                 }
                 else if (an) switch (p->type)
@@ -487,6 +652,13 @@ static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
                         pitch += (fp - pitch) * an->flail;
                         pyaw  += (fy - pyaw)  * an->flail;
                 }
+                // the test resting pose: the anim's angles swing on top
+                if (pm_rest_apply)
+                {
+                        pitch += pm_rest_deg[i][0] * (PI / 180);
+                        pyaw  += pm_rest_deg[i][1] * (PI / 180);
+                        roll  += pm_rest_deg[i][2] * (PI / 180);
+                }
                 pm_mat_yaw(tmp, pyaw);
                 pm_mat_pitch(tmp2, pitch);
                 mat4_multiply(rot, tmp, tmp2);
@@ -518,9 +690,9 @@ static void pm_resolve(struct pmodel *mo, float x, float y, float z, float yaw,
 static struct allocation pm_alloc[MAX_FRAMES_IN_FLIGHT];
 // world models for every slot (each plus a possible held-item cube) + one
 // more model's worth for the editor preview, plus its selection-outline hull,
-// a re-drawn parent (SOCKET mode) and the joint/socket gizmo (cube + 3 axes
-// + ghost cube)
-static struct pmvert pmbuf[(NR_PLAYERS + 1) * (PM_MAX_PIECES + 1) * PM_FACES + 8 * PM_FACES];
+// a re-drawn parent (MOVE PART mode) and the joint gizmo (cube + 3 ruled
+// axes of 40 one-texel segments each)
+static struct pmvert pmbuf[(NR_PLAYERS + 1) * (PM_MAX_PIECES + 1) * PM_FACES + 128 * PM_FACES];
 static int pm_count;  // total face instances this frame
 static int pm_remote; // instances the main camera sees (the local player's own
                       // model is shadow-only until 2nd/3rd person cameras exist)
@@ -734,14 +906,19 @@ void pmodel_build()
 
         // the local player: drawn from lerped_pos, the same smoothed position
         // the camera rides - camplayer.pos is extrapolated a whole tick ahead
-        // and stutters against it in third person
-        struct player lp = camplayer;
-        lp.pos.x = lerped_pos.x;
-        lp.pos.y = lerped_pos.y;
-        lp.pos.z = lerped_pos.z;
-        struct pm_anim *a = pm_animate(my_player, &lp, t);
-        b = pm_emit(b, my_player, lp.pos.x, lp.pos.y, lp.pos.z,
-                        PI - a->body_yaw, a);
+        // and stutters against it in third person. While the editor is open
+        // the model leaves the world entirely (main AND shadow passes) - the
+        // editor "grabbed" it
+        if (!pmedit_on)
+        {
+                struct player lp = camplayer;
+                lp.pos.x = lerped_pos.x;
+                lp.pos.y = lerped_pos.y;
+                lp.pos.z = lerped_pos.z;
+                struct pm_anim *a = pm_animate(my_player, &lp, t);
+                b = pm_emit(b, my_player, lp.pos.x, lp.pos.y, lp.pos.z,
+                                PI - a->body_yaw, a);
+        }
         pm_count = b - pmbuf;
 
         // the model editor's preview rides in the same buffer, past pm_count
