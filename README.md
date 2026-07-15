@@ -14,21 +14,19 @@ This project is an example of how you can get started making a game in C that wi
 ## Games
 
 ### Tet
-A Tetris clone which is getting way too large. Cool animations, sound, controller support, multiplayer etc.
-This is too much for a "tiny" game so I'll be paring it down and moving the fully featured version to its own branch or repo.
+Your classic falling block puzzle game.
 
 ### Flappy
-The original tiny game. It's just Flappy Bird in only around 200 [normal] lines of code. So no dumb tricks, I hope :)
+The original tiny game. A Flappy Bird in only around 200 lines of code.
 
 ### Blocko
-A Minecraft (Infiniminer?) clone with too many features once again. Dynamic lighting and overly complex procedural generation.
-Also needs to be simplified for this repo.
+A voxel block-mining game with infinite world and multiplayer.
 
 ### Zel
-A top-down adventure game with an overworld and a dungeon. Very minimal, no ending. Too much procedural generation!
+A top-down adventure game with an overworld and a dungeon.
 
 ### Maker
-A quick hack to make Zel into more of a 2D platformer. Very rough around the edges. The intention is to add a simple level editor.
+A quick hack to make Zel into a 2D platformer. Very rough around the edges.
 
 ## How do I run this?
 
