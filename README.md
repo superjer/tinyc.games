@@ -28,6 +28,9 @@ A top-down adventure game with an overworld and a dungeon.
 ### Maker
 A quick hack to make Zel into a 2D platformer. Very rough around the edges.
 
+### Valet
+A game about parking cars with bad or no brakes! Steer each runaway car to a stop before it drives off the lot.
+
 ## How do I run this?
 
 Anything that supports CMake should work. But here are some suggestions for various platforms:
